@@ -182,8 +182,14 @@ for (const f of ['index.html', 'favicon.svg']) await copyFile(f, `${out}/${f}`);
 for (const d of ['js', 'css', 'vendor']) await cp(d, `${out}/${d}`, { recursive: true });
 await writeFile(`${out}/.nojekyll`, '');
 
+// ESPN throttles bursts from one server, so fetch the most-followed leagues first; any league the
+// build misses is still loaded live in the visitor's browser when its sport/league page opens.
+const PRIORITY = ['basketball/nba', 'football/nfl', 'hockey/nhl', 'baseball/mlb', 'basketball/wnba', 'football/college-football', 'tennis/atp', 'tennis/wta', 'mma/ufc',
+  'soccer/eng.1', 'soccer/esp.1', 'soccer/ger.1', 'soccer/ita.1', 'soccer/fra.1', 'soccer/uefa.champions', 'soccer/uefa.europa', 'soccer/uefa.europa.conf', 'soccer/usa.1', 'soccer/mex.1',
+  'basketball/mens-college-basketball', 'rugby/267979', 'rugby/270557', 'australian-football/afl', 'rugby-league/3', 'football/cfl'];
+const ordered = [...LEAGUES.filter((l) => PRIORITY.includes(l.path)).sort((a, b) => PRIORITY.indexOf(a.path) - PRIORITY.indexOf(b.path)), ...LEAGUES.filter((l) => !PRIORITY.includes(l.path))];
 const [espn, npbEvents, kboEvents] = await Promise.all([
-  fetchAll(AbortSignal.timeout(300000), LEAGUES, { days: 4, concurrency: 3 }).catch((e) => { log('ESPN failed', e.message); return []; }),
+  fetchAll(AbortSignal.timeout(300000), ordered, { days: 4, concurrency: 2 }).catch((e) => { log('ESPN failed', e.message); return []; }),
   npb().catch((e) => { log('NPB failed', e.message); return []; }),
   kbo().catch((e) => { log('KBO failed', e.message); return []; }),
 ]);

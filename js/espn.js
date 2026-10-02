@@ -106,7 +106,7 @@ export async function fetchLeague(league, { days = 3, signal } = {}) {
   const headers = typeof window === 'undefined' ? { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', Accept: 'application/json' } : undefined;
   for (const u of urls) {
     // ESPN answers bursts with 403/429: back off and retry before giving up on this form.
-    for (let attempt = 0; attempt < 4; attempt++) {
+    for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const res = await fetch(u, { signal, headers });
         if (res.status === 403 || res.status === 429) { lastErr = new Error(`HTTP ${res.status}`); await new Promise((r) => setTimeout(r, 1500 * (attempt + 1))); continue; }
