@@ -1,5 +1,5 @@
 import { createScene } from './scene.js';
-import { loadEvents } from './data.js';
+import { loadEvents, refreshLive } from './data.js';
 import { buildSlips } from './engine.js';
 import { applyModel, bankers } from './intel.js';
 import { fetchLineups } from './espn.js';
@@ -29,6 +29,7 @@ const state = {
   },
 };
 bind(state);
+state.refresh = () => softRender();
 
 // ---------- data ----------
 function setData(d) {
@@ -38,14 +39,22 @@ function setData(d) {
   if (Date.now() - state.slipsAt > 60000) { state.slipCache.clear(); state.slipsAt = Date.now(); }
   ticker();
 }
-const refreshMs = () => (state.server ? 30000 : 5000);
-let polling = false;
+// Snapshot mode: refresh live/imminent leagues straight from ESPN every 20 s, and reload the
+// full index every 10 min. Server mode: the server caches for 60 s, so poll it every 30 s.
+const refreshMs = () => (state.snapshot ? 20000 : state.server ? 30000 : 5000);
+let polling = false, lastIndex = Date.now();
 async function poll() {
   if (polling || document.hidden || state.demo) return;
   polling = true;
   try {
-    const d = await loadEvents();
-    if (!d.demo) { setData(d); softRender(); }
+    if (state.snapshot && Date.now() - lastIndex < 600000) {
+      const merged = await refreshLive(state.events).catch(() => null);
+      if (merged) { setData({ ...state, events: merged, fetchedAt: Date.now() }); softRender(); }
+    } else {
+      const d = await loadEvents();
+      lastIndex = Date.now();
+      if (!d.demo) { setData(d); softRender(); }
+    }
   } finally { polling = false; }
 }
 
@@ -78,7 +87,7 @@ function render(animate) {
 function route() {
   if (!location.hash.startsWith('#/')) return; // in-page anchors
   const { name } = parse();
-  const label = { home: 'DASHBOARD', sport: 'SPORT', match: 'MATCH DOSSIER', edge: 'EDGE BOARD', x: 'MULTIPLIERS', mega: 'MEGA BETS', bankers: 'BANKERS' }[name] || '';
+  const label = { home: 'DASHBOARD', sports: 'ALL SPORTS', sport: 'SPORT', league: 'LEAGUE', match: 'MATCH DOSSIER', edge: 'EDGE BOARD', x: 'MULTIPLIERS', mega: 'MEGA BETS', bankers: 'BANKERS' }[name] || '';
   wipe(() => { render(true); scrollTo({ top: 0 }); }, label).then(() => scene.pulse());
 }
 

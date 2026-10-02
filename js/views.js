@@ -6,6 +6,9 @@ import { analyse, winProbs, kelly } from './models.js';
 import { probBar, gauge, heatmap, distBars, formStrip, outcomeBars, valueTrack, pc, odd } from './charts.js';
 import { split } from './ui.js';
 import { slip } from './slip.js';
+import { CATALOG, sportById, leagueByPath, leagueKey, leagueFromKey } from './catalog.js';
+import { detailFor, loadDetail as fetchDetail } from './detail.js';
+import { dossierSections } from './dossier.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const safeHref = (u) => (/^https?:\/\//i.test(String(u || '')) ? esc(u) : '#');
@@ -22,7 +25,7 @@ export function bind(state) { S = state; }
 
 const analysisCache = new Map();
 export function analysisFor(e) {
-  const sig = JSON.stringify(e.markets) + JSON.stringify(e.stats);
+  const sig = JSON.stringify(e.markets) + JSON.stringify(e.stats) + JSON.stringify(e.predictor || null);
   const hit = analysisCache.get(e.id);
   if (hit && hit.sig === sig) return hit.a;
   const a = analyse(e);
@@ -141,16 +144,57 @@ export const views = {
     };
   },
 
-  sport([id]) {
-    const s = sportOf(id);
-    const list = S.events.filter((e) => e.sport === id).sort((a, b) => (b.live - a.live) || a.start - b.start);
-    const leagues = [...new Set(list.map((e) => e.league))];
+  sports() {
+    const by = countBy();
     return {
-      mode: 'sport', accent: s.color, title: s.name,
-      html: `<section class="hero small"><p class="kicker reveal">${list.length} EVENTS · ${leagues.length} COMPETITIONS</p><h1>${split(s.name.toUpperCase())}</h1>
-        <div class="chips reveal" data-filter-group><button class="chip on" data-league="">All</button>${leagues.map((l) => `<button class="chip" data-league="${esc(l)}">${esc(l)}</button>`).join('')}</div></section>
+      mode: 'sport', accent: '#d2ff00', title: 'All sports',
+      html: `<section class="hero small"><p class="kicker reveal">${CATALOG.length} SPORTS · ${CATALOG.reduce((n, s) => n + s.groups.reduce((m, g) => m + g.leagues.length, 0), 0)} COMPETITIONS</p><h1>${split('ALL SPORTS')}</h1></section>
         ${notice()}
-        <section class="list" id="sport-list">${list.map((e) => `<div data-lg="${esc(e.league)}">${eventRow(e)}</div>`).join('') || '<p class="muted">No events on the board for this sport right now.</p>'}</section>`,
+        <div class="grid sports">${CATALOG.map((sp) => {
+          const n = sp.groups.reduce((t, g) => t + g.leagues.reduce((u, l) => u + (by[l.path]?.n || 0), 0), 0);
+          const live = sp.groups.reduce((t, g) => t + g.leagues.reduce((u, l) => u + (by[l.path]?.live || 0), 0), 0);
+          return `<a class="sport tilt reveal" href="#/sport/${sp.id}" style="--c:${sp.color}" data-cursor="ENTER"><span class="ico">${sp.icon}</span><b>${esc(sp.name)}</b>
+            <small>${n} matches · ${sp.groups.reduce((t, g) => t + g.leagues.length, 0)} competitions${live ? ` · <span class="live">${live} live</span>` : ''}</small></a>`;
+        }).join('')}</div>`,
+    };
+  },
+
+  sport([id]) {
+    const sp = sportById(id);
+    if (!sp) return views.notfound();
+    const by = countBy();
+    const list = S.events.filter((e) => e.sport === id).sort((a, b) => (b.live - a.live) || a.start - b.start);
+    return {
+      mode: 'sport', accent: sp.color, title: sp.name,
+      html: `<section class="hero small"><p class="kicker reveal"><a href="#/sports">ALL SPORTS</a> / ${list.length} MATCHES · ${list.filter((e) => e.live).length} LIVE</p><h1>${split(sp.name.toUpperCase())}</h1></section>
+        ${notice()}
+        ${sp.groups.map((g) => `<section class="sec-block"><h2 class="sec reveal"><span>${esc(sp.icon)}</span>${esc(g.name)}</h2>
+          <div class="grid leagues">${[...g.leagues].sort((x, y) => (by[y.path]?.n || 0) - (by[x.path]?.n || 0)).map((l) => {
+            const c = by[l.path] || { n: 0, live: 0 };
+            const next = S.events.filter((e) => e.leaguePath === l.path && !e.live).sort((a, b) => a.start - b.start)[0];
+            return `<a class="leaguec tilt reveal ${c.n ? '' : 'empty'}" href="#/league/${leagueKey(l.path)}" style="--c:${sp.color}" data-cursor="OPEN"><b>${esc(l.name)}</b>
+              <small>${c.n ? `${c.n} match${c.n > 1 ? 'es' : ''}` : 'No fixtures in the next 4 days'}${c.live ? ` · <span class="live">${c.live} live</span>` : ''}</small>
+              ${next ? `<em>Next: ${esc(next.home)} v ${esc(next.away)} · <span data-start="${next.start}">${countdown(next.start)}</span></em>` : ''}</a>`;
+          }).join('')}</div></section>`).join('')}
+        <h2 class="sec reveal"><span>◆</span>Every ${esc(sp.name)} match</h2>
+        <section class="list">${list.slice(0, 60).map(eventRow).join('') || '<p class="muted">Nothing scheduled in the next 4 days.</p>'}</section>`,
+    };
+  },
+
+  league([key]) {
+    const l = leagueFromKey(key || '');
+    if (!l) return views.notfound();
+    const sp = sportById(l.sport);
+    const list = S.events.filter((e) => e.leaguePath === l.path).sort((a, b) => (b.live - a.live) || a.start - b.start);
+    const days = new Map();
+    list.forEach((e) => { const d = e.live ? 'Live now' : new Date(e.start).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' }); if (!days.has(d)) days.set(d, []); days.get(d).push(e); });
+    return {
+      mode: 'sport', accent: sp.color, title: l.name,
+      after: () => loadStandings(l),
+      html: `<section class="hero small"><p class="kicker reveal"><a href="#/sports">ALL SPORTS</a> / <a href="#/sport/${sp.id}">${esc(sp.name)}</a> / ${esc(l.group)}</p><h1>${split(l.name.toUpperCase())}</h1></section>
+        ${notice()}
+        ${[...days.entries()].map(([d, evs]) => `<h2 class="sec reveal"><span>${evs.length}</span>${esc(d)}</h2><section class="list">${evs.map(eventRow).join('')}</section>`).join('') || '<p class="muted reveal">No fixtures in the next 4 days.</p>'}
+        <section class="sec-block" id="league-standings"></section>`,
     };
   },
 
@@ -172,13 +216,22 @@ export const views = {
         <dt>Kelly ¼</dt><dd>${ev && ev > 0 ? pc(kelly(p, bookOdds) / 4, 1) : '—'}</dd></dl></div>`;
     };
     const paramChips = Object.entries(a.params || {}).filter(([, v]) => typeof v === 'number').map(([k, v]) => `<div><small>${esc(paramLabel(k, a.params.unit))}</small><b>${k === 'setWin' ? pc(v) : v.toFixed(2)}</b></div>`).join('');
-    const sections = [['overview', 'Overview'], ['model', a.kind === 'normal' ? 'Margin model' : a.kind === 'tennis' ? 'Set model' : 'Score model'], ['markets', `All markets (${a.marketCount})`], ['book', 'Bookmaker prices'], ['form', 'Form & records'], ['lineups', 'Lineups & injuries'], ['calc', 'Calculator'], ['notes', 'Model notes']];
-    if (a.kind === 'binary') sections.splice(1, 1);
-    // Lazy-load lineups/injuries after render.
+    const d = detailFor(e.id);
+    const dos = dossierSections(e, d, hc, ac);
+    const sections = [['overview', 'Overview'], ...dos.map((x) => [x.id, x.label]), ['model', a.kind === 'normal' ? 'Margin model' : a.kind === 'tennis' ? 'Set model' : 'Score model'], ['markets', `All markets (${a.marketCount})`], ['book', 'Bookmaker prices'], ['form', 'Records'], ['calc', 'Calculator'], ['notes', 'Model notes']];
+    if (a.kind === 'binary') sections.splice(sections.findIndex((x) => x[0] === 'model'), 1);
     return {
       mode: 'match', accent: hc, title: `${e.home} v ${e.away}`,
       sceneOpts: { home: hc, away: ac, pHome: w.home, pAway: w.away },
-      after: () => loadDetail(e),
+      // Fetch the full dossier once, then redraw in place (scroll kept).
+      after: () => {
+        if (detailFor(e.id)) return;
+        fetchDetail(e).finally(() => {
+          const det = detailFor(e.id);
+          if (det?.predictor && !e.markets?.length) e.predictor = det.predictor;
+          S.refresh?.();
+        });
+      },
       html: `
       <section class="hero match-hero">
         <p class="kicker reveal">${s.icon} ${esc(e.league)} · ${when(e)} · ${e.bookmaker ? esc(e.bookmaker) : 'no bookmaker price'} ${confBadge(a.confidence)}</p>
@@ -193,6 +246,7 @@ export const views = {
         <div class="sides ${twoWay ? 'two' : 'three'}">${side(e.home, w.home, hc, book(e.home))}${twoWay ? '' : side('Draw', w.draw, DRAW_COLOR, book('Draw'))}${side(e.away, w.away, ac, book(e.away))}</div>
         ${paramChips ? `<div class="params">${paramChips}<div><small>Markets priced</small><b>${a.marketCount}</b></div></div>` : ''}
       </section>
+      ${dos.map((x) => `<section id="sec-${x.id}"><h2 class="sec reveal"><span>◆</span>${esc(x.label)}</h2>${x.html}</section>`).join('')}
       ${a.kind === 'binary' ? '' : `<section class="panel reveal" id="sec-model">${modelPanel(e, a, hc, ac)}</section>`}
       <section id="sec-markets"><h2 class="sec reveal"><span>◆</span>Every market <small>ATLAS fair prices · tap to add</small></h2>
         <div class="mgroups">${a.groups.map((g) => `<div class="mgroup panel reveal"><h3>${esc(g.group)}</h3>${g.markets.map((m) => `
@@ -202,7 +256,6 @@ export const views = {
       </section>
       <section class="panel reveal" id="sec-book">${bookPanel(e)}</section>
       <section class="grid two" id="sec-form">${formPanel(e, hc, ac)}</section>
-      <section class="grid two" id="sec-lineups"><div class="panel reveal" id="lu-home"><h2 class="ph">${esc(e.home)} lineup</h2><p class="muted">Loading…</p></div><div class="panel reveal" id="lu-away"><h2 class="ph">${esc(e.away)} lineup</h2><p class="muted">Loading…</p></div><div class="panel reveal span2" id="injuries"><h2 class="ph">Injuries & availability</h2><p class="muted">Loading…</p></div></section>
       <section class="panel reveal" id="sec-calc">${calcPanel(e, w, book)}</section>
       <section class="panel reveal" id="sec-notes"><h2 class="ph">Model notes</h2>${notes(e, a)}</section>`,
     };
@@ -394,23 +447,28 @@ export function edgeTable(f) {
     </tbody></table>`;
 }
 
-// Lineups + injuries for the match page (server: /api/event; static mode: ESPN summary).
-async function loadDetail(e) {
-  const put = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
-  const lu = (name, list) => `<h2 class="ph">${esc(name)} lineup</h2>${list?.length ? `<ol class="lineup">${list.map((p) => `<li><span>${esc(p.pos)}</span>${esc(p.name)}<em>${esc(p.rating)}</em></li>`).join('')}</ol>` : `<p class="muted">${['tennis', 'mma'].includes(e.sport) ? 'Individual sport.' : 'Not published yet: lineups usually appear about an hour before start.'}</p>`}`;
+function countBy() {
+  const out = {};
+  for (const e of S.events) { const c = out[e.leaguePath] || (out[e.leaguePath] = { n: 0, live: 0 }); c.n++; if (e.live) c.live++; }
+  return out;
+}
+
+// League table (ESPN standings endpoint); NPB/KBO have none in the feed.
+async function loadStandings(l) {
+  const box = document.getElementById('league-standings');
+  if (!box || l.path.startsWith('atlas/')) return;
   try {
-    const d = await S.detail(e);
-    put('lu-home', lu(e.home, d?.lineups?.home));
-    put('lu-away', lu(e.away, d?.lineups?.away));
-    const inj = d?.injuries || [];
-    const norm = (x) => String(x || '').toLowerCase();
-    const ours = (name) => [e.home, e.away].some((t) => norm(t).includes(norm(name)) || norm(name).includes(norm(t)));
-    const items = inj.filter((t) => !t.team?.displayName || ours(t.team.displayName)).flatMap((t) => (t.injuries || []).map((x) => ({ team: t.team?.displayName || '', name: x.athlete?.displayName || '', status: x.status || x.type?.description || '', detail: x.details?.type || x.shortComment || '' })));
-    put('injuries', `<h2 class="ph">Injuries & availability</h2>${items.length ? `<div class="table-wrap"><table class="tbl"><thead><tr><th>Team</th><th>Player</th><th>Status</th><th>Detail</th></tr></thead><tbody>${items.map((i) => `<tr><td>${esc(i.team)}</td><td><b>${esc(i.name)}</b></td><td>${esc(i.status)}</td><td>${esc(i.detail)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No injury report in the connected feeds for this match. That means unknown, not injury-free.</p>'}`);
-  } catch {
-    put('lu-home', lu(e.home, null)); put('lu-away', lu(e.away, null));
-    put('injuries', '<h2 class="ph">Injuries & availability</h2><p class="muted">Detail feed unavailable right now.</p>');
-  }
+    const r = await fetch(`https://site.api.espn.com/apis/v2/sports/${l.path}/standings`);
+    const j = await r.json();
+    const groups = (j.children?.length ? j.children : [j]).map((c) => ({ name: c.name || c.abbreviation || l.name, entries: c.standings?.entries || [] })).filter((g) => g.entries.length);
+    if (!groups.length) return;
+    const cols = ['GP', 'W', 'D', 'T', 'L', 'OTL', 'PTS', 'GD', 'PF', 'PA', 'PCT', 'GB', 'STRK', 'L10'];
+    box.innerHTML = `<h2 class="sec"><span>◆</span>Standings</h2>${groups.map((g) => {
+      const stat = (en, k) => en.stats?.find((x) => x.abbreviation === k || x.shortDisplayName === k)?.displayValue;
+      const used = cols.filter((k) => g.entries.some((en) => stat(en, k) != null));
+      return `<div class="panel"><h3 class="ph">${esc(g.name)}</h3><div class="table-wrap"><table class="tbl tight"><thead><tr><th>#</th><th>Team</th>${used.map((k) => `<th>${k}</th>`).join('')}</tr></thead><tbody>${g.entries.map((en, i) => `<tr><td class="num">${i + 1}</td><td><b>${esc(en.team?.displayName || en.team?.name || '')}</b></td>${used.map((k) => `<td class="num">${esc(stat(en, k) ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`;
+    }).join('')}`;
+  } catch { /* standings optional */ }
 }
 
 export { buildSlips };

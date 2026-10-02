@@ -52,3 +52,10 @@ test('events with no odds still get a labelled model line', () => {
   assert.equal(bare.confidence, 'low');
   assert.match(bare.basis, /baseline/i);
 });
+
+test('baseball baseline tilts toward the better starting pitcher', () => {
+  const ev = (eh, ea) => analyse({ id: 'b', sport: 'baseball', home: 'H', away: 'A', league: 'NPB', markets: [], probables: [{ side: 'home', pitching: { season: { era: eh } } }, { side: 'away', pitching: { season: { era: ea } } }] });
+  const better = ev('2.00', '4.50'), worse = ev('4.50', '2.00');
+  assert.ok(better.win.home > 0.55 && worse.win.home < 0.5);
+  assert.match(better.basis, /starter ERA/);
+});

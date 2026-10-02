@@ -4,22 +4,32 @@
 //   2. ESPN live scoreboards fetched straight from the browser, when the page is opened without the server
 //   3. data/odds.json, a static snapshot in the same shape as `makeEvent`
 //   4. Simulated DEMO fixtures, so the UI still works offline. Demo odds are NOT real prices.
-import { fetchAll } from './espn.js';
+import { fetchAll, fetchLeague, LEAGUES } from './espn.js';
+
+// Leagues fetched directly when no snapshot exists (static file or local dev).
+const FEATURED = LEAGUES.filter((l) => ['soccer/eng.1', 'soccer/esp.1', 'soccer/ger.1', 'soccer/ita.1', 'soccer/fra.1', 'soccer/uefa.champions', 'soccer/uefa.europa', 'soccer/usa.1', 'soccer/mex.1', 'soccer/bra.1', 'soccer/arg.1', 'soccer/ned.1', 'soccer/por.1', 'soccer/tur.1', 'soccer/ksa.1', 'basketball/nba', 'basketball/wnba', 'football/nfl', 'football/college-football', 'hockey/nhl', 'baseball/mlb', 'tennis/atp', 'tennis/wta', 'mma/ufc', 'rugby/267979', 'australian-football/afl'].includes(l.path));
+
+// Refresh only leagues with something live or starting soon, and merge into the current list.
+export async function refreshLive(events) {
+  const soon = Date.now() + 3 * 3600e3, recent = Date.now() - 4 * 3600e3;
+  const paths = [...new Set(events.filter((e) => e.leaguePath && !e.leaguePath.startsWith('atlas/') && (e.live || (e.start < soon && e.start > recent))).map((e) => e.leaguePath))].slice(0, 25);
+  const fresh = await fetchAll(AbortSignal.timeout(15000), LEAGUES.filter((l) => paths.includes(l.path)), { days: 1 });
+  if (!fresh.length) return null;
+  const map = new Map(events.map((e) => [e.id, e]));
+  for (const f of fresh) map.set(f.id, { ...map.get(f.id), ...f });
+  // Drop events that finished (no longer on a refreshed scoreboard).
+  const freshIds = new Set(fresh.map((f) => f.id));
+  return [...map.values()].filter((e) => !paths.includes(e.leaguePath) || freshIds.has(e.id));
+}
+export { fetchLeague };
 import { fromServer } from './feed.js';
 
 const todayIST = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
-export const SPORTS = [
-  { id: 'football', name: 'Football', icon: '⚽', color: '#d2ff00' },
-  { id: 'americanfootball', name: 'NFL', icon: '🏈', color: '#ff9f43' },
-  { id: 'basketball', name: 'Basketball', icon: '🏀', color: '#ff7a1a' },
-  { id: 'tennis', name: 'Tennis', icon: '🎾', color: '#9dff5c' },
-  { id: 'cricket', name: 'Cricket', icon: '🏏', color: '#4fd1ff' },
-  { id: 'hockey', name: 'Ice Hockey', icon: '🏒', color: '#b08cff' },
-  { id: 'mma', name: 'MMA', icon: '🥊', color: '#ff3d6e' },
-  { id: 'baseball', name: 'Baseball', icon: '⚾', color: '#ffd84d' },
-  { id: 'esports', name: 'Esports', icon: '🎮', color: '#00ffc3' },
-];
+import { CATALOG } from './catalog.js';
+
+// Sport categories (from the catalogue): id, name, icon, colour.
+export const SPORTS = CATALOG.map(({ id, name, icon, color }) => ({ id, name, icon, color }));
 
 const TEAMS = {
   football: ['Arsenal', 'Real Madrid', 'Bayern', 'Inter', 'PSG', 'Liverpool', 'Barcelona', 'Napoli', 'Dortmund', 'Benfica', 'Atlético', 'Man City'],
@@ -111,6 +121,15 @@ function makeEvent(sport, i, r, now) {
 }
 
 export async function loadEvents() {
+  // 1. Snapshot built by the Pages workflow (every league + NPB/KBO starters).
+  try {
+    const res = await fetch('data/index.json', { cache: 'no-store' });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.events?.length) return { events: json.events, source: 'ATLAS live index', demo: false, server: false, snapshot: true, fetchedAt: json.fetchedAt };
+    }
+  } catch { /* no snapshot (local server or file) */ }
+
   try {
     const res = await fetch(`api/dashboard?date=${todayIST()}`, { signal: AbortSignal.timeout(65000) });
     if (res.ok) {
@@ -124,7 +143,7 @@ export async function loadEvents() {
   } catch { /* no ATLAS server (static hosting): use public feeds directly */ }
 
   try {
-    const events = await fetchAll(AbortSignal.timeout(12000));
+    const events = await fetchAll(AbortSignal.timeout(15000), FEATURED);
     if (events.length) return { events, source: 'ESPN live', demo: false, server: false, fetchedAt: Date.now() };
   } catch { /* blocked or offline: try the snapshot */ }
 
