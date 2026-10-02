@@ -1,29 +1,24 @@
-// Discovery run #3: KBO + NPB official sources (starters and pitcher stats).
-const UA = { 'User-Agent': 'Mozilla/5.0 (ATLAS research dashboard)' };
-const get = async (u, opt = {}) => { try { const r = await fetch(u, { signal: AbortSignal.timeout(20000), ...opt, headers: { ...UA, ...opt.headers } }); return { s: r.status, t: await r.text() }; } catch (e) { return { s: 'ERR ' + e.message, t: '' }; } };
-const ymd = (d) => d.toISOString().slice(0, 10).replaceAll('-', '');
-const now = new Date();
-// KBO JSON (used by the desk server)
-for (const off of [0, 1, -1]) {
-  const d = new Date(+now + off * 864e5);
-  const r = await get('https://www.koreabaseball.com/ws/Main.asmx/GetKboGameList', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ leId: '1', srId: '0,1,3,4,5,6,7,8,9', date: ymd(d) }) });
-  console.log(`KBO ${ymd(d)} status=${r.s} len=${r.t.length}`);
-  console.log(r.t.slice(0, 2500));
-}
-// KBO pitcher record page candidates
-for (const u of ['https://eng.koreabaseball.com/Stats/PitchingByPlayer.aspx', 'https://www.koreabaseball.com/Record/Player/PitcherBasic/Basic1.aspx']) {
-  const r = await get(u);
-  const i = r.t.search(/ERA|평균자책/);
-  console.log(`KBOSTATS ${u} ${r.s} len=${r.t.length} idx=${i} :: ${r.t.slice(Math.max(0, i - 400), i + 1800).replace(/\s+/g, ' ')}`);
-}
-// NPB probable starters page
+// Discovery run #4: KBO with browser headers + NPB starter table content.
+const H = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', 'Accept-Language': 'en-US,en;q=0.9,ko;q=0.8' };
+const get = async (u, opt = {}) => { try { const r = await fetch(u, { signal: AbortSignal.timeout(20000), ...opt, headers: { ...H, ...opt.headers } }); return { s: r.status, t: await r.text() }; } catch (e) { return { s: 'ERR ' + e.message, t: '' }; } };
+const flat = (t) => t.replace(/<script[\s\S]*?<\/script>/g, '').replace(/<style[\s\S]*?<\/style>/g, '').replace(/\s+/g, ' ');
+const r1 = await get('https://www.koreabaseball.com/ws/Main.asmx/GetKboGameList', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest', Referer: 'https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx', Origin: 'https://www.koreabaseball.com' }, body: 'leId=1&srId=0%2C1%2C3%2C4%2C5%2C6%2C7%2C8%2C9&date=20261003' });
+console.log('KBO json', r1.s, r1.t.slice(0, 3000));
+const gc = await get('https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx');
+const f = flat(gc.t); const i = f.indexOf('game-cont');
+console.log('KBO gamecenter', gc.s, i, f.slice(Math.max(0, i - 200), i + 3000));
+const eng = await get('https://eng.koreabaseball.com/Schedule/DailySchedule.aspx');
+const fe = flat(eng.t); const k = fe.search(/Pitcher|SP|vs/);
+console.log('KBO eng', eng.s, fe.slice(Math.max(0, k - 300), k + 2500));
+const kp = await get('https://www.koreabaseball.com/Record/Player/PitcherBasic/Basic1.aspx');
+const fk = flat(kp.t); const t = fk.indexOf('<table');
+console.log('KBO pitchers table', fk.slice(t, t + 2500));
 const n = await get('https://npb.jp/announcement/starter/');
-const k = n.t.indexOf('starter');
-console.log(`NPB starter page ${n.s} len=${n.t.length}`);
-const body = n.t.slice(n.t.indexOf('<main') > 0 ? n.t.indexOf('<main') : 0).replace(/\s+/g, ' ');
-console.log(body.slice(0, 6000));
-// NPB English stats page for pitchers (league leaders / team pitching)
-for (const u of ['https://npb.jp/bis/eng/2026/stats/', 'https://npb.jp/bis/eng/2026/stats/pit_c.html', 'https://npb.jp/bis/eng/2026/stats/idp1_g.html']) {
-  const r = await get(u);
-  console.log(`NPBSTATS ${u} ${r.s} len=${r.t.length} :: ${r.t.replace(/\s+/g, ' ').slice(1500, 4000)}`);
-}
+const fn = flat(n.t); const m = fn.indexOf('id="contents"') > 0 ? fn.indexOf('id="contents"') : fn.indexOf('starter');
+console.log('NPB starter content', fn.slice(m, m + 5000));
+const np = await get('https://npb.jp/bis/eng/2026/stats/idp1_g.html');
+const fp = flat(np.t); const q = fp.indexOf('<table');
+console.log('NPB team pitching table', fp.slice(q, q + 3000));
+const sched = await get('https://npb.jp/bis/eng/2026/games/gm20261003.html');
+const fs = flat(sched.t); const w = fs.indexOf('the_game_on_day');
+console.log('NPB schedule', sched.s, fs.slice(w, w + 2500));
