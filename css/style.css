@@ -440,6 +440,16 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .loading-dots::after { content: ' ...'; animation: blink 1s infinite; }
 @media (max-width: 600px) { .leader { grid-template-columns: 1fr auto; } .leader small, .leader span { grid-column: 1 / -1; } }
 
+
+/* ---------- back / home dock ---------- */
+.crumbs-dock { position: fixed; left: var(--gutter); bottom: 22px; z-index: 55; display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 2 * var(--gutter)); padding: 6px; border: 1px solid var(--line2); border-radius: 999px; background: rgba(8,8,12,.86); backdrop-filter: blur(16px); box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+.dock-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 999px; font: 700 12px Inter; text-transform: uppercase; letter-spacing: 1px; background: rgba(255,255,255,.06); transition: background .25s, color .25s; white-space: nowrap; }
+.dock-btn:hover { background: var(--accent); color: #000; }
+.dock-trail { display: flex; align-items: center; gap: 6px; padding: 0 10px 0 4px; font-size: 12px; color: var(--muted); overflow: hidden; white-space: nowrap; min-width: 0; }
+.dock-trail a { color: #c8c8cc; } .dock-trail a:hover { color: var(--accent); }
+.dock-trail b { color: var(--fg); overflow: hidden; text-overflow: ellipsis; }
+.dock-trail i { font-style: normal; color: var(--dim); }
+
 /* ---------- phones (kept last so it wins over the base rules above) ---------- */
 @media (max-width: 820px) {
   /* backdrop-filter/transform on the header would trap the fixed bottom nav inside it */
@@ -455,7 +465,10 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
   .xcard b { font-size: 56px; } .xcard.mega b { font-size: 40px; }
   .side { flex-direction: column; align-items: stretch; }
   .gauge { margin: 0 auto; }
-  .foot { padding-bottom: 110px; }
+  .foot { padding-bottom: 170px; }
+  .crumbs-dock { bottom: 84px; left: 12px; }
+  .dock-btn span { display: none; }
+  .dock-trail { max-width: 52vw; }
 }
 
 @media (prefers-reduced-motion: reduce) {

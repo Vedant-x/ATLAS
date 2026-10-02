@@ -1,7 +1,7 @@
 // Page templates. Each view returns { html, mode, accent, sceneOpts?, title, after? }.
 import { SPORTS } from './data.js';
 import { devig, buildSlips } from './engine.js';
-import { bankers, valueSpots } from './intel.js';
+import { bankers, valueSpots, applyModel } from './intel.js';
 import { analyse, winProbs, kelly } from './models.js';
 import { probBar, gauge, heatmap, distBars, formStrip, outcomeBars, valueTrack, pc, odd } from './charts.js';
 import { split } from './ui.js';
@@ -9,6 +9,7 @@ import { slip } from './slip.js';
 import { CATALOG, sportById, leagueByPath, leagueKey, leagueFromKey } from './catalog.js';
 import { detailFor, loadDetail as fetchDetail } from './detail.js';
 import { dossierSections } from './dossier.js';
+import { fetchAll, LEAGUES } from './espn.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const safeHref = (u) => (/^https?:\/\//i.test(String(u || '')) ? esc(u) : '#');
@@ -154,7 +155,7 @@ export const views = {
           const n = sp.groups.reduce((t, g) => t + g.leagues.reduce((u, l) => u + (by[l.path]?.n || 0), 0), 0);
           const live = sp.groups.reduce((t, g) => t + g.leagues.reduce((u, l) => u + (by[l.path]?.live || 0), 0), 0);
           return `<a class="sport tilt reveal" href="#/sport/${sp.id}" style="--c:${sp.color}" data-cursor="ENTER"><span class="ico">${sp.icon}</span><b>${esc(sp.name)}</b>
-            <small>${n} matches · ${sp.groups.reduce((t, g) => t + g.leagues.length, 0)} competitions${live ? ` · <span class="live">${live} live</span>` : ''}</small></a>`;
+            <small>${n} match${n === 1 ? "" : "es"} · ${sp.groups.reduce((t, g) => t + g.leagues.length, 0)} competitions${live ? ` · <span class="live">${live} live</span>` : ''}</small></a>`;
         }).join('')}</div>`,
     };
   },
@@ -162,10 +163,11 @@ export const views = {
   sport([id]) {
     const sp = sportById(id);
     if (!sp) return views.notfound();
+    const after = () => liveLoad(sp.groups.flatMap((g) => g.leagues.map((l) => l.path)));
     const by = countBy();
     const list = S.events.filter((e) => e.sport === id).sort((a, b) => (b.live - a.live) || a.start - b.start);
     return {
-      mode: 'sport', accent: sp.color, title: sp.name,
+      mode: 'sport', accent: sp.color, title: sp.name, after,
       html: `<section class="hero small"><p class="kicker reveal"><a href="#/sports">ALL SPORTS</a> / ${list.length} MATCHES · ${list.filter((e) => e.live).length} LIVE</p><h1>${split(sp.name.toUpperCase())}</h1></section>
         ${notice()}
         ${sp.groups.map((g) => `<section class="sec-block"><h2 class="sec reveal"><span>${esc(sp.icon)}</span>${esc(g.name)}</h2>
@@ -190,7 +192,7 @@ export const views = {
     list.forEach((e) => { const d = e.live ? 'Live now' : new Date(e.start).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' }); if (!days.has(d)) days.set(d, []); days.get(d).push(e); });
     return {
       mode: 'sport', accent: sp.color, title: l.name,
-      after: () => loadStandings(l),
+      after: () => { loadStandings(l); liveLoad([l.path]); },
       html: `<section class="hero small"><p class="kicker reveal"><a href="#/sports">ALL SPORTS</a> / <a href="#/sport/${sp.id}">${esc(sp.name)}</a> / ${esc(l.group)}</p><h1>${split(l.name.toUpperCase())}</h1></section>
         ${notice()}
         ${[...days.entries()].map(([d, evs]) => `<h2 class="sec reveal"><span>${evs.length}</span>${esc(d)}</h2><section class="list">${evs.map(eventRow).join('')}</section>`).join('') || '<p class="muted reveal">No fixtures in the next 4 days.</p>'}
@@ -445,6 +447,22 @@ export function edgeTable(f) {
     ${list.map((r) => `<tr><td>${sportOf(r.e.sport).icon}</td><td><a href="#/match/${esc(r.e.id)}">${esc(r.e.home)} v ${esc(r.e.away)}</a><small>${esc(r.e.league)} · ${when(r.e)}</small></td><td>${esc(r.m.name)}</td><td><b>${esc(r.o.name)}</b></td>
       <td class="num">${odd(r.o.odds)}</td><td class="num">${pc(r.fair)}</td><td class="num">${r.o.model != null ? pc(r.o.model) : '—'}</td><td class="num ${r.ev >= 0 ? 'pos' : 'neg'}">${(r.ev * 100).toFixed(1)}%</td><td class="num">${r.ev > 0 ? pc(kelly(r.p, r.o.odds) / 4) : '—'}</td><td>${legButton(bookLeg(r.e, r.m, r.o, r.p), '+')}</td></tr>`).join('')}
     </tbody></table>`;
+}
+
+// Load leagues live in the browser (once per visit each), merge, and redraw. Covers every league,
+// including any the hourly snapshot could not fetch.
+const liveLoaded = new Set();
+async function liveLoad(paths) {
+  const todo = LEAGUES.filter((l) => paths.includes(l.path) && !liveLoaded.has(l.path));
+  if (!todo.length) return;
+  todo.forEach((l) => liveLoaded.add(l.path));
+  const fresh = await fetchAll(undefined, todo, { days: 4, concurrency: 4 }).catch(() => []);
+  if (!fresh.length) return;
+  applyModel(fresh);
+  const map = new Map(S.events.map((e) => [e.id, e]));
+  fresh.forEach((f) => map.set(f.id, { ...map.get(f.id), ...f }));
+  S.events.splice(0, S.events.length, ...map.values());
+  S.refresh?.();
 }
 
 function countBy() {
