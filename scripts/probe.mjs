@@ -1,38 +1,25 @@
-const UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', Accept: 'application/json', Origin: 'https://vedant-x.github.io', Referer: 'https://vedant-x.github.io/' };
-const get = async (u, h = {}) => { try { const r = await fetch(u, { headers: { ...UA, ...h } }); const t = await r.text(); console.log('\n##', r.status, u, '| ACAO:', r.headers.get('access-control-allow-origin'), '| len', t.length); try { return JSON.parse(t); } catch { console.log(t.slice(0, 300)); return null; } } catch (e) { console.log('\n## ERR', u, e.message); return null; } };
-const B = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
-const sb = await get(`${B}/esp.1/scoreboard?dates=20261002-20261006`);
-const ev = sb?.events?.[0];
-if (ev) {
-  console.log(ev.name, ev.id);
-  const sm = await get(`${B}/esp.1/summary?event=${ev.id}`);
-  console.log('summary keys', Object.keys(sm || {}).join(','), '| injuries', JSON.stringify(sm?.injuries)?.slice(0, 300));
-  const tid = ev.competitions[0].competitors[0].team.id;
-  const ro = await get(`${B}/esp.1/teams/${tid}/roster`);
-  const a = ro?.athletes || [];
-  console.log('athlete keys', a[0] && Object.keys(a[0]).join(','));
-  console.log('with injuries', a.filter((x) => x.injuries?.length).map((x) => x.displayName + ':' + JSON.stringify(x.injuries).slice(0, 200)).slice(0, 4));
+const UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', Accept: 'application/json' };
+const get = async (u) => { const r = await fetch(u, { headers: UA }); const t = await r.text(); console.log('\n##', r.status, u, 'len', t.length); try { return JSON.parse(t); } catch { return null; } };
+for (const day of ['20261003', '20261010']) {
+  const fm = await get('https://www.fotmob.com/api/data/matches?date=' + day);
+  console.log('leagues', (fm?.leagues || []).length, (fm?.leagues || []).slice(0, 40).map((l) => `${l.name}#${l.primaryId ?? l.id}(${l.ccode})`).join(' | '));
+  const lg = fm?.leagues?.find((l) => (l.primaryId ?? l.id) === 87 || (l.primaryId ?? l.id) === 47) || fm?.leagues?.find((l) => /Nations|Qualif|Friendl/.test(l.name));
+  const mt = lg?.matches?.find((m) => !m.status?.started) || lg?.matches?.[0];
+  if (!mt) continue;
+  console.log('pick', lg.name, JSON.stringify(mt).slice(0, 300));
+  const md = await get(`https://www.fotmob.com/api/data/matchDetails?matchId=${mt.id}`);
+  const lu = md?.content?.lineup;
+  console.log('lineupType', lu?.lineupType, 'home keys', lu?.homeTeam && Object.keys(lu.homeTeam).join(','));
+  console.log('home unavailable', JSON.stringify(lu?.homeTeam?.unavailable)?.slice(0, 1500));
+  console.log('away unavailable', JSON.stringify(lu?.awayTeam?.unavailable)?.slice(0, 600));
+  console.log('starter sample', JSON.stringify(lu?.homeTeam?.starters?.[0])?.slice(0, 500));
+  console.log('matchFacts keys', md?.content?.matchFacts && Object.keys(md.content.matchFacts).join(','));
+  console.log('insights?', JSON.stringify(md?.content?.matchFacts?.insights)?.slice(0, 300));
+  const tid = mt.home.id;
+  const tm = await get(`https://www.fotmob.com/api/data/teams?id=${tid}`);
+  const sq = tm?.squad?.squad || tm?.squad;
+  console.log('squad type', Array.isArray(sq), JSON.stringify(sq)?.slice(0, 200));
+  const members = (Array.isArray(sq) ? sq : []).flatMap((g) => g.members || []);
+  console.log('member keys', members[0] && Object.keys(members[0]).join(','));
+  console.log('injured members', JSON.stringify(members.filter((m) => m.injured || m.injury).slice(0, 3)).slice(0, 800));
 }
-const fr = await get(`${B}/fifa.world/teams/478/roster`);
-const m = (fr?.athletes || []).find((x) => /Mbapp/.test(x.displayName));
-console.log('Mbappe keys', m && Object.keys(m).join(','), 'injuries', JSON.stringify(m?.injuries), 'status', JSON.stringify(m?.status));
-const d = new Date().toISOString().slice(0, 10).replaceAll('-', '');
-const fm = await get('https://www.fotmob.com/api/data/matches?date=' + d);
-console.log('fotmob keys', Object.keys(fm || {}).join(','));
-const lg = fm?.leagues?.find((l) => /LaLiga|Premier/.test(l.name)) || fm?.leagues?.[0];
-const mt = lg?.matches?.[0];
-console.log('league', lg?.name, lg?.id, 'match', JSON.stringify(mt)?.slice(0, 400));
-if (mt) {
-  for (const u of [`https://www.fotmob.com/api/data/matchDetails?matchId=${mt.id}`, `https://www.fotmob.com/api/matchDetails?matchId=${mt.id}`]) {
-    const md = await get(u);
-    if (!md) continue;
-    console.log('md keys', Object.keys(md).join(','), 'content keys', md.content && Object.keys(md.content).join(','));
-    const lu = md.content?.lineup;
-    console.log('lineup keys', lu && Object.keys(lu).join(','), 'home keys', lu?.homeTeam && Object.keys(lu.homeTeam).join(','));
-    console.log('unavailable', JSON.stringify(lu?.homeTeam?.unavailable)?.slice(0, 900));
-    break;
-  }
-}
-const tm = await get('https://www.fotmob.com/api/data/teams?id=6723');
-console.log('team keys', tm && Object.keys(tm).join(','));
-const sq = await get('https://www.fotmob.com/api/data/teams?id=6723&tab=squad');
