@@ -1,5 +1,14 @@
 # ATLAS
-Private sports research dashboard with live public-source adapters, match dossiers, news, an Aura chat connection, and a Stake-price multiplier explorer.
+Private sports research dashboard with live public-source adapters, match dossiers, news, an Aura chat connection, and a Stake-price multiplier explorer, fronted by a cinematic 3D dashboard (three.js + GSAP).
+
+| Page | What it shows |
+|---|---|
+| `/` | 3D dashboard: sports, upcoming matches, headlines |
+| `/#/match/<id>` | Record, form, probable starters, markets with de-vigged probability, lineups, source |
+| `/#/x/2` … `/#/x/5` | 5 slips each near 2x–5x |
+| `/#/mega` | 100x and 500x accumulators |
+| `/#/bankers` | 70%+ favourites across every sport, plus value spots |
+| `/desk.html` | Research desk: Ask ATLAS / Aura, multiplier lab, source monitor, connections |
 
 ## Run
 Node.js 22 or later. No package dependencies.
@@ -18,6 +27,12 @@ Open http://127.0.0.1:8768. The server binds only to localhost. It refreshes fee
 - KBO adapter currently returns an unsupported response. Esports tournament fixtures are not connected. Source monitor reports these gaps.
 - Complete injury reports, expected lineups and confirmed lineups across all sports are not implemented. Missing information remains explicitly unknown.
 
+## Prices on the 3D dashboard
+Each match uses its fresh Stake prices (≤ 5 min old) when the Odds-API.io key is connected and the teams match a Stake event. Otherwise it shows ESPN's reference line (a US sportsbook, labelled "not Stake"). NPB, KBO and cricket have no free odds line, so they appear without prices until Stake is connected.
+
+## Intelligence (`js/intel.js`, `js/engine.js`)
+Prices are de-vigged into fair probabilities. The model blends that market price (80%) with season record and last-5 form (20%). Slips are ranked by expected value and win chance and shown with their real win chance: a 2x bet wins about 50% of the time, 5x about 20%, 100x about 1%. Nothing here can make 2x+ slips win 90% of the time. Bankers are picks at 70%+ model chance; value spots are where the model rates a side above the price (odds ≤ 5 only).
+
 ## Stake prices and analysis
 Set ODDS_API_KEY from an Odds-API.io account with Stake coverage. A Stake login or model API key cannot substitute for this feed. Provider access/quotas apply; no key is included. Maximum 80 upcoming events per refresh, not the entire Stake market. No automated wagering.
 
@@ -29,4 +44,4 @@ AURA_URL defaults to https://aura-production-0486.up.railway.app. Optional AURA_
 Local connection forms save credentials to ignored .env with mode 0600. Never commit keys. Static files are allowlisted. The optional Worker build requires private hosting/access control before deployment; it includes no login by itself and does not support browser credential saving.
 
 ## Verification
-npm test covers price freshness, IST boundaries, tennis grouping, duplicate-leg exclusions and combination arithmetic. npm run build creates dist/client and dist/server for a Worker-compatible host. Tests use synthetic fixtures, never presented as live dashboard data.
+npm test covers price freshness, IST boundaries, tennis grouping, duplicate-leg exclusions and combination arithmetic. npm test also covers the 3D dashboard's feed adapter, ESPN odds conversion, de-vig maths and bankers. npm run build creates dist/client and dist/server for a Worker-compatible host. Tests use synthetic fixtures, never presented as live dashboard data.
