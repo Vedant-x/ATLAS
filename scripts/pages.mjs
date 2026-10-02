@@ -4,8 +4,10 @@
 //   - ESPN scoreboards for every league in js/catalog.js
 //   - NPB (official npb.jp): schedule, probable starters and their season / career pitching lines
 //   - KBO (official koreabaseball.com): schedule, starters, season line and last-10-game log
+//   - FotMob: injured / suspended players for soccer matches (ESPN's soccer injury feed is empty)
 // The browser refreshes scores and per-match detail live from ESPN; this file is the catalogue + the
 // Japan/Korea data that only the official league sites carry.
+import { absencesFor } from '../js/fotmob.js';
 import { mkdir, copyFile, cp, writeFile, rm } from 'node:fs/promises';
 import { fetchAll, LEAGUES, fetchErrors } from '../js/espn.js';
 import { leagueByPath } from '../js/catalog.js';
@@ -194,6 +196,20 @@ const [espn, npbEvents, kboEvents] = await Promise.all([
   kbo().catch((e) => { log('KBO failed', e.message); return []; }),
 ]);
 const events = [...espn, ...npbEvents, ...kboEvents].filter((e) => leagueByPath(e.leaguePath));
+
+// Soccer absences: ESPN's soccer injury feed is empty, FotMob lists who is injured or suspended.
+const soccer = events.filter((e) => e.sport === 'soccer' && e.start < Date.now() + 5 * 864e5).sort((a, b) => a.start - b.start).slice(0, 400);
+let absFound = 0, absMatched = 0, si = 0;
+await Promise.all(Array.from({ length: 4 }, async () => {
+  while (si < soccer.length) {
+    const e = soccer[si++];
+    try {
+      const a = await absencesFor(e, AbortSignal.timeout(20000));
+      if (a) { e.absences = a; absMatched++; absFound += a.home.length + a.away.length; }
+    } catch { /* skip this match */ }
+  }
+}));
+log(`FotMob: ${absMatched}/${soccer.length} soccer matches linked, ${absFound} absences`);
 const byLeague = {};
 for (const e of events) byLeague[e.leaguePath] = (byLeague[e.leaguePath] || 0) + 1;
 await writeFile(`${out}/data/index.json`, JSON.stringify({ source: 'ATLAS snapshot', fetchedAt: Date.now(), events }));

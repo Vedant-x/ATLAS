@@ -1,5 +1,6 @@
 // Match detail: ESPN summary + player overviews, normalised into the sections the dossier renders.
 import { fetchSummary, fetchAthlete } from './espn.js';
+import { absencesFor } from './fotmob.js';
 
 const cache = new Map();
 export const detailFor = (id) => cache.get(id);
@@ -155,6 +156,9 @@ async function build(e) {
     weather: sm.gameInfo?.weather ? { temp: sm.gameInfo.weather.temperature, high: sm.gameInfo.weather.highTemperature, gust: sm.gameInfo.weather.gust, precip: sm.gameInfo.weather.precipitation, cond: sm.gameInfo.weather.displayValue || null } : null,
     officials: (sm.gameInfo?.officials || []).map((o) => `${o.displayName} (${o.position?.displayName || ''})`).slice(0, 4),
     injuries: injuries(sm.injuries, header),
+    // ESPN only reports injuries for some sports; for the rest an empty list means "no data", not "no injuries".
+    injuryFeed: (sm.injuries || []).some((t) => t.injuries?.length) ? 'ESPN' : null,
+    absences: e.absences || null,
     teamStats: teamStats(sm.boxscore, header),
     leaders: leaders(sm.leaders, header),
     last5: lastFive(sm.lastFiveGames, header),
@@ -167,6 +171,8 @@ async function build(e) {
     news: (sm.news?.articles || []).slice(0, 4).map((a) => ({ headline: a.headline, desc: a.description, url: a.links?.web?.href })),
     probables: [],
   };
+  // Soccer: who is out comes from FotMob (snapshot first, live lookup otherwise).
+  if (e.sport === 'soccer' && !d.absences) d.absences = await absencesFor(e, AbortSignal.timeout(12000)).catch(() => null);
   // Season / career / recent-game lines for every probable starter (pitchers, goalies).
   d.probables = await Promise.all((e.probables || []).filter((p) => p.id).map(async (p) => {
     try { return { ...p, profile: athlete(await fetchAthlete(e.leaguePath, p.id)) }; } catch { return { ...p, profile: null }; }
