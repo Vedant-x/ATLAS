@@ -172,7 +172,7 @@ async function build(e) {
     probables: [],
   };
   // Soccer: who is out comes from FotMob (snapshot first, live lookup otherwise).
-  if (e.sport === 'soccer' && !d.absences) d.absences = await absencesFor(e, AbortSignal.timeout(12000)).catch(() => null);
+  if (e.leaguePath?.startsWith('soccer/') && !d.absences) d.absences = await absencesFor(e, AbortSignal.timeout(12000)).catch(() => null);
   // Season / career / recent-game lines for every probable starter (pitchers, goalies).
   d.probables = await Promise.all((e.probables || []).filter((p) => p.id).map(async (p) => {
     try { return { ...p, profile: athlete(await fetchAthlete(e.leaguePath, p.id)) }; } catch { return { ...p, profile: null }; }

@@ -198,7 +198,7 @@ const [espn, npbEvents, kboEvents] = await Promise.all([
 const events = [...espn, ...npbEvents, ...kboEvents].filter((e) => leagueByPath(e.leaguePath));
 
 // Soccer absences: ESPN's soccer injury feed is empty, FotMob lists who is injured or suspended.
-const soccer = events.filter((e) => e.sport === 'soccer' && e.start < Date.now() + 5 * 864e5).sort((a, b) => a.start - b.start).slice(0, 400);
+const soccer = events.filter((e) => e.leaguePath?.startsWith('soccer/') && e.start < Date.now() + 5 * 864e5).sort((a, b) => a.start - b.start).slice(0, 400);
 let absFound = 0, absMatched = 0, si = 0;
 await Promise.all(Array.from({ length: 4 }, async () => {
   while (si < soccer.length) {
