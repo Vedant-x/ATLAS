@@ -8,6 +8,7 @@ import { views, bind, legIndex, edgeTable, countdown, esc, sportOf } from './vie
 import { slip } from './slip.js';
 import { preloader, cursor, wipe, magnetic, tilt, countUp, reveal } from './ui.js';
 import { pc, odd } from './charts.js';
+import { leagueByPath, leagueKey, sportById } from './catalog.js';
 
 const app = document.getElementById('app');
 const scene = createScene(document.getElementById('bg'));
@@ -82,12 +83,54 @@ function render(animate) {
   calc();
   v.after?.();
   current = name;
+  dock();
+}
+
+// Back / Home dock: always reachable, so no page is a dead end. "Back" goes to the previous ATLAS
+// page if there is one in this visit, otherwise to the logical parent (match → league → sport → all).
+// Visited ATLAS pages this visit; going back pops, anything else pushes.
+const stack = [location.hash || '#/'];
+let replacing = false;
+function parentOf() {
+  const { name, args } = parse();
+  if (name === 'match') {
+    const e = state.events.find((x) => x.id === decodeURIComponent(args[0] || ''));
+    return e?.leaguePath ? `#/league/${leagueKey(e.leaguePath)}` : '#/sports';
+  }
+  if (name === 'league') { const l = leagueByPath((args[0] || '').replace(/~/g, '/')); return l ? `#/sport/${l.sport}` : '#/sports'; }
+  if (name === 'sport') return '#/sports';
+  return '#/';
+}
+function trail() {
+  const { name, args } = parse();
+  const parts = [['#/', 'Home']];
+  let e, l;
+  if (name === 'match') e = state.events.find((x) => x.id === decodeURIComponent(args[0] || ''));
+  if (name === 'league') l = leagueByPath((args[0] || '').replace(/~/g, '/'));
+  if (e?.leaguePath) l = leagueByPath(e.leaguePath);
+  const sp = sportById(name === 'sport' ? args[0] : l?.sport);
+  if (['sports', 'sport', 'league', 'match'].includes(name)) parts.push(['#/sports', 'Sports']);
+  if (sp) parts.push([`#/sport/${sp.id}`, sp.name]);
+  if (l) parts.push([`#/league/${leagueKey(l.path)}`, l.short || l.name]);
+  if (e) parts.push(['', `${e.home} v ${e.away}`]);
+  const label = { edge: 'Edge board', x: 'Multipliers', mega: 'Mega bets', bankers: 'Bankers' }[name];
+  if (label) parts.push(['', label]);
+  return parts;
+}
+function dock() {
+  const el = document.querySelector('.crumbs-dock');
+  if (!el) return;
+  const home = parse().name === 'home';
+  el.hidden = home;
+  el.querySelector('.dock-trail').innerHTML = trail().map(([h, t], i, a) => (h && i < a.length - 1 ? `<a href="${h}">${esc(t)}</a>` : `<b>${esc(t)}</b>`)).join('<i>›</i>');
 }
 
 function route() {
   if (!location.hash.startsWith('#/')) return; // in-page anchors
   const { name } = parse();
   const label = { home: 'DASHBOARD', sports: 'ALL SPORTS', sport: 'SPORT', league: 'LEAGUE', match: 'MATCH DOSSIER', edge: 'EDGE BOARD', x: 'MULTIPLIERS', mega: 'MEGA BETS', bankers: 'BANKERS' }[name] || '';
+  const h = location.hash || '#/';
+  if (replacing) { stack[stack.length - 1] = h; replacing = false; } else if (stack.length > 1 && stack[stack.length - 2] === h) stack.pop(); else stack.push(h);
   wipe(() => { render(true); scrollTo({ top: 0 }); }, label).then(() => scene.pulse());
 }
 
@@ -186,6 +229,7 @@ document.addEventListener('click', (e) => {
   else if ('slipClear' in d) slip.clear();
   else if ('slipCopy' in d) navigator.clipboard?.writeText(slip.text()).then(() => { t.textContent = 'Copied'; setTimeout(() => { t.textContent = 'Copy slip'; }, 1400); }).catch(() => {});
   else if ('slipToggle' in d) openSlip(!drawer.classList.contains('open'));
+  else if ('navBack' in d) { if (stack.length > 1) history.back(); else { replacing = true; location.replace(parentOf()); } }
   else if (d.jump) { e.preventDefault(); document.getElementById(d.jump)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   else if (d.league !== undefined && t.classList.contains('chip')) {
     app.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c === t));
