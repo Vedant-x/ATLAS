@@ -59,10 +59,11 @@ function coreMaterial(color, wire = false) {
       void main(){
         float f = pow(1. - max(dot(vN, vV), 0.), 2.6);
         float bands = smoothstep(.35, .5, fract(vNoise * 3.)) * .25;
-        vec3 c = mix(uDeep, uColor * 1.15, f) + uColor * (bands * .6 + max(vNoise, 0.) * .18) + uColor * uPulse * .6;
-        gl_FragColor = vec4(c, uAlpha * (.4 + f * .8));
+        vec3 base = mix(uDeep, uColor * .32, .85);
+        vec3 c = mix(base, uColor * 1.15, f) + uColor * (bands * .6 + max(vNoise, 0.) * .2) + uColor * uPulse * .6;
+        gl_FragColor = vec4(c, uAlpha < 1. ? uAlpha * (.4 + f * .8) : 1.);
       }`,
-    transparent: true, wireframe: wire, depthWrite: !wire, blending: wire ? THREE.AdditiveBlending : THREE.NormalBlending,
+    transparent: wire, wireframe: wire, depthWrite: !wire, blending: wire ? THREE.AdditiveBlending : THREE.NormalBlending,
   });
 }
 
@@ -167,7 +168,7 @@ export function createScene(canvas) {
     return { setMode: noop, setAccent: noop, pulse: noop, ok: false };
   }
   const small = Math.min(innerWidth, innerHeight) < 700;
-  const dpr = Math.min(devicePixelRatio, small ? 1.5 : 1.75);
+  const dpr = Math.min(devicePixelRatio, small ? 1.25 : 1.5);
   renderer.setPixelRatio(dpr);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
@@ -179,7 +180,7 @@ export function createScene(canvas) {
   const world = new THREE.Group();
   scene.add(world);
 
-  const detail = small ? 24 : 48;
+  const detail = small ? 16 : 28;
   const makeCore = (color) => {
     const g = new THREE.Group();
     const geo = new THREE.IcosahedronGeometry(1.7, detail);
@@ -202,7 +203,7 @@ export function createScene(canvas) {
     return m;
   });
 
-  const field = particleField(small ? 4500 : 9000);
+  const field = particleField(small ? 3500 : 7000);
   field.material.uniforms.uPixel.value = dpr;
   scene.add(field);
   const link = beam();
@@ -217,7 +218,7 @@ export function createScene(canvas) {
   const resize = () => {
     renderer.setSize(innerWidth, innerHeight, false);
     composer.setSize(innerWidth, innerHeight);
-    bloom.resolution.set(innerWidth / (small ? 2 : 1), innerHeight / (small ? 2 : 1));
+    bloom.resolution.set(innerWidth / 2, innerHeight / 2); // half-res glow: same look, far cheaper
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
   };

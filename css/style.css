@@ -96,7 +96,8 @@ body.scrolled .ticker { top: 52px; }
 main { padding: 0 var(--gutter) 120px; max-width: 1480px; margin: 0 auto; min-height: 100vh; }
 .hero { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; padding-top: 120px; position: relative; }
 .hero.small { min-height: 62vh; }
-.hero::before { content: ''; position: absolute; inset: 0 0 0 calc(-1 * var(--gutter)); z-index: -1; pointer-events: none; background: linear-gradient(90deg, rgba(4,4,6,.72) 0%, rgba(4,4,6,.35) 45%, transparent 75%); }
+/* Readability scrim stays under the text column only, so the 3D core never slides into it. */
+.hero::before { content: ''; position: absolute; top: 0; bottom: 0; left: calc(-1 * var(--gutter)); width: min(62vw, 900px); z-index: -1; pointer-events: none; background: radial-gradient(70% 55% at 30% 50%, rgba(4,4,6,.5), transparent 75%); }
 .hero h1, .hero .kicker { text-shadow: 0 2px 30px rgba(0,0,0,.55); }
 .kicker { color: var(--accent); font: 700 12px var(--mono); letter-spacing: 3px; margin-bottom: 22px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; text-transform: uppercase; }
 h1 { font: clamp(64px, 14vw, 230px)/.84 var(--display); text-transform: uppercase; perspective: 900px; }
