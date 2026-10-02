@@ -30,10 +30,11 @@ body.has-cursor, body.has-cursor a, body.has-cursor button { cursor: none; }
 /* ---------- atmosphere ---------- */
 #bg { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: -3; }
 #bg.no-webgl { background: radial-gradient(60% 60% at 70% 40%, color-mix(in srgb, var(--accent) 25%, transparent), transparent 70%); }
-.grain { position: fixed; inset: -50%; z-index: -1; pointer-events: none; opacity: .07;
+.grain { position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .07;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   animation: grain .5s steps(3) infinite; }
-@keyframes grain { 33% { transform: translate(2%, -3%); } 66% { transform: translate(-3%, 2%); } }
+/* shift the tile, not the layer: a 4x-viewport moving layer starves the GPU and blacks out the canvas */
+@keyframes grain { 33% { background-position: 37px -53px; } 66% { background-position: -61px 29px; } }
 .vignette { position: fixed; inset: 0; z-index: -2; pointer-events: none; background: radial-gradient(120% 90% at 50% 40%, transparent 50%, rgba(0,0,0,.75)); }
 
 /* ---------- preloader ---------- */
@@ -122,7 +123,7 @@ h1.vs small { font: 700 14px var(--mono); letter-spacing: 6px; color: var(--acce
 .scroll-hint i { width: 1px; height: 48px; background: linear-gradient(var(--accent), transparent); animation: hint 1.8s var(--ease) infinite; transform-origin: top; }
 @keyframes hint { 0% { transform: scaleY(0); } 60% { transform: scaleY(1); } 100% { transform: scaleY(1); opacity: 0; } }
 
-.notice { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; border: 1px solid var(--line); background: var(--glass); backdrop-filter: blur(14px); border-radius: 14px; padding: 12px 16px; font-size: 13px; color: var(--muted); margin: 10px 0 30px; }
+.notice { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; border: 1px solid var(--line); background: rgba(12, 12, 18, 0.8); border-radius: 14px; padding: 12px 16px; font-size: 13px; color: var(--muted); margin: 10px 0 30px; }
 .notice b { color: var(--fg); } .notice b.ok { color: var(--pos); }
 .notice a { color: var(--accent); text-decoration: underline; }
 .notice em { margin-left: auto; font-style: normal; color: var(--dim); }
@@ -151,7 +152,8 @@ h1.vs small { font: 700 14px var(--mono); letter-spacing: 6px; color: var(--acce
 .warn { color: var(--draw); font-size: 12px; }
 
 /* ---------- glass cards ---------- */
-.tilt, .panel { position: relative; border-radius: 20px; border: 1px solid var(--line); background: var(--glass); backdrop-filter: blur(18px) saturate(140%); }
+/* no backdrop-filter on cards: dozens of blurred layers over the WebGL canvas make Chrome drop tiles to black */
+.tilt, .panel { position: relative; border-radius: 20px; border: 1px solid var(--line); background: rgba(12, 12, 18, 0.8); }
 .tilt { overflow: hidden; transition: transform .35s var(--ease), border-color .4s; transform-style: preserve-3d; }
 .tilt::before { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .4s; background: radial-gradient(500px circle at var(--mx, 50%) var(--my, 50%), rgba(255,255,255,.1), transparent 40%); }
 .tilt::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; padding: 1px; background: radial-gradient(300px circle at var(--mx, 50%) var(--my, 50%), var(--c, var(--accent)), transparent 60%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: 0; transition: opacity .4s; }
