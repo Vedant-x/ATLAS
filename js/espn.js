@@ -17,7 +17,7 @@ export const toDecimal = (ml) => {
 
 const recs = (c) => Object.fromEntries((c?.records || []).map((r) => [r.type || r.name, r.summary]));
 const probs = (c, side) => (c?.probables || []).map((p) => ({ side, id: p.athlete?.id || String(p.playerId || ''), name: p.athlete?.displayName || '', role: p.shortDisplayName || p.abbreviation || 'Starter', position: p.athlete?.position || '', status: p.status?.name || null, record: p.record || '' }));
-const name = (c) => c?.team?.displayName || c?.athlete?.displayName || c?.athlete?.fullName || 'TBD';
+const name = (c) => c?.team?.displayName || c?.athlete?.displayName || c?.athlete?.fullName || c?.roster?.displayName || 'TBD';
 const form = (c) => (c?.form ? [...c.form].slice(-5) : null);
 
 function marketsFrom(comp, home, away) {
@@ -49,18 +49,46 @@ function marketsFrom(comp, home, away) {
 // Team sports: one competition per event. Tennis nests matches under groupings.
 function competitionsOf(ev) {
   if (ev.competitions?.length) return ev.competitions.map((c) => ({ ev, comp: c }));
-  return (ev.groupings || []).flatMap((g) => (g.competitions || []).map((c) => ({ ev, comp: c })));
+  return (ev.groupings || []).flatMap((g) => (g.competitions || []).map((c) => ({ ev, comp: c, grouping: g.grouping })));
+}
+
+// Combined events (e.g. China Open) appear in both the ATP and WTA feeds: ATP keeps men's and mixed
+// draws, WTA keeps women's, so no match is listed twice.
+function tennisDrawFits(league, slug = '') {
+  if (league.path === 'tennis/wta') return slug.startsWith('womens');
+  if (league.path === 'tennis/atp') return !slug.startsWith('womens');
+  return true;
+}
+
+const flagOf = (c) => c?.athlete?.flag?.alt || [...new Set((c?.roster?.athletes || []).map((a) => a.flag?.alt).filter(Boolean))].join(' / ') || null;
+
+// Tournament, location, draw (singles/doubles), round, court and format for a tennis match.
+function tennisInfo(ev, comp, grouping, homeC, awayC) {
+  const slug = grouping?.slug || comp.type?.slug || '';
+  const drawName = grouping?.displayName || comp.type?.text || '';
+  return {
+    tournament: ev.name || ev.shortName || '', tournamentId: String(ev.id || ''),
+    location: ev.venue?.displayName || comp.venue?.fullName || '',
+    major: Boolean(ev.major), from: ev.date || null, to: ev.endDate || null,
+    drawName, draw: /mixed/.test(slug) ? 'Mixed doubles' : /doubles/.test(slug) ? 'Doubles' : 'Singles',
+    round: comp.round?.displayName || '', roundId: Number(comp.round?.id) || 0,
+    court: comp.venue?.court || '', bestOf: Number(comp.format?.regulation?.periods) || null,
+    home: { country: flagOf(homeC), seed: homeC.curatedRank?.current ?? null },
+    away: { country: flagOf(awayC), seed: awayC.curatedRank?.current ?? null },
+  };
 }
 
 export function parseScoreboard(json, league) {
   const out = [];
   for (const raw of json.events || []) {
-    for (const { ev, comp } of competitionsOf(raw)) {
+    for (const { ev, comp, grouping } of competitionsOf(raw)) {
+      if (league.sport === 'tennis' && !tennisDrawFits(league, grouping?.slug || comp.type?.slug)) continue;
       const cs = comp.competitors || [];
       const homeC = cs.find((c) => c.homeAway === 'home') || cs[0];
       const awayC = cs.find((c) => c.homeAway === 'away') || cs[1];
       if (!homeC || !awayC) continue;
       const home = name(homeC), away = name(awayC);
+      if (home === 'TBD' && away === 'TBD') continue; // future bracket slot, nothing to analyse yet
       const state = (comp.status || ev.status)?.type?.state; // pre | in | post
       if (state === 'post') continue;
       out.push({
@@ -87,6 +115,7 @@ export function parseScoreboard(json, league) {
         records: { home: recs(homeC), away: recs(awayC) },
         probables: [...probs(homeC, 'home'), ...probs(awayC, 'away')],
         logos: { home: homeC.team?.logo || null, away: awayC.team?.logo || null },
+        ...(league.sport === 'tennis' ? { tennis: tennisInfo(ev, comp, grouping, homeC, awayC) } : {}),
       });
     }
   }
