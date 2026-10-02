@@ -1,2 +1,32 @@
 # ATLAS
-Private sports intelligence dashboard, live source monitoring, and multiplier research.
+Private sports research dashboard with live public-source adapters, match dossiers, news, an Aura chat connection, and a Stake-price multiplier explorer.
+
+## Run
+Node.js 22 or later. No package dependencies.
+
+```sh
+cp .env.example .env
+npm start
+```
+Open http://127.0.0.1:8768. The server binds only to localhost. It refreshes feeds every 60 seconds while running; the browser also refreshes every 60 seconds while visible. Public feeds may be delayed or unavailable. No all-market completeness is claimed.
+
+## Data
+- Official MLB schedules, scores, probable pitchers and batting orders on demand.
+- Official NHL schedules/scores and match detail; official NPB schedules/scores.
+- ESPN NBA, NFL, ATP/WTA and seven soccer competition schedules. Successful empty schedules are separate from errors.
+- ESPNcricinfo current score summaries, BBC sports headlines, Valve esports announcements.
+- KBO adapter currently returns an unsupported response. Esports tournament fixtures are not connected. Source monitor reports these gaps.
+- Complete injury reports, expected lineups and confirmed lineups across all sports are not implemented. Missing information remains explicitly unknown.
+
+## Stake prices and analysis
+Set ODDS_API_KEY from an Odds-API.io account with Stake coverage. A Stake login or model API key cannot substitute for this feed. Provider access/quotas apply; no key is included. Maximum 80 upcoming events per refresh, not the entire Stake market. No automated wagering.
+
+The Ask ATLAS form returns a market-favourite shortlist only with verified fresh prices. There is no validated probability model or claim of profitable edge. Multiplier targets: 2x, 3x, 4x, 5x (up to five options), 10x, 20x, 100x, 1000x (up to three). Fewer options are returned if data is insufficient. Prices older than five minutes, past events, repeated participants and multiple legs from the same event are excluded. Reciprocal odds are break-even thresholds, not predictions. Bookmaker acceptance and correlation can change combined payout.
+
+## Aura
+AURA_URL defaults to https://aura-production-0486.up.railway.app. Optional AURA_API_TOKEN remains server-side. ATLAS uses POST /chat with {text}, never screen endpoints. Aura may retain requests in its existing memory. On 2026-10-02 the supplied deployment returned HTTP 404, Application not found. Integration is wired but requires the service to be restored.
+
+Local connection forms save credentials to ignored .env with mode 0600. Never commit keys. Static files are allowlisted. The optional Worker build requires private hosting/access control before deployment; it includes no login by itself and does not support browser credential saving.
+
+## Verification
+npm test covers price freshness, IST boundaries, tennis grouping, duplicate-leg exclusions and combination arithmetic. npm run build creates dist/client and dist/server for a Worker-compatible host. Tests use synthetic fixtures, never presented as live dashboard data.
