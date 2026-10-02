@@ -21,6 +21,7 @@ python3 -m http.server 8000   # then open http://localhost:8000
 | `#/match/<id>` | Form, H2H, ratings, every market with de-vigged probability, both lineups |
 | `#/x/2` … `#/x/5` | 5 slips each at ~2x, 3x, 4x, 5x |
 | `#/mega` | 100x and 500x accumulators |
+| `#/bankers` | 70%+ favourites across all sports, plus value spots |
 
 ## How picks are chosen (and why 90% isn't possible)
 
@@ -35,28 +36,25 @@ why the 2x–5x pages often prefer single bets.
 Model edge: if a feed outcome carries a `model` probability (your own model), the engine uses that instead of the
 market price, and slips with positive EV rank first.
 
-## Data feed
+## Data
 
-The site ships with **simulated demo data**. To use real prices, write `data/odds.json`:
+1. **ESPN live (default).** Each visitor's browser pulls ESPN's public scoreboards (no key) and refreshes every 5 s
+   (`REFRESH_MS` in `js/main.js`): 22 soccer leagues, NBA, WNBA, NFL, NCAAF, NHL, MLB, ATP, WTA and UFC (`js/espn.js → LEAGUES`).
+   Odds are the US sportsbook ESPN shows (usually DraftKings), **not Stake**. Lineups load from ESPN about an hour before start.
+2. **Snapshot.** `scripts/snapshot.mjs` writes `data/odds.json` from the same source; the deploy workflow runs it every 5 min.
+   The site uses it if the browser can't reach ESPN.
+3. **Demo.** Simulated fixtures if both fail, clearly labelled.
 
-```json
-{
-  "source": "my-feed",
-  "events": [{
-    "id": "football-1", "sport": "football", "league": "Premier League",
-    "home": "Arsenal", "away": "Chelsea", "start": 1767225600000, "live": false,
-    "markets": [{ "name": "Match Result", "outcomes": [
-      { "name": "Arsenal", "odds": 1.85 }, { "name": "Draw", "odds": 3.6 }, { "name": "Chelsea", "odds": 4.2, "model": 0.27 }
-    ]}],
-    "stats": { "homeForm": ["W","W","D","L","W"], "awayForm": ["L","W","W","D","L"],
-               "h2h": { "home": 3, "draw": 1, "away": 2 }, "homeRating": 1820, "awayRating": 1760 },
-    "lineups": { "home": [{ "pos": "GK", "name": "Raya", "rating": 7.1, "status": "fit" }], "away": null }
-  }]
-}
-```
+Not covered: **NPB, KBO and cricket**, because ESPN's scoreboard API doesn't carry them and no free, keyless, terms-compliant
+source does. SofaScore and Stake have the data but no public API, and scraping them breaks their terms.
 
-Sport ids: `football basketball tennis cricket hockey mma baseball esports`.
-Only list mutually exclusive outcomes in a market (e.g. not "Double Chance"), since de-vig assumes they sum to 1.
+## Intelligence (`js/intel.js`)
 
-**About Stake.com:** Stake has no public odds API, and scraping it breaks its terms of service. The legal routes
-are a licensed odds API (e.g. The Odds API, Sportradar, OddsJam), or entering Stake prices yourself into `data/odds.json`.
+The model starts from the de-vigged market price (80%) and blends in season record and last-5 form (20%).
+- **Bankers** (`#/bankers`): every pick across all sports at 70%+ model chance, the "easy win" radar.
+- **Value spots**: where the model rates a side above the price (odds ≤ 5 only; longshot edges are noise).
+
+## Deploy (GitHub Pages)
+
+Repo Settings → Pages → Source: **GitHub Actions**. `.github/workflows/deploy.yml` then deploys on every push to `main`
+and every 5 minutes (schedules only run from the default branch).

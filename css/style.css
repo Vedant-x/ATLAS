@@ -76,7 +76,7 @@ h1.vs small { font-size: .3em; color: var(--accent); }
 .grid { display: grid; gap: 16px; }
 .sports { grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); }
 .xs { grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); }
-.two { grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
+.two { grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); }
 .slips { grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); }
 
 .tilt {
@@ -101,6 +101,9 @@ h1.vs small { font-size: .3em; color: var(--accent); }
 .xcard { padding: 26px; min-height: 160px; display: flex; flex-direction: column; justify-content: space-between; }
 .xcard b { font: 80px/1 var(--display); color: var(--accent); }
 .xcard.mega { --c: var(--loss); }
+.xcard.bank { --c: #00ffc3; }
+.xcard.bank b { color: #00ffc3; font-size: 60px; }
+.odds .hot { color: var(--accent); border-color: var(--accent); }
 .xcard.mega b { color: var(--loss); font-size: 60px; }
 
 .list { display: flex; flex-direction: column; gap: 10px; }

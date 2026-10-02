@@ -1,9 +1,12 @@
-// Data layer. By default it generates DEMO fixtures so the UI works offline.
-// To use a real feed, put a file at data/odds.json in the same shape as `makeEvent` returns
-// (see README "Data feed"). Demo odds are NOT real prices.
+// Data layer. Order of preference:
+//   1. ESPN live scoreboards, fetched from the browser (js/espn.js)
+//   2. data/odds.json, a snapshot the scheduled GitHub Action writes (same shape as `makeEvent`)
+//   3. Simulated DEMO fixtures, so the UI still works offline. Demo odds are NOT real prices.
+import { fetchAll } from './espn.js';
 
 export const SPORTS = [
   { id: 'football', name: 'Football', icon: '⚽', color: '#d2ff00' },
+  { id: 'americanfootball', name: 'NFL', icon: '🏈', color: '#ff9f43' },
   { id: 'basketball', name: 'Basketball', icon: '🏀', color: '#ff7a1a' },
   { id: 'tennis', name: 'Tennis', icon: '🎾', color: '#9dff5c' },
   { id: 'cricket', name: 'Cricket', icon: '🏏', color: '#4fd1ff' },
@@ -104,15 +107,20 @@ function makeEvent(sport, i, r, now) {
 
 export async function loadEvents() {
   try {
+    const events = await fetchAll(AbortSignal.timeout(12000));
+    if (events.length) return { events, source: 'ESPN live', demo: false, fetchedAt: Date.now() };
+  } catch { /* blocked or offline: try the snapshot */ }
+
+  try {
     const res = await fetch('data/odds.json', { cache: 'no-store' });
     if (res.ok) {
       const json = await res.json();
-      if (Array.isArray(json.events) && json.events.length) return { events: json.events, source: json.source || 'feed', demo: false };
+      if (Array.isArray(json.events) && json.events.length) return { events: json.events, source: json.source || 'feed', demo: false, fetchedAt: json.fetchedAt };
     }
   } catch { /* no feed: fall through to demo */ }
 
   const now = Date.now();
   const r = rng(Math.floor(now / 86400000));
-  const events = SPORTS.flatMap((s) => Array.from({ length: 8 }, (_, i) => makeEvent(s.id, i, r, now)));
+  const events = SPORTS.filter((s) => TEAMS[s.id]).flatMap((s) => Array.from({ length: 8 }, (_, i) => makeEvent(s.id, i, r, now)));
   return { events, source: 'demo', demo: true };
 }
