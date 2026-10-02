@@ -248,7 +248,7 @@ export function createScene(canvas) {
   // Animated state; GSAP tweens these plain objects, the loop applies them.
   const st = {
     pulse: 0, scatter: 0,
-    coreAx: 3.2, coreAs: 1, coreBx: 6, coreBs: 0.001, beam: 0, split: 0.5,
+    coreAx: 3.2, coreAy: 0, coreAs: 1, coreBx: 6, coreBs: 0.001, beam: 0, split: 0.5,
     camZ: 11, camY: 0, fieldY: 0, worldRotZ: 0,
   };
   const target = { accent: new THREE.Color('#d2ff00'), a: new THREE.Color('#d2ff00'), b: new THREE.Color('#ff3d6e') };
@@ -283,13 +283,14 @@ export function createScene(canvas) {
     rings.forEach((r, i) => { r.rotation.z += dt * (0.25 + i * 0.12) * (1 + st.pulse * 4); r.material.color.lerp(target.a, 0.05); });
     field.material.uniforms.uColor.value.lerp(target.accent, 0.04);
 
-    coreA.position.set(st.coreAx - sp * 2, -sp * 1.2, 0); coreA.scale.setScalar(st.coreAs * (1 + st.pulse * 0.15));
-    coreB.position.set(st.coreBx + sp * 2, -sp * 1.2, 0); coreB.scale.setScalar(st.coreBs * (1 + st.pulse * 0.15));
+    coreA.position.set(st.coreAx - sp * 2, st.coreAy - sp * 1.2, 0); coreA.scale.setScalar(st.coreAs * (1 + st.pulse * 0.15));
+    coreB.position.set(st.coreBx + sp * 2, st.coreAy - sp * 1.2, 0); coreB.scale.setScalar(st.coreBs * (1 + st.pulse * 0.15));
     link.material.uniforms.uTime.value = t;
     link.material.uniforms.uAlpha.value = st.beam;
     link.material.uniforms.uSplit.value = st.split;
     link.material.uniforms.uA.value.copy(target.a); link.material.uniforms.uB.value.copy(target.b);
-    link.position.y = -sp * 1.2;
+    link.position.y = st.coreAy - sp * 1.2;
+    link.scale.x = Math.max(0.05, (st.coreBx - st.coreAx + sp * 4) / 6.8); // span the cores wherever they sit
 
     field.material.uniforms.uTime.value = t;
     field.material.uniforms.uScatter.value = st.scatter;
@@ -321,7 +322,9 @@ export function createScene(canvas) {
       if (mode === 'match') {
         const ph = opts.pHome ?? 0.5, pa = opts.pAway ?? 0.5;
         target.a.set(opts.home || '#d2ff00'); target.b.set(opts.away || '#ff3d6e');
-        tween(st, { coreAx: wide ? -3.6 : -1.9, coreAs: 0.45 + Math.sqrt(ph) * 0.75, coreBx: wide ? 3.6 : 1.9, coreBs: 0.45 + Math.sqrt(pa) * 0.75,
+        // Phones: the two cores sit small above the headline instead of behind the text.
+        const k = wide ? 1 : 0.5;
+        tween(st, { coreAx: wide ? -3.6 : -1.3, coreAy: wide ? 0 : 3.1, coreAs: (0.45 + Math.sqrt(ph) * 0.75) * k, coreBx: wide ? 3.6 : 1.3, coreBs: (0.45 + Math.sqrt(pa) * 0.75) * k,
           beam: 1, split: ph / (ph + pa), camZ: wide ? 12 : 14, camY: 0, fieldY: -0.5, worldRotZ: 0 });
       } else {
         const layouts = {
@@ -332,7 +335,10 @@ export function createScene(canvas) {
           bankers: { coreAx: wide ? 3.6 : 0, coreAs: 0.9, camZ: 11, camY: 0, fieldY: 0 },
           edge: { coreAx: wide ? 4.2 : 0, coreAs: 0.5, camZ: 13, camY: 0, fieldY: 0 },
         };
-        tween(st, { ...(layouts[mode] || layouts.home), coreBx: 7, coreBs: 0.001, beam: 0, worldRotZ: mode === 'x' ? 0.2 : 0 });
+        const lay = { coreAy: 0, ...(layouts[mode] || layouts.home) };
+        // Phones: a smaller core tucked into the top-right corner so it never sits behind text.
+        if (!wide) Object.assign(lay, { coreAx: 1.55, coreAy: 3.4, coreAs: Math.min(lay.coreAs, 0.5), camY: 0, camZ: 11, fieldY: 0 });
+        tween(st, { ...lay, coreBx: 7, coreBs: 0.001, beam: 0, worldRotZ: mode === 'x' ? 0.2 : 0 });
       }
     },
   };

@@ -76,7 +76,8 @@ function render(animate) {
   scene.setAccent(v.accent);
   document.documentElement.style.setProperty('--accent', v.accent);
   scene.setMode(v.mode, v.sceneOpts);
-  document.querySelectorAll('nav.top a').forEach((a) => { const h = a.getAttribute('href'); a.classList.toggle('on', h.startsWith('#/') && (h.split('/')[1] || 'home') === name); });
+  const tab = ['sport', 'league', 'match'].includes(name) ? 'sports' : name; // deeper pages keep the Sports tab lit
+  document.querySelectorAll('nav.top a').forEach((a) => { const h = a.getAttribute('href'); a.classList.toggle('on', h.startsWith('#/') && (h.split('/')[1] || 'home') === tab); });
   reveal(app, animate);
   countUp(app);
   magnetic(app);
@@ -122,6 +123,7 @@ function dock() {
   if (!el) return;
   const home = parse().name === 'home';
   el.hidden = home;
+  document.body.classList.toggle('has-dock', !home);
   el.querySelector('.dock-trail').innerHTML = trail().map(([h, t], i, a) => (h && i < a.length - 1 ? `<a href="${h}">${esc(t)}</a>` : `<b>${esc(t)}</b>`)).join('<i>›</i>');
 }
 
