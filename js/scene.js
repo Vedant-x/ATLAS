@@ -168,8 +168,12 @@ export function createScene(canvas) {
     return { setMode: noop, setAccent: noop, pulse: noop, ok: false };
   }
   const small = Math.min(innerWidth, innerHeight) < 700;
-  const dpr = Math.min(devicePixelRatio, small ? 1.25 : 1.5);
+  const pixelRatio = () => Math.min(devicePixelRatio || 1, small ? 1.25 : 1.5);
+  let dpr = pixelRatio();
   renderer.setPixelRatio(dpr);
+  // A lost GPU context would leave a black canvas: fall back to the CSS glow instead.
+  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); canvas.classList.add('no-webgl'); });
+  canvas.addEventListener('webglcontextrestored', () => { canvas.classList.remove('no-webgl'); resize(); });
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
   const scene = new THREE.Scene();
@@ -215,14 +219,30 @@ export function createScene(canvas) {
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
 
+  // Zoom or moving to another monitor changes devicePixelRatio: every render target must follow,
+  // or the composer's buffers cover only part of the canvas and the rest renders black.
   const resize = () => {
+    dpr = pixelRatio();
+    renderer.setPixelRatio(dpr);
+    composer.setPixelRatio(dpr);
+    field.material.uniforms.uPixel.value = dpr;
     renderer.setSize(innerWidth, innerHeight, false);
     composer.setSize(innerWidth, innerHeight);
     bloom.resolution.set(innerWidth / 2, innerHeight / 2); // half-res glow: same look, far cheaper
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
   };
-  addEventListener('resize', resize);
+  let queued = 0;
+  const schedule = () => { cancelAnimationFrame(queued); queued = requestAnimationFrame(resize); };
+  addEventListener('resize', schedule);
+  window.visualViewport?.addEventListener('resize', schedule);
+  const watchDpr = () => matchMedia(`(resolution: ${devicePixelRatio}dppx)`).addEventListener('change', () => { schedule(); watchDpr(); }, { once: true });
+  watchDpr();
+  // Safety net: if the drawing buffer ever disagrees with the window, fix it on the next frame.
+  const checkSize = () => {
+    const w = Math.floor(innerWidth * dpr), h = Math.floor(innerHeight * dpr);
+    if (Math.abs(canvas.width - w) > 2 || Math.abs(canvas.height - h) > 2 || dpr !== pixelRatio()) resize();
+  };
   resize();
 
   // Animated state; GSAP tweens these plain objects, the loop applies them.
@@ -283,6 +303,7 @@ export function createScene(canvas) {
     camera.lookAt(0, st.camY * 0.5, 0);
 
     st.pulse *= 0.95;
+    checkSize();
     composer.render();
     requestAnimationFrame(frame);
   }
