@@ -33,6 +33,8 @@ bind(state);
 // ---------- data ----------
 function setData(d) {
   Object.assign(state, d, { events: applyModel(d.events) });
+  // The research desk needs the Node server; hide it on static hosting (GitHub Pages).
+  document.querySelector('nav.top a[href="desk.html"]')?.toggleAttribute('hidden', !state.server);
   if (Date.now() - state.slipsAt > 60000) { state.slipCache.clear(); state.slipsAt = Date.now(); }
   ticker();
 }

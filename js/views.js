@@ -54,7 +54,7 @@ function notice() {
   const stake = o?.status === 'connected' || o?.status === 'partial';
   return `<div class="notice reveal"><span class="led ${S.demo ? '' : 'on'}"></span>
     <b>${S.demo ? 'DEMO DATA' : esc(S.source)}</b> · updated <span data-ago>just now</span> ·
-    ${S.demo ? 'live feeds unreachable, prices are simulated.' : stake ? `<b class="ok">Stake prices live</b> (${o.selections.length})` : `Stake not connected (<a href="desk.html#connections">connect</a>): showing ESPN reference odds and ATLAS model lines.`}
+    ${S.demo ? 'live feeds unreachable, prices are simulated.' : stake ? `<b class="ok">Stake prices live</b> (${o.selections.length})` : S.server ? `Stake not connected (<a href="desk.html#connections">connect</a>): showing ESPN reference odds and ATLAS model lines.` : 'Showing ESPN reference odds and ATLAS model lines. Stake prices need the ATLAS server (npm start).'}
     <em>Probabilities are estimates, not guarantees.</em></div>`;
 }
 
