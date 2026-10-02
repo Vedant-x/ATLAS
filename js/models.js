@@ -80,8 +80,21 @@ function baselineWin(event) {
     pHome = a / (a + b);
     confidence = 'medium';
   }
+  // Baseball: the starting-pitcher matchup moves the line. Each run of ERA difference shifts the
+  // log-odds by 0.12 (capped), a conservative read of how much starters swing a single game.
+  let starterNote = null;
+  if (event.sport === 'baseball') {
+    const era = (side) => Number(event.probables?.find((p) => p.side === side)?.pitching?.season?.era);
+    const eh = era('home'), ea = era('away');
+    if (Number.isFinite(eh) && Number.isFinite(ea)) {
+      const shift = Math.max(-0.35, Math.min(0.35, 0.12 * (ea - eh)));
+      pHome = 1 / (1 + Math.exp(-(Math.log(pHome / (1 - pHome)) + shift)));
+      confidence = 'medium';
+      starterNote = `starter ERA ${eh.toFixed(2)} vs ${ea.toFixed(2)}`;
+    }
+  }
   const draw = soccer ? 0.26 * (1 - Math.abs(pHome - 0.5)) : 0;
-  return { win: { home: pHome * (1 - draw), draw, away: (1 - pHome) * (1 - draw) }, confidence };
+  return { win: { home: pHome * (1 - draw), draw, away: (1 - pHome) * (1 - draw) }, confidence, starterNote };
 }
 
 // ---------- Poisson (goals / runs) ----------
@@ -191,15 +204,15 @@ function poissonMarkets(e, fit) {
 }
 
 // ---------- Normal margin (points) ----------
-const SIGMA = { basketball: 12.5, americanfootball: 13.5 };
-const POINT_DEFAULTS = { basketball: 222, americanfootball: 44 };
+const SIGMA = { basketball: 12.5, americanfootball: 13.5, rugby: 14, aussierules: 32 };
+const POINT_DEFAULTS = { basketball: 222, americanfootball: 44, rugby: 46, aussierules: 165 };
 
 function normalModel(e, win, total, spread) {
   const sigma = (e.league === 'WNBA' ? 11 : e.league === 'NCAAF' ? 16 : SIGMA[e.sport]) || 13;
   const pHome = win.home / (win.home + win.away);
   const mu = spread ? -spread.line : sigma * bisect((z) => normCdf(z), -4, 4, clamp(pHome, 0.001, 0.999));
   const T = total?.line ?? POINT_DEFAULTS[e.sport] ?? 200;
-  const tSigma = e.sport === 'basketball' ? 18 : 10;
+  const tSigma = { basketball: 18, rugby: 13, aussierules: 24 }[e.sport] || 10;
   const H = e.home, A = e.away;
   const pMargin = (x) => 1 - normCdf((x - mu) / sigma); // P(home margin > x)
   const pTotal = (x) => 1 - normCdf((x - T) / tSigma);
@@ -271,10 +284,19 @@ function tennisModel(e, win) {
   };
 }
 
+// ESPN's matchup predictor gives two-way win shares; soccer gets a draw share carved out.
+function predictorWin(e) {
+  const t = e.predictor.home + e.predictor.away || 1;
+  const h = e.predictor.home / t;
+  const draw = e.sport === 'football' ? 0.26 * (1 - Math.abs(h - 0.5)) : 0;
+  return { home: h * (1 - draw), draw, away: (1 - h) * (1 - draw) };
+}
+
 // Quick 1X2 view for lists: no derived markets.
 export function winProbs(event) {
   const v = priceView(event);
   if (v.win) return { ...v.win, confidence: 'high' };
+  if (event.predictor) return { ...predictorWin(event), confidence: 'medium' };
   const b = baselineWin(event);
   return { ...b.win, confidence: b.confidence };
 }
@@ -283,16 +305,19 @@ export function winProbs(event) {
 export function analyse(event) {
   const view = priceView(event);
   let win = view.win, confidence = 'high', basis = 'Bookmaker price, margin removed';
+  if (!win && event.predictor) {
+    win = predictorWin(event); confidence = 'medium'; basis = 'ESPN matchup predictor (no bookmaker price)';
+  }
   if (!win) {
     const b = baselineWin(event);
     win = b.win; confidence = b.confidence;
-    basis = b.confidence === 'medium' ? 'ATLAS model from season record and form (no bookmaker price)' : 'ATLAS baseline: home advantage only, too little data';
+    basis = b.starterNote ? `ATLAS model: home advantage + ${b.starterNote}${event.stats?.homeRecord ? ' + records' : ''} (no bookmaker price)` : b.confidence === 'medium' ? 'ATLAS model from season record and form (no bookmaker price)' : 'ATLAS baseline: home advantage only, too little data';
   }
   const out = { win, confidence, basis, groups: [], grid: null, dist: null, params: {} };
   if (['football', 'hockey', 'baseball'].includes(event.sport)) {
     const fit = fitPoisson(win, view.total, event.sport);
     Object.assign(out, poissonMarkets(event, fit), { kind: 'poisson' });
-  } else if (['basketball', 'americanfootball'].includes(event.sport)) {
+  } else if (['basketball', 'americanfootball', 'rugby', 'aussierules'].includes(event.sport)) {
     Object.assign(out, normalModel(event, win, view.total, view.spread), { kind: 'normal' });
   } else if (event.sport === 'tennis') {
     Object.assign(out, tennisModel(event, win), { kind: 'tennis' });

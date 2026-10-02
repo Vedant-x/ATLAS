@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: '*/15 * * * *' # refresh the ESPN backup snapshot; runs can start a few minutes late
+    - cron: '7 * * * *' # hourly: keeps a private repo's Actions minutes low; live scores refresh in the browser
   workflow_dispatch:
 
 permissions:

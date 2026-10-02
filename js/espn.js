@@ -3,26 +3,10 @@
 
 const BASE = 'https://site.api.espn.com/apis/site/v2/sports';
 
-export const LEAGUES = [
-  // Football (soccer)
-  ...[
-    ['eng.1', 'Premier League'], ['eng.2', 'Championship'], ['esp.1', 'La Liga'], ['ita.1', 'Serie A'],
-    ['ger.1', 'Bundesliga'], ['fra.1', 'Ligue 1'], ['ned.1', 'Eredivisie'], ['por.1', 'Primeira Liga'],
-    ['sco.1', 'Scottish Prem'], ['tur.1', 'Süper Lig'], ['bel.1', 'Belgian Pro League'], ['bra.1', 'Brasileirão'],
-    ['arg.1', 'Liga Profesional'], ['mex.1', 'Liga MX'], ['usa.1', 'MLS'], ['ksa.1', 'Saudi Pro League'],
-    ['jpn.1', 'J1 League'], ['uefa.champions', 'Champions League'], ['uefa.europa', 'Europa League'],
-    ['uefa.europa.conf', 'Conference League'], ['conmebol.libertadores', 'Libertadores'], ['fifa.world', 'World Cup'],
-  ].map(([l, name]) => ({ sport: 'football', path: `soccer/${l}`, name })),
-  { sport: 'basketball', path: 'basketball/nba', name: 'NBA' },
-  { sport: 'basketball', path: 'basketball/wnba', name: 'WNBA' },
-  { sport: 'americanfootball', path: 'football/nfl', name: 'NFL' },
-  { sport: 'americanfootball', path: 'football/college-football', name: 'NCAAF' },
-  { sport: 'hockey', path: 'hockey/nhl', name: 'NHL' },
-  { sport: 'baseball', path: 'baseball/mlb', name: 'MLB' },
-  { sport: 'tennis', path: 'tennis/atp', name: 'ATP' },
-  { sport: 'tennis', path: 'tennis/wta', name: 'WTA' },
-  { sport: 'mma', path: 'mma/ufc', name: 'UFC' },
-];
+import { ALL_LEAGUES, leagueByPath } from './catalog.js';
+
+// Back-compat name: every catalogued ESPN league.
+export const LEAGUES = ALL_LEAGUES.filter((l) => !l.path.startsWith('atlas/'));
 
 // American moneyline → decimal odds.
 export const toDecimal = (ml) => {
@@ -31,6 +15,8 @@ export const toDecimal = (ml) => {
   return +(n > 0 ? 1 + n / 100 : 1 + 100 / -n).toFixed(2);
 };
 
+const recs = (c) => Object.fromEntries((c?.records || []).map((r) => [r.type || r.name, r.summary]));
+const probs = (c, side) => (c?.probables || []).map((p) => ({ side, id: p.athlete?.id || String(p.playerId || ''), name: p.athlete?.displayName || '', role: p.shortDisplayName || p.abbreviation || 'Starter', position: p.athlete?.position || '', status: p.status?.name || null, record: p.record || '' }));
 const name = (c) => c?.team?.displayName || c?.athlete?.displayName || c?.athlete?.fullName || 'TBD';
 const form = (c) => (c?.form ? [...c.form].slice(-5) : null);
 
@@ -94,22 +80,56 @@ export function parseScoreboard(json, league) {
         },
         lineups: null,
         colors: { home: homeC.team?.color ? `#${homeC.team.color}` : null, away: awayC.team?.color ? `#${awayC.team.color}` : null },
+        leaguePath: league.path, compId: String(comp.id || ev.id), group: league.group,
+        venue: comp.venue?.fullName || null,
+        broadcast: comp.broadcast || (comp.broadcasts || []).flatMap((b) => b.names || []).join(', ') || null,
+        note: comp.notes?.[0]?.headline || ev.season?.slug || null,
+        records: { home: recs(homeC), away: recs(awayC) },
+        probables: [...probs(homeC, 'home'), ...probs(awayC, 'away')],
+        logos: { home: homeC.team?.logo || null, away: awayC.team?.logo || null },
       });
     }
   }
   return out;
 }
 
-async function fetchLeague(league, signal) {
-  const res = await fetch(`${BASE}/${league.path}/scoreboard`, { signal });
+const ymd = (d) => d.toISOString().slice(0, 10).replaceAll('-', '');
+
+// One league's fixtures from yesterday through `days` ahead (live + upcoming).
+export async function fetchLeague(league, { days = 3, signal } = {}) {
+  const from = new Date(Date.now() - 864e5), to = new Date(Date.now() + days * 864e5);
+  const res = await fetch(`${BASE}/${league.path}/scoreboard?dates=${ymd(from)}-${ymd(to)}&limit=300`, { signal });
   if (!res.ok) throw new Error(`${league.name}: ${res.status}`);
   return parseScoreboard(await res.json(), league);
 }
 
-// Fetch all leagues in parallel; a failing league is skipped, not fatal.
-export async function fetchAll(signal) {
-  const results = await Promise.allSettled(LEAGUES.map((l) => fetchLeague(l, signal)));
-  return results.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
+// Fetch many leagues with limited parallelism; a failing league is skipped, not fatal.
+export async function fetchAll(signal, leagues = LEAGUES, opts = {}) {
+  const out = [];
+  let i = 0;
+  const worker = async () => {
+    while (i < leagues.length) {
+      const l = leagues[i++];
+      try { out.push(...await fetchLeague(l, { ...opts, signal })); } catch { /* skip */ }
+    }
+  };
+  await Promise.all(Array.from({ length: opts.concurrency || 8 }, worker));
+  return out;
+}
+
+export async function fetchSummary(e) {
+  const res = await fetch(`${BASE}/${e.leaguePath}/summary?event=${e.compId}`);
+  if (!res.ok) throw new Error(`summary ${res.status}`);
+  const json = await res.json();
+  if (json.code) throw new Error(json.message || 'summary unavailable');
+  return json;
+}
+
+// Player overview: season + career splits, recent game log, news notes.
+export async function fetchAthlete(leaguePath, id) {
+  const res = await fetch(`https://site.web.api.espn.com/apis/common/v3/sports/${leaguePath}/athletes/${id}/overview`);
+  if (!res.ok) throw new Error(`athlete ${res.status}`);
+  return res.json();
 }
 
 // Starting lineups for one event, from ESPN's summary endpoint (available close to kick-off).
@@ -131,3 +151,4 @@ function splitId(id) {
   const league = LEAGUES.find((l) => id.startsWith(l.path.replace(/\//g, '_') + '-'));
   return league ? [league.path, id.slice(league.path.length + 1)] : [];
 }
+export { leagueByPath };
