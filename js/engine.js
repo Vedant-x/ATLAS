@@ -36,6 +36,13 @@ export function allLegs(events) {
   return legs;
 }
 
+// Events still to start today in the viewer's local time (live games are out: their stored prices are pre-match).
+export const localDay = (t = Date.now()) => new Date(t).toLocaleDateString('en-CA');
+export function todayEvents(events, now = Date.now()) {
+  const today = localDay(now);
+  return events.filter((e) => !e.live && e.start > now && localDay(e.start) === today);
+}
+
 // Find combinations (one leg per event) whose total odds land near `target`,
 // ranked by combined probability. Returns up to `count` non-overlapping slips.
 export function buildSlips(events, target, { count = 5, maxLegs = 4, tolerance = 0.12 } = {}) {

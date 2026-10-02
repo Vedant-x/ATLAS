@@ -1,6 +1,6 @@
 // Page templates. Each view returns { html, mode, accent, sceneOpts?, title, after? }.
 import { SPORTS } from './data.js';
-import { devig, buildSlips } from './engine.js';
+import { devig, buildSlips, todayEvents } from './engine.js';
 import { bankers, valueSpots, applyModel } from './intel.js';
 import { analyse, winProbs, kelly } from './models.js';
 import { probBar, gauge, heatmap, distBars, formStrip, outcomeBars, valueTrack, pc, odd } from './charts.js';
@@ -284,14 +284,19 @@ export const views = {
   x([n]) {
     const target = Number(n);
     if (![2, 3, 4, 5, 10, 20].includes(target)) return views.notfound();
-    const list = S.slips(target, { count: 5, maxLegs: target <= 5 ? 3 : 5, tolerance: 0.08 });
+    // Same-day only: every leg kicks off later today (viewer's local time).
+    const left = todayEvents(S.events);
+    const priced = left.filter((e) => e.markets?.length).length;
+    const list = S.slips(target, { count: 5, maxLegs: target <= 5 ? 3 : 5, tolerance: 0.08, today: true });
+    const day = new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
     return {
       mode: 'x', accent: ['#d2ff00', '#00ffc3', '#4fd1ff', '#b08cff'][[2, 3, 4, 5].indexOf(target)] || '#ff9f43', title: `${target}x slips`,
-      html: `<section class="hero small"><p class="kicker reveal">MULTIPLIER · BREAK-EVEN ${pc(1 / target, 1)}</p><h1>${split(`${target}X SLIPS`)}</h1>
+      html: `<section class="hero small"><p class="kicker reveal">MULTIPLIER · BREAK-EVEN ${pc(1 / target, 1)} · TODAY ONLY</p><h1>${split(`${target}X SLIPS`)}</h1>
         <nav class="tabs reveal">${[2, 3, 4, 5, 10, 20].map((x) => `<a href="#/x/${x}" class="${x === target ? 'on' : ''}">${x}x</a>`).join('')}</nav></section>
         ${notice()}
         <p class="lede reveal">Combinations whose total odds land near ${target}x, ranked by edge and true win chance. A fairly priced ${target}x slip wins about ${pc(1 / target, 0)} of the time; each extra leg adds another bookmaker margin.</p>
-        <section class="grid slips">${list.map((s, i) => slipCard(s, i, target)).join('') || '<p class="muted">Not enough priced events for this target right now.</p>'}</section>`,
+        <p class="note reveal">📅 Only matches on <b>${esc(day)}</b> that haven't started yet: ${left.length} left today, ${priced} with prices. Slips rebuild as games kick off and roll over at midnight.</p>
+        <section class="grid slips">${list.map((s, i) => slipCard(s, i, target)).join('') || `<p class="muted">${left.length ? `Today's remaining prices can't be combined to about ${target}x. Try another multiplier.` : 'No more matches left today. Tomorrow\'s slips appear after midnight.'}</p>`}</section>`,
     };
   },
 

@@ -1,6 +1,6 @@
 import { createScene } from './scene.js';
 import { loadEvents, refreshLive } from './data.js';
-import { buildSlips } from './engine.js';
+import { buildSlips, todayEvents, localDay } from './engine.js';
 import { applyModel, bankers } from './intel.js';
 import { fetchLineups } from './espn.js';
 import { lineupsFromDetail } from './feed.js';
@@ -16,9 +16,11 @@ const scene = createScene(document.getElementById('bg'));
 const state = {
   events: [], source: 'demo', demo: true, news: [], odds: null, fetchedAt: 0,
   slipCache: new Map(), slipsAt: 0,
-  slips(target, opts) {
-    if (!this.slipCache.has(target)) this.slipCache.set(target, buildSlips(this.events, target, opts));
-    return this.slipCache.get(target);
+  // opts.today: only matches still to start today (local time); cached per day so midnight rolls over.
+  slips(target, opts = {}) {
+    const key = `${target}|${opts.today ? localDay() : 'all'}`;
+    if (!this.slipCache.has(key)) this.slipCache.set(key, buildSlips(opts.today ? todayEvents(this.events) : this.events, target, opts));
+    return this.slipCache.get(key);
   },
   async detail(e) {
     if (e.apiId) {
