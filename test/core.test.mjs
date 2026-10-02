@@ -10,3 +10,18 @@ test('same match or participant cannot be combined',()=>{assert.equal(buildTicke
 test('no prices never produces invented tickets',()=>{for(const target of [2,3,4,5,10,20,100,1000])assert.equal(buildTickets([],target,{now,day}).options.length,0)});
 test('provider market timestamp is preserved',()=>{const d=normalizeOdds([{id:1,home:'A',away:'B',bookmakers:{Stake:[{name:'ML',updatedAt:'stamp',odds:[{home:'1.4',away:'3'}]}]}}]);assert.equal(d[0].updated_at,'stamp');assert.equal(d[0].odds,1.4)});
 test('mixed tennis tournament is separated by grouping',()=>{const competition={id:1,date:'2026-10-02T12:00:00Z',competitors:[{athlete:{displayName:'A'}},{athlete:{displayName:'B'}}]};const d={events:[{groupings:[{grouping:{slug:'mens-singles'},competitions:[competition]},{grouping:{slug:'womens-singles'},competitions:[{...competition,id:2}]}]}]};assert.equal(parseESPN(d,'ATP','tennis/atp')[0].external_id,'1');assert.equal(parseESPN(d,'WTA','tennis/wta')[0].external_id,'2')});
+
+test('multiplier slips can be limited to matches still to start today', async () => {
+  const { todayEvents, localDay } = await import('../js/engine.js');
+  const now = new Date(2026, 9, 2, 15, 0).getTime(); // 3pm local
+  const at = (h) => new Date(2026, 9, 2, h, 0).getTime();
+  const evs = [
+    { id: 'a', start: at(18) },
+    { id: 'b', start: at(23) },
+    { id: 'c', start: new Date(2026, 9, 3, 1, 0).getTime() }, // tomorrow
+    { id: 'd', start: at(13) }, // already started
+    { id: 'e', start: at(14), live: true },
+  ];
+  assert.deepEqual(todayEvents(evs, now).map((e) => e.id), ['a', 'b']);
+  assert.equal(localDay(at(18)), localDay(now));
+});
