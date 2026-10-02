@@ -90,6 +90,7 @@ export function fromServer(payload, now = Date.now()) {
         starters: cs.filter((c) => c.starter).map((c) => `${c.name}: ${c.starter} (probable)`),
       },
       lineups: null,
+      colors: { home: homeC?.color || null, away: awayC?.color || null },
     });
   }
   // Stake events the free feeds don't list (other leagues/sports) still count for slips.

@@ -3,12 +3,15 @@ Private sports research dashboard with live public-source adapters, match dossie
 
 | Page | What it shows |
 |---|---|
-| `/` | 3D dashboard: sports, upcoming matches, headlines |
-| `/#/match/<id>` | Record, form, probable starters, markets with de-vigged probability, lineups, source |
-| `/#/x/2` … `/#/x/5` | 5 slips each near 2x–5x |
-| `/#/mega` | 100x and 500x accumulators |
+| `/` | Dashboard: live strip, match of the day, sports, bankers, value, multipliers, headlines, upcoming |
+| `/#/match/<id>` | Match dossier: win probability gauges, fair vs bookmaker odds, edge, Kelly; score/margin/set model; every derived market; bookmaker price table; form; lineups; injuries; stake calculator; model notes |
+| `/#/edge` | Edge board: every bookmaker price on the board with fair and model probability, edge and Kelly, filterable and sortable |
+| `/#/x/2` … `/#/x/20` | Slips near each target multiplier |
+| `/#/mega` | 100x, 500x and 1000x accumulators |
 | `/#/bankers` | 70%+ favourites across every sport, plus value spots |
 | `/desk.html` | Research desk: Ask ATLAS / Aura, multiplier lab, source monitor, connections |
+
+Every price can be tapped into the bet slip (kept in the browser), which shows combined odds, true win chance, edge and returns.
 
 ## Run
 Node.js 22 or later. No package dependencies.
@@ -30,8 +33,11 @@ Open http://127.0.0.1:8768. The server binds only to localhost. It refreshes fee
 ## Prices on the 3D dashboard
 Each match uses its fresh Stake prices (≤ 5 min old) when the Odds-API.io key is connected and the teams match a Stake event. Otherwise it shows ESPN's reference line (a US sportsbook, labelled "not Stake"). NPB, KBO and cricket have no free odds line, so they appear without prices until Stake is connected.
 
+## Market models (`js/models.js`)
+From each event's prices ATLAS derives the full market set. Goal sports (football, hockey, baseball) fit a Poisson score model to the winner price and total line, giving a correct-score grid, double chance, draw no bet, alternate totals, handicaps/run/puck lines, team totals, both teams to score, clean sheets, exact totals and winning margins. Basketball and NFL use a normal margin model centred on the spread (or moneyline) for alternate spreads/totals, team totals and margin bands. Tennis solves a per-set win chance for set betting and total sets. Events with no bookmaker price get a model line from season record and form (labelled MODEL), or a home-advantage baseline (BASELINE) when there is no data. Derived numbers are fair prices (1 / probability), not bookmaker quotes.
+
 ## Intelligence (`js/intel.js`, `js/engine.js`)
-Prices are de-vigged into fair probabilities. The model blends that market price (80%) with season record and last-5 form (20%). Slips are ranked by expected value and win chance and shown with their real win chance: a 2x bet wins about 50% of the time, 5x about 20%, 100x about 1%. Nothing here can make 2x+ slips win 90% of the time. Bankers are picks at 70%+ model chance; value spots are where the model rates a side above the price (odds ≤ 5 only).
+Prices are de-vigged into fair probabilities. Season record and last-5 form may nudge the market price by at most 0.08 in log-odds (about ±1–2 percentage points); the market stays the main signal. Slips are ranked by expected value and win chance and shown with their real win chance: a 2x bet wins about 50% of the time, 5x about 20%, 100x about 1%. Nothing here can make 2x+ slips win 90% of the time. Bankers are picks at 70%+ model chance; value spots are where the model rates a side above the price (odds ≤ 5 only).
 
 ## Stake prices and analysis
 Set ODDS_API_KEY from an Odds-API.io account with Stake coverage. A Stake login or model API key cannot substitute for this feed. Provider access/quotas apply; no key is included. Maximum 80 upcoming events per refresh, not the entire Stake market. No automated wagering.

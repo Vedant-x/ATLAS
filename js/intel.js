@@ -34,6 +34,12 @@ function strength(e, side) {
 }
 
 // Adds `model` probabilities to the winner/result market of each event (mutates events).
+// The market price is a far stronger signal than a season record, so the record/form view may only
+// nudge the price: a small step in log-odds space, capped at MAX_SHIFT. Without the cap, records
+// (which understate how lopsided mismatches are) make nearly every longshot look like value.
+const MAX_SHIFT = 0.08;
+const logit = (p) => Math.log(p / (1 - p));
+const sigmoid = (x) => 1 / (1 + Math.exp(-x));
 export function applyModel(events) {
   for (const e of events) {
     const m = e.markets?.find((x) => x.name === 'Winner' || x.name === 'Match Result');
@@ -41,16 +47,18 @@ export function applyModel(events) {
     const sh = strength(e, 'home'), sa = strength(e, 'away');
     if (sh == null || sa == null) continue;
     const { outcomes } = devig(m);
-    const draw = outcomes.find((o) => o.name === 'Draw');
-    const drawP = draw ? draw.fair : 0;
-    // Bradley-Terry style share between the two sides, applied to the non-draw mass.
-    // Squaring stretches records toward real strength gaps; raw win rates understate how lopsided
-    // mismatches are and would make every longshot look like value.
+    const drawP = outcomes.find((o) => o.name === 'Draw')?.fair ?? 0;
     const shareH = sh ** 2 / (sh ** 2 + sa ** 2);
+    const nudged = outcomes.map((o) => {
+      if (o.name === 'Draw') return o.fair;
+      const stat = (o.name === e.home ? shareH : 1 - shareH) * (1 - drawP);
+      const shift = Math.max(-MAX_SHIFT, Math.min(MAX_SHIFT, (1 - MARKET_WEIGHT) * (logit(stat) - logit(o.fair))));
+      return sigmoid(logit(o.fair) + shift);
+    });
+    // Renormalise the two sides so the market still sums to 1 with the draw unchanged.
+    const sides = nudged.reduce((t, p, i) => t + (outcomes[i].name === 'Draw' ? 0 : p), 0);
     m.outcomes.forEach((o, i) => {
-      const fair = outcomes[i].fair;
-      const stat = o.name === 'Draw' ? drawP : (o.name === e.home ? shareH : 1 - shareH) * (1 - drawP);
-      o.model = +(MARKET_WEIGHT * fair + (1 - MARKET_WEIGHT) * stat).toFixed(4);
+      o.model = +(outcomes[i].name === 'Draw' ? drawP : (nudged[i] / sides) * (1 - drawP)).toFixed(4);
     });
   }
   return events;

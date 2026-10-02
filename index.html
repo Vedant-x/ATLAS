@@ -3,30 +3,53 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#040406" />
   <title>ATLAS</title>
+  <meta name="description" content="ATLAS sports intelligence: live fixtures, margin-free probabilities, every market priced, slips and edge board." />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-  <meta name="description" content="Sports analysis dashboard: odds, lineups, form and multiplier slips." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
   <script src="vendor/gsap.min.js"></script>
 </head>
 <body>
   <canvas id="bg" aria-hidden="true"></canvas>
   <div class="grain" aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+
+  <div id="preloader" aria-hidden="true">
+    <div class="pl-word"><span>A</span><span>T</span><span>L</span><span>A</span><span>S</span></div>
+    <div class="pl-meta"><span>SPORTS INTELLIGENCE SYSTEM</span><b data-count>000</b></div>
+    <div class="pl-bar"><i></i></div>
+  </div>
+
   <header class="bar">
-    <a href="#/" class="logo">ATLAS<span>®</span></a>
+    <a href="#/" class="logo" data-cursor="HOME">ATLAS<sup>®</sup></a>
     <nav class="top">
       <a href="#/">Dashboard</a>
+      <a href="#/edge">Edge</a>
       <a href="#/x/2">Multipliers</a>
       <a href="#/mega">Mega</a>
       <a href="#/bankers">Bankers</a>
       <a href="desk.html">Desk</a>
     </nav>
+    <button class="slip-btn" data-slip-toggle data-cursor="SLIP">Slip <b data-slip-count>0</b></button>
   </header>
-  <main id="app"><div class="loader">LOADING</div></main>
+  <div class="ticker" aria-label="Live ticker"><div class="ticker-track"></div></div>
+
+  <main id="app"></main>
+
+  <aside id="slip" aria-label="Bet slip">
+    <header><h2>Bet slip</h2><button data-slip-toggle aria-label="Close slip">×</button></header>
+    <div class="slip-body"></div>
+  </aside>
+
+  <div id="wipe" aria-hidden="true"><b></b></div>
+
   <footer class="foot">
-    Analysis only. Odds are probabilities, not guarantees. Bet only what you can afford to lose.
+    <span>ATLAS · Sports intelligence</span>
+    <span>Probabilities are estimates from prices and records, never guarantees. Bet only what you can afford to lose.</span>
   </footer>
   <script type="module" src="js/main.js"></script>
 </body>
