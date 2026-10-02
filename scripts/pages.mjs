@@ -7,7 +7,7 @@
 // The browser refreshes scores and per-match detail live from ESPN; this file is the catalogue + the
 // Japan/Korea data that only the official league sites carry.
 import { mkdir, copyFile, cp, writeFile, rm } from 'node:fs/promises';
-import { fetchAll, LEAGUES } from '../js/espn.js';
+import { fetchAll, LEAGUES, fetchErrors } from '../js/espn.js';
 import { leagueByPath } from '../js/catalog.js';
 
 const out = 'dist/pages';
@@ -193,5 +193,7 @@ for (const e of events) byLeague[e.leaguePath] = (byLeague[e.leaguePath] || 0) +
 await writeFile(`${out}/data/index.json`, JSON.stringify({ source: 'ATLAS snapshot', fetchedAt: Date.now(), events }));
 // Back-compat file name used by older builds of the front end.
 await writeFile(`${out}/data/odds.json`, JSON.stringify({ source: 'ATLAS snapshot', fetchedAt: Date.now(), events }));
+if (fetchErrors.length) log('ESPN errors (first 20):', fetchErrors.join(' | '));
+log(`ESPN: ${espn.length} events`);
 log(`Pages build: ${events.length} events across ${Object.keys(byLeague).length} leagues`);
 log(Object.entries(byLeague).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}:${v}`).join(' '));

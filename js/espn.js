@@ -95,12 +95,22 @@ export function parseScoreboard(json, league) {
 
 const ymd = (d) => d.toISOString().slice(0, 10).replaceAll('-', '');
 
-// One league's fixtures from yesterday through `days` ahead (live + upcoming).
+// One league's fixtures from yesterday through `days` ahead (live + upcoming). Falls back to the
+// default scoreboard (today) if the date-range form is rejected.
+export const fetchErrors = [];
 export async function fetchLeague(league, { days = 3, signal } = {}) {
   const from = new Date(Date.now() - 864e5), to = new Date(Date.now() + days * 864e5);
-  const res = await fetch(`${BASE}/${league.path}/scoreboard?dates=${ymd(from)}-${ymd(to)}&limit=300`, { signal });
-  if (!res.ok) throw new Error(`${league.name}: ${res.status}`);
-  return parseScoreboard(await res.json(), league);
+  const urls = [`${BASE}/${league.path}/scoreboard?dates=${ymd(from)}-${ymd(to)}`, `${BASE}/${league.path}/scoreboard`];
+  let lastErr;
+  for (const u of urls) {
+    try {
+      const res = await fetch(u, { signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return parseScoreboard(await res.json(), league);
+    } catch (e) { lastErr = e; }
+  }
+  if (fetchErrors.length < 20) fetchErrors.push(`${league.path}: ${lastErr?.message}`);
+  throw lastErr;
 }
 
 // Fetch many leagues with limited parallelism; a failing league is skipped, not fatal.
