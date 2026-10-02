@@ -69,6 +69,8 @@ body.has-cursor, body.has-cursor a, body.has-cursor button { cursor: none; }
 body.scrolled .bar { background: rgba(4,4,6,.72); backdrop-filter: blur(16px); padding-block: 10px; border-bottom: 1px solid var(--line); }
 body.hide-bar .bar { transform: translateY(-100%); }
 body.hide-bar .ticker { transform: translateY(-200%); }
+/* no backdrop-filter while slid off-screen (Chrome GPU paints it as a black block) */
+body.hide-bar .bar, body.hide-bar .ticker { backdrop-filter: none; }
 .logo { font: 26px var(--display); letter-spacing: .04em; }
 .logo sup { font: 10px var(--sans); }
 nav.top { display: flex; gap: clamp(10px, 2.2vw, 30px); margin-left: auto; font: 600 12px var(--sans); text-transform: uppercase; letter-spacing: 1.5px; }
@@ -369,8 +371,10 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .slipc footer .btn-ghost { grid-column: 1 / -1; justify-content: center; padding: 11px; }
 
 /* ---------- slip drawer ---------- */
-#slip { position: fixed; top: 0; right: 0; bottom: 0; z-index: 80; width: min(440px, 100vw); background: rgba(8,8,12,.92); backdrop-filter: blur(24px); border-left: 1px solid var(--line2); transform: translateX(105%); transition: transform .7s var(--ease); display: flex; flex-direction: column; }
-#slip.open { transform: none; box-shadow: -40px 0 120px rgba(0,0,0,.6); }
+/* Closed drawer is fully hidden (visibility) and has no backdrop-filter: Chrome on GPU paints an
+   off-screen blurred panel as a black block at its resting place, which blacked out the right third. */
+#slip { position: fixed; top: 0; right: 0; bottom: 0; z-index: 80; width: min(440px, 100vw); background: rgba(8,8,12,.97); border-left: 1px solid var(--line2); transform: translateX(105%); visibility: hidden; transition: transform .7s var(--ease), visibility 0s linear .7s; display: flex; flex-direction: column; }
+#slip.open { transform: none; visibility: visible; transition: transform .7s var(--ease), visibility 0s; box-shadow: -40px 0 120px rgba(0,0,0,.6); }
 #slip > header { display: flex; justify-content: space-between; align-items: center; padding: 22px 24px; border-bottom: 1px solid var(--line); }
 #slip h2 { font: 34px var(--display); text-transform: uppercase; }
 #slip > header button { font-size: 30px; line-height: 1; }
