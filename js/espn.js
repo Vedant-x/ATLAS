@@ -51,6 +51,12 @@ function marketsFrom(comp, home, away) {
   if (o.overUnder && over && under) {
     markets.push({ name: `Total ${o.overUnder}`, outcomes: [{ name: `Over ${o.overUnder}`, odds: over }, { name: `Under ${o.overUnder}`, odds: under }] });
   }
+  const sp = Number(o.spread ?? o.pointSpread?.home?.close?.line);
+  const sh = toDecimal(o.homeTeamOdds?.spreadOdds ?? o.pointSpread?.home?.close?.odds);
+  const sa = toDecimal(o.awayTeamOdds?.spreadOdds ?? o.pointSpread?.away?.close?.odds);
+  if (Number.isFinite(sp) && sp !== 0 && sh && sa) {
+    markets.push({ name: 'Spread', line: sp, outcomes: [{ name: `${home} ${sp > 0 ? '+' : ''}${sp}`, odds: sh }, { name: `${away} ${-sp > 0 ? '+' : ''}${-sp}`, odds: sa }] });
+  }
   return markets;
 }
 
@@ -87,6 +93,7 @@ export function parseScoreboard(json, league) {
           homeRecord: homeC.records?.[0]?.summary || null, awayRecord: awayC.records?.[0]?.summary || null,
         },
         lineups: null,
+        colors: { home: homeC.team?.color ? `#${homeC.team.color}` : null, away: awayC.team?.color ? `#${awayC.team.color}` : null },
       });
     }
   }
