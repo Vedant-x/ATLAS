@@ -1,8 +1,13 @@
 // Data layer. Order of preference:
-//   1. ESPN live scoreboards, fetched from the browser (js/espn.js)
-//   2. data/odds.json, a snapshot the scheduled GitHub Action writes (same shape as `makeEvent`)
-//   3. Simulated DEMO fixtures, so the UI still works offline. Demo odds are NOT real prices.
+//   1. The ATLAS server (/api/dashboard): official MLB/NHL/NPB/KBO feeds, ESPN, cricket, news,
+//      and Stake prices when an Odds-API.io key is connected (js/feed.js converts it)
+//   2. ESPN live scoreboards fetched straight from the browser, when the page is opened without the server
+//   3. data/odds.json, a static snapshot in the same shape as `makeEvent`
+//   4. Simulated DEMO fixtures, so the UI still works offline. Demo odds are NOT real prices.
 import { fetchAll } from './espn.js';
+import { fromServer } from './feed.js';
+
+const todayIST = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
 export const SPORTS = [
   { id: 'football', name: 'Football', icon: '⚽', color: '#d2ff00' },
@@ -106,6 +111,18 @@ function makeEvent(sport, i, r, now) {
 }
 
 export async function loadEvents() {
+  try {
+    const res = await fetch(`api/dashboard?date=${todayIST()}`, { signal: AbortSignal.timeout(65000) });
+    if (res.ok) {
+      const d = await res.json();
+      const good = d.sources.filter((s) => s.status === 'connected').length;
+      return {
+        events: fromServer(d), demo: false, server: true, fetchedAt: Date.parse(d.generated_at) || Date.now(),
+        source: `${good}/${d.sources.length} sources`, news: d.news || [], odds: d.odds, aura: d.aura,
+      };
+    }
+  } catch { /* no ATLAS server (static hosting): use public feeds directly */ }
+
   try {
     const events = await fetchAll(AbortSignal.timeout(12000));
     if (events.length) return { events, source: 'ESPN live', demo: false, fetchedAt: Date.now() };

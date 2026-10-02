@@ -1,6 +1,6 @@
 // Full-screen WebGL backdrop: a glowing wireframe "helmet" orb, orbiting rings and a particle
 // tunnel. Reacts to mouse, scroll and route changes (setAccent / pulse).
-import * as THREE from 'three';
+import * as THREE from '../vendor/three.module.js';
 
 export function createScene(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });

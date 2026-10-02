@@ -77,6 +77,10 @@ h1.vs small { font-size: .3em; color: var(--accent); }
 .sports { grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); }
 .xs { grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); }
 .two { grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); }
+.news { grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.newsc { padding: 18px; display: flex; flex-direction: column; gap: 6px; }
+.newsc small { color: var(--accent); font-weight: 800; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+.notice a { color: var(--accent); text-decoration: underline; }
 .slips { grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); }
 
 .tilt {

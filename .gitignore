@@ -1,1 +1,11 @@
-data/
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+*.log
+.DS_Store
+news.json
+updates.json
+preview.png
+atlas-preview.png

@@ -3,9 +3,11 @@ import { SPORTS, loadEvents } from './data.js';
 import { buildSlips, devig, pct } from './engine.js';
 import { applyModel, bankers, valueSpots } from './intel.js';
 import { fetchLineups } from './espn.js';
+import { lineupsFromDetail } from './feed.js';
 
-// Live refresh interval. ESPN updates scores every few seconds; faster polling only adds load.
-const REFRESH_MS = 5000;
+// Live refresh interval. The ATLAS server caches feeds for 60 s, so polling it faster gains nothing;
+// direct ESPN mode refreshes every 5 s.
+const refreshMs = () => (state.server ? 30000 : 5000);
 
 const app = document.getElementById('app');
 const scene = createScene(document.getElementById('bg'));
@@ -24,6 +26,7 @@ const slips = (target, opts) => {
 
 const sportOf = (id) => SPORTS.find((s) => s.id === id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+const safeHref = (u) => (/^https?:\/\//i.test(String(u || '')) ? esc(u) : '#');
 const time = (ms) => new Date(ms).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
 const formChips = (f) => (f || []).map((x) => `<i class="f f-${x}">${x}</i>`).join('');
 
@@ -60,7 +63,7 @@ document.addEventListener('pointermove', (e) => {
 const banner = () => `
   <div class="notice reveal">
     <b>${state.demo ? 'DEMO DATA' : `Source: ${esc(state.source)}`}</b>
-    ${state.demo ? '— live sources unreachable, odds are simulated.' : `· updated <span data-ago>${ago()}</span> · odds from US sportsbooks via ESPN, not Stake — check Stake's price before betting.`}
+    ${state.demo ? '— live sources unreachable, odds are simulated.' : `· updated <span data-ago>${ago()}</span> · ${oddsNote()}`}
     Hit-rate shown is the market's own probability with the bookmaker margin removed — no tool can make a 2x+ slip win 90% of the time.
   </div>`;
 
@@ -114,6 +117,8 @@ const views = {
         <a class="xcard mega tilt reveal" href="#/mega"><b>100x+</b><small>Mega bets</small></a>
         <a class="xcard bank tilt reveal" href="#/bankers"><b>70%+</b><small>Bankers · easy-win radar</small></a>
       </section>
+      ${state.news?.length ? `<h2 class="sec reveal">Headlines</h2>
+      <section class="grid news">${state.news.slice(0, 6).map((n) => `<a class="newsc tilt reveal" href="${safeHref(n.url)}" target="_blank" rel="noopener noreferrer"><small>${esc(n.sport)} · ${esc(n.source)}</small><b>${esc(n.title)}</b></a>`).join('')}</section>` : ''}
       <h2 class="sec reveal">Up next</h2>
       <section class="list">${[...state.events].sort((a, b) => a.start - b.start).slice(0, 8).map(row).join('')}</section>`;
   },
@@ -136,7 +141,9 @@ const views = {
     scene.setAccent(sportOf(e.sport).color);
     if (e.lineups === null && !e.lineupsRequested) {
       e.lineupsRequested = true;
-      fetchLineups(e).then((l) => { if (l) { e.lineups = l; rerender(); } }).catch(() => {});
+      (e.apiId
+        ? fetch(`api/event?id=${encodeURIComponent(e.apiId)}`).then((r) => r.json()).then((d) => lineupsFromDetail(d, e))
+        : fetchLineups(e)).then((l) => { if (l) { e.lineups = l; rerender(); } }).catch(() => {});
     }
     const lu = (side) => e.lineups?.[side]
       ? `<ol class="lineup">${e.lineups[side].map((p) => `<li class="${p.status}"><span>${esc(p.pos)}</span>${esc(p.name)}<em>${esc(p.rating)}</em></li>`).join('')}</ol>`
@@ -156,6 +163,8 @@ const views = {
           ${st.h2h ? `<h3>Head to head</h3>
           <p class="h2h"><b>${st.h2h.home}</b> ${esc(e.home)} · <b>${st.h2h.draw}</b> draws · <b>${st.h2h.away}</b> ${esc(e.away)}</p>` : ''}
           ${st.homeRating ? `<h3>Rating</h3><p>${st.homeRating} — ${st.awayRating}</p>` : ''}
+          ${st.starters?.length ? `<h3>Probable starters</h3>${st.starters.map((x) => `<p>${esc(x)}</p>`).join('')}` : ''}
+          ${e.source ? `<h3>Source</h3><p>${e.sourceUrl ? `<a href="${safeHref(e.sourceUrl)}" target="_blank" rel="noopener noreferrer">${esc(e.source)} ↗</a>` : esc(e.source)}${e.official ? ' · official' : ''}${e.stale ? ' · <span class="pulse">stale</span>' : ''}</p>` : ''}
         </div>
         <div class="panel tilt reveal"><h3>Markets</h3>
           ${e.markets.map((m) => {
@@ -251,6 +260,13 @@ function rerender() {
   scrollTo({ top: y });
 }
 
+function oddsNote() {
+  if (state.odds?.status === 'connected' || state.odds?.status === 'partial') {
+    return `<b>Stake prices live</b> (${state.odds.selections.length} selections). Events without a Stake match show the ESPN reference line.`;
+  }
+  return `Stake prices not connected (<a href="desk.html#connections">connect</a>): odds shown are the ESPN reference line, not Stake.`;
+}
+
 function ago() {
   if (!state.fetchedAt) return 'now';
   const s = Math.round((Date.now() - state.fetchedAt) / 1000);
@@ -281,6 +297,6 @@ loadEvents().then((d) => {
   addEventListener('hashchange', route);
   route();
   document.body.classList.add('ready');
-  setInterval(poll, REFRESH_MS);
+  (function tick() { setTimeout(() => poll().finally(tick), refreshMs()); })();
   setInterval(() => document.querySelectorAll('[data-ago]').forEach((el) => { el.textContent = ago(); }), 1000);
 });
