@@ -63,7 +63,50 @@ function notice() {
 }
 
 // ---------- rows & cards ----------
-function eventRow(e) {
+// ---------- tennis: tournament → draw (singles/doubles) → round ----------
+const seedTag = (x) => (x?.seed ? ` <i class="seed">[${esc(x.seed)}]</i>` : '');
+const tennisLine = (t) => [t.tournament, t.location, t.drawName, t.round, t.court].filter(Boolean).join(' · ');
+const slugId = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-');
+const DRAWS = ['Singles', 'Doubles', 'Mixed doubles'];
+const span = (a, b) => { const f = (v) => new Date(v).toLocaleDateString([], { day: 'numeric', month: 'short' }); return a && b ? `${f(a)} – ${f(Date.parse(b) - 1)}` : ''; };
+
+function tournamentsOf(list) {
+  const m = new Map();
+  for (const e of list) {
+    const t = e.tennis;
+    if (!t) continue;
+    const k = t.tournamentId || t.tournament;
+    if (!m.has(k)) m.set(k, { id: slugId(`${e.leaguePath}-${k}`), name: t.tournament, location: t.location, major: t.major, from: t.from, to: t.to, tour: e.league, events: [] });
+    m.get(k).events.push(e);
+  }
+  return [...m.values()].sort((a, b) => b.major - a.major || b.events.filter((e) => e.live).length - a.events.filter((e) => e.live).length || b.events.length - a.events.length);
+}
+
+function tournamentBlock(t) {
+  const draws = DRAWS.map((d) => [d, t.events.filter((e) => e.tennis.draw === d)]).filter(([, evs]) => evs.length);
+  const live = t.events.filter((e) => e.live).length;
+  return `<section class="tourney reveal" id="${esc(t.id)}">
+    <header class="tourney-head"><div><h2>${esc(t.name)}${t.major ? ' <span class="badge-slam">GRAND SLAM</span>' : ''}</h2>
+      <p>📍 ${esc(t.location || 'Venue TBA')}${t.from ? ` · ${esc(span(t.from, t.to))}` : ''} · ${esc(t.tour)}</p></div>
+      <div class="tourney-meta">${draws.map(([d, evs]) => `<span><b>${evs.length}</b>${esc(d)}</span>`).join('')}${live ? `<span class="live"><b>${live}</b>Live</span>` : ''}</div></header>
+    ${draws.map(([d, evs]) => {
+      const rounds = new Map();
+      [...evs].sort((a, b) => (b.live - a.live) || a.tennis.roundId - b.tennis.roundId || a.start - b.start).forEach((e) => { const r = e.tennis.round || 'Matches'; if (!rounds.has(r)) rounds.set(r, []); rounds.get(r).push(e); });
+      return `<div class="tdraw"><h3 class="draw-title"><span>${d === 'Singles' ? '👤' : '👥'}</span>${esc(evs[0].tennis.drawName || d)} <small>${evs.length} match${evs.length > 1 ? 'es' : ''}</small></h3>
+        ${[...rounds.entries()].map(([r, list]) => `<h4 class="round-title">${esc(r)}</h4><section class="list">${list.map((e) => eventRow(e, true)).join('')}</section>`).join('')}</div>`;
+    }).join('')}
+  </section>`;
+}
+
+function tennisBoard(list) {
+  const ts = tournamentsOf(list);
+  if (!ts.length) return '';
+  return `<nav class="subnav reveal" aria-label="Tournaments">${ts.map((t) => `<a href="#${esc(t.id)}" data-jump="${esc(t.id)}">${esc(t.name)} <small>${t.events.length}</small></a>`).join('')}</nav>
+    ${ts.map(tournamentBlock).join('')}`;
+}
+
+// compact: inside a tournament/draw/round section, so the subtitle only needs court and time.
+function eventRow(e, compact = false) {
   const s = sportOf(e.sport), w = winProbs(e);
   const hc = safeColor(e.colors?.home, s.color), ac = safeColor(e.colors?.away, AWAY_COLOR);
   const main = e.markets?.[0];
@@ -71,7 +114,7 @@ function eventRow(e) {
   return `<article class="row tilt reveal" style="--c:${s.color}">
     <a class="row-link" href="#/match/${esc(e.id)}" data-cursor="OPEN" aria-label="${esc(e.home)} vs ${esc(e.away)}"></a>
     <span class="ico">${s.icon}</span>
-    <div class="teams"><b>${esc(e.home)}</b><b>${esc(e.away)}</b><small>${esc(e.league)} · ${when(e)}</small></div>
+    <div class="teams"><b>${esc(e.home)}${seedTag(e.tennis?.home)}</b><b>${esc(e.away)}${seedTag(e.tennis?.away)}</b><small>${e.tennis ? esc(compact === true ? e.tennis.court || e.tennis.round : tennisLine(e.tennis)) : esc(e.league)} · ${when(e)}</small></div>
     <div class="row-prob">${probBar([{ label: e.home, p: w.home, color: hc }, ...(w.draw ? [{ label: 'Draw', p: w.draw, color: DRAW_COLOR }] : []), { label: e.away, p: w.away, color: ac }])}
       <small><span>${pc(w.home, 0)}</span>${w.draw ? `<span>${pc(w.draw, 0)}</span>` : ''}<span>${pc(w.away, 0)}</span></small></div>
     <div class="odds">${main ? main.outcomes.map((o, i) => legButton(bookLeg(e, main, o, o.model ?? d.outcomes[i].fair), `<small>${esc(o.name === 'Draw' ? 'X' : o.name.split(' ').pop().slice(0, 4))}</small>${odd(o.odds)}`)).join('') : `<span class="nobook">model line</span>`}</div>
@@ -178,6 +221,12 @@ export const views = {
               <small>${c.n ? `${c.n} match${c.n > 1 ? 'es' : ''}` : 'No fixtures in the next 4 days'}${c.live ? ` · <span class="live">${c.live} live</span>` : ''}</small>
               ${next ? `<em>Next: ${esc(next.home)} v ${esc(next.away)} · <span data-start="${next.start}">${countdown(next.start)}</span></em>` : ''}</a>`;
           }).join('')}</div></section>`).join('')}
+        ${id === 'tennis' ? `<h2 class="sec reveal"><span>📍</span>Tournaments this week</h2><div class="grid leagues">${tournamentsOf(list).map((t) => {
+          const n = (d) => t.events.filter((e) => e.tennis.draw === d).length;
+          return `<a class="leaguec tilt reveal" href="#/league/${leagueKey(t.events[0].leaguePath)}" style="--c:${sp.color}" data-cursor="OPEN"><b>${esc(t.name)}</b>
+            <small>📍 ${esc(t.location || 'TBA')} · ${esc(t.tour)}${t.major ? ' · Grand Slam' : ''}</small>
+            <em>${n('Singles')} singles · ${n('Doubles') + n('Mixed doubles')} doubles${t.events.some((e) => e.live) ? ` · <span class="live">${t.events.filter((e) => e.live).length} live</span>` : ''}</em></a>`;
+        }).join('') || '<p class="muted">No tournaments in the next 4 days.</p>'}</div>` : ''}
         <h2 class="sec reveal"><span>◆</span>Every ${esc(sp.name)} match</h2>
         <section class="list">${list.slice(0, 60).map(eventRow).join('') || '<p class="muted">Nothing scheduled in the next 4 days.</p>'}</section>`,
     };
@@ -195,7 +244,7 @@ export const views = {
       after: () => { loadStandings(l); liveLoad([l.path]); },
       html: `<section class="hero small"><p class="kicker reveal"><a href="#/sports">ALL SPORTS</a> / <a href="#/sport/${sp.id}">${esc(sp.name)}</a> / ${esc(l.group)}</p><h1>${split(l.name.toUpperCase())}</h1></section>
         ${notice()}
-        ${[...days.entries()].map(([d, evs]) => `<h2 class="sec reveal"><span>${evs.length}</span>${esc(d)}</h2><section class="list">${evs.map(eventRow).join('')}</section>`).join('') || '<p class="muted reveal">No fixtures in the next 4 days.</p>'}
+        ${(l.sport === 'tennis' && tennisBoard(list)) || [...days.entries()].map(([d, evs]) => `<h2 class="sec reveal"><span>${evs.length}</span>${esc(d)}</h2><section class="list">${evs.map(eventRow).join('')}</section>`).join('') || '<p class="muted reveal">No fixtures in the next 4 days.</p>'}
         <section class="sec-block" id="league-standings"></section>`,
     };
   },
@@ -217,7 +266,7 @@ export const views = {
         <dt>Edge</dt><dd class="${ev == null ? '' : ev >= 0 ? 'pos' : 'neg'}">${ev == null ? '—' : `${(ev * 100).toFixed(1)}%`}</dd>
         <dt>Kelly ¼</dt><dd>${ev && ev > 0 ? pc(kelly(p, bookOdds) / 4, 1) : '—'}</dd></dl></div>`;
     };
-    const paramChips = Object.entries(a.params || {}).filter(([, v]) => typeof v === 'number').map(([k, v]) => `<div><small>${esc(paramLabel(k, a.params.unit))}</small><b>${k === 'setWin' ? pc(v) : v.toFixed(2)}</b></div>`).join('');
+    const paramChips = Object.entries(a.params || {}).filter(([, v]) => typeof v === 'number').map(([k, v]) => `<div><small>${esc(paramLabel(k, a.params.unit))}</small><b>${k === 'setWin' ? pc(v) : Number.isInteger(v) ? v : v.toFixed(2)}</b></div>`).join('');
     const d = detailFor(e.id);
     const dos = dossierSections(e, d, hc, ac);
     const sections = [['overview', 'Overview'], ...dos.map((x) => [x.id, x.label]), ['model', a.kind === 'normal' ? 'Margin model' : a.kind === 'tennis' ? 'Set model' : 'Score model'], ['markets', `All markets (${a.marketCount})`], ['book', 'Bookmaker prices'], ['form', 'Records'], ['calc', 'Calculator'], ['notes', 'Model notes']];
@@ -236,8 +285,9 @@ export const views = {
       },
       html: `
       <section class="hero match-hero">
-        <p class="kicker reveal">${s.icon} ${esc(e.league)} · ${when(e)} · ${e.bookmaker ? esc(e.bookmaker) : 'no bookmaker price'} ${confBadge(a.confidence)}</p>
+        <p class="kicker reveal">${s.icon} ${e.tennis ? esc(`${e.tennis.tournament} · ${e.tennis.drawName}`) : esc(e.league)} · ${when(e)} · ${e.bookmaker ? esc(e.bookmaker) : 'no bookmaker price'} ${confBadge(a.confidence)}</p>
         <h1 class="vs"><span style="--tc:${hc}">${split(e.home.toUpperCase())}</span><small>VS</small><span style="--tc:${ac}">${split(e.away.toUpperCase())}</span></h1>
+        ${e.tennis ? `<div class="tennis-facts reveal">${[['Tournament', e.tennis.tournament + (e.tennis.major ? ' (Grand Slam)' : '')], ['Location', e.tennis.location], ['Draw', e.tennis.drawName], ['Round', e.tennis.round], ['Court', e.tennis.court], ['Format', e.tennis.bestOf ? `Best of ${e.tennis.bestOf} sets` : ''], [e.home, [e.tennis.home.seed ? `Seed ${e.tennis.home.seed}` : '', e.tennis.home.country].filter(Boolean).join(' · ')], [e.away, [e.tennis.away.seed ? `Seed ${e.tennis.away.seed}` : '', e.tennis.away.country].filter(Boolean).join(' · ')]].filter(([, v]) => v).map(([k, v]) => `<div><small>${esc(k)}</small><b>${esc(v)}</b></div>`).join('')}</div>` : ''}
         ${e.live ? `<div class="scoreline reveal"><b>${esc(e.score || '')}</b><small>${esc(e.clock || '')}</small></div>` : ''}
       </section>
       <nav class="subnav reveal">${sections.map(([k, l]) => `<a href="#sec-${k}" data-jump="sec-${k}">${l}</a>`).join('')}</nav>

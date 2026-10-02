@@ -261,7 +261,7 @@ function normalModel(e, win, total, spread) {
 // ---------- Tennis ----------
 const SLAMS = /australian open|roland garros|french open|wimbledon|us open/i;
 function tennisModel(e, win) {
-  const bo5 = SLAMS.test(e.league || '') && !/wta|women/i.test(e.league || '');
+  const bo5 = e.tennis?.bestOf ? e.tennis.bestOf === 5 : SLAMS.test(e.league || '') && !/wta|women/i.test(e.league || '');
   const pm = win.home / (win.home + win.away);
   const matchP = bo5 ? (q) => q ** 3 * (1 + 3 * (1 - q) + 6 * (1 - q) ** 2) : (q) => q * q * (3 - 2 * q);
   const q = bisect(matchP, 0.001, 0.999, clamp(pm, 0.001, 0.999));

@@ -135,7 +135,9 @@ function route() {
   const label = { home: 'DASHBOARD', sports: 'ALL SPORTS', sport: 'SPORT', league: 'LEAGUE', match: 'MATCH DOSSIER', edge: 'EDGE BOARD', x: 'MULTIPLIERS', mega: 'MEGA BETS', bankers: 'BANKERS' }[name] || '';
   const h = location.hash || '#/';
   if (replacing) { stack[stack.length - 1] = h; replacing = false; } else if (stack.length > 1 && stack[stack.length - 2] === h) stack.pop(); else stack.push(h);
-  wipe(() => { render(true); scrollTo({ top: 0 }); }, label).then(() => scene.pulse());
+  // instant: html has scroll-behavior:smooth, and a smooth scroll still running when a live refresh
+  // re-renders would be frozen half-way down the new page.
+  wipe(() => { render(true); scrollTo({ top: 0, behavior: 'instant' }); }, label).then(() => scene.pulse());
 }
 
 // Live refresh without the intro animation; skipped while the user is typing.
@@ -151,7 +153,7 @@ function softRender() {
   app.querySelectorAll('[data-count-to]').forEach((el) => { el.textContent = el.dataset.countTo; });
   calc();
   v.after?.();
-  scrollTo({ top: y });
+  scrollTo({ top: y, behavior: 'instant' });
 }
 
 // ---------- slip drawer ----------
