@@ -125,19 +125,19 @@ export async function loadEvents() {
 
   try {
     const events = await fetchAll(AbortSignal.timeout(12000));
-    if (events.length) return { events, source: 'ESPN live', demo: false, fetchedAt: Date.now() };
+    if (events.length) return { events, source: 'ESPN live', demo: false, server: false, fetchedAt: Date.now() };
   } catch { /* blocked or offline: try the snapshot */ }
 
   try {
     const res = await fetch('data/odds.json', { cache: 'no-store' });
     if (res.ok) {
       const json = await res.json();
-      if (Array.isArray(json.events) && json.events.length) return { events: json.events, source: json.source || 'feed', demo: false, fetchedAt: json.fetchedAt };
+      if (Array.isArray(json.events) && json.events.length) return { events: json.events, source: json.source || 'feed', demo: false, server: false, fetchedAt: json.fetchedAt };
     }
   } catch { /* no feed: fall through to demo */ }
 
   const now = Date.now();
   const r = rng(Math.floor(now / 86400000));
   const events = SPORTS.filter((s) => TEAMS[s.id]).flatMap((s) => Array.from({ length: 8 }, (_, i) => makeEvent(s.id, i, r, now)));
-  return { events, source: 'demo', demo: true };
+  return { events, source: 'demo', demo: true, server: false };
 }

@@ -49,5 +49,8 @@ AURA_URL defaults to https://aura-production-0486.up.railway.app. Optional AURA_
 
 Local connection forms save credentials to ignored .env with mode 0600. Never commit keys. Static files are allowlisted. The optional Worker build requires private hosting/access control before deployment; it includes no login by itself and does not support browser credential saving.
 
+## GitHub Pages
+`.github/workflows/pages.yml` publishes the 3D dashboard to GitHub Pages on every push to `main` and every 15 minutes. Repo Settings → Pages → Source must be **GitHub Actions**. The workflow runs the tests, then `scripts/pages.mjs` builds `dist/pages` with an ESPN snapshot (`data/odds.json`) as a fallback for browsers that can't reach ESPN directly. Pages is static, so the research desk, Stake prices and Aura are not available there; they need `npm start`. A Pages site is public even when the repo is private.
+
 ## Verification
 npm test covers price freshness, IST boundaries, tennis grouping, duplicate-leg exclusions and combination arithmetic. npm test also covers the 3D dashboard's feed adapter, ESPN odds conversion, de-vig maths and bankers. npm run build creates dist/client and dist/server for a Worker-compatible host. Tests use synthetic fixtures, never presented as live dashboard data.
