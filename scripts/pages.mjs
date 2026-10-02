@@ -183,7 +183,7 @@ for (const d of ['js', 'css', 'vendor']) await cp(d, `${out}/${d}`, { recursive:
 await writeFile(`${out}/.nojekyll`, '');
 
 const [espn, npbEvents, kboEvents] = await Promise.all([
-  fetchAll(AbortSignal.timeout(120000), LEAGUES, { days: 4, concurrency: 10 }).catch((e) => { log('ESPN failed', e.message); return []; }),
+  fetchAll(AbortSignal.timeout(300000), LEAGUES, { days: 4, concurrency: 3 }).catch((e) => { log('ESPN failed', e.message); return []; }),
   npb().catch((e) => { log('NPB failed', e.message); return []; }),
   kbo().catch((e) => { log('KBO failed', e.message); return []; }),
 ]);
