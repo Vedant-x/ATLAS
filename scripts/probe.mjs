@@ -1,58 +1,52 @@
-// One-off discovery run (GitHub Actions): which leagues and detail fields do the free sources expose?
-const get = async (u, opt) => { try { const r = await fetch(u, { signal: AbortSignal.timeout(20000), ...opt }); const t = await r.text(); return { s: r.status, t }; } catch (e) { return { s: 'ERR ' + e.message, t: '' }; } };
-const j = (t) => { try { return JSON.parse(t); } catch { return null; } };
-const out = (...a) => console.log(...a);
+// Discovery run #2: field shapes + KBO/NPB coverage in MLB statsapi.
+const get = async (u) => { try { const r = await fetch(u, { signal: AbortSignal.timeout(20000) }); return { s: r.status, t: await r.text() }; } catch (e) { return { s: 'ERR ' + e.message, t: '' }; } };
+const j = async (u) => { const r = await get(u); try { return JSON.parse(r.t); } catch { return null; } };
+const show = (label, v, n = 1500) => console.log(`${label}: ${JSON.stringify(v)?.slice(0, n)}`);
+const strip = (o) => JSON.parse(JSON.stringify(o, (k, v) => (['logos', 'links', 'logo', 'headshot', 'flag', 'uid', '$ref', 'guid', 'images'].includes(k) ? undefined : v)));
 
-// 1. ESPN league catalogue per sport
-for (const sport of ['soccer', 'basketball', 'football', 'hockey', 'baseball', 'tennis', 'mma', 'rugby', 'cricket', 'volleyball', 'lacrosse', 'australian-football', 'rugby-league']) {
-  const r = await get(`https://sports.core.api.espn.com/v2/sports/${sport}/leagues?limit=1000`);
-  const d = j(r.t);
-  out(`LEAGUES ${sport} status=${r.s} count=${d?.count ?? '-'}`);
-  if (d?.items) {
-    const refs = d.items.map((x) => x.$ref);
-    const names = [];
-    for (let i = 0; i < refs.length; i += 25) {
-      const batch = await Promise.all(refs.slice(i, i + 25).map((u) => get(u.replace('http:', 'https:')).then((x) => j(x.t))));
-      batch.forEach((l) => l && names.push(`${l.slug}|${l.abbreviation || ''}|${l.name}`));
-    }
-    out(names.join(' ;; '));
+const day = (d) => d.toISOString().slice(0, 10);
+const today = new Date();
+for (const sportId of [31, 32, 1]) {
+  const s = await j(`https://statsapi.mlb.com/api/v1/schedule?sportId=${sportId}&startDate=${day(new Date(+today - 3 * 864e5))}&endDate=${day(new Date(+today + 3 * 864e5))}&hydrate=probablePitcher,team,linescore`);
+  const games = (s?.dates || []).flatMap((d) => d.games);
+  console.log(`STATSAPI sport ${sportId}: games=${games.length}`);
+  const g = games.find((x) => x.teams?.home?.probablePitcher) || games[0];
+  if (g) show(' game', strip({ pk: g.gamePk, date: g.gameDate, status: g.status, home: g.teams.home, away: g.teams.away }), 1200);
+  const pp = g?.teams?.home?.probablePitcher || g?.teams?.away?.probablePitcher;
+  if (pp) {
+    const p = await j(`https://statsapi.mlb.com/api/v1/people/${pp.id}?hydrate=stats(group=[pitching],type=[season,career,lastXGames,gameLog],limit=5,sportId=${sportId})`);
+    show(' pitcher', strip(p?.people?.[0]), 3000);
   }
+  // season standings & injuries/transactions
+  const st = await j(`https://statsapi.mlb.com/api/v1/standings?leagueId=${sportId === 1 ? '103,104' : ''}&sportId=${sportId}`);
+  show(' standings', st?.records?.[0]?.teamRecords?.slice(0, 1).map(strip), 800);
 }
-// 2. Scoreboard + summary shape per sport
-const samples = ['soccer/eng.1', 'basketball/nba', 'football/nfl', 'hockey/nhl', 'baseball/mlb', 'tennis/atp', 'mma/ufc', 'basketball/mens-college-basketball'];
-for (const path of samples) {
-  const sb = j((await get(`https://site.api.espn.com/apis/site/v2/sports/${path}/scoreboard`)).t);
-  const ev = sb?.events?.[0];
-  out(`SCOREBOARD ${path} events=${sb?.events?.length ?? 'x'} compKeys=${Object.keys(ev?.competitions?.[0] || {}).join(',')}`);
-  out(`  competitorKeys=${Object.keys(ev?.competitions?.[0]?.competitors?.[0] || {}).join(',')} oddsKeys=${Object.keys(ev?.competitions?.[0]?.odds?.[0] || {}).join(',')}`);
-  if (ev) {
-    const sm = j((await get(`https://site.api.espn.com/apis/site/v2/sports/${path}/summary?event=${ev.id}`)).t);
-    out(`  SUMMARY keys=${Object.keys(sm || {}).join(',')}`);
-    for (const k of ['boxscore', 'predictor', 'injuries', 'leaders', 'standings', 'seasonseries', 'headToHeadGames', 'lastFiveGames', 'pickcenter', 'rosters', 'gameInfo', 'winprobability', 'odds', 'againstTheSpread']) {
-      if (sm?.[k] != null) out(`   ${k}: ${JSON.stringify(sm[k]).slice(0, 700)}`);
-    }
-  }
+// Season-wide: 2025 KBO/NPB (offseason fallback check)
+for (const sportId of [31, 32]) {
+  const s = await j(`https://statsapi.mlb.com/api/v1/schedule?sportId=${sportId}&season=2026&gameType=R`);
+  console.log(`STATSAPI season2026 sport ${sportId}: dates=${s?.dates?.length} games=${s?.totalGames}`);
 }
-// CORS check for browser use
-const c = await get('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard', { headers: { Origin: 'https://vedant-x.github.io' } });
-out('CORS espn status', c.s);
-// 3. MLB statsapi pitcher depth
-const mlb = j((await get('https://statsapi.mlb.com/api/v1/schedule?sportId=1&hydrate=probablePitcher&date=' + new Date().toISOString().slice(0, 10))).t);
-const pp = mlb?.dates?.[0]?.games?.[0]?.teams?.home?.probablePitcher;
-out('MLB games', mlb?.totalGames, 'probable', JSON.stringify(pp));
-if (pp) {
-  const st = (await get(`https://statsapi.mlb.com/api/v1/people/${pp.id}?hydrate=stats(group=[pitching],type=[season,career,gameLog,lastXGames],limit=5)`)).t;
-  out('MLB pitcher', st.slice(0, 2500));
+// ESPN shapes
+for (const path of ['baseball/mlb', 'hockey/nhl', 'basketball/nba', 'soccer/eng.1', 'football/nfl', 'tennis/atp', 'mma/ufc']) {
+  const sb = await j(`https://site.api.espn.com/apis/site/v2/sports/${path}/scoreboard`);
+  const ev = sb?.events?.find((e) => e.status?.type?.state === 'pre') || sb?.events?.[0];
+  const comp = ev?.competitions?.[0] || ev?.groupings?.[0]?.competitions?.[0];
+  console.log(`=== ${path} event=${ev?.id} state=${ev?.status?.type?.state}`);
+  if (comp?.competitors?.[0]) show(' competitor', strip(comp.competitors[0]), 1800);
+  if (!ev) continue;
+  const sm = await j(`https://site.api.espn.com/apis/site/v2/sports/${path}/summary?event=${comp?.id || ev.id}`);
+  if (sm?.code) { console.log(' summary error', sm.code, sm.message); continue; }
+  if (sm?.injuries?.[0]) show(' injury', strip(sm.injuries.find((t) => t.injuries?.length)?.injuries?.slice(0, 2)), 1200);
+  if (sm?.leaders?.[0]) show(' leaders', strip(sm.leaders[0].leaders?.slice(0, 2)), 1200);
+  if (sm?.lastFiveGames?.[0]) show(' last5', strip(sm.lastFiveGames[0].events?.slice(0, 1)), 800);
+  if (sm?.predictor) show(' predictor', sm.predictor, 300);
+  if (sm?.goalies) show(' goalies', strip(sm.goalies), 1200);
+  if (sm?.rosters?.[0]) show(' roster', strip({ formation: sm.rosters[0].formation, first: sm.rosters[0].roster?.slice(0, 2) }), 900);
+  if (sm?.boxscore?.teams?.[0]?.statistics) show(' teamstats', strip(sm.boxscore.teams[0].statistics).slice(0, 3), 1200);
+  if (sm?.standings?.groups?.[0]) show(' standingsEntry', strip(sm.standings.groups[0].standings.entries[0]), 900);
 }
-const r1 = await fetch('https://statsapi.mlb.com/api/v1/teams?sportId=1', { headers: { Origin: 'https://vedant-x.github.io' } }).catch(() => null);
-out('CORS mlb', r1?.headers.get('access-control-allow-origin'));
-// 4. NPB / KBO sources
-for (const u of ['https://npb.jp/announcement/starter/', 'https://npb.jp/bis/eng/2026/games/', 'https://eng.koreabaseball.com/Schedule/DailySchedule.aspx', 'https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx', 'https://statsapi.mlb.com/api/v1/sports']) {
-  const r = await get(u, { headers: { 'User-Agent': 'Mozilla/5.0 ATLAS research' } });
-  out(`SRC ${u} status=${r.s} len=${r.t.length} sample=${r.t.replace(/\s+/g, ' ').slice(0, 600)}`);
-}
-const sports = j((await get('https://statsapi.mlb.com/api/v1/sports')).t);
-out('MLB statsapi sports:', sports?.sports?.map((s) => `${s.id}:${s.name}`).join(', '));
-// 5. NHL official
-const nhl = (await get('https://api-web.nhle.com/v1/schedule/now', { headers: { Origin: 'https://vedant-x.github.io' } }));
-out('NHL', nhl.s, nhl.t.slice(0, 300));
+// ESPN athlete stats endpoint (for pitcher/goalie/player depth)
+const ath = await j('https://site.web.api.espn.com/apis/common/v3/sports/baseball/mlb/athletes/33039/overview');
+show('ATHLETE overview keys', Object.keys(ath || {}));
+show('ATHLETE overview stats', strip(ath?.statistics), 1500);
+show('ATHLETE gamelog', strip(ath?.gameLog), 800);
