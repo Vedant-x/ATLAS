@@ -57,6 +57,25 @@ const per9 = (x, ip) => { const o = ipToOuts(ip); return o ? ((Number(x) * 27) /
 const derived = (v) => ({ ...v, whip: v.whip ?? whip(v.h, v.bb, v.ip), k9: per9(v.so, v.ip), bb9: per9(v.bb, v.ip), hr9: per9(v.hr, v.ip), kbb: Number(v.bb) ? (Number(v.so) / Number(v.bb)).toFixed(2) : null });
 const ageFrom = (born) => { const t = Date.parse(born); return Number.isFinite(t) ? Math.floor((Date.now() - t) / 31557600000) : null; };
 
+// The player page's year table closes rows early (stray tags after the innings cell), so it is read as
+// one token stream: header up to "ERA", then a row per 4-digit year (full width) or "Totals" (no team).
+// Innings print as "385 .1" and are merged back into "385.1".
+function npbYearTable(html) {
+  for (const m of html.matchAll(/<table[\s\S]*?<\/table>/g)) {
+    const toks = clean(m[0]).split(' ').filter(Boolean).reduce((a, c) => { if (/^\.\d$/.test(c) && a.length && /^\d+$/.test(a[a.length - 1])) a[a.length - 1] += c; else a.push(c); return a; }, []);
+    const end = toks.indexOf('ERA');
+    if (toks[0] !== 'Year' || end < 0 || !toks.includes('IP')) continue;
+    const H = toks.slice(0, end + 1), rows = [H];
+    for (let i = end + 1; i < toks.length;) {
+      if (/^\d{4}$/.test(toks[i])) { rows.push(toks.slice(i, i + H.length)); i += H.length; }
+      else if (/^Totals?$/i.test(toks[i])) { rows.push(toks.slice(i, i + H.length - 1)); i += H.length - 1; }
+      else i++;
+    }
+    return rows;
+  }
+  return null;
+}
+
 async function npbPitcher(id) {
   const url = `https://npb.jp/bis/eng/players/${id}.html`;
   try {
@@ -67,11 +86,7 @@ async function npbPitcher(id) {
     const throws = text.match(/Bats \/ Throws\s+(Left|Right|Switch)\s*\/\s*(Left|Right)/)?.[2] || null;
     const hw = text.match(/Height \/ Weight\s+(\d+cm)\s*\/\s*(\d+kg)/);
     const bornTxt = text.match(/Born\s+([A-Z][a-z]+ \d{1,2}, \d{4})/)?.[1] || null;
-    // Read rows as text tokens: cell markup on this page is irregular, but team names are single words
-    // and innings print as "385 .1", which is merged back into "385.1".
-    const tokRows = (t) => [...t.matchAll(/<tr[\s\S]*?<\/tr>/g)].map((r) => clean(r[0]).split(' ').filter(Boolean)
-      .reduce((a, c) => { if (/^\.\d$/.test(c) && a.length && /^\d+$/.test(a[a.length - 1])) a[a.length - 1] += c; else a.push(c); return a; }, []));
-    const tbl = [...html.matchAll(/<table[\s\S]*?<\/table>/g)].map((m) => tokRows(m[0])).find((rows) => rows[0]?.includes('ERA') && rows[0]?.includes('IP'));
+    const tbl = npbYearTable(html);
     if (!tbl) throw new Error('no pitching table');
     const H = tbl[0];
     const at = (row, k) => { const i = H.indexOf(k); return i < 0 ? null : row[i] ?? null; };
