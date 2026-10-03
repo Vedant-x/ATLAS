@@ -469,6 +469,7 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .form-chip i { font: normal 700 11px var(--mono); color: var(--muted); }
 .form-chip i.up { color: var(--pos); } .form-chip i.down { color: var(--neg); }
 .tbl tr.relief td { opacity: .6; }
+.starter .tbl td, .starter .tbl th { white-space: nowrap; }
 .inj-list { list-style: none; display: grid; gap: 6px; font-size: 13px; }
 .inj-list b { font: 700 12px var(--mono); color: var(--draw); margin-right: 8px; }
 .matchup { margin-bottom: 16px; }

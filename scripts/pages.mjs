@@ -74,6 +74,7 @@ async function npbPitcher(id) {
     const lineOf = (row, label) => derived({ label, year: at(row, 'Year'), team: at(row, 'Team'), g: at(row, 'G'), w: at(row, 'W'), l: at(row, 'L'), sv: at(row, 'SV'), cg: at(row, 'CG'), bf: at(row, 'BF'), ip: at(row, 'IP'), h: at(row, 'H'), hr: at(row, 'HR'), bb: at(row, 'BB'), so: at(row, 'SO'), r: at(row, 'R'), er: at(row, 'ER'), era: at(row, 'ERA') });
     // Year rows have one cell fewer than the header when 'Team' is absent on the Totals row.
     const yearRows = tbl.slice(1).filter((r) => /^\d{4}$/.test(r[0]) && r.length === H.length);
+    if (!yearRows.length && process.env.ATLAS_DEBUG !== '0') log('  NPB table debug', id, JSON.stringify(H), JSON.stringify(tbl.slice(1, 3)));
     const yr = String(new Date().getFullYear());
     const cur = yearRows.filter((r) => r[0] === yr);
     const totals = tbl.slice(1).find((r) => /^Totals?$/i.test(r[0]));
@@ -210,7 +211,9 @@ const kboIp = (s) => { const m = String(s || '').match(/^(\d+)?\s*(?:(\d)\/3)?$/
 async function kboPitcher(id, oppName) {
   const base = 'https://www.koreabaseball.com/Record/Player/PitcherDetail';
   const page = async (p) => { try { return await get(`${base}/${p}.aspx?playerId=${id}`); } catch { return ''; } };
-  const [basic, total, game, situ] = await Promise.all(['Basic', 'Total', 'Game', 'Situation'].map(page));
+  const [basic, total, game, situ, eng] = await Promise.all([...['Basic', 'Total', 'Game', 'Situation'].map(page),
+    get(`https://eng.koreabaseball.com/Teams/PlayerInfoPitcher/Summary.aspx?pcode=${id}`).catch(() => '')]);
+  if (eng && !globalThis.__kboEngLogged) { globalThis.__kboEngLogged = 1; log('  KBO eng sample', clean(eng.replace(/<script[\s\S]*?<\/script>/g, '')).slice(0, 700)); }
   if (!basic) return { league: 'KBO', id, name: null, season: null, years: [], recent: [], splits: [], injuries: [], error: 'profile unavailable' };
   const T = (html) => [...html.matchAll(/<table[\s\S]*?<\/table>/g)].map((m) => { const rows = rowsOf(m[0]); return { h: rows[0] || [], rows: rows.slice(1) }; });
   const at = (t, r, k) => { const i = t.h.indexOf(k); return i < 0 ? null : r[i] ?? null; };
@@ -218,7 +221,7 @@ async function kboPitcher(id, oppName) {
   const name = clean(basic.match(/playerProfile_lblName">([^<]*)</)?.[1]);
   const bm = prof.match(/생년월일:\s*(\d{4})년\s*(\d{2})월\s*(\d{2})일/);
   const born = bm ? `${bm[1]}-${bm[2]}-${bm[3]}` : null;
-  const hand = prof.match(/\((좌|우)투/)?.[1];
+  const hand = prof.match(/\((좌|우)(?:투|언)/)?.[1]; // 언 = sidearm/submarine
   const hw = prof.match(/(\d+cm)\s*\/\s*(\d+kg)/);
   const bt = T(basic);
   const t1 = bt.find((t) => t.h.includes('ERA') && t.h.includes('IP') && t.h.includes('W'));
@@ -335,7 +338,7 @@ await Promise.all(Array.from({ length: 4 }, async () => {
 log(`FotMob: ${absMatched}/${soccer.length} soccer matches linked, ${absFound} absences`);
 
 // MLB starters: full reports from the official MLB Stats API.
-const mlbN = await enrichMlb(events, { signal: AbortSignal.timeout(90000) }).catch((e) => { log('MLB Stats API failed', e.message); return 0; });
+const mlbN = await enrichMlb(events, { signal: AbortSignal.timeout(90000), addMissing: true }).catch((e) => { log('MLB Stats API failed', e.message); return 0; });
 log(`MLB Stats API: ${mlbN} starter reports`);
 // One line per starter so a broken parser shows up in the build log.
 for (const e of events) for (const p of (e.probables || []).filter((x) => x.report).slice(0, 2)) {

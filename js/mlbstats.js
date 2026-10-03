@@ -36,9 +36,10 @@ const daysSince = (date, now = Date.now()) => (date ? Math.floor((now - Date.par
 
 // Schedule with probable pitchers for a date range (YYYY-MM-DD).
 export async function mlbSchedule(from, to, signal) {
-  const j = await json(`/schedule?sportId=1&startDate=${from}&endDate=${to}&hydrate=probablePitcher`, signal);
+  const j = await json(`/schedule?sportId=1&startDate=${from}&endDate=${to}&hydrate=probablePitcher,venue`, signal);
   return (j.dates || []).flatMap((d) => d.games).map((g) => ({
-    pk: g.gamePk, start: Date.parse(g.gameDate), type: g.gameType, desc: g.seriesDescription || '',
+    pk: g.gamePk, start: Date.parse(g.gameDate), type: g.gameType, desc: g.seriesDescription || '', venue: g.venue?.name || null,
+    state: g.status?.abstractGameState || '',
     home: { id: g.teams.home.team.id, name: g.teams.home.team.name, pitcher: g.teams.home.probablePitcher || null },
     away: { id: g.teams.away.team.id, name: g.teams.away.team.name, pitcher: g.teams.away.probablePitcher || null },
   }));
@@ -87,12 +88,25 @@ export async function pitcherReport(id, { oppId, oppName, season = new Date().ge
 }
 
 // Attach MLB Stats API starter reports to ESPN MLB events (matched by kickoff ±12h and team names).
-export async function enrichMlb(events, { signal, schedule } = {}) {
-  const mlb = events.filter((e) => e.leaguePath === 'baseball/mlb' && !e.live);
-  if (!mlb.length) return 0;
+// With addMissing, MLB games the ESPN feed lacks (it can drop postseason games) are added from the
+// official schedule so their starters still get a page.
+export async function enrichMlb(events, { signal, schedule, addMissing = false, days = 4 } = {}) {
   const day = (t) => new Date(t).toISOString().slice(0, 10);
-  const from = day(Math.min(...mlb.map((e) => e.start)) - 864e5), to = day(Math.max(...mlb.map((e) => e.start)) + 864e5);
+  let mlb = events.filter((e) => e.leaguePath === 'baseball/mlb' && !e.live);
+  if (!mlb.length && !addMissing) return 0;
+  const from = day((mlb.length ? Math.min(...mlb.map((e) => e.start)) : Date.now()) - 864e5);
+  const to = day((mlb.length ? Math.max(...mlb.map((e) => e.start)) : Date.now()) + days * 864e5);
   const games = schedule || await mlbSchedule(from, to, signal);
+  if (addMissing) {
+    for (const g of games) {
+      if (g.state !== 'Preview' || g.start < Date.now() - 36e5) continue;
+      if (events.some((e) => e.leaguePath === 'baseball/mlb' && Math.abs(e.start - g.start) < 12 * 36e5 && e.home === g.home.name && e.away === g.away.name)) continue;
+      events.push({ id: `baseball_mlb-${g.pk}`, sport: 'baseball', league: 'MLB', leaguePath: 'baseball/mlb', group: 'Pro', compId: String(g.pk),
+        home: g.home.name, away: g.away.name, start: g.start, live: false, score: null, clock: '', bookmaker: null, markets: [], stats: {}, lineups: null,
+        colors: {}, venue: g.venue, note: g.desc || null, probables: [], records: {}, logos: {}, source: 'MLB Stats API' });
+    }
+    mlb = events.filter((e) => e.leaguePath === 'baseball/mlb' && !e.live);
+  }
   let n = 0;
   for (const e of mlb) {
     const g = games.find((x) => Math.abs(x.start - e.start) < 12 * 36e5 && x.home.name === e.home && x.away.name === e.away);
