@@ -12,6 +12,7 @@ import { dossierSections } from './dossier.js';
 import { fetchAll, LEAGUES } from './espn.js';
 import { prefs, prefEvents } from './prefs.js';
 import { liveWin } from './live.js';
+import { watch } from './alerts.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const safeHref = (u) => (/^https?:\/\//i.test(String(u || '')) ? esc(u) : '#');
@@ -221,14 +222,21 @@ export const views = {
       mode: 'sport', accent: sp.color, title: sp.name, after,
       html: `<section class="hero small"><p class="kicker reveal"><a href="#/sports">ALL SPORTS</a> / ${list.length} MATCHES · ${list.filter((e) => e.live).length} LIVE</p><h1>${split(sp.name.toUpperCase())}</h1></section>
         ${notice()}
-        ${sp.groups.map((g) => `<section class="sec-block"><h2 class="sec reveal"><span>${esc(sp.icon)}</span>${esc(g.name)}</h2>
-          <div class="grid leagues">${[...g.leagues].sort((x, y) => (by[y.path]?.n || 0) - (by[x.path]?.n || 0)).map((l) => {
+        ${sp.groups.map((g) => {
+          const card = (l) => {
             const c = by[l.path] || { n: 0, live: 0 };
             const next = S.events.filter((e) => e.leaguePath === l.path && !e.live).sort((a, b) => a.start - b.start)[0];
             return `<a class="leaguec tilt reveal ${c.n ? '' : 'empty'}" href="#/league/${leagueKey(l.path)}" style="--c:${sp.color}" data-cursor="OPEN"><b>${esc(l.name)}</b>
               <small>${c.n ? `${c.n} match${c.n > 1 ? 'es' : ''}` : 'No fixtures in the next 4 days'}${c.live ? ` · <span class="live">${c.live} live</span>` : ''}</small>
               ${next ? `<em>Next: ${esc(next.home)} v ${esc(next.away)} · <span data-start="${next.start}">${countdown(next.start)}</span></em>` : ''}</a>`;
-          }).join('')}</div></section>`).join('')}
+          };
+          const sorted = [...g.leagues].sort((x, y) => (by[y.path]?.n || 0) - (by[x.path]?.n || 0));
+          const active = sorted.filter((l) => by[l.path]?.n), quiet = sorted.filter((l) => !by[l.path]?.n);
+          // Leagues with no fixtures fold away so long sports stay quick to scroll.
+          return `<section class="sec-block cv"><h2 class="sec reveal"><span>${esc(sp.icon)}</span>${esc(g.name)}${active.length ? '' : ' <small>no fixtures this week</small>'}</h2>
+            ${active.length ? `<div class="grid leagues">${active.map(card).join('')}</div>` : ''}
+            ${quiet.length ? `<details class="more-leagues"><summary>${active.length ? `${quiet.length} more league${quiet.length > 1 ? 's' : ''} with no fixtures` : `Show ${quiet.length} league${quiet.length > 1 ? 's' : ''}`}</summary><div class="grid leagues">${quiet.map(card).join('')}</div></details>` : ''}</section>`;
+        }).join('')}
         ${id === 'tennis' ? `<h2 class="sec reveal"><span>📍</span>Tournaments this week</h2><div class="grid leagues">${tournamentsOf(list).map((t) => {
           const n = (d) => t.events.filter((e) => e.tennis.draw === d).length;
           return `<a class="leaguec tilt reveal" href="#/league/${leagueKey(t.events[0].leaguePath)}" style="--c:${sp.color}" data-cursor="OPEN"><b>${esc(t.name)}</b>
@@ -236,7 +244,8 @@ export const views = {
             <em>${n('Singles')} singles · ${n('Doubles') + n('Mixed doubles')} doubles${t.events.some((e) => e.live) ? ` · <span class="live">${t.events.filter((e) => e.live).length} live</span>` : ''}</em></a>`;
         }).join('') || '<p class="muted">No tournaments in the next 4 days.</p>'}</div>` : ''}
         <h2 class="sec reveal"><span>◆</span>Every ${esc(sp.name)} match</h2>
-        <section class="list">${list.slice(0, 60).map(eventRow).join('') || '<p class="muted">Nothing scheduled in the next 4 days.</p>'}</section>`,
+        <section class="list cv">${list.slice(0, 20).map(eventRow).join('') || '<p class="muted">Nothing scheduled in the next 4 days.</p>'}</section>
+        ${list.length > 20 ? `<details class="more-leagues"><summary>Show ${Math.min(list.length, 80) - 20} more matches</summary><section class="list">${list.slice(20, 80).map(eventRow).join('')}</section></details>` : ''}`,
     };
   },
 
@@ -296,7 +305,8 @@ export const views = {
         <p class="kicker reveal">${s.icon} ${e.tennis ? esc(`${e.tennis.tournament} · ${e.tennis.drawName}`) : esc(e.league)} · ${when(e)} · ${e.bookmaker ? esc(e.bookmaker) : e.markets?.length ? 'bookmaker price' : 'no bookmaker price'} ${confBadge(a.confidence)}</p>
         <h1 class="vs"><span style="--tc:${hc}">${split(e.home.toUpperCase())}</span><small>VS</small><span style="--tc:${ac}">${split(e.away.toUpperCase())}</span></h1>
         ${e.tennis ? `<div class="tennis-facts reveal">${[['Tournament', e.tennis.tournament + (e.tennis.major ? ' (Grand Slam)' : '')], ['Location', e.tennis.location], ['Draw', e.tennis.drawName], ['Round', e.tennis.round], ['Court', e.tennis.court], ['Format', e.tennis.bestOf ? `Best of ${e.tennis.bestOf} sets` : ''], [e.home, [e.tennis.home.seed ? `Seed ${e.tennis.home.seed}` : '', e.tennis.home.country].filter(Boolean).join(' · ')], [e.away, [e.tennis.away.seed ? `Seed ${e.tennis.away.seed}` : '', e.tennis.away.country].filter(Boolean).join(' · ')]].filter(([, v]) => v).map(([k, v]) => `<div><small>${esc(k)}</small><b>${esc(v)}</b></div>`).join('')}</div>` : ''}
-        ${e.live ? `<div class="scoreline reveal"><b>${esc(e.score || '')}</b><small>${esc(e.clock || '')}</small></div>${liveBlock(e)}` : ''}
+        ${e.live ? `<div class="scoreline reveal ${String(e.score || '').length > 12 ? 'long' : ''}"><b>${esc(e.score || '')}</b><small>${esc(e.clock || '')}</small></div>${liveBlock(e)}` : ''}
+        <button class="watch-btn reveal ${watch.has(e.id) ? 'on' : ''}" data-watch="${esc(e.id)}" aria-pressed="${watch.has(e.id)}">${watch.has(e.id) ? '★ Watching' : '☆ Watch match'}</button>
         ${sourcesLine(e)}
       </section>
       <nav class="subnav reveal">${sections.map(([k, l]) => `<a href="#sec-${k}" data-jump="sec-${k}">${l}</a>`).join('')}</nav>

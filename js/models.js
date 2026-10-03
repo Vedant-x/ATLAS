@@ -82,7 +82,7 @@ function baselineWin(event) {
   const st = event.stats || {};
   const sh = [rate(st.homeRecord, soccer), formRate(st.homeForm)].filter((x) => x != null);
   const sa = [rate(st.awayRecord, soccer), formRate(st.awayForm)].filter((x) => x != null);
-  const homeAdv = { football: 1.12, basketball: 1.08, americanfootball: 1.06, hockey: 1.05, baseball: 1.04, cricket: 1.08 }[event.sport] ?? 1;
+  const homeAdv = event.neutral ? 1 : ({ football: 1.12, basketball: 1.08, americanfootball: 1.06, hockey: 1.05, baseball: 1.04, cricket: 1.2 }[event.sport] ?? 1);
   let pHome = 0.5 * homeAdv / (0.5 * homeAdv + 0.5);
   let confidence = 'low';
   if (sh.length && sa.length) {
@@ -109,7 +109,9 @@ function baselineWin(event) {
     const t = tennisRankWin(event.tennis);
     if (t) return { win: { home: t.p, draw: 0, away: 1 - t.p }, confidence: 'medium', starterNote: t.note };
   }
-  const draw = soccer ? 0.26 * (1 - Math.abs(pHome - 0.5)) : 0;
+  // Multi-day cricket (Tests, first-class) is often drawn.
+  const multiDay = event.sport === 'cricket' && /test|first-class/i.test(`${event.format || ''} ${event.note || ''}`);
+  const draw = soccer ? 0.26 * (1 - Math.abs(pHome - 0.5)) : multiDay ? 0.3 : 0;
   return { win: { home: pHome * (1 - draw), draw, away: (1 - pHome) * (1 - draw) }, confidence, starterNote };
 }
 
@@ -327,7 +329,7 @@ export function analyse(event) {
   if (!win) {
     const b = baselineWin(event);
     win = b.win; confidence = b.confidence;
-    basis = b.starterNote ? `ATLAS model: ${event.sport === 'tennis' ? '' : 'home advantage + '}${b.starterNote}${event.stats?.homeRecord ? ' + records' : ''} (no bookmaker price)` : b.confidence === 'medium' ? 'ATLAS model from season record and form (no bookmaker price)' : 'ATLAS baseline: home advantage only, too little data';
+    basis = b.starterNote ? `ATLAS model: ${event.sport === 'tennis' ? '' : 'home advantage + '}${b.starterNote}${event.stats?.homeRecord ? ' + records' : ''} (no bookmaker price)` : b.confidence === 'medium' ? 'ATLAS model from season record and form (no bookmaker price)' : event.neutral ? 'ATLAS baseline: neutral ground and no form data, so close to even' : 'ATLAS baseline: home advantage only, too little data';
   }
   const out = { win, confidence, basis, groups: [], grid: null, dist: null, params: {} };
   if (['football', 'hockey', 'baseball'].includes(event.sport)) {

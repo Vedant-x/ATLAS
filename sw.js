@@ -25,3 +25,9 @@ self.addEventListener('fetch', (e) => {
   // App shell: cache first for this build, filled as files are used.
   e.respondWith(caches.open(SHELL).then((c) => c.match(req, { ignoreSearch: url.pathname.endsWith('/') || url.pathname.endsWith('index.html') }).then((hit) => hit || fetch(req).then((res) => { if (res.ok) c.put(req, res.clone()); return res; }))));
 });
+// Tapping an alert opens (or focuses) ATLAS on that match.
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = new URL(`./${e.notification.data?.url || ''}`, self.registration.scope).href;
+  e.waitUntil(self.clients.matchAll({ type: 'window' }).then((cs) => { const c = cs[0]; return c ? c.navigate(url).then((w) => w?.focus()) : self.clients.openWindow(url); }));
+});

@@ -80,6 +80,10 @@ export const CATALOG = [
     groups: [{ name: 'Leagues', leagues: [L('lacrosse/pll', 'Premier Lacrosse League', 'PLL'), L('lacrosse/nll', 'National Lacrosse League', 'NLL'), L('lacrosse/mens-college-lacrosse', "NCAA Men's"), L('lacrosse/womens-college-lacrosse', "NCAA Women's")] }],
   },
   {
+    id: 'cricket', name: 'Cricket', icon: '🏏', color: '#4dd2ff', model: 'binary',
+    groups: [{ name: 'Cricket', leagues: [L('atlas/cricket-intl', 'International (Tests, ODIs, T20Is)', 'International'), L('atlas/cricket-t20', 'T20 & franchise leagues', 'T20 leagues'), L('atlas/cricket-dom', 'Domestic & other', 'Domestic')] }],
+  },
+  {
     id: 'volleyball', name: 'Volleyball', icon: '🏐', color: '#ffe36e', model: 'binary',
     groups: [{ name: 'College', leagues: [L('volleyball/mens-college-volleyball', "NCAA Men's"), L('volleyball/womens-college-volleyball', "NCAA Women's")] }],
   },

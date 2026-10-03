@@ -2,6 +2,7 @@ import { createScene } from './scene.js';
 import { mountAssistant } from './assistant/ui.js';
 import { legalViews, ageGate } from './legal.js';
 import { trackViews } from './trackview.js';
+import { watch, checkAlerts } from './alerts.js';
 import { loadEvents, refreshLive } from './data.js';
 import { buildSlips, todayEvents, localDay } from './engine.js';
 import { prefs, prefEvents } from './prefs.js';
@@ -41,6 +42,7 @@ state.refresh = () => softRender();
 // ---------- data ----------
 function setData(d) {
   Object.assign(state, d, { events: applyModel(d.events) });
+  checkAlerts(state.events);
   if (Date.now() - state.slipsAt > 60000) { state.slipCache.clear(); state.slipsAt = Date.now(); }
   ticker();
 }
@@ -247,6 +249,7 @@ document.addEventListener('click', (e) => {
   else if ('slipClear' in d) slip.clear();
   else if ('slipCopy' in d) navigator.clipboard?.writeText(slip.text()).then(() => { t.textContent = 'Copied'; setTimeout(() => { t.textContent = 'Copy slip'; }, 1400); }).catch(() => {});
   else if ('slipToggle' in d) openSlip(!drawer.classList.contains('open'));
+  else if (d.watch) { const on = watch.toggle(d.watch); t.classList.toggle('on', on); t.setAttribute('aria-pressed', on); t.textContent = on ? '★ Watching' : '☆ Watch match'; }
   else if (d.pref) { e.preventDefault(); const p = prefs.get(); const v = d.value;
     if (d.pref === 'minOdds') prefs.set({ minOdds: Number(v) });
     else if (d.pref === 'sport') prefs.set({ sports: v === 'all' ? [] : p.sports.includes(v) ? p.sports.filter((x) => x !== v) : [...p.sports, v] });
