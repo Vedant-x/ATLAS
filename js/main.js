@@ -52,11 +52,11 @@ async function poll() {
   try {
     if (state.snapshot && Date.now() - lastIndex < 600000) {
       const merged = await refreshLive(state.events).catch(() => null);
-      if (merged) { setData({ ...state, events: merged, fetchedAt: Date.now() }); softRender(); }
+      if (merged) { setData({ ...state, events: merged, fetchedAt: Date.now() }); softRender(); refreshSlip(); }
     } else {
       const d = await loadEvents();
       lastIndex = Date.now();
-      if (!d.demo) { setData(d); softRender(); }
+      if (!d.demo) { setData(d); softRender(); refreshSlip(); }
     }
   } finally { polling = false; }
 }
@@ -166,6 +166,8 @@ function staleNote(l) {
   return age != null && age > 3 ? `<small class="warn">Price saved ${Math.round(age)}h ago: check it before betting</small>` : '';
 }
 const drawer = document.getElementById('slip');
+// Re-check the slip's warnings after live data changes, unless the stake box is being edited.
+function refreshSlip() { if (slip.legs.length && document.activeElement?.dataset?.slipStake === undefined) renderSlip(); }
 function renderSlip() {
   const s = slip.summary();
   document.querySelectorAll('[data-slip-count]').forEach((el) => { el.textContent = s.n; el.classList.toggle('has', s.n > 0); });
@@ -251,10 +253,6 @@ document.addEventListener('click', (e) => {
   else if ('fxToggle' in d) { try { localStorage.setItem('atlas-fx', fxOff ? 'on' : 'off'); } catch { /* storage blocked */ } if (/[?&]lite\b/.test(location.search)) location.search = ''; else location.reload(); }
   else if ('navBack' in d) { if (stack.length > 1) history.back(); else { replacing = true; location.replace(parentOf()); } }
   else if (d.jump) { e.preventDefault(); document.getElementById(d.jump)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-  else if (d.league !== undefined && t.classList.contains('chip')) {
-    app.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c === t));
-    app.querySelectorAll('#sport-list [data-lg]').forEach((r) => { r.hidden = !!d.league && r.dataset.lg !== d.league; });
-  }
 });
 document.addEventListener('input', (e) => {
   if (e.target.matches('[data-calc]')) { slip.stake = e.target.value; calc(); }

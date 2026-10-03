@@ -160,7 +160,7 @@ h1.vs small { font: 700 14px var(--mono); letter-spacing: 6px; color: var(--acce
 
 /* ---------- glass cards ---------- */
 /* no backdrop-filter on cards: dozens of blurred layers over the WebGL canvas make Chrome drop tiles to black */
-.tilt, .panel { position: relative; border-radius: 20px; border: 1px solid var(--line); background: rgba(12, 12, 18, 0.8); }
+.tilt, .panel { position: relative; border-radius: 20px; border: 1px solid var(--line); background: rgba(12, 12, 18, 0.92); }
 .tilt { overflow: hidden; transition: transform .35s var(--ease), border-color .4s; transform-style: preserve-3d; }
 .tilt::before { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .4s; background: radial-gradient(500px circle at var(--mx, 50%) var(--my, 50%), rgba(255,255,255,.1), transparent 40%); }
 .tilt::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; padding: 1px; background: radial-gradient(300px circle at var(--mx, 50%) var(--my, 50%), var(--c, var(--accent)), transparent 60%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: 0; transition: opacity .4s; }
@@ -223,7 +223,7 @@ h1.vs small { font: 700 14px var(--mono); letter-spacing: 6px; color: var(--acce
 .stat { display: flex; flex-direction: column; align-items: center; min-width: 62px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 12px; font: 700 14px var(--mono); }
 .stat small { font: 600 9px var(--sans); color: var(--muted); text-transform: uppercase; }
 .nobook { font: 11px var(--mono); color: var(--dim); }
-.conf { justify-self: end; font: 700 9px var(--mono); letter-spacing: 1.5px; padding: 4px 8px; border-radius: 6px; border: 1px solid; }
+.conf { justify-self: end; font: 700 10.5px var(--mono); letter-spacing: 1.5px; padding: 4px 8px; border-radius: 6px; border: 1px solid; }
 .conf-high { color: var(--pos); border-color: color-mix(in srgb, var(--pos) 40%, transparent); }
 .conf-medium { color: var(--draw); border-color: color-mix(in srgb, var(--draw) 40%, transparent); }
 .conf-low { color: var(--muted); border-color: var(--line2); }
@@ -665,12 +665,12 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .pchip:hover { border-color: var(--accent); }
 .pchip.on { background: var(--accent); color: #000; border-color: var(--accent); }
 .prefs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 16px 0 6px; }
-.prefs .pl { font: 700 10px var(--mono); letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin: 0 4px 0 8px; }
+.prefs .pl { font: 700 11px var(--mono); letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin: 0 4px 0 8px; }
 .prefs .pl:first-child { margin-left: 0; }
 .dash-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
 .dash-list li { display: flex; flex-direction: column; gap: 2px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
 .dash-list li:last-child { border-bottom: 0; padding-bottom: 0; }
-.dash-list a { font-size: 14px; }
+.dash-list a { font-size: 14px; display: block; padding: 6px 0; }
 .dash-list a:hover { color: var(--accent); }
 .dash-list small { color: var(--muted); font: 500 11px var(--mono); }
 .health { list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
