@@ -389,7 +389,7 @@ export const views = {
 };
 
 // ---------- pieces ----------
-// Home dashboard: Ask ATLAS → today's shortlist → live → absence changes → source health.
+// Home dashboard: today's shortlist → live → absence changes → source health.
 function dashboard(ev, live) {
   const minOdds = prefs.get().minOdds;
   const pool = prefFilter(ev);
@@ -398,9 +398,6 @@ function dashboard(ev, live) {
   const changes = ev.flatMap((e) => ['home', 'away'].flatMap((sd) => (e.absences?.[sd] || []).map((x) => ({ e, team: sd === 'home' ? e.home : e.away, ...x }))))
     .filter((x) => x.updated).sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated)).slice(0, 6);
   return `<section class="dash">
-    <div class="panel dash-ask reveal"><h3 class="ph">Ask ATLAS <small>bets, injuries, starters, slips</small></h3>
-      <form class="askform" data-askform><input name="q" placeholder="e.g. 3 safe NBA bets today" autocomplete="off" maxlength="300"/><button class="btn">Ask</button></form>
-      <div class="askchips">${['Best bets today', 'Injuries in the Premier League', 'Give me a 2x slip', "What's live?"].map((q) => `<button class="pchip" data-ask="${esc(q)}">${esc(q)}</button>`).join('')}</div></div>
     <div class="panel dash-short reveal"><h3 class="ph">Today's shortlist <small>${when2} · estimated 55%+ · odds ≥ ${minOdds.toFixed(2)}</small></h3>
       <div class="minilist">${short.map((b) => miniPick(b)).join('') || '<p class="muted">Nothing passes your filters right now. Lower the minimum odds or add sports.</p>'}</div>${prefsBar()}</div>
     <div class="panel dash-live reveal"><h3 class="ph">Live now <small>${live.length}</small></h3>

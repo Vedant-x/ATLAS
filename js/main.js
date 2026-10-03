@@ -248,7 +248,6 @@ document.addEventListener('click', (e) => {
     else if (d.pref === 'sport') prefs.set({ sports: v === 'all' ? [] : p.sports.includes(v) ? p.sports.filter((x) => x !== v) : [...p.sports, v] });
     else if (d.pref === 'priced') prefs.set({ pricedOnly: !p.pricedOnly });
     state.slipCache.clear(); softRender(); }
-  else if (d.ask) { e.preventDefault(); state.ai?.open(); state.ai?.ask(d.ask); }
   else if ('fxToggle' in d) { try { localStorage.setItem('atlas-fx', fxOff ? 'on' : 'off'); } catch { /* storage blocked */ } if (/[?&]lite\b/.test(location.search)) location.search = ''; else location.reload(); }
   else if ('navBack' in d) { if (stack.length > 1) history.back(); else { replacing = true; location.replace(parentOf()); } }
   else if (d.jump) { e.preventDefault(); document.getElementById(d.jump)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
@@ -256,14 +255,6 @@ document.addEventListener('click', (e) => {
     app.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c === t));
     app.querySelectorAll('#sport-list [data-lg]').forEach((r) => { r.hidden = !!d.league && r.dataset.lg !== d.league; });
   }
-});
-// Home "Ask ATLAS" box hands the question to the floating assistant.
-document.addEventListener('submit', (e) => {
-  const f = e.target.closest('form[data-askform]');
-  if (!f) return;
-  e.preventDefault();
-  const q = f.querySelector('input')?.value.trim();
-  if (q && state.ai) { f.reset(); state.ai.open(); state.ai.ask(q); }
 });
 document.addEventListener('input', (e) => {
   if (e.target.matches('[data-calc]')) { slip.stake = e.target.value; calc(); }
