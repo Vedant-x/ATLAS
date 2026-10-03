@@ -539,19 +539,14 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .ai-title small { font: 700 10px var(--mono); letter-spacing: 1px; text-transform: uppercase; color: var(--ai); }
 .ai-icon { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; font-size: 16px; color: var(--muted); }
 .ai-icon:hover { background: rgba(255,255,255,.06); color: var(--fg); }
-.ai-looks, .ai-settings { padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
-.ai-looks[hidden], .ai-settings[hidden] { display: none; }
-.ai-looks > p, .ai-settings p { margin-bottom: 8px; color: var(--muted); }
-.ai-settings .muted { font-size: 12px; line-height: 1.5; }
-.ai-settings a { color: var(--accent); }
+.ai-looks { padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.ai-looks[hidden] { display: none; }
+.ai-looks > p { margin-bottom: 8px; color: var(--muted); }
 .ai-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .ai-look { display: grid; justify-items: center; gap: 2px; padding: 8px 4px; border: 1px solid var(--line); border-radius: 14px; }
 .ai-look.on { border-color: var(--ai); background: color-mix(in srgb, var(--ai) 10%, transparent); }
 .ai-look .ai-char { width: 54px; height: 54px; }
 .ai-look b { font-size: 13px; } .ai-look small { font-size: 10px; color: var(--muted); }
-.ai-keyform { display: flex; gap: 6px; margin: 6px 0; }
-.ai-keyform input { flex: 1; min-width: 0; background: rgba(255,255,255,.05); border: 1px solid var(--line2); border-radius: 10px; padding: 9px 10px; font: 13px var(--mono); }
-.ai-settings .btn-ghost { padding: 9px 14px; font-size: 11px; }
 .ai-log { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; scroll-behavior: smooth; }
 .ai-msg { max-width: 92%; padding: 10px 13px; border-radius: 16px; font-size: 14px; line-height: 1.5; }
 .ai-msg.bot { align-self: flex-start; background: rgba(255,255,255,.05); border: 1px solid var(--line); border-top-left-radius: 4px; }

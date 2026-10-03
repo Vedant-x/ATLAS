@@ -1,10 +1,10 @@
 // The floating assistant: an animated character you can drag anywhere, a chat panel, six looks to
-// pick from. Answers come from Claude (site proxy or the visitor's own key); the built-in brain only
+// pick from. Answers come from the free ATLAS AI (worker/atlas-ai.js); the built-in brain only
 // steps in, clearly labelled, when the AI can't be reached.
 import { createKnowledge } from './knowledge.js';
 import { createBrain } from './brain.js';
 import { CHARACTERS, characterById, svgOf } from './characters.js';
-import { claudeKey, aiRoute, askClaude, claudeError } from './claude.js';
+import { aiReady, askAI } from './ai.js';
 import { esc, legIndex } from '../views.js';
 import { slip } from '../slip.js';
 
@@ -41,7 +41,6 @@ export function mountAssistant(S) {
   const brain = createBrain(K);
   let charId = store.get('atlas-ai-char', 'nova');
   let history = store.get('atlas-ai-history', []); // [{role, text, cards?}] for display
-  let apiMessages = []; // Claude conversation (full content) for this visit
   let busy = false;
 
   // ---------- launcher (the floating character) ----------
@@ -57,12 +56,10 @@ export function mountAssistant(S) {
         <span class="ai-mini"></span>
         <div class="ai-title"><b class="ai-name"></b><small class="ai-mode"></small></div>
         <button class="ai-icon" data-ai="looks" title="Change character" aria-label="Change character">🎭</button>
-        <button class="ai-icon" data-ai="settings" title="Settings" aria-label="Settings">⚙</button>
         <button class="ai-icon" data-ai="clear" title="Clear chat" aria-label="Clear chat">⟲</button>
         <button class="ai-icon" data-ai="close" title="Close" aria-label="Close">×</button>
       </header>
       <div class="ai-looks" hidden></div>
-      <div class="ai-settings" hidden></div>
       <div class="ai-log" aria-live="polite"></div>
       <div class="ai-chips"></div>
       <form class="ai-form"><input class="ai-input" placeholder="Ask about bets, injuries, starters…" autocomplete="off" maxlength="500"/><button class="ai-send" aria-label="Send">➤</button></form>
@@ -76,7 +73,7 @@ export function mountAssistant(S) {
     $('.ai-avatar').innerHTML = svgOf(c, 'ai-c-big');
     $('.ai-mini').innerHTML = svgOf(c, 'ai-c-mini');
     $('.ai-name').textContent = c.name;
-    $('.ai-mode').textContent = aiRoute() ? 'AI · Claude' : 'AI offline';
+    $('.ai-mode').textContent = aiReady() ? 'AI assistant' : 'AI offline';
     root.style.setProperty('--ai', c.color);
   }
 
@@ -143,10 +140,9 @@ export function mountAssistant(S) {
     if (!text || busy) return;
     busy = true;
     history.push({ role: 'user', text });
-    history.push({ role: 'bot', text: '…', pending: true });
+    history.push({ role: 'bot', text: 'Thinking…', pending: true });
     render();
     root.classList.add('talking');
-    const status = (s) => { const p = history[history.length - 1]; p.text = `${p.streamed ? `${p.streamed}\n\n` : ''}Checking ${s}…`; render(); };
     const pending = history[history.length - 1];
     const live = (t) => { pending.text = pending.streamed = t; const el = log.lastElementChild; if (el) { el.innerHTML = md(t); log.scrollTop = log.scrollHeight; } };
     let reply;
@@ -155,18 +151,17 @@ export function mountAssistant(S) {
       if (!b || /^I'm not sure/.test(b.text)) return { text: why, cards: [] };
       return { text: `${why}\n\nQuick answer from the site's data while the AI is unavailable:\n\n${b?.text || ''}`.trim(), cards: b?.cards || [] };
     };
-    if (!aiRoute()) reply = await fallback('The AI isn\'t connected yet.');
+    if (!aiReady()) reply = await fallback("The AI isn't connected yet.");
     else {
       try {
-        const r = await askClaude(K, apiMessages, text, { onStatus: status, onText: live });
-        apiMessages = r.messages.slice(-24);
-        // Keep the conversation starting on a plain user turn.
-        while (apiMessages.length && (apiMessages[0].role !== 'user' || typeof apiMessages[0].content !== 'string')) apiMessages.shift();
-        // Matches Claude linked to become tappable cards.
-        const ids = [...new Set([...r.text.matchAll(/#\/match\/([^)\s]+)/g)].map((m) => m[1]))].slice(0, 3);
-        reply = { text: r.text, cards: ids.map((id) => K.eventById(decodeURIComponent(id))).filter(Boolean).map((e) => ({ type: 'match', e })) };
+        // Earlier turns of this chat (not the question just asked) give the AI the thread.
+        const past = history.slice(0, -2).filter((m) => m.text && !m.pending).slice(-8).map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text }));
+        const answer = await askAI(K, past, text, { onText: live });
+        // Matches the AI linked to become tappable cards.
+        const ids = [...new Set([...answer.matchAll(/#\/match\/([^)\s]+)/g)].map((m) => m[1]))].slice(0, 3);
+        reply = { text: answer, cards: ids.map((id) => K.eventById(decodeURIComponent(id))).filter(Boolean).map((e) => ({ type: 'match', e })) };
       } catch (err) {
-        reply = await fallback(claudeError(err));
+        reply = await fallback(String(err?.message || err));
       }
     }
     history[history.length - 1] = { role: 'bot', text: reply.text, cards: reply.cards || [] };
@@ -184,39 +179,23 @@ export function mountAssistant(S) {
 
   function looks() {
     const box = $('.ai-looks');
-    box.hidden = !box.hidden; $('.ai-settings').hidden = true;
+    box.hidden = !box.hidden;
     box.innerHTML = `<p>Pick a character</p><div class="ai-grid">${CHARACTERS.map((c) => `<button class="ai-look ${c.id === charId ? 'on' : ''}" data-look="${c.id}">${svgOf(c, 'ai-c-thumb')}<b>${c.name}</b><small>${c.tag}</small></button>`).join('')}</div>`;
   }
-  function settings() {
-    const box = $('.ai-settings');
-    box.hidden = !box.hidden; $('.ai-looks').hidden = true;
-    const has = Boolean(claudeKey.get());
-    box.innerHTML = `<p><b>AI</b></p>
-      <p class="muted">${aiRoute() === 'proxy' ? 'Answers come from Claude through the ATLAS AI service, with a daily question limit.' : aiRoute() === 'key' ? 'Answers come from Claude using your own key.' : 'The ATLAS AI service is not connected yet.'} Optional: use your own <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">Anthropic API key</a> instead (no daily limit). It stays in this browser and is sent only to api.anthropic.com; usage is billed to your account.</p>
-      <form class="ai-keyform"><input type="password" class="ai-key" placeholder="${has ? 'Key saved: paste a new one to replace' : 'sk-ant-…'}" autocomplete="off"/><button class="btn-ghost">${has ? 'Replace' : 'Use Claude'}</button></form>
-      ${has ? '<button class="btn-ghost ai-keyoff">Remove my key</button>' : ''}`;
-  }
-
   root.addEventListener('click', (e) => {
     const t = e.target.closest('button, a');
     if (!t || !root.contains(t)) return;
     const act = t.dataset.ai;
     if (act === 'close') toggle(false);
     else if (act === 'looks') looks();
-    else if (act === 'settings') settings();
-    else if (act === 'clear') { history = []; apiMessages = []; persist(); render(); }
+    else if (act === 'clear') { history = []; persist(); render(); }
     else if (t.dataset.look) { charId = t.dataset.look; store.set('atlas-ai-char', charId); paint(); looks(); looks(); root.classList.add('wave'); setTimeout(() => root.classList.remove('wave'), 900); }
     else if (t.classList.contains('ai-chip')) ask(t.textContent);
-    else if (t.classList.contains('ai-keyoff')) { claudeKey.set(''); apiMessages = []; paint(); settings(); settings(); }
     else if (t.tagName === 'A' && t.getAttribute('href')?.startsWith('#/') && innerWidth < 820) toggle(false); // phones: get out of the way
   });
   root.addEventListener('submit', (e) => {
     e.preventDefault();
     if (e.target.classList.contains('ai-form')) { const v = input.value; input.value = ''; ask(v); }
-    if (e.target.classList.contains('ai-keyform')) {
-      const v = root.querySelector('.ai-key').value.trim();
-      if (v) { claudeKey.set(v); apiMessages = []; paint(); settings(); history.push({ role: 'bot', text: 'Using your own key now. Ask me anything.' }); persist(); render(); }
-    }
   });
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && !panel.hidden) toggle(false); });
   addEventListener('hashchange', () => { if (!panel.hidden) render(); });
