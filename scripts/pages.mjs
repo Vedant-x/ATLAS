@@ -63,9 +63,9 @@ const ageFrom = (born) => { const t = Date.parse(born); return Number.isFinite(t
 function npbYearTable(html) {
   for (const m of html.matchAll(/<table[\s\S]*?<\/table>/g)) {
     const toks = clean(m[0]).split(' ').filter(Boolean).reduce((a, c) => { if (/^\.\d$/.test(c) && a.length && /^\d+$/.test(a[a.length - 1])) a[a.length - 1] += c; else a.push(c); return a; }, []);
-    const end = toks.indexOf('ERA');
-    if (toks[0] !== 'Year' || end < 0 || !toks.includes('IP')) continue;
-    const H = toks.slice(0, end + 1), rows = [H];
+    const y0 = toks.indexOf('Year'), end = toks.indexOf('ERA', y0);
+    if (y0 < 0 || end < 0 || !toks.slice(y0, end).includes('IP')) continue;
+    const H = toks.slice(y0, end + 1), rows = [H];
     for (let i = end + 1; i < toks.length;) {
       if (/^\d{4}$/.test(toks[i])) { rows.push(toks.slice(i, i + H.length)); i += H.length; }
       else if (/^Totals?$/i.test(toks[i])) { rows.push(toks.slice(i, i + H.length - 1)); i += H.length - 1; }
@@ -88,6 +88,7 @@ async function npbPitcher(id) {
     const bornTxt = text.match(/Born\s+([A-Z][a-z]+ \d{1,2}, \d{4})/)?.[1] || null;
     const tbl = npbYearTable(html);
     if (!tbl) throw new Error('no pitching table');
+    if (tbl.length < 2) log('  NPB table debug', id, clean(html.match(/<table[\s\S]*?<\/table>/)?.[0] || '').slice(0, 400));
     const H = tbl[0];
     const at = (row, k) => { const i = H.indexOf(k); return i < 0 ? null : row[i] ?? null; };
     const lineOf = (row, label) => derived({ label, year: at(row, 'Year'), team: at(row, 'Team'), g: at(row, 'G'), w: at(row, 'W'), l: at(row, 'L'), sv: at(row, 'SV'), cg: at(row, 'CG'), bf: at(row, 'BF'), ip: at(row, 'IP'), h: at(row, 'H'), hr: at(row, 'HR'), bb: at(row, 'BB'), so: at(row, 'SO'), r: at(row, 'R'), er: at(row, 'ER'), era: at(row, 'ERA') });
