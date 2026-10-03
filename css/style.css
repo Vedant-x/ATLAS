@@ -663,14 +663,9 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .hero.compact .stats b { font-size: clamp(32px, 3.6vw, 52px); }
 .dash { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; margin-top: 24px; }
 .dash > .panel { margin-top: 0; min-width: 0; }
-.dash-ask { grid-column: span 6; }
 .dash-short { grid-column: span 4; grid-row: span 2; }
 .dash-live, .dash-changes { grid-column: span 2; }
 .dash-health { grid-column: span 6; }
-.askform { display: flex; gap: 10px; }
-.askform input { flex: 1; min-width: 0; padding: 14px 18px; border-radius: 999px; border: 1px solid var(--line2); background: rgba(255, 255, 255, .04); color: var(--fg); font: 500 15px var(--sans); }
-.askform input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
-.askchips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .pchip { border: 1px solid var(--line2); border-radius: 999px; padding: 7px 13px; font: 700 12px var(--sans); background: var(--glass); color: var(--fg); transition: background .25s, color .25s, border-color .25s; }
 .pchip:hover { border-color: var(--accent); }
 .pchip.on { background: var(--accent); color: #000; border-color: var(--accent); }
@@ -705,8 +700,7 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 @media (max-width: 680px) {
   .dash { grid-template-columns: 1fr; gap: 12px; }
   .dash > .panel { grid-column: auto; }
-  .askform .btn { padding: 12px 18px; }
-  .health { grid-template-columns: 1fr 1fr; }
+    .health { grid-template-columns: 1fr 1fr; }
   .health li { padding: 10px; }
 }
 @media (max-width: 400px) { .health { grid-template-columns: 1fr; } }
