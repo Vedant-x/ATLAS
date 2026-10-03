@@ -11,7 +11,7 @@
 import { absencesFor, injuryNames } from '../js/fotmob.js';
 import { enrichMlb, formOf } from '../js/mlbstats.js';
 import { validateReport } from '../js/validate.js';
-import { mkdir, copyFile, cp, writeFile, rm } from 'node:fs/promises';
+import { mkdir, copyFile, cp, writeFile, rm, readFile } from 'node:fs/promises';
 import { fetchAll, LEAGUES, fetchErrors } from '../js/espn.js';
 import { leagueByPath } from '../js/catalog.js';
 
@@ -347,8 +347,10 @@ async function kbo() {
 // ---------- build ----------
 await rm(out, { recursive: true, force: true });
 await mkdir(`${out}/data`, { recursive: true });
-for (const f of ['index.html', 'favicon.svg']) await copyFile(f, `${out}/${f}`);
-for (const d of ['js', 'css', 'vendor']) await cp(d, `${out}/${d}`, { recursive: true });
+for (const f of ['index.html', 'favicon.svg', 'manifest.webmanifest']) await copyFile(f, `${out}/${f}`);
+for (const d of ['js', 'css', 'vendor', 'icons']) await cp(d, `${out}/${d}`, { recursive: true });
+// Service worker, stamped with this build so visitors pick up new code on the next visit.
+await writeFile(`${out}/sw.js`, (await readFile('sw.js', 'utf8')).replace('__BUILD__', String(Date.now())));
 await writeFile(`${out}/.nojekyll`, '');
 
 // ESPN throttles bursts from one server, so fetch the most-followed leagues first; any league the

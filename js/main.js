@@ -1,5 +1,7 @@
 import { createScene } from './scene.js';
 import { mountAssistant } from './assistant/ui.js';
+import { legalViews, ageGate } from './legal.js';
+import { trackViews } from './trackview.js';
 import { loadEvents, refreshLive } from './data.js';
 import { buildSlips, todayEvents, localDay } from './engine.js';
 import { prefs, prefEvents } from './prefs.js';
@@ -68,7 +70,7 @@ let current = null;
 function build() {
   const { name, args } = parse();
   legIndex.clear();
-  return { name, v: (views[name] || views.notfound)(args.map(decodeURIComponent)) };
+  return { name, v: (views[name] || legalViews[name] || trackViews[name] || views.notfound)(args.map(decodeURIComponent)) };
 }
 
 function render(animate) {
@@ -281,7 +283,18 @@ addEventListener('scroll', () => {
   lastY = scrollY;
 }, { passive: true });
 
+// Installable app: service worker (deployed site only) and an "Install app" button where supported.
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+let installEvt = null;
+addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; document.querySelectorAll('[data-install]').forEach((b) => { b.hidden = false; }); });
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('[data-install]') || !installEvt) return;
+  installEvt.prompt();
+  installEvt.userChoice.finally(() => { installEvt = null; document.querySelectorAll('[data-install]').forEach((b) => { b.hidden = true; }); });
+});
+
 // ---------- boot ----------
+ageGate();
 cursor();
 tilt();
 renderSlip();

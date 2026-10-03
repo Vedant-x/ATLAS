@@ -36,7 +36,8 @@ export async function buildContext(K, text, max = 6000) {
     const m = K.matchSummary(e);
     const w = m.winProbability;
     lines.push(`MATCH${e === here ? ' (on screen)' : ''}: [${e.home} vs ${e.away}](#/match/${e.id}) · ${e.league} · ${e.live ? `LIVE ${e.score || ''} (numbers are pre-match)` : when(e.start)}${e.venue ? ` · ${e.venue}` : ''}`);
-    lines.push(`  Estimated win chance: ${e.home} ${pc(w.home)}${w.draw ? `, draw ${pc(w.draw)}` : ''}, ${e.away} ${pc(w.away)} (${m.basis})`);
+    lines.push(`  Pre-match estimated win chance: ${e.home} ${pc(w.home)}${w.draw ? `, draw ${pc(w.draw)}` : ''}, ${e.away} ${pc(w.away)} (${m.basis})`);
+    if (m.liveEstimate) { const l = m.liveEstimate; lines.push(`  LIVE estimate from the current score (${Math.round(l.gameLeft * 100)}% of game left): ${e.home} ${pc(l.home)}${l.draw != null ? `, draw ${pc(l.draw)}` : ''}, ${e.away} ${pc(l.away)}`); }
     const prices = m.bestPrices.slice(0, 5).map((x) => `${x.pick} (${x.market}) ${od(x.odds)} est. ${pc(x.probability)}${x.priced ? (x.edge > 0 ? ` edge +${(x.edge * 100).toFixed(1)}%` : '') : ' [model fair odds]'}`);
     if (prices.length) lines.push(`  Prices: ${prices.join('; ')}`);
     if (m.form) lines.push(`  Form (last results): ${e.home} ${m.form.home || '-'}, ${e.away} ${m.form.away || '-'}`);

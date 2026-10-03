@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write # saves the track record to the track-record branch
   pages: write
   id-token: write
 
@@ -29,9 +29,29 @@ jobs:
           node-version: 22
       - run: npm test
       - run: node scripts/pages.mjs
+      # Track record: history lives on the track-record branch (created on the first run).
+      - name: Load track record
+        uses: actions/checkout@v4
+        with: { ref: track-record, path: track }
+        continue-on-error: true
+      - name: Update track record
+        run: node scripts/record.mjs track/picks.json dist/pages/data/index.json dist/pages/data/track.json
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist/pages
       - id: deployment
         uses: actions/deploy-pages@v4
+      - name: Save track record
+        continue-on-error: true # a concurrent run may have pushed first; the next run catches up
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          cd track
+          if ! git rev-parse -q --verify HEAD >/dev/null 2>&1; then
+            rm -rf .git && git init -q && git checkout -q --orphan track-record
+            git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          fi
+          git config user.name "atlas-bot" && git config user.email "atlas-bot@users.noreply.github.com"
+          git add picks.json
+          git commit -qm "Track record $(date -u +%FT%TZ)" || exit 0
+          git push -q origin HEAD:track-record

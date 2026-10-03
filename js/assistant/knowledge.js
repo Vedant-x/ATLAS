@@ -6,6 +6,7 @@ import { devig, todayEvents } from '../engine.js';
 import { loadDetail, detailFor } from '../detail.js';
 import { CATALOG, ALL_LEAGUES, sportById } from '../catalog.js';
 import { prefs, prefEvents } from '../prefs.js';
+import { liveWin } from '../live.js';
 
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const words = (s) => norm(s).split(/[^a-z0-9]+/).filter((w) => w.length >= 3);
@@ -151,6 +152,7 @@ export function createKnowledge(S) {
       id: e.id, url: `#/match/${e.id}`, sport: sportById(e.sport)?.name || e.sport, league: e.league, home: e.home, away: e.away,
       start: new Date(e.start).toISOString(), live: Boolean(e.live), score: e.score || null, venue: e.venue || null, note: e.note || null,
       winProbability: { home: r2(a.win.home), draw: a.win.draw ? r2(a.win.draw) : undefined, away: r2(a.win.away) },
+      liveEstimate: (() => { const lw = liveWin(e, a); return lw ? { home: r2(lw.home), draw: lw.draw != null ? r2(lw.draw) : undefined, away: r2(lw.away), gameLeft: r2(lw.left) } : undefined; })(),
       basis: a.basis, confidence: a.confidence, bookmaker: e.bookmaker || null, bestPrices: top, modelMarkets: derived,
       records: e.stats?.homeRecord || e.stats?.awayRecord ? { home: e.stats.homeRecord, away: e.stats.awayRecord } : undefined,
       form: e.stats?.homeForm ? { home: (e.stats.homeForm || []).join(''), away: (e.stats.awayForm || []).join('') } : undefined,

@@ -1,0 +1,21 @@
+{
+  "name": "ATLAS Sports Intelligence",
+  "short_name": "ATLAS",
+  "description": "Live fixtures, margin-free probabilities, injuries, starters, slips and an AI analyst for every sport.",
+  "start_url": "./#/",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#040406",
+  "theme_color": "#040406",
+  "categories": ["sports"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Bankers", "url": "./#/bankers" },
+    { "name": "Edge board", "url": "./#/edge" },
+    { "name": "Multipliers", "url": "./#/x/2" }
+  ]
+}
