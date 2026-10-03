@@ -11,6 +11,7 @@ import { detailFor, loadDetail as fetchDetail } from './detail.js';
 import { dossierSections } from './dossier.js';
 import { fetchAll, LEAGUES } from './espn.js';
 import { prefs, prefEvents } from './prefs.js';
+import { liveWin } from './live.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const safeHref = (u) => (/^https?:\/\//i.test(String(u || '')) ? esc(u) : '#');
@@ -295,7 +296,7 @@ export const views = {
         <p class="kicker reveal">${s.icon} ${e.tennis ? esc(`${e.tennis.tournament} · ${e.tennis.drawName}`) : esc(e.league)} · ${when(e)} · ${e.bookmaker ? esc(e.bookmaker) : e.markets?.length ? 'bookmaker price' : 'no bookmaker price'} ${confBadge(a.confidence)}</p>
         <h1 class="vs"><span style="--tc:${hc}">${split(e.home.toUpperCase())}</span><small>VS</small><span style="--tc:${ac}">${split(e.away.toUpperCase())}</span></h1>
         ${e.tennis ? `<div class="tennis-facts reveal">${[['Tournament', e.tennis.tournament + (e.tennis.major ? ' (Grand Slam)' : '')], ['Location', e.tennis.location], ['Draw', e.tennis.drawName], ['Round', e.tennis.round], ['Court', e.tennis.court], ['Format', e.tennis.bestOf ? `Best of ${e.tennis.bestOf} sets` : ''], [e.home, [e.tennis.home.seed ? `Seed ${e.tennis.home.seed}` : '', e.tennis.home.country].filter(Boolean).join(' · ')], [e.away, [e.tennis.away.seed ? `Seed ${e.tennis.away.seed}` : '', e.tennis.away.country].filter(Boolean).join(' · ')]].filter(([, v]) => v).map(([k, v]) => `<div><small>${esc(k)}</small><b>${esc(v)}</b></div>`).join('')}</div>` : ''}
-        ${e.live ? `<div class="scoreline reveal"><b>${esc(e.score || '')}</b><small>${esc(e.clock || '')}</small></div><p class="live-warn reveal">In play: every probability, price and score grid on this page is a <b>pre-match estimate</b>. It does not include the current score${e.score ? ` (${esc(e.score)})` : ''}.</p>` : ''}
+        ${e.live ? `<div class="scoreline reveal"><b>${esc(e.score || '')}</b><small>${esc(e.clock || '')}</small></div>${liveBlock(e)}` : ''}
         ${sourcesLine(e)}
       </section>
       <nav class="subnav reveal">${sections.map(([k, l]) => `<a href="#sec-${k}" data-jump="sec-${k}">${l}</a>`).join('')}</nav>
@@ -421,6 +422,17 @@ function sourceHealth(ev) {
     ['FotMob', ev.filter((e) => e.absences).length, newest(ev, (e) => e.absences?.fetchedAt), 'soccer absences'],
   ];
   return `<ul class="health">${rows.map(([n, c, t, what]) => `<li class="${c ? freshClass(t) : 'idle'}"><i></i><b>${n}</b><span>${c ? `${c} · ${ago(t)}` : 'nothing scheduled'}</span><small>${what}</small></li>`).join('')}</ul>`;
+}
+
+// In play: the live estimate from the current score and time left, then a note that the rest is pre-match.
+function liveBlock(e) {
+  const lw = liveWin(e);
+  const rest = `Prices, markets and the score grid below are <b>pre-match</b> and ignore the score${e.score ? ` (${esc(e.score)})` : ''}.`;
+  if (!lw) return `<p class="live-warn reveal">In play: every probability on this page is a <b>pre-match estimate</b>. ${rest}</p>`;
+  const parts = [[e.home, lw.home], ...(lw.draw != null ? [['Draw', lw.draw]] : []), [e.away, lw.away]];
+  return `<div class="live-est reveal"><h3>Live estimate <small>score ${esc(e.score)} · about ${Math.round(lw.left * 100)}% of the game left</small></h3>
+    <div class="le-row">${parts.map(([n, p]) => `<div><small>${esc(n)}</small><b>${pc(p, 0)}</b></div>`).join('')}</div>
+    <p>${rest} The live estimate runs the pre-match model over the time left; it doesn't know about red cards, injuries or momentum.</p></div>`;
 }
 
 // Per-match: where each piece of data came from and how old it is.

@@ -101,6 +101,7 @@ export function parseScoreboard(json, league) {
         fetchedAt: Date.now(),
         score: state === 'in' ? `${homeC.score ?? ''} – ${awayC.score ?? ''}` : null,
         clock: (comp.status || ev.status)?.type?.shortDetail || '',
+        period: (comp.status || ev.status)?.period ?? null, displayClock: (comp.status || ev.status)?.displayClock || null,
         bookmaker: comp.odds?.[0]?.provider?.name || null,
         markets: marketsFrom(comp, home, away),
         stats: {
