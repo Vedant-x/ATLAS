@@ -9,6 +9,7 @@
 // The browser refreshes scores and per-match detail live from ESPN; this file is the catalogue + the
 // Japan/Korea data that only the official league sites carry.
 import { absencesFor, injuryNames } from '../js/fotmob.js';
+import { CRICKET_URL, parseCricket } from '../js/cricket.js';
 import { enrichMlb, formOf } from '../js/mlbstats.js';
 import { validateReport } from '../js/validate.js';
 import { mkdir, copyFile, cp, writeFile, rm, readFile } from 'node:fs/promises';
@@ -359,12 +360,20 @@ const PRIORITY = ['basketball/nba', 'football/nfl', 'hockey/nhl', 'baseball/mlb'
   'soccer/eng.1', 'soccer/esp.1', 'soccer/ger.1', 'soccer/ita.1', 'soccer/fra.1', 'soccer/uefa.champions', 'soccer/uefa.europa', 'soccer/uefa.europa.conf', 'soccer/usa.1', 'soccer/mex.1',
   'basketball/mens-college-basketball', 'rugby/267979', 'rugby/270557', 'australian-football/afl', 'rugby-league/3', 'football/cfl'];
 const ordered = [...LEAGUES.filter((l) => PRIORITY.includes(l.path)).sort((a, b) => PRIORITY.indexOf(a.path) - PRIORITY.indexOf(b.path)), ...LEAGUES.filter((l) => !PRIORITY.includes(l.path))];
-const [espn, npbEvents, kboEvents] = await Promise.all([
+const cricket = async () => {
+  const res = await fetch(CRICKET_URL, { signal: AbortSignal.timeout(20000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const list = parseCricket(await res.json());
+  log(`Cricket: ${list.length} matches (${list.filter((e) => e.live).length} live)`);
+  return list;
+};
+const [espn, npbEvents, kboEvents, cricketEvents] = await Promise.all([
   fetchAll(AbortSignal.timeout(300000), ordered, { days: 4, concurrency: 2 }).catch((e) => { log('ESPN failed', e.message); return []; }),
   npb().catch((e) => { log('NPB failed', e.message); return []; }),
   kbo().catch((e) => { log('KBO failed', e.message); return []; }),
+  cricket().catch((e) => { log('Cricket failed', e.message); return []; }),
 ]);
-const events = [...espn, ...npbEvents, ...kboEvents].filter((e) => leagueByPath(e.leaguePath));
+const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents].filter((e) => leagueByPath(e.leaguePath));
 
 // Soccer absences: ESPN's soccer injury feed is empty, FotMob lists who is injured or suspended.
 const soccer = events.filter((e) => e.leaguePath?.startsWith('soccer/') && e.start < Date.now() + 5 * 864e5).sort((a, b) => a.start - b.start).slice(0, 400);
