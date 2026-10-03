@@ -699,3 +699,23 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
   .health li { padding: 10px; }
 }
 @media (max-width: 400px) { .health { grid-template-columns: 1fr; } }
+
+/* ---------- legal pages, 18+ notice, footer links ---------- */
+.legal { max-width: 820px; line-height: 1.65; color: #cfcfd6; overflow-wrap: anywhere; }
+.legal h3 { font: 700 15px var(--sans); color: var(--fg); margin: 22px 0 6px; }
+.legal h3:first-child { margin-top: 0; }
+.legal ul { padding-left: 20px; display: grid; gap: 6px; }
+.legal a { color: var(--accent); }
+.legal .muted { margin-top: 24px; font-size: 12px; }
+.foot-links { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; }
+.foot-links a, .install-btn { color: var(--muted); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; padding: 6px 0; }
+.foot-links a:hover { color: var(--fg); }
+.install-btn { color: var(--accent); font-weight: 700; }
+.age-gate { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 16px; background: rgba(4, 4, 6, 0.86); backdrop-filter: blur(8px); }
+.age-gate.peek { display: none; }
+.age-card { max-width: 440px; width: 100%; padding: 28px; border-radius: 22px; border: 1px solid var(--line2); background: #0d0d13; display: grid; gap: 14px; text-align: center; }
+.age-card > b { justify-self: center; width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; border: 2px solid var(--accent); color: var(--accent); font: 700 20px var(--mono); }
+.age-card h2 { font: 26px/1.1 var(--display); text-transform: uppercase; }
+.age-card p { color: #b9b9c0; font-size: 14px; line-height: 1.55; }
+.age-btns { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.age-card small, .age-card small a { color: var(--muted); font-size: 12px; }
