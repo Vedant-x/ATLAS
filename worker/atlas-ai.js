@@ -1,6 +1,7 @@
-// ATLAS AI: a Cloudflare Worker that answers the site assistant's questions with Workers AI (an open
-// model running on Cloudflare). On the free plan this costs nothing: there is a daily free allowance
-// and no card on file, so when it is used up the assistant simply pauses until the next day.
+// ATLAS AI (optional, for later): a Cloudflare Worker that answers the assistant's questions with
+// Workers AI. The site works without it: by default the model runs on each visitor's own device.
+// Set AI_URL in js/config.js to use this hosted model (e.g. for subscribers); whenever it is busy or
+// over a cap, the site quietly answers on the device instead, so visitors never see a limit.
 //
 // The browser sends the question, recent chat and a compact snapshot of the relevant ATLAS data
 // (matches, prices, estimates, injuries, starters); the model writes the answer from that.
@@ -54,7 +55,7 @@ export default {
     if (env.USAGE) {
       const key = `ip:${req.headers.get('cf-connecting-ip') || 'unknown'}:${new Date().toISOString().slice(0, 10)}`;
       const used = Number(await env.USAGE.get(key)) || 0;
-      if (used >= Number(env.IP_DAILY_LIMIT || 40)) return err(429, "You've reached today's question limit. It resets at midnight UTC.", cors);
+      if (used >= Number(env.IP_DAILY_LIMIT || 40)) return err(429, 'busy', cors); // the site falls back to on-device AI silently
       await env.USAGE.put(key, String(used + 1), { expirationTtl: 172800 });
     }
 
@@ -74,7 +75,7 @@ export default {
     } catch (e) {
       const msg = String(e?.message || e);
       // Free allowance used up (or Workers AI busy): pause politely, never bill.
-      if (/limit|quota|neuron|429|capacity/i.test(msg)) return err(429, 'The free AI allowance for today is used up. It resets at midnight UTC.', cors);
+      if (/limit|quota|neuron|429|capacity/i.test(msg)) return err(429, 'busy', cors); // the site falls back to on-device AI silently
       return err(502, `The AI service failed: ${msg.slice(0, 200)}`, cors);
     }
   },

@@ -1,13 +1,17 @@
-# ATLAS AI (free)
+# ATLAS AI: optional hosted model
+
+**You don't need this.** By default the assistant's AI runs on each visitor's own device (WebLLM in the browser),
+so it costs nothing and has no limits. This Worker is for later, if you want a hosted model (for example for
+subscribers): set `AI_URL` in `js/config.js` to its address. Whenever it is busy or over a cap, the site quietly
+answers on the device instead, so visitors never see a limit.
 
 The site's assistant answers with a real AI model: Meta's Llama 3.3 70B, running on Cloudflare **Workers AI**.
 A small Cloudflare Worker ([`atlas-ai.js`](atlas-ai.js)) receives each question together with the relevant
 ATLAS data and streams the answer back.
 
-**It costs nothing.** The free Workers plan includes a daily Workers AI allowance and needs no card, so
-nothing can ever be charged. When the day's allowance runs out, the assistant says so and works again after
-midnight UTC. That's roughly 60–80 questions a day on the default model. Set `MODEL` to
-`@cf/meta/llama-3.1-8b-instruct-fast` for several hundred a day, with simpler answers.
+**Cost.** The free Workers plan includes a daily Workers AI allowance (roughly 60–80 questions on the default
+model) and needs no card. Beyond that, the paid Workers plan bills per use, so plan it into the subscription
+price. When the allowance or the per-visitor cap is reached, the site falls back to the on-device model.
 
 ## Set up (about 5 minutes, free)
 

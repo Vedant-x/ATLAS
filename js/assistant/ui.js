@@ -1,10 +1,10 @@
 // The floating assistant: an animated character you can drag anywhere, a chat panel, six looks to
-// pick from. Answers come from the free ATLAS AI (worker/atlas-ai.js); the built-in brain only
-// steps in, clearly labelled, when the AI can't be reached.
+// pick from. Answers come from an AI model running on the visitor's own device (ai.js); browsers
+// without WebGPU get the built-in brain, which answers from the same site data.
 import { createKnowledge } from './knowledge.js';
 import { createBrain } from './brain.js';
 import { CHARACTERS, characterById, svgOf } from './characters.js';
-import { aiReady, askAI } from './ai.js';
+import { aiAvailable, askAI, loadEngine, engineLoaded, onProgress, deviceAI } from './ai.js';
 import { esc, legIndex } from '../views.js';
 import { slip } from '../slip.js';
 
@@ -68,12 +68,29 @@ export function mountAssistant(S) {
   const $ = (s) => root.querySelector(s);
   const launch = $('.ai-launch'), panel = $('.ai-panel'), log = $('.ai-log'), input = $('.ai-input');
 
+  let modeText = 'Assistant';
+  const setMode = (t) => { modeText = t; const el = root.querySelector('.ai-mode'); if (el) el.textContent = t; };
+  // Download progress of the on-device model (first time only; cached afterwards).
+  onProgress((p) => {
+    setMode(p >= 1 ? 'AI · on your device' : `Getting the AI ready · ${Math.round(p * 100)}%`);
+    const pend = history[history.length - 1];
+    if (busy && pend?.pending && !pend.streamed) { pend.text = p >= 1 ? 'Thinking…' : `Setting up the AI on your device (first time only) · ${Math.round(p * 100)}%`; const el = log.lastElementChild; if (el) el.innerHTML = md(pend.text); }
+  });
+  // Warm the model up when the chat opens, unless the visitor is saving data or on mobile data.
+  const warm = async () => {
+    if (engineLoaded() || !(await deviceAI())) return;
+    const c = navigator.connection;
+    if (c && (c.saveData || c.type === 'cellular' || /2g|3g/.test(c.effectiveType || ''))) return;
+    loadEngine().catch(() => {});
+  };
+  deviceAI().then((ok) => { if (ok) setMode('AI · on your device'); });
+
   function paint() {
     const c = characterById(charId);
     $('.ai-avatar').innerHTML = svgOf(c, 'ai-c-big');
     $('.ai-mini').innerHTML = svgOf(c, 'ai-c-mini');
     $('.ai-name').textContent = c.name;
-    $('.ai-mode').textContent = aiReady() ? 'AI assistant' : 'AI offline';
+    $('.ai-mode').textContent = modeText;
     root.style.setProperty('--ai', c.color);
   }
 
@@ -146,12 +163,9 @@ export function mountAssistant(S) {
     const pending = history[history.length - 1];
     const live = (t) => { pending.text = pending.streamed = t; const el = log.lastElementChild; if (el) { el.innerHTML = md(t); log.scrollTop = log.scrollHeight; } };
     let reply;
-    const fallback = async (why) => {
-      const b = await brain.answer(text).catch(() => null);
-      if (!b || /^I'm not sure/.test(b.text)) return { text: why, cards: [] };
-      return { text: `${why}\n\nQuick answer from the site's data while the AI is unavailable:\n\n${b?.text || ''}`.trim(), cards: b?.cards || [] };
-    };
-    if (!aiReady()) reply = await fallback("The AI isn't connected yet.");
+    // Without on-device AI (no WebGPU, or the model failed to load) the built-in brain answers.
+    const fallback = async () => (await brain.answer(text).catch(() => null)) || { text: 'Sorry, I couldn\'t work that out. Try asking another way.', cards: [] };
+    if (!(await aiAvailable())) reply = await fallback();
     else {
       try {
         // Earlier turns of this chat (not the question just asked) give the AI the thread.
@@ -161,7 +175,8 @@ export function mountAssistant(S) {
         const ids = [...new Set([...answer.matchAll(/#\/match\/([^)\s]+)/g)].map((m) => m[1]))].slice(0, 3);
         reply = { text: answer, cards: ids.map((id) => K.eventById(decodeURIComponent(id))).filter(Boolean).map((e) => ({ type: 'match', e })) };
       } catch (err) {
-        reply = await fallback(String(err?.message || err));
+        console.warn('AI answer failed, using the built-in brain', err);
+        reply = await fallback();
       }
     }
     history[history.length - 1] = { role: 'bot', text: reply.text, cards: reply.cards || [] };
@@ -174,7 +189,7 @@ export function mountAssistant(S) {
   function toggle(open = panel.hidden) {
     panel.hidden = !open;
     root.classList.toggle('open', open);
-    if (open) { render(); $('.ai-bubble').hidden = true; setTimeout(() => input.focus(), 50); }
+    if (open) { render(); $('.ai-bubble').hidden = true; setTimeout(() => input.focus(), 50); warm(); }
   }
 
   function looks() {
