@@ -13,3 +13,5 @@ jobs:
       - run: npm test
       - name: Build Pages site against live sources
         run: node scripts/pages.mjs
+      - name: Track record dry run (empty history, live results)
+        run: node scripts/record.mjs /tmp/track/picks.json dist/pages/data/index.json /tmp/track/track.json

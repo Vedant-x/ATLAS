@@ -719,3 +719,30 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .age-card p { color: #b9b9c0; font-size: 14px; line-height: 1.55; }
 .age-btns { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
 .age-card small, .age-card small a { color: var(--muted); font-size: 12px; }
+
+/* ---------- track record ---------- */
+.tr-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+.tr-stats > div { padding: 18px; border: 1px solid var(--line); border-radius: 18px; background: rgba(12, 12, 18, .92); display: grid; gap: 4px; }
+.tr-stats small, .tr-cal small { color: var(--muted); font: 700 10.5px var(--mono); letter-spacing: 1.5px; text-transform: uppercase; }
+.tr-stats b { font: clamp(30px, 3.4vw, 46px)/1 var(--display); }
+.tr-stats span { color: var(--muted); font-size: 12px; }
+.tr-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tr-table th { text-align: left; color: var(--muted); font: 700 10.5px var(--mono); letter-spacing: 1px; text-transform: uppercase; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+.tr-table td { padding: 9px 4px; border-bottom: 1px solid var(--line); }
+.tr-cal { display: grid; gap: 14px; margin-top: 10px; }
+.tr-cal > div { display: grid; gap: 6px; }
+.tr-cal span { color: var(--muted); font-size: 12px; }
+.tr-bars { display: grid; gap: 4px; }
+.tr-bars i { display: block; height: 8px; width: var(--w); min-width: 2px; border-radius: 4px; background: var(--dim); }
+.tr-bars i.act { background: var(--pos); }
+.tr-list { list-style: none; display: grid; gap: 8px; }
+.tr-list li { display: grid; grid-template-columns: 84px 1fr auto auto; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; }
+.tr-list li div { min-width: 0; display: grid; } .tr-list small { color: var(--muted); font-size: 12px; }
+.tr-list em { font: 700 14px var(--mono); font-style: normal; } .tr-list i { color: var(--muted); font: 12px var(--mono); font-style: normal; }
+.tr-badge { font: 700 10.5px var(--mono); letter-spacing: 1px; text-align: center; padding: 5px 6px; border-radius: 8px; border: 1px solid var(--line2); color: var(--muted); }
+.tr-won .tr-badge { color: var(--pos); border-color: var(--pos); } .tr-lost .tr-badge { color: var(--neg); border-color: var(--neg); }
+.dash-health .ph .more { margin-left: auto; font: 600 12px var(--sans); text-transform: none; color: var(--accent); }
+@media (max-width: 760px) {
+  .tr-stats { grid-template-columns: 1fr 1fr; }
+  .tr-list li { grid-template-columns: 1fr auto auto; } .tr-badge { grid-column: 1 / -1; justify-self: start; }
+}

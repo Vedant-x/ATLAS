@@ -1,6 +1,7 @@
 import { createScene } from './scene.js';
 import { mountAssistant } from './assistant/ui.js';
 import { legalViews, ageGate } from './legal.js';
+import { trackViews } from './trackview.js';
 import { loadEvents, refreshLive } from './data.js';
 import { buildSlips, todayEvents, localDay } from './engine.js';
 import { prefs, prefEvents } from './prefs.js';
@@ -69,7 +70,7 @@ let current = null;
 function build() {
   const { name, args } = parse();
   legIndex.clear();
-  return { name, v: (views[name] || legalViews[name] || views.notfound)(args.map(decodeURIComponent)) };
+  return { name, v: (views[name] || legalViews[name] || trackViews[name] || views.notfound)(args.map(decodeURIComponent)) };
 }
 
 function render(animate) {
