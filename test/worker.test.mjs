@@ -32,9 +32,9 @@ test('worker refuses other sites and paths, and caps each visitor per day', asyn
   assert.equal((await worker.fetch(req({ question: 'x' }), env)).status, 429);
 });
 
-test('a used-up free allowance becomes a friendly pause, never a charge', async () => {
+test('a used-up allowance is reported as busy so the site falls back silently', async () => {
   const AI = { run: async () => { throw new Error('4006: you have used up your daily free allocation of 10,000 neurons'); } };
   const r = await worker.fetch(req({ question: 'x' }), { AI });
   assert.equal(r.status, 429);
-  assert.match((await r.json()).error, /free AI allowance/);
+  assert.equal((await r.json()).error, 'busy');
 });
