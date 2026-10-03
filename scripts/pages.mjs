@@ -397,7 +397,7 @@ log(`Starter validation: ${dropped} item(s) dropped`);
 // One line per starter so a broken parser shows up in the build log.
 for (const e of events) for (const p of (e.probables || []).filter((x) => x.report).slice(0, 2)) {
   const r = p.report;
-  log(`  SP ${r.league} ${r.name || '?'} (${e.away} @ ${e.home}) · ${r.throws || '?'}HP age ${r.age ?? '?'} · season ERA ${r.season?.era ?? '-'} WHIP ${r.season?.whip ?? '-'} K/9 ${r.season?.k9 ?? '-'} · recent ${r.recent?.length || 0} · form3 ${r.form3?.era ?? '-'} · splits ${r.splits?.length || 0} · years ${r.years?.length || 0} · vsOpp ${r.vsOpp ? r.vsOpp.avg ?? r.vsOpp.era : '-'} · inj ${r.injuries?.length || 0} · rest ${r.rest ?? '-'}${r.error ? ` · ERROR ${r.error}` : ''}`);
+  log(`  SP ${r.league} ${r.name || '?'} (${e.away} @ ${e.home}) · ${r.throws || '?'}HP age ${r.age ?? '?'} · season ERA ${r.season?.era ?? '-'} WHIP ${r.season?.whip ?? '-'} K/9 ${r.season?.k9 ?? '-'} · career ERA ${r.career?.era ?? '-'} in ${r.career?.ip ?? '-'} IP · recent ${r.recent?.length || 0}${r.recent?.[0] ? ` (last: ${r.recent[0].date} ${r.recent[0].ip} IP ${r.recent[0].er} ER)` : ''} · form3 ${r.form3?.era ?? '-'} · splits ${r.splits?.length || 0} · years ${r.years?.length || 0} · vsOpp ${r.vsOpp ? r.vsOpp.avg ?? r.vsOpp.era : '-'} · inj ${r.injuries?.length || 0} · rest ${r.rest ?? '-'}${r.error ? ` · ERROR ${r.error}` : ''}`);
 }
 const byLeague = {};
 for (const e of events) byLeague[e.leaguePath] = (byLeague[e.leaguePath] || 0) + 1;
