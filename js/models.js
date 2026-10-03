@@ -66,6 +66,17 @@ function formRate(f) {
   if (!f?.length) return null;
   return (f.reduce((s, r) => s + (r === 'W' ? 1 : r === 'D' ? 0.5 : 0), 0) + 1) / (f.length + 2);
 }
+// Ranking points behave close to Bradley-Terry strengths (exponent < 1 keeps upsets plausible):
+// #1 (~11,000 pts) vs #50 (~1,200) comes out near 88%. Ranks alone use a square-root ratio.
+export function tennisRankWin(t) {
+  const ph = Number(t.home?.points), pa = Number(t.away?.points), rh = Number(t.home?.rank), ra = Number(t.away?.rank);
+  let p = null, note = null;
+  if (ph > 0 && pa > 0) { p = ph ** 0.9 / (ph ** 0.9 + pa ** 0.9); note = `ranking #${rh || '?'} (${ph} pts) vs #${ra || '?'} (${pa} pts)`; }
+  else if (rh > 0 && ra > 0) { p = 1 / (1 + (rh / ra) ** 0.5); note = `world ranking #${rh} vs #${ra}`; }
+  else if (rh > 0 || ra > 0) { p = rh > 0 ? 0.66 : 0.34; note = `only ${rh > 0 ? 'the first' : 'the second'} player is ranked (#${rh || ra})`; }
+  return p == null ? null : { p: Math.min(0.97, Math.max(0.03, p)), note };
+}
+
 function baselineWin(event) {
   const soccer = event.sport === 'football';
   const st = event.stats || {};
@@ -92,6 +103,11 @@ function baselineWin(event) {
       confidence = 'medium';
       starterNote = `starter ERA ${eh.toFixed(2)} vs ${ea.toFixed(2)}`;
     }
+  }
+  // Tennis has no bookmaker price in the feed: use the official rankings (points when we have them).
+  if (event.sport === 'tennis' && event.tennis) {
+    const t = tennisRankWin(event.tennis);
+    if (t) return { win: { home: t.p, draw: 0, away: 1 - t.p }, confidence: 'medium', starterNote: t.note };
   }
   const draw = soccer ? 0.26 * (1 - Math.abs(pHome - 0.5)) : 0;
   return { win: { home: pHome * (1 - draw), draw, away: (1 - pHome) * (1 - draw) }, confidence, starterNote };
@@ -311,7 +327,7 @@ export function analyse(event) {
   if (!win) {
     const b = baselineWin(event);
     win = b.win; confidence = b.confidence;
-    basis = b.starterNote ? `ATLAS model: home advantage + ${b.starterNote}${event.stats?.homeRecord ? ' + records' : ''} (no bookmaker price)` : b.confidence === 'medium' ? 'ATLAS model from season record and form (no bookmaker price)' : 'ATLAS baseline: home advantage only, too little data';
+    basis = b.starterNote ? `ATLAS model: ${event.sport === 'tennis' ? '' : 'home advantage + '}${b.starterNote}${event.stats?.homeRecord ? ' + records' : ''} (no bookmaker price)` : b.confidence === 'medium' ? 'ATLAS model from season record and form (no bookmaker price)' : 'ATLAS baseline: home advantage only, too little data';
   }
   const out = { win, confidence, basis, groups: [], grid: null, dist: null, params: {} };
   if (['football', 'hockey', 'baseball'].includes(event.sport)) {

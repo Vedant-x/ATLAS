@@ -43,10 +43,26 @@ export async function findMatch(e, signal) {
 }
 
 const TYPE = { injury: 'Injured', suspension: 'Suspended', international: 'International duty' };
-const player = (p) => {
+const player = (p, names) => {
   const u = p.unavailability || {};
-  return { name: p.name || '', type: TYPE[u.type] || (u.type ? u.type[0].toUpperCase() + u.type.slice(1) : 'Out'), expectedReturn: u.expectedReturn || '', updated: u.lastUpdated || null };
+  return { name: p.name || '', type: TYPE[u.type] || (u.type ? u.type[0].toUpperCase() + u.type.slice(1) : 'Out'),
+    injury: u.injuryId != null ? names[`injury_${u.injuryId}`] || null : null,
+    expectedReturn: u.expectedReturn || '', updated: u.lastUpdated || null };
 };
+
+// FotMob sends injuries as codes ("injury_87"); the readable names ("Muscle injury") ship in the
+// translations embedded in its player pages. The build reads them there and saves data/injury-names.json,
+// which the browser uses for live lookups.
+let namesP;
+export function injuryNames(samplePlayerId) {
+  if (!namesP) {
+    namesP = (typeof window === 'undefined'
+      ? fetch(`https://www.fotmob.com/players/${samplePlayerId || 616170}/player`, { headers: { 'User-Agent': headers['User-Agent'], 'Accept-Language': 'en-US,en;q=0.9' } }).then((r) => r.text()).then((html) => Object.fromEntries([...html.matchAll(/"(injury_\d+)":"([^"]{2,60})"/g)].map((m) => [m[1], m[2]])))
+      : fetch('data/injury-names.json').then((r) => (r.ok ? r.json() : {})))
+      .catch(() => ({}));
+  }
+  return namesP;
+}
 
 // { home: [...], away: [...], matchId, source } or null when FotMob has no such match.
 export async function absencesFor(e, signal) {
@@ -54,10 +70,12 @@ export async function absencesFor(e, signal) {
   if (!m) return null;
   const md = await getJson(`${BASE}/matchDetails?matchId=${m.id}`, signal);
   const lu = md?.content?.lineup || {};
+  const sample = (lu.homeTeam?.unavailable || lu.awayTeam?.unavailable || [])[0]?.id;
+  const names = await injuryNames(sample);
   return {
     source: 'FotMob', matchId: m.id, fetchedAt: Date.now(),
     lineupType: lu.lineupType || null,
-    home: (lu.homeTeam?.unavailable || []).map(player),
-    away: (lu.awayTeam?.unavailable || []).map(player),
+    home: (lu.homeTeam?.unavailable || []).map((p) => player(p, names)),
+    away: (lu.awayTeam?.unavailable || []).map((p) => player(p, names)),
   };
 }

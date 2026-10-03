@@ -45,9 +45,9 @@ export function todayEvents(events, now = Date.now()) {
 
 // Find combinations (one leg per event) whose total odds land near `target`,
 // ranked by combined probability. Returns up to `count` non-overlapping slips.
-export function buildSlips(events, target, { count = 5, maxLegs = 4, tolerance = 0.12 } = {}) {
+export function buildSlips(events, target, { count = 5, maxLegs = 4, tolerance = 0.12, minOdds = 1.08 } = {}) {
   const legs = allLegs(events)
-    .filter((l) => l.odds >= 1.08 && l.odds <= target * (1 + tolerance))
+    .filter((l) => l.odds >= Math.max(1.08, minOdds) && l.odds <= target * (1 + tolerance))
     .sort((a, b) => b.ev - a.ev || b.p - a.p)
     .slice(0, 220);
 

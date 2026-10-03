@@ -151,7 +151,7 @@ async function build(e) {
   } : null;
   const pc = (sm.pickcenter || [])[0];
   const d = {
-    ok: true,
+    ok: true, fetchedAt: Date.now(),
     predictor: predictor && Number.isFinite(predictor.home) ? predictor : null,
     venue: sm.gameInfo?.venue ? { name: sm.gameInfo.venue.fullName, city: [sm.gameInfo.venue.address?.city, sm.gameInfo.venue.address?.state || sm.gameInfo.venue.address?.country].filter(Boolean).join(', '), grass: sm.gameInfo.venue.grass, indoor: sm.gameInfo.venue.indoor } : null,
     weather: sm.gameInfo?.weather ? { temp: sm.gameInfo.weather.temperature, high: sm.gameInfo.weather.highTemperature, gust: sm.gameInfo.weather.gust, precip: sm.gameInfo.weather.precipitation, cond: sm.gameInfo.weather.displayValue || null } : null,

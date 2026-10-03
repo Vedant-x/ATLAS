@@ -1,6 +1,8 @@
 import { createScene } from './scene.js';
+import { mountAssistant } from './assistant/ui.js';
 import { loadEvents, refreshLive } from './data.js';
 import { buildSlips, todayEvents, localDay } from './engine.js';
+import { prefs, prefEvents } from './prefs.js';
 import { applyModel, bankers } from './intel.js';
 import { fetchLineups } from './espn.js';
 import { views, bind, legIndex, edgeTable, countdown, esc, sportOf } from './views.js';
@@ -21,8 +23,10 @@ const state = {
   slipCache: new Map(), slipsAt: 0,
   // opts.today: only matches still to start today (local time); cached per day so midnight rolls over.
   slips(target, opts = {}) {
-    const key = `${target}|${opts.today ? localDay() : 'all'}`;
-    if (!this.slipCache.has(key)) this.slipCache.set(key, buildSlips(opts.today ? todayEvents(this.events) : this.events, target, opts));
+    // Personal filters (min odds per leg, preferred sports) shape every slip.
+    const key = `${target}|${opts.today ? localDay() : 'all'}|${prefs.sig()}`;
+    const pool = prefEvents(opts.today ? todayEvents(this.events) : this.events);
+    if (!this.slipCache.has(key)) this.slipCache.set(key, buildSlips(prefs.get().pricedOnly ? pool.filter((e) => e.markets?.length) : pool, target, { minOdds: prefs.get().minOdds, ...opts }));
     return this.slipCache.get(key);
   },
   async detail(e) {
@@ -153,23 +157,31 @@ function softRender() {
 }
 
 // ---------- slip drawer ----------
+// Saved prices expire: flag legs whose match has started or whose price was saved hours ago.
+function staleNote(l) {
+  const e = state.events.find((x) => x.id === l.eventId);
+  if (e?.live || (e && e.start < Date.now())) return '<small class="warn">Match started: this pre-match price is no longer available</small>';
+  if (!e && state.events.length) return '<small class="warn">Match no longer on the board</small>';
+  const age = l.addedAt ? (Date.now() - l.addedAt) / 36e5 : null;
+  return age != null && age > 3 ? `<small class="warn">Price saved ${Math.round(age)}h ago: check it before betting</small>` : '';
+}
 const drawer = document.getElementById('slip');
 function renderSlip() {
   const s = slip.summary();
   document.querySelectorAll('[data-slip-count]').forEach((el) => { el.textContent = s.n; el.classList.toggle('has', s.n > 0); });
   drawer.querySelector('.slip-body').innerHTML = s.n ? `
-    <ul class="slip-legs">${slip.legs.map((l) => `<li><span>${sportOf(l.sport).icon}</span><div><b>${esc(l.pick)}</b><small>${esc(l.market)} · ${esc(l.match)}</small>${l.derived ? '<small class="warn">ATLAS fair price, not a bookmaker quote</small>' : ''}</div><em>${odd(l.odds)}</em><button data-unleg="${esc(l.key)}" aria-label="Remove">×</button></li>`).join('')}</ul>
+    <ul class="slip-legs">${slip.legs.map((l) => `<li><span>${sportOf(l.sport).icon}</span><div><b>${esc(l.pick)}</b><small>${esc(l.market)} · ${esc(l.match)}</small>${l.derived ? '<small class="warn">ATLAS fair price, not a bookmaker quote</small>' : ''}${staleNote(l)}</div><em>${odd(l.odds)}</em><button data-unleg="${esc(l.key)}" aria-label="Remove">×</button></li>`).join('')}</ul>
     ${s.correlated ? '<p class="warn">Two legs from the same match are correlated: the true combined chance differs from the product shown, and bookmakers may refuse the combination.</p>' : ''}
     <div class="slip-sum">
       <div><small>Total odds</small><b>${s.odds.toFixed(2)}x</b></div>
-      <div><small>Win chance</small><b>${pc(s.p, s.p < 0.01 ? 2 : 1)}</b></div>
+      <div><small>Est. chance</small><b>${pc(s.p, s.p < 0.01 ? 2 : 1)}</b></div>
       <div><small>Edge</small><b class="${s.ev >= 0 ? 'pos' : 'neg'}">${(s.ev * 100).toFixed(1)}%</b></div>
       <label><small>Stake</small><input type="number" min="0" step="1" value="${slip.stake}" data-slip-stake></label>
       <div><small>Potential return</small><b data-sum-pay>${s.payout.toFixed(2)}</b></div>
       <div><small>Expected return</small><b data-sum-exp>${(slip.stake * s.p * s.odds).toFixed(2)}</b></div>
     </div>
     <div class="slip-actions"><button class="btn" data-slip-copy>Copy slip</button><button class="btn-ghost" data-slip-clear>Clear</button></div>`
-    : '<p class="muted">Tap any price to add it here. ATLAS shows the combined odds, true win chance and edge as you build.</p>';
+    : '<p class="muted">Tap any price to add it here. ATLAS shows the combined odds, the estimated win chance and the edge as you build.</p>';
 }
 slip.subscribe(() => {
   if (document.activeElement?.matches?.('[data-slip-stake]')) return;
@@ -231,6 +243,12 @@ document.addEventListener('click', (e) => {
   else if ('slipClear' in d) slip.clear();
   else if ('slipCopy' in d) navigator.clipboard?.writeText(slip.text()).then(() => { t.textContent = 'Copied'; setTimeout(() => { t.textContent = 'Copy slip'; }, 1400); }).catch(() => {});
   else if ('slipToggle' in d) openSlip(!drawer.classList.contains('open'));
+  else if (d.pref) { e.preventDefault(); const p = prefs.get(); const v = d.value;
+    if (d.pref === 'minOdds') prefs.set({ minOdds: Number(v) });
+    else if (d.pref === 'sport') prefs.set({ sports: v === 'all' ? [] : p.sports.includes(v) ? p.sports.filter((x) => x !== v) : [...p.sports, v] });
+    else if (d.pref === 'priced') prefs.set({ pricedOnly: !p.pricedOnly });
+    state.slipCache.clear(); softRender(); }
+  else if (d.ask) { e.preventDefault(); state.ai?.open(); state.ai?.ask(d.ask); }
   else if ('fxToggle' in d) { try { localStorage.setItem('atlas-fx', fxOff ? 'on' : 'off'); } catch { /* storage blocked */ } if (/[?&]lite\b/.test(location.search)) location.search = ''; else location.reload(); }
   else if ('navBack' in d) { if (stack.length > 1) history.back(); else { replacing = true; location.replace(parentOf()); } }
   else if (d.jump) { e.preventDefault(); document.getElementById(d.jump)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
@@ -238,6 +256,14 @@ document.addEventListener('click', (e) => {
     app.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c === t));
     app.querySelectorAll('#sport-list [data-lg]').forEach((r) => { r.hidden = !!d.league && r.dataset.lg !== d.league; });
   }
+});
+// Home "Ask ATLAS" box hands the question to the floating assistant.
+document.addEventListener('submit', (e) => {
+  const f = e.target.closest('form[data-askform]');
+  if (!f) return;
+  e.preventDefault();
+  const q = f.querySelector('input')?.value.trim();
+  if (q && state.ai) { f.reset(); state.ai.open(); state.ai.ask(q); }
 });
 document.addEventListener('input', (e) => {
   if (e.target.matches('[data-calc]')) { slip.stake = e.target.value; calc(); }
@@ -275,5 +301,6 @@ preloader(loadEvents()).then((d) => {
   render(true);
   addEventListener('hashchange', route);
   scene.pulse();
+  state.ai = mountAssistant(state);
   (function tick() { setTimeout(() => poll().finally(tick), refreshMs()); })();
 });

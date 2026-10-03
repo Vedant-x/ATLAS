@@ -24,8 +24,34 @@ test('tennis: draws split by tour, doubles pairs named, tournament/location/roun
   const [sing, dbl] = atp;
   assert.equal(sing.home, 'Jannik Sinner');
   assert.deepEqual([sing.tennis.tournament, sing.tennis.location, sing.tennis.round, sing.tennis.court, sing.tennis.bestOf, sing.tennis.draw], ['China Open', 'Beijing, China PR', 'Round 2', 'Diamond', 3, 'Singles']);
-  assert.deepEqual(sing.tennis.home, { country: 'Italy', seed: 1 });
+  assert.deepEqual(sing.tennis.home, { id: 'a1', country: 'Italy', seed: 1 });
   assert.equal(dbl.home, 'Zhang Zhizhen / Zhou Yi');
   assert.equal(dbl.tennis.draw, 'Doubles');
   assert.equal(dbl.tennis.away.country, 'Great Britain');
+});
+
+test('tennis model uses ranking points, ranks, or a single ranking', async () => {
+  const { tennisRankWin, analyse } = await import('../js/models.js');
+  const top = tennisRankWin({ home: { rank: 1, points: 11000 }, away: { rank: 50, points: 1200 } });
+  assert.ok(top.p > 0.85 && top.p < 0.92, `got ${top.p}`);
+  assert.ok(Math.abs(tennisRankWin({ home: { rank: 10 }, away: { rank: 10 } }).p - 0.5) < 1e-9);
+  assert.ok(tennisRankWin({ home: {}, away: { rank: 80 } }).p < 0.5);
+  assert.equal(tennisRankWin({ home: {}, away: {} }), null);
+  const a = analyse({ sport: 'tennis', home: 'Sinner', away: 'Halys', markets: [], stats: {}, tennis: { home: { rank: 1, points: 11000 }, away: { rank: 60, points: 1000 } } });
+  assert.ok(a.win.home > 0.85 && /ranking/.test(a.basis));
+});
+
+test('soccer absences carry the injury name', async () => {
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url) => ({ ok: true,
+    text: async () => '<script>{"injury_14":"Knee injury","injury_87":"Muscle injury"}</script>',
+    json: async () => (String(url).includes('matchDetails')
+      ? { content: { lineup: { homeTeam: { unavailable: [{ id: 5, name: 'A', unavailability: { type: 'injury', injuryId: 87, expectedReturn: 'Mid October 2026' } }] }, awayTeam: { unavailable: [{ id: 6, name: 'B', unavailability: { type: 'suspension' } }] } } } }
+      : { leagues: [{ name: 'L', matches: [{ id: 1, home: { name: 'Aston Villa' }, away: { name: 'Burnley' }, status: { utcTime: '2026-10-10T14:00:00Z' } }] }] }) });
+  try {
+    const { absencesFor } = await import('../js/fotmob.js?names');
+    const a = await absencesFor({ home: 'Aston Villa', away: 'Burnley', start: Date.parse('2026-10-10T14:00:00Z') });
+    assert.equal(a.home[0].injury, 'Muscle injury');
+    assert.equal(a.away[0].type, 'Suspended');
+  } finally { globalThis.fetch = real; }
 });
