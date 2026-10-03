@@ -1,8 +1,8 @@
 // Data layer. Order of preference:
-//   1. The ATLAS server (/api/dashboard): official MLB/NHL/NPB/KBO feeds, ESPN, cricket, news,
-//      and Stake prices when an Odds-API.io key is connected (js/feed.js converts it)
-//   2. ESPN live scoreboards fetched straight from the browser, when the page is opened without the server
-//   3. data/odds.json, a static snapshot in the same shape as `makeEvent`
+//   1. data/index.json, the snapshot the Pages workflow builds every 15 minutes (every league, NPB/KBO,
+//      MLB starter reports, soccer absences)
+//   2. ESPN live scoreboards fetched straight from the browser (local preview without a snapshot)
+//   3. data/odds.json, an older snapshot file name
 //   4. Simulated DEMO fixtures, so the UI still works offline. Demo odds are NOT real prices.
 import { fetchAll, fetchLeague, LEAGUES } from './espn.js';
 
@@ -22,9 +22,7 @@ export async function refreshLive(events) {
   return [...map.values()].filter((e) => !paths.includes(e.leaguePath) || freshIds.has(e.id));
 }
 export { fetchLeague };
-import { fromServer } from './feed.js';
 
-const todayIST = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
 import { CATALOG } from './catalog.js';
 
@@ -129,18 +127,6 @@ export async function loadEvents() {
       if (json.events?.length) return { events: json.events, source: 'ATLAS live index', demo: false, server: false, snapshot: true, fetchedAt: json.fetchedAt };
     }
   } catch { /* no snapshot (local server or file) */ }
-
-  try {
-    const res = await fetch(`api/dashboard?date=${todayIST()}`, { signal: AbortSignal.timeout(65000) });
-    if (res.ok) {
-      const d = await res.json();
-      const good = d.sources.filter((s) => s.status === 'connected').length;
-      return {
-        events: fromServer(d), demo: false, server: true, fetchedAt: Date.parse(d.generated_at) || Date.now(),
-        source: `${good}/${d.sources.length} sources`, news: d.news || [], odds: d.odds, aura: d.aura,
-      };
-    }
-  } catch { /* no ATLAS server (static hosting): use public feeds directly */ }
 
   try {
     const events = await fetchAll(AbortSignal.timeout(15000), FEATURED);
