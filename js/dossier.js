@@ -38,7 +38,7 @@ function reportCard(p, team, color) {
   const rest = r.rest != null ? `<em class="${r.rest <= 3 ? 'warn' : ''}">${r.rest} day${r.rest === 1 ? '' : 's'} since last outing${r.rest <= 3 ? ' (short rest)' : ''}</em>` : '';
   const showHr = r.recent?.some((g) => g.hr != null), showP = r.recent?.some((g) => g.pitches != null);
   return `<div class="starter panel reveal" style="--tc:${color}">
-    <header><span class="role">${esc(p.role || 'SP')} · ${esc(team)} · ${esc(r.league || '')}</span><h3>${esc(r.name || p.name)}</h3>${bio ? `<em>${esc(bio)}</em>` : ''}${rest}</header>
+    <header><span class="role">${esc(p.role || 'SP')} · ${esc(team)} · ${esc(r.league || '')}</span><h3>${esc(r.name || p.name)}${r.nameLocal ? ` <small class="local">${esc(r.nameLocal)}</small>` : ''}</h3>${bio ? `<em>${esc(bio)}</em>` : ''}${rest}</header>
     ${r.season ? `<h4>${esc(r.season.label)}</h4><div class="statline">${chips(r.season, KEYS)}</div>` : '<p class="muted">No season line yet (debut or no innings).</p>'}
     ${r.form3 || r.form5 ? `<h4>Recent form</h4><div class="form-row">${formBadge(r.form3, r.season?.era, 'Last 3 starts')}${formBadge(r.form5, r.season?.era, 'Last 5 starts')}</div>` : ''}
     ${r.post ? `<h4>${esc(r.post.label)}</h4><div class="statline">${chips(r.post, KEYS)}</div>` : ''}

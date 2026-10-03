@@ -461,6 +461,7 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 
 /* ---------- starting pitcher reports ---------- */
 .starter header em.warn { color: var(--draw); }
+.starter h3 small.local { font: 500 14px var(--sans); color: var(--muted); margin-left: 6px; }
 .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
 .form-chip { border: 1px solid var(--line2); border-radius: 12px; padding: 10px 12px; display: grid; gap: 2px; }
 .form-chip small { font: 700 10px var(--mono); letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }

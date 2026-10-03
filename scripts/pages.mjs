@@ -67,14 +67,17 @@ async function npbPitcher(id) {
     const throws = text.match(/Bats \/ Throws\s+(Left|Right|Switch)\s*\/\s*(Left|Right)/)?.[2] || null;
     const hw = text.match(/Height \/ Weight\s+(\d+cm)\s*\/\s*(\d+kg)/);
     const bornTxt = text.match(/Born\s+([A-Z][a-z]+ \d{1,2}, \d{4})/)?.[1] || null;
-    const tbl = [...html.matchAll(/<table[\s\S]*?<\/table>/g)].map((m) => rowsOf(m[0])).find((rows) => rows[0]?.includes('ERA') && rows[0]?.includes('IP'));
+    // Read rows as text tokens: cell markup on this page is irregular, but team names are single words
+    // and innings print as "385 .1", which is merged back into "385.1".
+    const tokRows = (t) => [...t.matchAll(/<tr[\s\S]*?<\/tr>/g)].map((r) => clean(r[0]).split(' ').filter(Boolean)
+      .reduce((a, c) => { if (/^\.\d$/.test(c) && a.length && /^\d+$/.test(a[a.length - 1])) a[a.length - 1] += c; else a.push(c); return a; }, []));
+    const tbl = [...html.matchAll(/<table[\s\S]*?<\/table>/g)].map((m) => tokRows(m[0])).find((rows) => rows[0]?.includes('ERA') && rows[0]?.includes('IP'));
     if (!tbl) throw new Error('no pitching table');
     const H = tbl[0];
     const at = (row, k) => { const i = H.indexOf(k); return i < 0 ? null : row[i] ?? null; };
     const lineOf = (row, label) => derived({ label, year: at(row, 'Year'), team: at(row, 'Team'), g: at(row, 'G'), w: at(row, 'W'), l: at(row, 'L'), sv: at(row, 'SV'), cg: at(row, 'CG'), bf: at(row, 'BF'), ip: at(row, 'IP'), h: at(row, 'H'), hr: at(row, 'HR'), bb: at(row, 'BB'), so: at(row, 'SO'), r: at(row, 'R'), er: at(row, 'ER'), era: at(row, 'ERA') });
     // Year rows have one cell fewer than the header when 'Team' is absent on the Totals row.
     const yearRows = tbl.slice(1).filter((r) => /^\d{4}$/.test(r[0]) && r.length === H.length);
-    if (!yearRows.length && process.env.ATLAS_DEBUG !== '0') log('  NPB table debug', id, JSON.stringify(H), JSON.stringify(tbl.slice(1, 3)));
     const yr = String(new Date().getFullYear());
     const cur = yearRows.filter((r) => r[0] === yr);
     const totals = tbl.slice(1).find((r) => /^Totals?$/i.test(r[0]));
@@ -213,7 +216,10 @@ async function kboPitcher(id, oppName) {
   const page = async (p) => { try { return await get(`${base}/${p}.aspx?playerId=${id}`); } catch { return ''; } };
   const [basic, total, game, situ, eng] = await Promise.all([...['Basic', 'Total', 'Game', 'Situation'].map(page),
     get(`https://eng.koreabaseball.com/Teams/PlayerInfoPitcher/Summary.aspx?pcode=${id}`).catch(() => '')]);
-  if (eng && !globalThis.__kboEngLogged) { globalThis.__kboEngLogged = 1; log('  KBO eng sample', clean(eng.replace(/<script[\s\S]*?<\/script>/g, '')).slice(0, 700)); }
+  // English name from the KBO English site ("CARRASCO Carlos" → "Carlos Carrasco").
+  const en = clean(eng).match(/Name\s*:\s*([A-Z][A-Z'-]+(?:\s[A-Z][A-Z'-]+)*)\s+(.+?)\s+Position\s*:/);
+  const title = (w) => w.charAt(0) + w.slice(1).toLowerCase();
+  const enName = en ? `${en[2].trim()} ${en[1].split(' ').map(title).join(' ')}` : null;
   if (!basic) return { league: 'KBO', id, name: null, season: null, years: [], recent: [], splits: [], injuries: [], error: 'profile unavailable' };
   const T = (html) => [...html.matchAll(/<table[\s\S]*?<\/table>/g)].map((m) => { const rows = rowsOf(m[0]); return { h: rows[0] || [], rows: rows.slice(1) }; });
   const at = (t, r, k) => { const i = t.h.indexOf(k); return i < 0 ? null : r[i] ?? null; };
@@ -255,7 +261,7 @@ async function kboPitcher(id, oppName) {
   ];
   const starts = recent.filter((g) => g.start);
   return {
-    league: 'KBO', id, name, team: '', throws: hand === '좌' ? 'L' : hand === '우' ? 'R' : null, height: hw?.[1] || null, weight: hw?.[2] || null, born, age: ageFrom(born),
+    league: 'KBO', id, name: enName || name, nameLocal: enName ? name : null, team: '', throws: hand === '좌' ? 'L' : hand === '우' ? 'R' : null, height: hw?.[1] || null, weight: hw?.[2] || null, born, age: ageFrom(born),
     season, career: careerRow ? yl(careerRow, 'Career (KBO)') : null, years, recent, splits, injuries,
     vsOpp: oppRow ? { opp: oppName, g: at(vsT, oppRow, 'G'), ip: kboIp(at(vsT, oppRow, 'IP')), era: at(vsT, oppRow, 'ERA'), avg: at(vsT, oppRow, 'AVG'), so: at(vsT, oppRow, 'SO'), bb: at(vsT, oppRow, 'BB'), label: 'this season' } : null,
     form3: formOf(starts.slice(0, 3)), form5: formOf(starts.slice(0, 5)),
@@ -297,7 +303,7 @@ async function kbo() {
   for (const e of events) for (const p of e.probables) {
     const r = await kboPitcher(p.kboId, p.side === 'home' ? e.away : e.home);
     r.team = p.side === 'home' ? e.home : e.away;
-    Object.assign(p, { report: r, pitching: r, name: p.name || r.name });
+    Object.assign(p, { report: r, pitching: r, name: r.name || p.name });
   }
   log(`KBO: ${events.length} games, ${events.filter((e) => e.probables.length).length} with starters`);
   return events;
