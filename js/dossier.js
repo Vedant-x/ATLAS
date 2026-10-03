@@ -20,18 +20,57 @@ function espnStarter(p, team, color) {
   </div>`;
 }
 
-function nativeStarter(p, team, color, league) {
-  const s = p.pitching || {};
-  const cells = (o, keys) => keys.filter(([k]) => o?.[k] != null && o[k] !== '').map(([k, l]) => `<div><small>${l}</small><b>${esc(o[k])}</b></div>`).join('');
-  const keys = [['era', 'ERA'], ['whip', 'WHIP'], ['w', 'W'], ['l', 'L'], ['g', 'G'], ['ip', 'IP'], ['so', 'SO'], ['bb', 'BB'], ['h', 'H'], ['hr', 'HR'], ['k9', 'K/9'], ['avg', 'AVG'], ['qs', 'QS']];
+// Full starter report (MLB Stats API, NPB, KBO): bio, season, form, recent starts, splits, vs opponent,
+// year by year, injuries. Missing pieces are simply left out.
+const v = (x) => (x == null || x === '' ? '—' : x);
+const chips = (o, keys) => keys.filter(([k]) => o?.[k] != null && o[k] !== '').map(([k, l]) => `<div><small>${l}</small><b>${esc(o[k])}</b></div>`).join('');
+const KEYS = [['w', 'W'], ['l', 'L'], ['era', 'ERA'], ['whip', 'WHIP'], ['g', 'G'], ['gs', 'GS'], ['ip', 'IP'], ['so', 'SO'], ['bb', 'BB'], ['k9', 'K/9'], ['bb9', 'BB/9'], ['hr9', 'HR/9'], ['kbb', 'K/BB'], ['avg', 'Opp AVG'], ['ops', 'Opp OPS'], ['qs', 'QS'], ['ppStart', 'P/start']];
+function formBadge(f, seasonEra, label) {
+  if (!f) return '';
+  const d = Number(f.era) - Number(seasonEra);
+  const trend = !Number.isFinite(d) ? '' : d <= -0.5 ? '<i class="up">▲ hot</i>' : d >= 0.75 ? '<i class="down">▼ cold</i>' : '<i>● steady</i>';
+  return `<div class="form-chip"><small>${esc(label)} (${f.games})</small><b>${esc(f.era)} ERA</b><span>${esc(f.whip)} WHIP · ${esc(f.k9)} K/9 · ${esc(f.ip)} IP</span>${trend}</div>`;
+}
+function reportCard(p, team, color) {
+  const r = p.report || {};
+  if (!r.name && !r.season) return `<div class="starter panel reveal" style="--tc:${color}"><header><span class="role">Probable starter · ${esc(team)}</span><h3>${esc(p.name || 'TBA')}</h3></header><p class="muted">Profile unavailable from ${esc(r.league || 'the league')} right now.</p></div>`;
+  const bio = [r.throws ? `${r.throws === 'L' ? 'Left' : 'Right'}-handed` : '', r.age ? `age ${r.age}` : '', [r.height, r.weight].filter(Boolean).join(' / ')].filter(Boolean).join(' · ');
+  const rest = r.rest != null ? `<em class="${r.rest <= 3 ? 'warn' : ''}">${r.rest} day${r.rest === 1 ? '' : 's'} since last outing${r.rest <= 3 ? ' (short rest)' : ''}</em>` : '';
+  const showHr = r.recent?.some((g) => g.hr != null), showP = r.recent?.some((g) => g.pitches != null);
   return `<div class="starter panel reveal" style="--tc:${color}">
-    <header><span class="role">Probable starter · ${esc(team)}</span><h3>${esc(p.name || s.name || 'TBA')}</h3><em>${esc(league)} official</em></header>
-    ${s.season ? `<h4>${new Date().getFullYear()} season</h4><div class="statline">${cells(s.season, keys)}</div>` : '<p class="muted">No season line yet (debut or no innings).</p>'}
-    ${s.career ? `<h4>Career</h4><div class="statline">${cells(s.career, keys)}</div>` : ''}
-    ${s.seasons?.length > 1 ? `<h4>Recent seasons</h4>${table(['Year', 'G', 'W-L', 'IP', 'ERA', 'WHIP', 'SO'], s.seasons.map((y) => `<tr><td>${esc(y.year)}</td><td class="num">${esc(y.g)}</td><td class="num">${esc(y.w)}-${esc(y.l)}</td><td class="num">${esc(y.ip)}</td><td class="num">${esc(y.era)}</td><td class="num">${esc(y.whip)}</td><td class="num">${esc(y.so)}</td></tr>`), 'tight')}` : ''}
-    ${s.recent?.length ? `<h4>Last ${s.recent.length} appearances</h4>${table(['Date', 'Opp', 'Res', 'IP', 'H', 'ER', 'BB', 'SO', 'ERA'], s.recent.map((g) => `<tr><td>${esc(g.date)}</td><td>${esc(g.opp)}</td><td>${esc(g.result)}</td><td class="num">${esc(g.ip)}</td><td class="num">${esc(g.h)}</td><td class="num">${esc(g.er)}</td><td class="num">${esc(g.bb)}</td><td class="num">${esc(g.so)}</td><td class="num">${esc(g.era)}</td></tr>`), 'tight')}` : ''}
-    ${s.source ? `<p class="note"><a href="${safeHref(s.source)}" target="_blank" rel="noopener noreferrer">Official profile ↗</a></p>` : ''}
+    <header><span class="role">${esc(p.role || 'SP')} · ${esc(team)} · ${esc(r.league || '')}</span><h3>${esc(r.name || p.name)}</h3>${bio ? `<em>${esc(bio)}</em>` : ''}${rest}</header>
+    ${r.season ? `<h4>${esc(r.season.label)}</h4><div class="statline">${chips(r.season, KEYS)}</div>` : '<p class="muted">No season line yet (debut or no innings).</p>'}
+    ${r.form3 || r.form5 ? `<h4>Recent form</h4><div class="form-row">${formBadge(r.form3, r.season?.era, 'Last 3 starts')}${formBadge(r.form5, r.season?.era, 'Last 5 starts')}</div>` : ''}
+    ${r.post ? `<h4>${esc(r.post.label)}</h4><div class="statline">${chips(r.post, KEYS)}</div>` : ''}
+    ${r.recent?.length ? `<h4>Last ${r.recent.length} outings</h4>${table(['Date', 'Opp', 'Res', 'IP', 'H', 'ER', 'BB', 'SO', ...(showHr ? ['HR'] : []), ...(showP ? ['P'] : [])], r.recent.map((g) => `<tr${g.start ? '' : ' class="relief"'}><td>${dt(g.date)}${g.post ? ' <small>PS</small>' : ''}</td><td>${esc(g.ha || '')} ${esc(g.opp)}</td><td>${esc(g.result || (g.start ? 'ND' : '—'))}</td>${[g.ip, g.h, g.er, g.bb, g.so, ...(showHr ? [g.hr] : []), ...(showP ? [g.pitches] : [])].map((c) => `<td class="num">${esc(v(c))}</td>`).join('')}</tr>`), 'tight')}${r.recentNote ? `<p class="cap">${esc(r.recentNote)}</p>` : ''}` : ''}
+    ${r.vsOpp ? `<h4>vs ${esc(r.vsOpp.opp)}${r.vsOpp.label ? ` · ${esc(r.vsOpp.label)}` : ' · career'}</h4><div class="statline">${chips(r.vsOpp, [['g', 'G'], ['pa', 'PA'], ['ip', 'IP'], ['era', 'ERA'], ['avg', 'AVG'], ['ops', 'OPS'], ['hr', 'HR'], ['so', 'SO'], ['bb', 'BB']])}</div>` : ''}
+    ${r.splits?.length ? `<h4>Splits</h4>${table(['Split', 'IP', 'ERA', 'WHIP', 'AVG', 'OPS', 'SO', 'BB'], r.splits.map((x) => `<tr><td>${esc(x.label)}</td>${[x.ip, x.era, x.whip, x.avg, x.ops, x.so, x.bb].map((c) => `<td class="num">${esc(v(c))}</td>`).join('')}</tr>`), 'tight')}` : ''}
+    ${r.years?.length ? `<h4>Year by year</h4>${table(['Year', 'Team', 'G', 'W-L', 'IP', 'ERA', 'WHIP', 'K/9', 'BB/9'], r.years.map((y) => `<tr><td>${esc(y.year)}</td><td>${esc(y.team || '')}</td><td class="num">${esc(v(y.g))}</td><td class="num">${esc(v(y.w))}-${esc(v(y.l))}</td><td class="num">${esc(v(y.ip))}</td><td class="num">${esc(v(y.era))}</td><td class="num">${esc(v(y.whip))}</td><td class="num">${esc(v(y.k9))}</td><td class="num">${esc(v(y.bb9))}</td></tr>`), 'tight')}` : ''}
+    ${r.career ? `<h4>${esc(r.career.label || 'Career')}</h4><div class="statline">${chips(r.career, KEYS.filter(([k]) => !['ppStart', 'qs'].includes(k)))}</div>` : ''}
+    ${r.injuries?.length ? `<h4>Injury history</h4><ul class="inj-list">${r.injuries.map((i) => `<li><b>${esc(i.date)}</b> ${esc(i.text)}</li>`).join('')}</ul>` : `<p class="cap">No injured-list stints on record${r.league === 'NPB' ? ' (NPB does not publish them)' : ' in the last two seasons'}.</p>`}
+    ${r.source ? `<p class="note"><a href="${safeHref(r.source)}" target="_blank" rel="noopener noreferrer">${esc(r.sourceLabel || 'Official profile')} ↗</a></p>` : ''}
   </div>`;
+}
+
+// Side-by-side: who has the better arm today. Lower is better except K/9 and K/BB.
+function matchupTable(home, away, H, A, hc, ac) {
+  const a = home.report, b = away.report;
+  const rows = [
+    ['Season ERA', a.season?.era, b.season?.era, -1], ['WHIP', a.season?.whip, b.season?.whip, -1], ['K/9', a.season?.k9, b.season?.k9, 1],
+    ['BB/9', a.season?.bb9, b.season?.bb9, -1], ['HR/9', a.season?.hr9, b.season?.hr9, -1], ['K/BB', a.season?.kbb, b.season?.kbb, 1],
+    ['Opp AVG', a.season?.avg, b.season?.avg, -1], ['Last 3 starts ERA', a.form3?.era, b.form3?.era, -1], ['Last 5 starts ERA', a.form5?.era, b.form5?.era, -1],
+    ['vs today\'s opponent (AVG)', a.vsOpp?.avg, b.vsOpp?.avg, -1], ['Days of rest', a.rest, b.rest, 0], ['Career ERA', a.career?.era, b.career?.era, -1],
+  ].filter(([, x, y]) => x != null || y != null);
+  let ha = 0, aa = 0;
+  const body = rows.map(([label, x, y, dir]) => {
+    const nx = parseFloat(x), ny = parseFloat(y);
+    const win = dir && Number.isFinite(nx) && Number.isFinite(ny) && nx !== ny ? ((nx - ny) * dir > 0 ? 'h' : 'a') : '';
+    if (win === 'h') ha++; if (win === 'a') aa++;
+    return `<tr><td class="num ${win === 'h' ? 'better' : ''}">${esc(v(x))}</td><td class="mid">${esc(label)}</td><td class="num ${win === 'a' ? 'better' : ''}">${esc(v(y))}</td></tr>`;
+  });
+  const verdict = ha === aa ? 'Even matchup on paper.' : `${ha > aa ? esc(a.name || H) : esc(b.name || A)} has the edge in ${Math.max(ha, aa)} of ${ha + aa} compared categories.`;
+  return `<div class="panel reveal matchup"><div class="cmp-head"><b style="color:${hc}">${esc(a.name || H)}</b><span>vs</span><b style="color:${ac}">${esc(b.name || A)}</b></div>
+    <div class="table-wrap"><table class="tbl tight mtable"><tbody>${body.join('')}</tbody></table></div><p class="note">${verdict} Pitching is one input; the win model also prices the line and records.</p></div>`;
 }
 
 // ---------- sections ----------
@@ -41,13 +80,16 @@ export function dossierSections(e, d, hc, ac) {
   const side = (s) => (s === 'home' ? [H, hc] : [A, ac]);
 
   // Starters (pitchers / goalies)
-  const native = e.probables?.some((p) => p.pitching);
-  const starters = native ? e.probables : d?.probables || [];
+  const reports = (e.probables || []).filter((p) => p.report).sort((a, b) => (a.side === 'home' ? 0 : 1) - (b.side === 'home' ? 0 : 1));
+  const native = reports.length > 0;
+  const starters = native ? reports : d?.probables || [];
   const goalies = d?.goalies && (d.goalies.home?.length || d.goalies.away?.length);
   if (starters.length || goalies) {
-    const cards = starters.sort((a, b) => (a.side === 'home' ? -1 : 1)).map((p) => (native ? nativeStarter(p, side(p.side)[0], side(p.side)[1], e.league) : espnStarter(p, side(p.side)[0], side(p.side)[1]))).join('');
+    const cards = starters.sort((a, b) => (a.side === 'home' ? 0 : 1) - (b.side === 'home' ? 0 : 1)).map((p) => (p.report ? reportCard(p, side(p.side)[0], side(p.side)[1]) : espnStarter(p, side(p.side)[0], side(p.side)[1]))).join('');
     const g = goalies ? ['home', 'away'].map((s) => (d.goalies[s] || []).map((x) => `<div class="starter panel reveal" style="--tc:${side(s)[1]}"><header><span class="role">Goalie · ${esc(side(s)[0])}</span><h3>${esc(x.name)}</h3></header><div class="statline">${Object.entries(x.stats).map(([k, v]) => `<div><small>${esc(k)}</small><b>${esc(v)}</b></div>`).join('')}</div></div>`).join('')).join('') : '';
-    S.push({ id: 'starters', label: e.sport === 'baseball' ? 'Starting pitchers' : e.sport === 'hockey' ? 'Goalies' : 'Starters', html: `<div class="grid two starters">${cards}${g}</div>` });
+    const hp = reports.find((p) => p.side === 'home'), ap = reports.find((p) => p.side === 'away');
+    const mu = hp?.report?.season && ap?.report?.season ? matchupTable(hp, ap, H, A, hc, ac) : '';
+    S.push({ id: 'starters', label: e.sport === 'baseball' ? 'Starting pitchers' : e.sport === 'hockey' ? 'Goalies' : 'Starters', html: `${mu}<div class="grid two starters">${cards}${g}</div>` });
   } else if (e.sport === 'baseball') {
     S.push({ id: 'starters', label: 'Starting pitchers', html: '<p class="muted">Starters not announced yet. Leagues usually confirm them the day before.</p>' });
   }

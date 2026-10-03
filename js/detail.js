@@ -1,6 +1,7 @@
 // Match detail: ESPN summary + player overviews, normalised into the sections the dossier renders.
 import { fetchSummary, fetchAthlete } from './espn.js';
 import { absencesFor } from './fotmob.js';
+import { enrichMlb } from './mlbstats.js';
 
 const cache = new Map();
 export const detailFor = (id) => cache.get(id);
@@ -173,8 +174,10 @@ async function build(e) {
   };
   // Soccer: who is out comes from FotMob (snapshot first, live lookup otherwise).
   if (e.leaguePath?.startsWith('soccer/') && !d.absences) d.absences = await absencesFor(e, AbortSignal.timeout(12000)).catch(() => null);
+  // MLB: full starter reports from the MLB Stats API when the snapshot has none (CORS-open, live).
+  if (e.leaguePath === 'baseball/mlb' && !e.probables?.some((p) => p.report)) await enrichMlb([e], { signal: AbortSignal.timeout(15000) }).catch(() => 0);
   // Season / career / recent-game lines for every probable starter (pitchers, goalies).
-  d.probables = await Promise.all((e.probables || []).filter((p) => p.id).map(async (p) => {
+  d.probables = await Promise.all((e.probables || []).filter((p) => p.id && !p.report).map(async (p) => {
     try { return { ...p, profile: athlete(await fetchAthlete(e.leaguePath, p.id)) }; } catch { return { ...p, profile: null }; }
   }));
   cache.set(e.id, d);
