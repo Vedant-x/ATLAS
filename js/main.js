@@ -3,7 +3,6 @@ import { loadEvents, refreshLive } from './data.js';
 import { buildSlips, todayEvents, localDay } from './engine.js';
 import { applyModel, bankers } from './intel.js';
 import { fetchLineups } from './espn.js';
-import { lineupsFromDetail } from './feed.js';
 import { views, bind, legIndex, edgeTable, countdown, esc, sportOf } from './views.js';
 import { slip } from './slip.js';
 import { preloader, cursor, wipe, magnetic, tilt, countUp, reveal } from './ui.js';
@@ -11,7 +10,11 @@ import { pc, odd } from './charts.js';
 import { leagueByPath, leagueKey, sportById } from './catalog.js';
 
 const app = document.getElementById('app');
-const scene = createScene(document.getElementById('bg'));
+// Effects switch: the 3D background can be turned off (remembered per device, or ?lite in the URL).
+const fxOff = (() => { try { return /[?&]lite\b/.test(location.search) || localStorage.getItem('atlas-fx') === 'off'; } catch { return false; } })();
+const bg = document.getElementById('bg');
+const scene = fxOff ? (bg.classList.add('no-webgl'), { setMode() {}, setAccent() {}, pulse() {}, ok: false }) : createScene(bg);
+document.querySelectorAll('[data-fx-toggle]').forEach((b) => { b.setAttribute('aria-pressed', String(!fxOff)); b.querySelector('b').textContent = fxOff ? 'OFF' : 'ON'; });
 
 const state = {
   events: [], source: 'demo', demo: true, news: [], odds: null, fetchedAt: 0,
@@ -23,11 +26,6 @@ const state = {
     return this.slipCache.get(key);
   },
   async detail(e) {
-    if (e.apiId) {
-      const r = await fetch(`api/event?id=${encodeURIComponent(e.apiId)}`);
-      const d = await r.json();
-      return { lineups: lineupsFromDetail(d, e), injuries: d.injuries || [] };
-    }
     return { lineups: await fetchLineups(e).catch(() => null), injuries: [] };
   },
 };
@@ -37,14 +35,12 @@ state.refresh = () => softRender();
 // ---------- data ----------
 function setData(d) {
   Object.assign(state, d, { events: applyModel(d.events) });
-  // The research desk needs the Node server; hide it on static hosting (GitHub Pages).
-  document.querySelector('nav.top a[href="desk.html"]')?.toggleAttribute('hidden', !state.server);
   if (Date.now() - state.slipsAt > 60000) { state.slipCache.clear(); state.slipsAt = Date.now(); }
   ticker();
 }
 // Snapshot mode: refresh live/imminent leagues straight from ESPN every 20 s, and reload the
-// full index every 10 min. Server mode: the server caches for 60 s, so poll it every 30 s.
-const refreshMs = () => (state.snapshot ? 20000 : state.server ? 30000 : 5000);
+// full index every 10 min. Without a snapshot (local preview) poll ESPN every 5 s.
+const refreshMs = () => (state.snapshot ? 20000 : 5000);
 let polling = false, lastIndex = Date.now();
 async function poll() {
   if (polling || document.hidden || state.demo) return;
@@ -235,6 +231,7 @@ document.addEventListener('click', (e) => {
   else if ('slipClear' in d) slip.clear();
   else if ('slipCopy' in d) navigator.clipboard?.writeText(slip.text()).then(() => { t.textContent = 'Copied'; setTimeout(() => { t.textContent = 'Copy slip'; }, 1400); }).catch(() => {});
   else if ('slipToggle' in d) openSlip(!drawer.classList.contains('open'));
+  else if ('fxToggle' in d) { try { localStorage.setItem('atlas-fx', fxOff ? 'on' : 'off'); } catch { /* storage blocked */ } if (/[?&]lite\b/.test(location.search)) location.search = ''; else location.reload(); }
   else if ('navBack' in d) { if (stack.length > 1) history.back(); else { replacing = true; location.replace(parentOf()); } }
   else if (d.jump) { e.preventDefault(); document.getElementById(d.jump)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   else if (d.league !== undefined && t.classList.contains('chip')) {

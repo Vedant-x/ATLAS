@@ -54,11 +54,9 @@ export function countdown(ms) {
 const confBadge = (c) => `<span class="conf conf-${c}" title="${c === 'high' ? 'From bookmaker prices' : c === 'medium' ? 'ATLAS model from records/form' : 'Baseline only: little data'}">${c === 'high' ? 'MARKET' : c === 'medium' ? 'MODEL' : 'BASELINE'}</span>`;
 
 function notice() {
-  const o = S.odds;
-  const stake = o?.status === 'connected' || o?.status === 'partial';
   return `<div class="notice reveal"><span class="led ${S.demo ? '' : 'on'}"></span>
     <b>${S.demo ? 'DEMO DATA' : esc(S.source)}</b> · updated <span data-ago>just now</span> ·
-    ${S.demo ? 'live feeds unreachable, prices are simulated.' : stake ? `<b class="ok">Stake prices live</b> (${o.selections.length})` : S.server ? `Stake not connected (<a href="desk.html#connections">connect</a>): showing ESPN reference odds and ATLAS model lines.` : 'Showing ESPN reference odds and ATLAS model lines. Stake prices need the ATLAS server (npm start).'}
+    ${S.demo ? 'live feeds unreachable, prices are simulated.' : 'Reference odds from ESPN (where offered) plus ATLAS model lines for every match.'}
     <em>Probabilities are estimates, not guarantees.</em></div>`;
 }
 
@@ -183,7 +181,6 @@ export const views = {
       <section class="sec-block"><h2 class="sec reveal"><span>◆</span>Multipliers</h2>
         <div class="grid xs">${[2, 3, 4, 5].map((x) => `<a class="xcard tilt reveal" href="#/x/${x}" data-cursor="BUILD"><b>${x}x</b><small>5 slips · ${pc(1 / x, 0)} break-even</small></a>`).join('')}
         <a class="xcard mega tilt reveal" href="#/mega" data-cursor="DARE"><b>100x+</b><small>Mega accumulators</small></a></div></section>
-      ${S.news?.length ? `<section class="sec-block"><h2 class="sec reveal"><span>◆</span>Headlines</h2><div class="grid news">${S.news.slice(0, 9).map((n) => `<a class="newsc tilt reveal" href="${safeHref(n.url)}" target="_blank" rel="noopener noreferrer" data-cursor="READ"><small>${esc(n.sport)} · ${esc(n.source)}</small><b>${esc(n.title)}</b></a>`).join('')}</div></section>` : ''}
       <section class="sec-block"><h2 class="sec reveal"><span>◆</span>Up next</h2><div class="list">${upcoming.slice(0, 14).map(eventRow).join('')}</div></section>`,
     };
   },

@@ -1,13 +1,9 @@
 // ATLAS WebGL engine.
 //  - Energy core: noise-displaced icosphere with a fresnel shader (two of them face off on match pages)
 //  - 9k-particle field that morphs between formations per page: sphere, stadium, helix, galaxy
-//  - Energy beam between the match cores, orbit rings, bloom post-processing
+//  - Energy beam between the match cores, orbit rings, additive glow halos (single pass, no post-processing)
 // API: setMode(mode, opts), setAccent(hex), pulse()
 import * as THREE from '../vendor/three.module.js';
-import { EffectComposer } from '../vendor/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from '../vendor/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from '../vendor/jsm/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from '../vendor/jsm/postprocessing/OutputPass.js';
 
 const NOISE = /* glsl */ `
 vec3 mod289(vec3 x){return x-floor(x*(1./289.))*289.;}
@@ -62,6 +58,8 @@ function coreMaterial(color, wire = false) {
         vec3 base = mix(uDeep, uColor * .32, .85);
         vec3 c = mix(base, uColor * 1.15, f) + uColor * (bands * .6 + max(vNoise, 0.) * .2) + uColor * uPulse * .6;
         gl_FragColor = vec4(c, uAlpha < 1. ? uAlpha * (.4 + f * .8) : 1.);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
       }`,
     transparent: wire, wireframe: wire, depthWrite: !wire, blending: wire ? THREE.AdditiveBlending : THREE.NormalBlending,
   });
@@ -131,6 +129,8 @@ function particleField(N) {
         float a = smoothstep(.5, 0., d);
         vec3 c = mix(vec3(1.), uColor, step(.55, vR) * .9);
         gl_FragColor = vec4(c * (1. + step(.97, vR) * 1.5), a * (.22 + vR * .5) * smoothstep(40., 6., vDepth));
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
       }`,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   });
@@ -149,6 +149,8 @@ function beam() {
         vec3 c = mix(uA, uB, smoothstep(uSplit - .04, uSplit + .04, vUv.x));
         float clash = exp(-pow((vUv.x - uSplit) * 18., 2.)) * 2.5;
         gl_FragColor = vec4(c * (1.2 + clash), (flow * .6 + .25 + clash) * edge * uAlpha);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
       }`,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   });
@@ -158,6 +160,23 @@ function beam() {
 
 const FORMATION = { home: [1, 0, 0, 0], sport: [0, 1, 0, 0], match: [0, 1, 0, 0], x: [0, 0, 1, 0], mega: [0, 0, 0, 1], bankers: [1, 0, 0, 0], edge: [0, 0, 1, 0], other: [1, 0, 0, 0] };
 
+// Soft radial glow drawn once; replaces the bloom post-process.
+let glowTex;
+function glowTexture() {
+  if (glowTex) return glowTex;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, 'rgba(255,255,255,.9)'); g.addColorStop(0.25, 'rgba(255,255,255,.35)'); g.addColorStop(0.6, 'rgba(255,255,255,.08)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 128, 128);
+  glowTex = new THREE.CanvasTexture(c);
+  glowTex.colorSpace = THREE.SRGBColorSpace;
+  return glowTex;
+}
+
+// The scene renders in ONE pass straight to the canvas. An earlier bloom post-process (off-screen
+// render targets at a different pixel ratio) could leave part of the canvas black on some GPUs.
 export function createScene(canvas) {
   let renderer;
   try {
@@ -190,8 +209,10 @@ export function createScene(canvas) {
     const geo = new THREE.IcosahedronGeometry(1.7, detail);
     const solid = new THREE.Mesh(geo, coreMaterial(color));
     const wire = new THREE.Mesh(new THREE.IcosahedronGeometry(1.95, small ? 6 : 10), coreMaterial(color, true));
-    g.add(solid, wire);
-    g.userData = { solid, wire };
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false }));
+    halo.scale.setScalar(8.5);
+    g.add(halo, solid, wire);
+    g.userData = { solid, wire, halo };
     return g;
   };
   const coreA = makeCore('#d2ff00');
@@ -213,22 +234,11 @@ export function createScene(canvas) {
   const link = beam();
   world.add(link);
 
-  const composer = new EffectComposer(renderer);
-  composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), small ? 0.45 : 0.6, 0.55, 0.3);
-  composer.addPass(bloom);
-  composer.addPass(new OutputPass());
-
-  // Zoom or moving to another monitor changes devicePixelRatio: every render target must follow,
-  // or the composer's buffers cover only part of the canvas and the rest renders black.
   const resize = () => {
     dpr = pixelRatio();
     renderer.setPixelRatio(dpr);
-    composer.setPixelRatio(dpr);
     field.material.uniforms.uPixel.value = dpr;
     renderer.setSize(innerWidth, innerHeight, false);
-    composer.setSize(innerWidth, innerHeight);
-    bloom.resolution.set(innerWidth / 2, innerHeight / 2); // half-res glow: same look, far cheaper
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
   };
@@ -280,6 +290,7 @@ export function createScene(canvas) {
     coreA.userData.wire.material.uniforms.uColor.value.lerp(target.a, 0.05);
     coreB.userData.solid.material.uniforms.uColor.value.lerp(target.b, 0.05);
     coreB.userData.wire.material.uniforms.uColor.value.lerp(target.b, 0.05);
+    coreA.userData.halo.material.color.lerp(target.a, 0.05); coreB.userData.halo.material.color.lerp(target.b, 0.05);
     rings.forEach((r, i) => { r.rotation.z += dt * (0.25 + i * 0.12) * (1 + st.pulse * 4); r.material.color.lerp(target.a, 0.05); });
     field.material.uniforms.uColor.value.lerp(target.accent, 0.04);
 
@@ -305,7 +316,7 @@ export function createScene(canvas) {
 
     st.pulse *= 0.95;
     checkSize();
-    composer.render();
+    renderer.render(scene, camera);
     requestAnimationFrame(frame);
   }
   frame();
