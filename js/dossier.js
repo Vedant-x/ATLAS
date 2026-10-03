@@ -23,6 +23,8 @@ function espnStarter(p, team, color) {
 // Full starter report (MLB Stats API, NPB, KBO): bio, season, form, recent starts, splits, vs opponent,
 // year by year, injuries. Missing pieces are simply left out.
 const v = (x) => (x == null || x === '' ? '—' : x);
+// NPB lists names as "Surname, Given".
+const nameOf = (r, fallback) => { const n = r?.name || fallback || ''; return r?.league === 'NPB' && /, /.test(n) ? n.split(', ').reverse().join(' ') : n; };
 const chips = (o, keys) => keys.filter(([k]) => o?.[k] != null && o[k] !== '').map(([k, l]) => `<div><small>${l}</small><b>${esc(o[k])}</b></div>`).join('');
 const KEYS = [['w', 'W'], ['l', 'L'], ['era', 'ERA'], ['whip', 'WHIP'], ['g', 'G'], ['gs', 'GS'], ['ip', 'IP'], ['so', 'SO'], ['bb', 'BB'], ['k9', 'K/9'], ['bb9', 'BB/9'], ['hr9', 'HR/9'], ['kbb', 'K/BB'], ['avg', 'Opp AVG'], ['ops', 'Opp OPS'], ['qs', 'QS'], ['ppStart', 'P/start']];
 function formBadge(f, seasonEra, label) {
@@ -38,7 +40,7 @@ function reportCard(p, team, color) {
   const rest = r.rest != null ? `<em class="${r.rest <= 3 ? 'warn' : ''}">${r.rest} day${r.rest === 1 ? '' : 's'} since last outing${r.rest <= 3 ? ' (short rest)' : ''}</em>` : '';
   const showHr = r.recent?.some((g) => g.hr != null), showP = r.recent?.some((g) => g.pitches != null);
   return `<div class="starter panel reveal" style="--tc:${color}">
-    <header><span class="role">${esc(p.role || 'SP')} · ${esc(team)} · ${esc(r.league || '')}</span><h3>${esc(r.name || p.name)}${r.nameLocal ? ` <small class="local">${esc(r.nameLocal)}</small>` : ''}</h3>${bio ? `<em>${esc(bio)}</em>` : ''}${rest}</header>
+    <header><span class="role">${esc(p.role || 'SP')} · ${esc(team)} · ${esc(r.league || '')}</span><h3>${esc(nameOf(r, p.name))}${r.nameLocal ? ` <small class="local">${esc(r.nameLocal)}</small>` : ''}</h3>${bio ? `<em>${esc(bio)}</em>` : ''}${rest}</header>
     ${r.season ? `<h4>${esc(r.season.label)}</h4><div class="statline">${chips(r.season, KEYS)}</div>` : '<p class="muted">No season line yet (debut or no innings).</p>'}
     ${r.form3 || r.form5 ? `<h4>Recent form</h4><div class="form-row">${formBadge(r.form3, r.season?.era, 'Last 3 starts')}${formBadge(r.form5, r.season?.era, 'Last 5 starts')}</div>` : ''}
     ${r.post ? `<h4>${esc(r.post.label)}</h4><div class="statline">${chips(r.post, KEYS)}</div>` : ''}
@@ -68,8 +70,8 @@ function matchupTable(home, away, H, A, hc, ac) {
     if (win === 'h') ha++; if (win === 'a') aa++;
     return `<tr><td class="num ${win === 'h' ? 'better' : ''}">${esc(v(x))}</td><td class="mid">${esc(label)}</td><td class="num ${win === 'a' ? 'better' : ''}">${esc(v(y))}</td></tr>`;
   });
-  const verdict = ha === aa ? 'Even matchup on paper.' : `${ha > aa ? esc(a.name || H) : esc(b.name || A)} has the edge in ${Math.max(ha, aa)} of ${ha + aa} compared categories.`;
-  return `<div class="panel reveal matchup"><div class="cmp-head"><b style="color:${hc}">${esc(a.name || H)}</b><span>vs</span><b style="color:${ac}">${esc(b.name || A)}</b></div>
+  const verdict = ha === aa ? 'Even matchup on paper.' : `${ha > aa ? esc(nameOf(a, H)) : esc(nameOf(b, A))} has the edge in ${Math.max(ha, aa)} of ${ha + aa} compared categories.`;
+  return `<div class="panel reveal matchup"><div class="cmp-head"><b style="color:${hc}">${esc(nameOf(a, H))}</b><span>vs</span><b style="color:${ac}">${esc(nameOf(b, A))}</b></div>
     <div class="table-wrap"><table class="tbl tight mtable"><tbody>${body.join('')}</tbody></table></div><p class="note">${verdict} Pitching is one input; the win model also prices the line and records.</p></div>`;
 }
 
