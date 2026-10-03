@@ -53,11 +53,9 @@ export function countdown(ms) {
 }
 const confBadge = (c) => `<span class="conf conf-${c}" title="${c === 'high' ? 'From bookmaker prices' : c === 'medium' ? 'ATLAS model from records/form' : 'Baseline only: little data'}">${c === 'high' ? 'MARKET' : c === 'medium' ? 'MODEL' : 'BASELINE'}</span>`;
 
+// Status box removed from pages; it only appears when live feeds failed and sample data is shown.
 function notice() {
-  return `<div class="notice reveal"><span class="led ${S.demo ? '' : 'on'}"></span>
-    <b>${S.demo ? 'DEMO DATA' : esc(S.source)}</b> · updated <span data-ago>just now</span> ·
-    ${S.demo ? 'live feeds unreachable, prices are simulated.' : 'Reference odds from ESPN (where offered) plus ATLAS model lines for every match.'}
-    <em>Probabilities are estimates, not guarantees.</em></div>`;
+  return S.demo ? '<div class="notice reveal"><span class="led"></span><b>DEMO DATA</b> · live feeds unreachable, prices are simulated.</div>' : '';
 }
 
 // ---------- rows & cards ----------
