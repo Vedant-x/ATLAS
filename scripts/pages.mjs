@@ -8,7 +8,7 @@
 //   - FotMob: injured / suspended players for soccer matches (ESPN's soccer injury feed is empty)
 // The browser refreshes scores and per-match detail live from ESPN; this file is the catalogue + the
 // Japan/Korea data that only the official league sites carry.
-import { absencesFor } from '../js/fotmob.js';
+import { absencesFor, injuryNames } from '../js/fotmob.js';
 import { enrichMlb, formOf } from '../js/mlbstats.js';
 import { mkdir, copyFile, cp, writeFile, rm } from 'node:fs/promises';
 import { fetchAll, LEAGUES, fetchErrors } from '../js/espn.js';
@@ -358,7 +358,9 @@ await Promise.all(Array.from({ length: 4 }, async () => {
     } catch { /* skip this match */ }
   }
 }));
-log(`FotMob: ${absMatched}/${soccer.length} soccer matches linked, ${absFound} absences`);
+const injNames = await injuryNames();
+await writeFile(`${out}/data/injury-names.json`, JSON.stringify(injNames));
+log(`FotMob: ${absMatched}/${soccer.length} soccer matches linked, ${absFound} absences, ${Object.keys(injNames).length} injury names`);
 
 // MLB starters: full reports from the official MLB Stats API.
 const mlbN = await enrichMlb(events, { signal: AbortSignal.timeout(90000), addMissing: true }).catch((e) => { log('MLB Stats API failed', e.message); return 0; });

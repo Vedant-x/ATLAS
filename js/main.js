@@ -1,4 +1,5 @@
 import { createScene } from './scene.js';
+import { mountAssistant } from './assistant/ui.js';
 import { loadEvents, refreshLive } from './data.js';
 import { buildSlips, todayEvents, localDay } from './engine.js';
 import { applyModel, bankers } from './intel.js';
@@ -275,5 +276,6 @@ preloader(loadEvents()).then((d) => {
   render(true);
   addEventListener('hashchange', route);
   scene.pulse();
+  mountAssistant(state);
   (function tick() { setTimeout(() => poll().finally(tick), refreshMs()); })();
 });

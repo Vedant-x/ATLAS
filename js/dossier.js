@@ -108,14 +108,17 @@ export function dossierSections(e, d, hc, ac) {
   const injN = (d.injuries.home?.length || 0) + (d.injuries.away?.length || 0) + (ab ? ab.home.length + ab.away.length : 0);
   const covered = Boolean(d.injuryFeed || ab);
   const sources = [d.injuryFeed, ab?.source].filter(Boolean).join(' + ');
-  const espnRows = (list) => list.map((i) => `<tr><td><b>${esc(i.name)}</b></td><td>${esc(i.pos)}</td><td><span class="inj inj-${esc(String(i.status).toLowerCase().replace(/[^a-z]/g, ''))}">${esc(i.status)}</span></td><td>${esc([i.type, i.detail, i.side].filter(Boolean).join(' · '))}</td><td>${i.returnDate ? dt(i.returnDate) : '—'}</td></tr>`);
-  const abRows = (list) => list.map((i) => { const doubt = /doubtful/i.test(i.expectedReturn); return `<tr><td><b>${esc(i.name)}</b></td><td></td><td><span class="inj inj-${doubt ? 'doubtful' : i.type === 'Suspended' ? 'suspension' : 'out'}">${esc(doubt ? `${i.type} · doubtful` : i.type)}</span></td><td>${i.updated ? `updated ${dt(i.updated)}` : ''}</td><td>${esc(doubt ? 'Doubtful to play' : i.expectedReturn || '—')}</td></tr>`; });
+  const espnRows = (list) => list.map((i) => `<tr><td><b>${esc(i.name)}</b></td><td>${esc(i.pos)}</td><td><span class="inj inj-${esc(String(i.status).toLowerCase().replace(/[^a-z]/g, ''))}">${esc(i.status)}</span></td><td class="inj-what">${esc([i.side, i.type, i.detail].filter(Boolean).join(' ') || 'Not specified by source')}</td><td>${i.returnDate ? dt(i.returnDate) : '—'}</td></tr>`);
+  const abRows = (list) => list.map((i) => {
+    const doubt = /doubtful/i.test(i.expectedReturn);
+    const what = i.injury || (i.type === 'Suspended' ? 'Suspension' : i.type === 'International duty' ? 'International duty' : 'Not specified by source');
+    return `<tr><td><b>${esc(i.name)}</b></td><td></td><td><span class="inj inj-${doubt ? 'doubtful' : i.type === 'Suspended' ? 'suspension' : 'out'}">${esc(doubt ? `${i.type} · doubtful` : i.type)}</span></td><td class="inj-what">${esc(what)}${i.updated ? `<small>updated ${dt(i.updated)}</small>` : ''}</td><td>${esc(doubt ? 'Doubtful to play' : i.expectedReturn || '—')}</td></tr>`; });
   const empty = covered
     ? `<p class="muted">${esc(sources)} lists nobody out for this side.</p>`
     : `<p class="muted">No injury source covers this competition, so absences are <b>unknown</b> here (not "none"). Check team news before betting.</p>`;
   S.push({ id: 'injuries', label: covered ? `Injuries (${injN})` : 'Injuries (no feed)', html: `${covered ? `<p class="note">Source: ${esc(sources)}${ab?.lineupType === 'predicted' ? ' · lineups predicted' : ''}. Late changes can still happen; confirmed XIs appear about an hour before kick-off.</p>` : ''}<div class="grid two">${['home', 'away'].map((s) => {
     const rows = [...espnRows(d.injuries[s] || []), ...(ab ? abRows(ab[s] || []) : [])];
-    return `<div class="panel reveal" style="border-top:3px solid ${side(s)[1]}"><h3 class="ph">${esc(side(s)[0])}</h3>${rows.length ? table(['Player', 'Pos', 'Status', 'Detail', 'Expected back'], rows, 'tight') : empty}</div>`;
+    return `<div class="panel reveal" style="border-top:3px solid ${side(s)[1]}"><h3 class="ph">${esc(side(s)[0])}</h3>${rows.length ? table(['Player', 'Pos', 'Status', 'Injury', 'Expected back'], rows, 'tight') : empty}</div>`;
   }).join('')}</div>` });
 
   // Team stats comparison
