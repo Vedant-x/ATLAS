@@ -10,6 +10,7 @@
 // Japan/Korea data that only the official league sites carry.
 import { absencesFor, injuryNames } from '../js/fotmob.js';
 import { enrichMlb, formOf } from '../js/mlbstats.js';
+import { validateReport } from '../js/validate.js';
 import { mkdir, copyFile, cp, writeFile, rm } from 'node:fs/promises';
 import { fetchAll, LEAGUES, fetchErrors } from '../js/espn.js';
 import { leagueByPath } from '../js/catalog.js';
@@ -46,11 +47,19 @@ const whip = (h, bb, ip) => { const outs = ipToOuts(ip); return outs ? (((Number
 const NPB_TEAMS = { g: 'Yomiuri Giants', t: 'Hanshin Tigers', db: 'Yokohama DeNA BayStars', c: 'Hiroshima Toyo Carp', s: 'Tokyo Yakult Swallows', d: 'Chunichi Dragons', h: 'Fukuoka SoftBank Hawks', f: 'Hokkaido Nippon-Ham Fighters', b: 'ORIX Buffaloes', e: 'Tohoku Rakuten Golden Eagles', l: 'Saitama Seibu Lions', m: 'Chiba Lotte Marines' };
 const NPB_COLORS = { g: '#f97709', t: '#ffe100', db: '#0055a5', c: '#e60012', s: '#00a73c', d: '#002569', h: '#f9c304', f: '#006298', b: '#000019', e: '#860010', l: '#1f366a', m: '#221815' };
 
-// Pitching table rows as cells; NPB splits innings into whole + ".1"/".2" cells, which are merged back.
-function rowsOf(tableHtml) {
+// Table rows as cells. `keepEmpty` keeps blank cells and expands colspan so every value stays in its
+// column (KBO tables leave cells blank, e.g. no decision, and merge "연도+팀명" on the career row).
+// Without it, blanks are dropped and NPB's split innings ("5" + ".1") are merged back into "5.1".
+function rowsOf(tableHtml, { keepEmpty = false } = {}) {
   return [...tableHtml.matchAll(/<tr[\s\S]*?<\/tr>/g)].map((r) => {
-    const cells = [...r[0].matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/g)].map((c) => clean(c[1])).filter((c) => c !== '');
-    return cells.reduce((a, c) => { if (/^\.\d$/.test(c) && a.length && /^\d+$/.test(a[a.length - 1])) a[a.length - 1] += c; else a.push(c); return a; }, []);
+    const cells = [];
+    for (const c of r[0].matchAll(/<t[hd]([^>]*)>([\s\S]*?)<\/t[hd]>/g)) {
+      const span = keepEmpty ? Math.max(1, Number(c[1].match(/colspan=["']?(\d+)/i)?.[1]) || 1) : 1;
+      const v = clean(c[2]);
+      for (let k = 0; k < span; k++) cells.push(v);
+    }
+    if (keepEmpty) return cells;
+    return cells.filter((c) => c !== '').reduce((a, c) => { if (/^\.\d$/.test(c) && a.length && /^\d+$/.test(a[a.length - 1])) a[a.length - 1] += c; else a.push(c); return a; }, []);
   });
 }
 const per9 = (x, ip) => { const o = ipToOuts(ip); return o ? ((Number(x) * 27) / o).toFixed(2) : null; };
@@ -201,7 +210,7 @@ async function npb() {
         live: false, venue: round.replace(/\d{1,2}:\d{2}/, '').trim(), markets: [], stats: {}, lineups: null,
         colors: { home: NPB_COLORS[hc], away: NPB_COLORS[ac] },
         probables: st ? [{ side: 'home', npbId: st.home, role: 'SP' }, { side: 'away', npbId: st.away, role: 'SP' }] : [],
-        source: 'NPB official', sourceUrl: `https://npb.jp/bis/eng/${key.slice(0, 4)}/games/gm${key}.html`,
+        source: 'NPB official', fetchedAt: Date.now(), sourceUrl: `https://npb.jp/bis/eng/${key.slice(0, 4)}/games/gm${key}.html`,
       });
     }
   }
@@ -238,7 +247,16 @@ async function kboPitcher(id, oppName) {
   const title = (w) => w.charAt(0) + w.slice(1).toLowerCase();
   const enName = en ? `${en[2].trim()} ${en[1].split(' ').map(title).join(' ')}` : null;
   if (!basic) return { league: 'KBO', id, name: null, season: null, years: [], recent: [], splits: [], injuries: [], error: 'profile unavailable' };
-  const T = (html) => [...html.matchAll(/<table[\s\S]*?<\/table>/g)].map((m) => { const rows = rowsOf(m[0]); return { h: rows[0] || [], rows: rows.slice(1) }; });
+  // Header = the row carrying the column labels; data rows keep blanks so columns line up.
+  const T = (html) => [...html.matchAll(/<table[\s\S]*?<\/table>/g)].map((m) => {
+    const rows = rowsOf(m[0], { keepEmpty: true }).filter((r) => r.some((c) => c !== ''));
+    const hi = rows.findIndex((r) => r.some((c) => /^(구분|연도|일자|팀명|ERA|WHIP|TBF)$/.test(c)));
+    const raw = hi >= 0 ? rows[hi] : rows[0] || [];
+    const h = raw.slice(raw.findIndex((c) => c !== '')); // drop blank spacer cells before the labels
+    // KBO tables end with their stat columns, so rows are lined up from the right edge.
+    const fit = (r) => (r.length >= h.length ? r.slice(r.length - h.length) : [...Array(h.length - r.length).fill(''), ...r]);
+    return { h, rows: rows.slice(hi + 1).filter((r) => r.length >= h.length - 2).map(fit) };
+  });
   const at = (t, r, k) => { const i = t.h.indexOf(k); return i < 0 ? null : r[i] ?? null; };
   const prof = clean(basic.match(/playerProfile[\s\S]{0,2500}/)?.[0] || '');
   const name = clean(basic.match(/playerProfile_lblName">([^<]*)</)?.[1]);
@@ -313,7 +331,7 @@ async function kbo() {
         venue: g.S_NM, broadcast: g.TV_IF || null, markets: [], lineups: null,
         stats: { homeRank: g.B_RANK_NO, awayRank: g.T_RANK_NO },
         colors: { home: KBO_COLORS[g.HOME_ID], away: KBO_COLORS[g.AWAY_ID] },
-        probables, source: 'KBO official', sourceUrl: 'https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx',
+        probables, source: 'KBO official', fetchedAt: Date.now(), sourceUrl: 'https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx',
       });
     }
   }
@@ -365,6 +383,17 @@ log(`FotMob: ${absMatched}/${soccer.length} soccer matches linked, ${absFound} a
 // MLB starters: full reports from the official MLB Stats API.
 const mlbN = await enrichMlb(events, { signal: AbortSignal.timeout(90000), addMissing: true }).catch((e) => { log('MLB Stats API failed', e.message); return 0; });
 log(`MLB Stats API: ${mlbN} starter reports`);
+// Validate every starter report: shifted or impossible numbers are dropped (and logged), then
+// recent form is recomputed from the rows that survived.
+let dropped = 0;
+for (const e of events) for (const p of (e.probables || []).filter((x) => x.report)) {
+  p.report.fetchedAt ??= e.fetchedAt || Date.now();
+  validateReport(p.report, (msg) => { dropped++; if (dropped <= 25) log('  VALIDATION', msg); });
+  const starts = (p.report.recent || []).filter((g) => g.start);
+  p.report.form3 = formOf(starts.slice(0, 3)); p.report.form5 = formOf(starts.slice(0, 5));
+  p.pitching = p.report;
+}
+log(`Starter validation: ${dropped} item(s) dropped`);
 // One line per starter so a broken parser shows up in the build log.
 for (const e of events) for (const p of (e.probables || []).filter((x) => x.report).slice(0, 2)) {
   const r = p.report;

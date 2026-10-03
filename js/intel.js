@@ -65,7 +65,7 @@ export function applyModel(events) {
 }
 
 // Strongest favourites across every sport: what the dashboard calls bankers.
-export function bankers(events, { min = 0.7, limit = 24 } = {}) {
+export function bankers(events, { min = 0.7, limit = 24, minOdds = 1 } = {}) {
   const out = [];
   for (const e of events) {
     if (!e.markets?.length) continue;
@@ -73,7 +73,7 @@ export function bankers(events, { min = 0.7, limit = 24 } = {}) {
       const { outcomes } = devig(m);
       outcomes.forEach((o, i) => {
         const p = m.outcomes[i].model ?? o.fair;
-        if (p < min) return;
+        if (p < min || o.odds < minOdds) return;
         out.push({ event: e, market: m.name, pick: o.name, odds: o.odds, p, ev: p * o.odds - 1,
           agree: m.outcomes[i].model == null ? null : m.outcomes[i].model >= o.fair });
       });
@@ -83,12 +83,12 @@ export function bankers(events, { min = 0.7, limit = 24 } = {}) {
 }
 
 // Where the model rates a side clearly higher than the price does.
-export function valueSpots(events, { minEdge = 0.03, limit = 12 } = {}) {
+export function valueSpots(events, { minEdge = 0.03, limit = 12, minOdds = 1 } = {}) {
   const out = [];
   for (const e of events) {
     for (const m of e.markets || []) {
       m.outcomes.forEach((o) => {
-        if (o.model == null || o.odds > 5) return; // longshot "edges" are mostly model noise
+        if (o.model == null || o.odds > 5 || o.odds < minOdds) return; // longshot "edges" are mostly model noise
         const ev = o.model * o.odds - 1;
         if (ev >= minEdge) out.push({ event: e, market: m.name, pick: o.name, odds: o.odds, p: o.model, ev });
       });

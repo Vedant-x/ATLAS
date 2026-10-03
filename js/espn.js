@@ -98,6 +98,7 @@ export function parseScoreboard(json, league) {
         home, away,
         start: Date.parse(comp.date || ev.date),
         live: state === 'in',
+        fetchedAt: Date.now(),
         score: state === 'in' ? `${homeC.score ?? ''} – ${awayC.score ?? ''}` : null,
         clock: (comp.status || ev.status)?.type?.shortDetail || '',
         bookmaker: comp.odds?.[0]?.provider?.name || null,

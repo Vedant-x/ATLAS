@@ -10,6 +10,7 @@ import { CATALOG, sportById, leagueByPath, leagueKey, leagueFromKey } from './ca
 import { detailFor, loadDetail as fetchDetail } from './detail.js';
 import { dossierSections } from './dossier.js';
 import { fetchAll, LEAGUES } from './espn.js';
+import { prefs, prefEvents } from './prefs.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const safeHref = (u) => (/^https?:\/\//i.test(String(u || '')) ? esc(u) : '#');
@@ -41,6 +42,20 @@ function legButton(leg, label) {
 }
 const bookLeg = (e, m, o, p) => ({ key: `${e.id}|${m.name}|${o.name}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: m.name, pick: o.name, odds: o.odds, p, derived: false });
 const fairLeg = (e, m, o) => ({ key: `${e.id}|fair|${m.name}|${o.name}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: m.name, pick: o.name, odds: +o.fair.toFixed(2), p: o.p, derived: true });
+
+// "12m ago" style age; class says how fresh it is.
+const ago = (t) => { if (!t) return 'unknown'; const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m}m ago` : m < 48 * 60 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`; };
+const freshClass = (t) => (!t ? 'stale' : Date.now() - t < 30 * 6e4 ? 'fresh' : Date.now() - t < 2 * 36e5 ? 'aging' : 'stale');
+
+// Personal filters bar (min odds, sports, priced only), saved per browser.
+function prefsBar() {
+  const p = prefs.get();
+  const sports = SPORTS.filter((s) => S.events.some((e) => e.sport === s.id));
+  return `<div class="prefs reveal"><span class="pl">Min odds</span>${[1.1, 1.2, 1.3, 1.5, 1.8].map((o) => `<button class="pchip ${p.minOdds === o ? 'on' : ''}" data-pref="minOdds" data-value="${o}">${o.toFixed(2)}</button>`).join('')}
+    <span class="pl">Sports</span><button class="pchip ${p.sports.length ? '' : 'on'}" data-pref="sport" data-value="all">All</button>${sports.map((s) => `<button class="pchip ${p.sports.includes(s.id) ? 'on' : ''}" data-pref="sport" data-value="${s.id}" title="${esc(s.name)}">${s.icon}</button>`).join('')}
+    <button class="pchip ${p.pricedOnly ? 'on' : ''}" data-pref="priced" data-value="1">Bookmaker-priced only</button></div>`;
+}
+const prefFilter = (list) => { const p = prefs.get(); const ev = prefEvents(list); return p.pricedOnly ? ev.filter((e) => e.markets?.length) : ev; };
 
 const when = (e) => (e.live ? `<span class="live">LIVE${e.score ? ` · ${esc(e.score)}` : ''}</span>` : `<span data-start="${e.start}">${countdown(e.start)}</span>`);
 export function countdown(ms) {
@@ -129,7 +144,8 @@ function slipCard(s, i, target) {
     <ul>${s.legs.map((l) => `<li><span class="sp">${sportOf(l.sport).icon}</span><div><b>${esc(l.pick)}</b><small>${esc(l.market)} · ${esc(l.match)}</small></div><em>${l.odds.toFixed(2)}</em><i>${pc(l.p, 0)}</i></li>`).join('')}</ul>
     <footer>
       <div class="meter"><i class="grow" style="--w:${Math.min(100, s.p * 100 * (target >= 100 ? 40 : 1)).toFixed(1)}%"></i></div>
-      <span>Win chance <b>${pc(s.p, s.p < 0.01 ? 2 : 1)}</b></span><span>Edge <b class="${s.p * s.odds - 1 >= 0 ? 'pos' : 'neg'}">${((s.p * s.odds - 1) * 100).toFixed(1)}%</b></span>
+      <span>Estimated chance <b>${pc(s.p, s.p < 0.01 ? 2 : 1)}</b></span><span>Edge <b class="${s.p * s.odds - 1 >= 0 ? 'pos' : 'neg'}">${((s.p * s.odds - 1) * 100).toFixed(1)}%</b></span>
+      <p class="slip-note">${s.p * s.odds - 1 >= 0 ? 'The model rates this combination above its price.' : `Meets the ${target}x payout target, but it is not a value bet: the ${((1 - s.p * s.odds) * 100).toFixed(1)}% shortfall is mostly bookmaker margin, so on average it loses money.`}</p>
       <button class="btn-ghost" data-addall="${esc(keys.join('~'))}" data-cursor="ADD ALL">Add all to slip</button>
     </footer></article>`;
 }
@@ -140,31 +156,27 @@ export const views = {
     const ev = S.events;
     const live = ev.filter((e) => e.live);
     const upcoming = [...ev].filter((e) => !e.live).sort((a, b) => a.start - b.start);
-    const bk = bankers(ev, { limit: 6 });
-    const val = valueSpots(ev, { limit: 6 });
+    const bk = bankers(prefFilter(ev), { limit: 6, minOdds: prefs.get().minOdds });
+    const val = valueSpots(prefFilter(ev), { limit: 6, minOdds: prefs.get().minOdds });
     const featured = bk[0]?.event || upcoming[0];
     const modelled = ev.reduce((n, e) => n + (e.markets?.length ? 1 : 0), 0);
     const counts = Object.fromEntries(SPORTS.map((s) => [s.id, ev.filter((e) => e.sport === s.id)]));
     return {
       mode: 'home', accent: '#d2ff00', title: 'Dashboard',
       html: `
-      <section class="hero">
+      <section class="hero compact">
         <p class="kicker reveal">ATLAS · SPORTS INTELLIGENCE SYSTEM</p>
-        <h1>${split('EVERY SPORT.')}<br>${split('EVERY EDGE.')}</h1>
-        <p class="lede reveal">Live fixtures, official feeds, bookmaker prices with the margin stripped out, and a model that prices every market: correct scores, handicaps, totals, set betting. One screen.</p>
-        <div class="cta reveal"><a class="btn" href="#/edge" data-magnetic data-cursor="GO">Open edge board</a><a class="btn-ghost" href="#/bankers" data-magnetic data-cursor="GO">Today's bankers</a></div>
+        <h1>${split('EVERY SPORT. EVERY EDGE.')}</h1>
         <div class="stats reveal">
           <div><b data-count-to="${ev.length}">0</b><span>events tracked</span></div>
-          <div><b data-count-to="${SPORTS.filter((s) => counts[s.id]?.length).length}">0</b><span>sports live</span></div>
-          <div><b data-count-to="${modelled}">0</b><span>priced by market</span></div>
+          <div><b data-count-to="${modelled}">0</b><span>bookmaker-priced</span></div>
           <div><b class="hot" data-count-to="${live.length}">0</b><span>in play</span></div>
         </div>
-        <div class="scroll-hint" aria-hidden="true"><i></i>SCROLL</div>
       </section>
       ${notice()}
-      ${live.length ? `<section class="sec-block"><h2 class="sec reveal"><span>01</span>In play</h2><div class="hscroll">${live.map((e) => `<a class="livec tilt" href="#/match/${esc(e.id)}" style="--c:${sportOf(e.sport).color}"><small>${sportOf(e.sport).icon} ${esc(e.league)} · ${esc(e.clock || '')}</small><b>${esc(e.home)}</b><b>${esc(e.away)}</b><em>${esc(e.score || '—')}</em></a>`).join('')}</div></section>` : ''}
+      ${dashboard(ev, live)}
       ${featured ? featuredCard(featured) : ''}
-      <section class="sec-block"><h2 class="sec reveal"><span>${live.length ? '03' : '02'}</span>Sports</h2>
+      <section class="sec-block"><h2 class="sec reveal"><span>◆</span>Sports</h2>
         <div class="grid sports">${SPORTS.map((s) => {
           const list = counts[s.id] || [];
           const next = list.filter((e) => !e.live).sort((a, b) => a.start - b.start)[0];
@@ -280,15 +292,16 @@ export const views = {
       },
       html: `
       <section class="hero match-hero">
-        <p class="kicker reveal">${s.icon} ${e.tennis ? esc(`${e.tennis.tournament} · ${e.tennis.drawName}`) : esc(e.league)} · ${when(e)} · ${e.bookmaker ? esc(e.bookmaker) : 'no bookmaker price'} ${confBadge(a.confidence)}</p>
+        <p class="kicker reveal">${s.icon} ${e.tennis ? esc(`${e.tennis.tournament} · ${e.tennis.drawName}`) : esc(e.league)} · ${when(e)} · ${e.bookmaker ? esc(e.bookmaker) : e.markets?.length ? 'bookmaker price' : 'no bookmaker price'} ${confBadge(a.confidence)}</p>
         <h1 class="vs"><span style="--tc:${hc}">${split(e.home.toUpperCase())}</span><small>VS</small><span style="--tc:${ac}">${split(e.away.toUpperCase())}</span></h1>
         ${e.tennis ? `<div class="tennis-facts reveal">${[['Tournament', e.tennis.tournament + (e.tennis.major ? ' (Grand Slam)' : '')], ['Location', e.tennis.location], ['Draw', e.tennis.drawName], ['Round', e.tennis.round], ['Court', e.tennis.court], ['Format', e.tennis.bestOf ? `Best of ${e.tennis.bestOf} sets` : ''], [e.home, [e.tennis.home.seed ? `Seed ${e.tennis.home.seed}` : '', e.tennis.home.country].filter(Boolean).join(' · ')], [e.away, [e.tennis.away.seed ? `Seed ${e.tennis.away.seed}` : '', e.tennis.away.country].filter(Boolean).join(' · ')]].filter(([, v]) => v).map(([k, v]) => `<div><small>${esc(k)}</small><b>${esc(v)}</b></div>`).join('')}</div>` : ''}
-        ${e.live ? `<div class="scoreline reveal"><b>${esc(e.score || '')}</b><small>${esc(e.clock || '')}</small></div>` : ''}
+        ${e.live ? `<div class="scoreline reveal"><b>${esc(e.score || '')}</b><small>${esc(e.clock || '')}</small></div><p class="live-warn reveal">In play: every probability, price and score grid on this page is a <b>pre-match estimate</b>. It does not include the current score${e.score ? ` (${esc(e.score)})` : ''}.</p>` : ''}
+        ${sourcesLine(e)}
       </section>
       <nav class="subnav reveal">${sections.map(([k, l]) => `<a href="#sec-${k}" data-jump="sec-${k}">${l}</a>`).join('')}</nav>
       ${notice()}
       <section class="panel big reveal" id="sec-overview">
-        <h2 class="ph">Win probability <small>${esc(a.basis)}</small></h2>
+        <h2 class="ph">${e.live ? 'Pre-match ' : ''}Estimated win probability <small>${esc(a.basis)}</small></h2>
         ${probBar([{ label: e.home, p: w.home, color: hc }, ...(twoWay ? [] : [{ label: 'Draw', p: w.draw, color: DRAW_COLOR }]), { label: e.away, p: w.away, color: ac }])}
         <div class="sides ${twoWay ? 'two' : 'three'}">${side(e.home, w.home, hc, book(e.home))}${twoWay ? '' : side('Draw', w.draw, DRAW_COLOR, book('Draw'))}${side(e.away, w.away, ac, book(e.away))}</div>
         ${paramChips ? `<div class="params">${paramChips}<div><small>Markets priced</small><b>${a.marketCount}</b></div></div>` : ''}
@@ -339,7 +352,7 @@ export const views = {
       html: `<section class="hero small"><p class="kicker reveal">MULTIPLIER · BREAK-EVEN ${pc(1 / target, 1)} · TODAY ONLY</p><h1>${split(`${target}X SLIPS`)}</h1>
         <nav class="tabs reveal">${[2, 3, 4, 5, 10, 20].map((x) => `<a href="#/x/${x}" class="${x === target ? 'on' : ''}">${x}x</a>`).join('')}</nav></section>
         ${notice()}
-        <p class="lede reveal">Combinations whose total odds land near ${target}x, ranked by edge and true win chance. A fairly priced ${target}x slip wins about ${pc(1 / target, 0)} of the time; each extra leg adds another bookmaker margin.</p>
+        <p class="lede reveal">Combinations whose total odds land near ${target}x, ranked by edge and estimated win chance. A fairly priced ${target}x slip wins about ${pc(1 / target, 0)} of the time; each extra leg adds another bookmaker margin.</p>
         <p class="note reveal">📅 Only matches on <b>${esc(day)}</b> that haven't started yet: ${left.length} left today, ${priced} with prices. Slips rebuild as games kick off and roll over at midnight.</p>
         <section class="grid slips">${list.map((s, i) => slipCard(s, i, target)).join('') || `<p class="muted">${left.length ? `Today's remaining prices can't be combined to about ${target}x. Try another multiplier.` : 'No more matches left today. Tomorrow\'s slips appear after midnight.'}</p>`}</section>`,
     };
@@ -356,13 +369,14 @@ export const views = {
   },
 
   bankers() {
-    const list = bankers(S.events, { limit: 40 });
-    const val = valueSpots(S.events, { limit: 20 });
+    const ev = prefFilter(S.events), minOdds = prefs.get().minOdds;
+    const list = bankers(ev, { limit: 40, minOdds });
+    const val = valueSpots(ev, { limit: 20, minOdds });
     return {
       mode: 'bankers', accent: '#00ffc3', title: 'Bankers',
-      html: `<section class="hero small"><p class="kicker reveal">EASY-WIN RADAR · ALL SPORTS</p><h1>${split('BANKERS')}</h1>
-        <p class="lede reveal">Every pick on the board at 70%+ model chance. Short prices, small returns, and they still lose roughly one time in four to one time in ten.</p></section>
-        ${notice()}
+      html: `<section class="hero small"><p class="kicker reveal">HIGHEST MODEL ESTIMATES · ODDS ≥ ${minOdds.toFixed(2)}</p><h1>${split('BANKERS')}</h1>
+        <p class="lede reveal">Picks the model estimates at 70%+ (from margin-free bookmaker prices, adjusted by record and form). These are estimates, not certainties: favourites at this level still lose roughly one time in four to one time in ten.</p></section>
+        ${notice()}${prefsBar()}
         <div class="list">${list.map((b) => bigPick(b)).join('') || '<p class="muted">No 70%+ favourites on the board right now.</p>'}</div>
         <h2 class="sec reveal"><span>◆</span>Value spots <small>model above the price, odds ≤ 5</small></h2>
         <div class="list">${val.map((b) => bigPick(b, true)).join('') || '<p class="muted">No value spots right now.</p>'}</div>`,
@@ -375,6 +389,56 @@ export const views = {
 };
 
 // ---------- pieces ----------
+// Home dashboard: Ask ATLAS → today's shortlist → live → absence changes → source health.
+function dashboard(ev, live) {
+  const minOdds = prefs.get().minOdds;
+  const pool = prefFilter(ev);
+  let short = bankers(todayEvents(pool), { min: 0.55, minOdds, limit: 5 }), when2 = 'today';
+  if (!short.length) { short = bankers(pool.filter((e) => !e.live), { min: 0.55, minOdds, limit: 5 }); when2 = 'next few days'; }
+  const changes = ev.flatMap((e) => ['home', 'away'].flatMap((sd) => (e.absences?.[sd] || []).map((x) => ({ e, team: sd === 'home' ? e.home : e.away, ...x }))))
+    .filter((x) => x.updated).sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated)).slice(0, 6);
+  return `<section class="dash">
+    <div class="panel dash-ask reveal"><h3 class="ph">Ask ATLAS <small>bets, injuries, starters, slips</small></h3>
+      <form class="askform" data-askform><input name="q" placeholder="e.g. 3 safe NBA bets today" autocomplete="off" maxlength="300"/><button class="btn">Ask</button></form>
+      <div class="askchips">${['Best bets today', 'Injuries in the Premier League', 'Give me a 2x slip', "What's live?"].map((q) => `<button class="pchip" data-ask="${esc(q)}">${esc(q)}</button>`).join('')}</div></div>
+    <div class="panel dash-short reveal"><h3 class="ph">Today's shortlist <small>${when2} · estimated 55%+ · odds ≥ ${minOdds.toFixed(2)}</small></h3>
+      <div class="minilist">${short.map((b) => miniPick(b)).join('') || '<p class="muted">Nothing passes your filters right now. Lower the minimum odds or add sports.</p>'}</div>${prefsBar()}</div>
+    <div class="panel dash-live reveal"><h3 class="ph">Live now <small>${live.length}</small></h3>
+      ${live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${esc(e.score || '')}</b> ${esc(e.away)}</a><small>${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>
+    <div class="panel dash-changes reveal"><h3 class="ph">Latest absences <small>soccer · FotMob</small></h3>
+      ${changes.length ? `<ul class="dash-list">${changes.map((x) => `<li><a href="#/match/${esc(x.e.id)}"><b>${esc(x.name)}</b> (${esc(x.team)}) · ${esc(x.injury || x.type)}</a><small>${[x.expectedReturn && `back ${esc(x.expectedReturn)}`, `updated ${ago(Date.parse(x.updated))}`].filter(Boolean).join(' · ')}</small></li>`).join('')}</ul>` : '<p class="muted">No recent absence updates.</p>'}</div>
+    <div class="panel dash-health reveal"><h3 class="ph">Source health</h3>${sourceHealth(ev)}</div>
+  </section>`;
+}
+
+function sourceHealth(ev) {
+  const newest = (list, f) => list.reduce((t, x) => Math.max(t, f(x) || 0), 0);
+  const espn = ev.filter((e) => e.leaguePath && !e.leaguePath.startsWith('atlas/') && e.source !== 'MLB Stats API');
+  const reports = ev.flatMap((e) => (e.probables || []).filter((p) => p.report?.league === 'MLB').map((p) => p.report));
+  const rows = [
+    ['Snapshot build', ev.length, S.fetchedAt, 'every league, rebuilt every 15 min'],
+    ['ESPN scoreboards', espn.length, newest(espn, (e) => e.fetchedAt), 'fixtures, scores, reference odds'],
+    ['NPB official', ev.filter((e) => e.leaguePath === 'atlas/npb').length, newest(ev.filter((e) => e.leaguePath === 'atlas/npb'), (e) => e.fetchedAt), 'schedule, starters'],
+    ['KBO official', ev.filter((e) => e.leaguePath === 'atlas/kbo').length, newest(ev.filter((e) => e.leaguePath === 'atlas/kbo'), (e) => e.fetchedAt), 'schedule, starters'],
+    ['MLB Stats API', reports.length, newest(reports, (r) => r.fetchedAt), 'starter reports'],
+    ['FotMob', ev.filter((e) => e.absences).length, newest(ev, (e) => e.absences?.fetchedAt), 'soccer absences'],
+  ];
+  return `<ul class="health">${rows.map(([n, c, t, what]) => `<li class="${c ? freshClass(t) : 'idle'}"><i></i><b>${n}</b><span>${c ? `${c} · ${ago(t)}` : 'nothing scheduled'}</span><small>${what}</small></li>`).join('')}</ul>`;
+}
+
+// Per-match: where each piece of data came from and how old it is.
+function sourcesLine(e) {
+  const d = detailFor(e.id);
+  const st = (e.probables || []).find((p) => p.report)?.report;
+  const parts = [
+    [e.source || (e.leaguePath?.startsWith('atlas/') ? 'League site' : 'ESPN'), e.fetchedAt || S.fetchedAt, 'fixture & price'],
+    st ? [st.sourceLabel?.replace(/ profile$/, '') || st.league, st.fetchedAt || e.fetchedAt || S.fetchedAt, 'starters'] : null,
+    e.absences ? ['FotMob', e.absences.fetchedAt, 'absences'] : null,
+    d?.ok && !d.native ? ['ESPN summary', d.fetchedAt, 'stats, injuries, form'] : null,
+  ].filter(Boolean);
+  return `<p class="sources reveal">${parts.map(([n, t, what]) => `<span class="${freshClass(t)}"><i></i>${esc(what)}: ${esc(n)} · ${ago(t)}</span>`).join('')}</p>`;
+}
+
 function featuredCard(e) {
   const w = winProbs(e), s = sportOf(e.sport);
   const hc = safeColor(e.colors?.home, s.color), ac = safeColor(e.colors?.away, AWAY_COLOR);

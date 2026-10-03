@@ -75,7 +75,7 @@ export function mountAssistant(S) {
     $('.ai-avatar').innerHTML = svgOf(c, 'ai-c-big');
     $('.ai-mini').innerHTML = svgOf(c, 'ai-c-mini');
     $('.ai-name').textContent = c.name;
-    $('.ai-mode').textContent = claudeKey.get() ? 'Claude · Opus 5.5' : 'Built-in brain';
+    $('.ai-mode').textContent = claudeKey.get() ? 'Claude' : 'Built-in brain';
     root.style.setProperty('--ai', c.color);
   }
 
@@ -184,7 +184,7 @@ export function mountAssistant(S) {
     box.hidden = !box.hidden; $('.ai-looks').hidden = true;
     const has = Boolean(claudeKey.get());
     box.innerHTML = `<p><b>Brain</b></p>
-      <p class="muted">Built-in brain: free, instant, answers from the site's data. Add your own <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">Anthropic API key</a> to switch to Claude (Opus 5.5) for open conversation. The key stays in this browser only and is sent only to api.anthropic.com; usage is billed to your account.</p>
+      <p class="muted">Built-in brain: free, instant, answers from the site's data. Add your own <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">Anthropic API key</a> to switch to Claude for open conversation. The key stays in this browser only and is sent only to api.anthropic.com; usage is billed to your account.</p>
       <form class="ai-keyform"><input type="password" class="ai-key" placeholder="${has ? 'Key saved: paste a new one to replace' : 'sk-ant-…'}" autocomplete="off"/><button class="btn-ghost">${has ? 'Replace' : 'Use Claude'}</button></form>
       ${has ? '<button class="btn-ghost ai-keyoff">Remove key · use built-in brain</button>' : ''}`;
   }

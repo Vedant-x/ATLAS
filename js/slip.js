@@ -22,7 +22,7 @@ export const slip = {
   has: (key) => legs.some((l) => l.key === key),
   toggle(leg) {
     if (legs.some((l) => l.key === leg.key)) legs = legs.filter((l) => l.key !== leg.key);
-    else legs = [...legs, leg];
+    else legs = [...legs, { ...leg, addedAt: Date.now() }]; // addedAt: prices go stale
     save();
     return legs.some((l) => l.key === leg.key);
   },

@@ -1,5 +1,6 @@
 // MLB starting pitchers from the official MLB Stats API (statsapi.mlb.com: free, no key, CORS open).
 // Builds the same "starter report" shape the NPB/KBO scrapers produce, so one card renders all three.
+import { validateReport } from './validate.js';
 const API = 'https://statsapi.mlb.com/api/v1';
 const json = async (path, signal) => {
   const r = await fetch(`${API}${path}`, { signal });
@@ -72,7 +73,7 @@ export async function pitcherReport(id, { oppId, oppName, season = new Date().ge
   const injuries = (tx?.transactions || []).filter((t) => /injured list|rehab|disabled list/i.test(`${t.typeDesc} ${t.description}`))
     .slice(-6).reverse().map((t) => ({ date: t.date, text: t.description }));
   return {
-    league: 'MLB', id, name: p.fullName || '', team: p.currentTeam?.name || '',
+    league: 'MLB', id, fetchedAt: Date.now(), name: p.fullName || '', team: p.currentTeam?.name || '',
     throws: p.pitchHand?.code || null, age: p.currentAge ?? null, height: p.height || null, weight: p.weight ? `${p.weight} lb` : null,
     born: p.birthDate || null, debut: p.mlbDebutDate || null,
     season: seasonS ? { label: `${season} regular season`, ...line(seasonS) } : null,
@@ -117,7 +118,7 @@ export async function enrichMlb(events, { signal, schedule, addMissing = false, 
       const pp = g[side].pitcher;
       if (!pp) return null;
       const other = g[side === 'home' ? 'away' : 'home'];
-      const report = await pitcherReport(pp.id, { oppId: other.id, oppName: other.name, signal }).catch(() => null);
+      const report = await pitcherReport(pp.id, { oppId: other.id, oppName: other.name, signal }).then((r) => validateReport(r)).catch(() => null);
       return report && { side, name: report.name || pp.fullName, role: 'SP', report };
     }));
     const got = reps.filter(Boolean);

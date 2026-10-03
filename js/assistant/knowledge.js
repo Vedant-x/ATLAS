@@ -5,6 +5,7 @@ import { analysisFor } from '../views.js';
 import { devig, todayEvents } from '../engine.js';
 import { loadDetail, detailFor } from '../detail.js';
 import { CATALOG, ALL_LEAGUES, sportById } from '../catalog.js';
+import { prefs, prefEvents } from '../prefs.js';
 
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const words = (s) => norm(s).split(/[^a-z0-9]+/).filter((w) => w.length >= 3);
@@ -102,9 +103,13 @@ export function createKnowledge(S) {
     return out;
   }
 
-  // mode: safe (highest win chance), value (model above the price), balanced (short-ish odds, high chance)
-  function picks({ sport, league, today = false, mode = 'balanced', limit = 5, minOdds, maxOdds } = {}) {
-    let c = candidates(filterEvents({ sport, league, today }));
+  // mode: safe (highest win chance), value (model above the price), balanced (short-ish odds, high chance).
+  // The visitor's saved filters apply: minimum odds, and preferred sports when none is named.
+  function picks({ sport, league, today = false, mode = 'balanced', limit = 5, minOdds = prefs.get().minOdds, maxOdds } = {}) {
+    let list = filterEvents({ sport, league, today });
+    if (!sport && !league) list = prefEvents(list);
+    let c = candidates(list);
+    if (prefs.get().pricedOnly) c = c.filter((x) => x.priced);
     if (minOdds) c = c.filter((x) => x.odds >= minOdds);
     if (maxOdds) c = c.filter((x) => x.odds <= maxOdds);
     if (mode === 'safe') c = c.filter((x) => x.p >= 0.6).sort((a, b) => b.p - a.p || b.priced - a.priced);

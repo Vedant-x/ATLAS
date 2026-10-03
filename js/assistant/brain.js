@@ -34,7 +34,20 @@ export function createBrain(K) {
     return null;
   }
 
+  // Absences across a league or sport (from the snapshot's FotMob/ESPN lists), when no single match is named.
+  function scopeInjuries(q) {
+    const scope = names(scopeFrom(q, false));
+    if (!scope.league && !scope.sport) return null;
+    const evs = K.filterEvents(scope).filter((e) => e.absences && (e.absences.home?.length || e.absences.away?.length)).slice(0, 6);
+    if (!evs.length) return { text: `No absence lists are loaded for ${scopeLabel(scope)} yet. Open a match and ask **"injuries"**: I'll fetch its team news live.` };
+    const row = (i) => `${i.name} (${i.injury || (i.type === 'Suspended' ? 'suspension' : i.type || 'out')}${i.expectedReturn ? `, back ${i.expectedReturn}` : ''})`;
+    const block = (e) => `**${e.home} vs ${e.away}**\n- ${e.home}: ${(e.absences.home || []).map(row).join(', ') || 'none listed'}\n- ${e.away}: ${(e.absences.away || []).map(row).join(', ') || 'none listed'}`;
+    return { text: `**Absences: ${scopeLabel(scope)}** (source: ${evs[0].absences.source || 'FotMob'})\n\n${evs.map(block).join('\n\n')}`, cards: evs.slice(0, 4).map((e) => ({ type: 'match', e })) };
+  }
+
   async function injuries(q) {
+    const named = K.eventsIn(q)[0];
+    if (!named && !/\b(this|here|current)\b/.test(q)) { const s = scopeInjuries(q); if (s) return s; }
     const e = targetEvent(q);
     if (!e) return { text: 'Which match? Open a match page and ask again, or name the teams, e.g. **"injuries Arsenal vs Leeds"**.' };
     const inj = await K.injuriesOf(e);
@@ -66,9 +79,9 @@ export function createBrain(K) {
     const value = s.bestPrices.filter((x) => x.priced && x.edge > 0).sort((a, b) => b.edge - a.edge)[0];
     const lines = [
       `**${e.home} vs ${e.away}** · ${e.league}${e.live ? ` · LIVE ${e.score || ''}` : ''}`,
-      `Win chance: ${e.home} **${pc(w.home)}**${w.draw ? ` · draw ${pc(w.draw)}` : ''} · ${e.away} **${pc(w.away)}** (${s.basis.toLowerCase()})`,
+      `${e.live ? 'Pre-match estimate (does not include the live score)' : 'Estimated win chance'}: ${e.home} **${pc(w.home)}**${w.draw ? ` · draw ${pc(w.draw)}` : ''} · ${e.away} **${pc(w.away)}** (${s.basis.toLowerCase()})`,
       `Favourite: **${fav}**.`,
-      best ? `Safest priced pick: **${best.pick}** (${best.market}) at ${od(best.odds)}, ${pc(best.probability)} to land.` : 'No bookmaker price yet: fair odds come from the ATLAS model.',
+      best ? `Safest priced pick: **${best.pick}** (${best.market}) at ${od(best.odds)}, estimated ${pc(best.probability)}.` : 'No bookmaker price yet: fair odds come from the ATLAS model.',
       value ? `Best value: **${value.pick}** (${value.market}) at ${od(value.odds)}, model edge ${(value.edge * 100).toFixed(1)}%.` : '',
       s.starters?.length === 2 && s.starters[0].season && s.starters[1].season ? `Starters: ${s.starters[0].name} (${s.starters[0].season.era} ERA) vs ${s.starters[1].name} (${s.starters[1].season.era} ERA).` : '',
     ].filter(Boolean);
@@ -89,7 +102,7 @@ export function createBrain(K) {
     const head = { safe: 'Safest picks', value: 'Best value (model above the price)', balanced: 'Best bets' }[mode];
     const combo = list.reduce((a, x) => a * x.odds, 1), comboP = list.reduce((a, x) => a * x.p, 1);
     return {
-      text: `**${head}: ${scopeLabel(scope)}${today ? ' today' : ''}**${note}\n\n${list.map((x, i) => `${i + 1}. **${x.pick}** · ${x.market} · ${x.e.home} vs ${x.e.away}: odds ${od(x.odds)}, ${pc(x.p)} chance${x.priced ? '' : ' (model, no bookmaker price)'}`).join('\n')}\n\nAs singles each stands alone. All ${list.length} together: about **${od(combo)}x**, landing ${pc(comboP)} of the time. Tap **+** to add to your slip.`,
+      text: `**${head}: ${scopeLabel(scope)}${today ? ' today' : ''}**${note}\n\n${list.map((x, i) => `${i + 1}. **${x.pick}** · ${x.market} · ${x.e.home} vs ${x.e.away}: odds ${od(x.odds)}, est. ${pc(x.p)}${x.priced ? '' : ' (model, no bookmaker price)'}`).join('\n')}\n\nAs singles each stands alone. All ${list.length} together: about **${od(combo)}x**, an estimated ${pc(comboP)} chance if the legs are independent. Tap **+** to add to your slip.`,
       cards: list.map(pickCard),
     };
   }
@@ -104,7 +117,7 @@ export function createBrain(K) {
     if (!list.length) return { text: mega ? `Not enough priced matches to build a ${t}x slip right now.` : `Today's remaining prices can't be combined into about ${t}x. Try another multiplier or ask tomorrow.` };
     const s = list[0];
     return {
-      text: `**Top ${t}x slip${mega ? '' : ' (today only)'}**: ${s.legs.length} legs at **${od(s.odds)}x**, lands about **${pc(s.p)}** of the time.\n\n${s.legs.map((l) => `- **${l.pick}** · ${l.market} · ${l.match} @ ${od(l.odds)} (${pc(l.p)})`).join('\n')}\n\n${list.length > 1 ? `${list.length - 1} more on the [${t}x page](#/${mega ? 'mega' : `x/${t}`}).` : ''}`,
+      text: `**Top ${t}x slip${mega ? '' : ' (today only)'}**: ${s.legs.length} legs at **${od(s.odds)}x**, estimated **${pc(s.p)}** chance to land.\n\n${s.legs.map((l) => `- **${l.pick}** · ${l.market} · ${l.match} @ ${od(l.odds)} (${pc(l.p)})`).join('\n')}\n\n${list.length > 1 ? `${list.length - 1} more on the [${t}x page](#/${mega ? 'mega' : `x/${t}`}).` : ''}`,
       cards: s.legs.map((l) => ({ type: 'leg', leg: l })),
     };
   }
@@ -117,7 +130,7 @@ export function createBrain(K) {
   }
 
   const help = () => ({
-    text: `I know everything on ATLAS: every match, the model's win chances, odds, edge, injuries, starting pitchers and slips. Try:\n- **"best bets today"** or **"3 safe NBA bets"**\n- **"value bets in the Premier League"**\n- **"injuries in this match"** (on a match page)\n- **"who wins Yankees vs Rays"**\n- **"starters"** for MLB/NPB/KBO games\n- **"give me a 3x slip"** or **"mega 100x"**\n- **"what's live"**\n\nProbabilities are estimates, never guarantees.`,
+    text: `I know everything on ATLAS: every match, the model's win chances, odds, edge, injuries, starting pitchers and slips. Try:\n- **"best bets today"** or **"3 safe NBA bets"**\n- **"value bets in the Premier League"**\n- **"injuries in this match"** (on a match page)\n- **"who wins Yankees vs Rays"**\n- **"starters"** for MLB/NPB/KBO games\n- **"give me a 3x slip"** or **"mega 100x"**\n- **"what's live"**\n\nProbabilities are model estimates, not guarantees. Picks follow your saved filters (minimum odds, sports).`,
   });
 
   async function answer(raw) {
