@@ -1,4 +1,4 @@
 // Site settings.
-// AI_PROXY_URL: address of the Cloudflare Worker that holds the Anthropic API key (see worker/README.md).
-// Empty = no shared AI; visitors can still add their own key in the assistant's settings.
-export const AI_PROXY_URL = '';
+// AI_URL: address of the free ATLAS AI Worker (Cloudflare Workers AI, see worker/README.md).
+// Empty = the assistant says the AI isn't connected yet.
+export const AI_URL = '';
