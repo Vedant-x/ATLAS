@@ -763,3 +763,13 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .toast { display: flex; gap: 10px; align-items: center; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line2); background: rgba(14, 14, 20, .97); box-shadow: 0 10px 30px rgba(0,0,0,.5); font-size: 13px; animation: toast-in .35s var(--ease); transition: opacity .5s, transform .5s; }
 .toast.out { opacity: 0; transform: translateX(20px); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(-10px); } }
+
+/* ---------- long pages: fold quiet leagues, skip off-screen rendering ---------- */
+.cv { content-visibility: auto; contain-intrinsic-size: auto 800px; }
+.more-leagues { margin-top: 12px; }
+.more-leagues > summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 999px; border: 1px solid var(--line2); background: var(--glass); color: var(--muted); font: 700 12px var(--sans); }
+.more-leagues > summary::-webkit-details-marker { display: none; }
+.more-leagues > summary::before { content: '+'; color: var(--accent); font-size: 15px; }
+.more-leagues[open] > summary::before { content: '−'; }
+.more-leagues > .grid, .more-leagues > .list { margin-top: 12px; }
+.sec small { font: 500 12px var(--sans); color: var(--muted); text-transform: none; letter-spacing: 0; }
