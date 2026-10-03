@@ -329,7 +329,7 @@ export function analyse(event) {
   if (!win) {
     const b = baselineWin(event);
     win = b.win; confidence = b.confidence;
-    basis = b.starterNote ? `ATLAS model: ${event.sport === 'tennis' ? '' : 'home advantage + '}${b.starterNote}${event.stats?.homeRecord ? ' + records' : ''} (no bookmaker price)` : b.confidence === 'medium' ? 'ATLAS model from season record and form (no bookmaker price)' : 'ATLAS baseline: home advantage only, too little data';
+    basis = b.starterNote ? `ATLAS model: ${event.sport === 'tennis' ? '' : 'home advantage + '}${b.starterNote}${event.stats?.homeRecord ? ' + records' : ''} (no bookmaker price)` : b.confidence === 'medium' ? 'ATLAS model from season record and form (no bookmaker price)' : event.neutral ? 'ATLAS baseline: neutral ground and no form data, so close to even' : 'ATLAS baseline: home advantage only, too little data';
   }
   const out = { win, confidence, basis, groups: [], grid: null, dist: null, params: {} };
   if (['football', 'hockey', 'baseball'].includes(event.sport)) {

@@ -773,3 +773,4 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .more-leagues[open] > summary::before { content: '−'; }
 .more-leagues > .grid, .more-leagues > .list { margin-top: 12px; }
 .sec small { font: 500 12px var(--sans); color: var(--muted); text-transform: none; letter-spacing: 0; }
+.scoreline.long b { font-size: clamp(26px, 6vw, 54px); line-height: 1.1; }
