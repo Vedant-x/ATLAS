@@ -84,7 +84,7 @@ function baselineWin(event) {
   // log-odds by 0.12 (capped), a conservative read of how much starters swing a single game.
   let starterNote = null;
   if (event.sport === 'baseball') {
-    const era = (side) => Number(event.probables?.find((p) => p.side === side)?.pitching?.season?.era);
+    const era = (side) => { const p = event.probables?.find((x) => x.side === side); return Number((p?.report || p?.pitching)?.season?.era); };
     const eh = era('home'), ea = era('away');
     if (Number.isFinite(eh) && Number.isFinite(ea)) {
       const shift = Math.max(-0.35, Math.min(0.35, 0.12 * (ea - eh)));

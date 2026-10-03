@@ -459,6 +459,27 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .dock-trail b { color: var(--fg); overflow: hidden; text-overflow: ellipsis; }
 .dock-trail i { font-style: normal; color: var(--dim); }
 
+/* ---------- starting pitcher reports ---------- */
+.starter header em.warn { color: var(--draw); }
+.starter h3 small.local { font: 500 14px var(--sans); color: var(--muted); margin-left: 6px; }
+.form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+.form-chip { border: 1px solid var(--line2); border-radius: 12px; padding: 10px 12px; display: grid; gap: 2px; }
+.form-chip small { font: 700 10px var(--mono); letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
+.form-chip b { font: 700 18px var(--mono); }
+.form-chip span { font-size: 12px; color: var(--muted); }
+.form-chip i { font: normal 700 11px var(--mono); color: var(--muted); }
+.form-chip i.up { color: var(--pos); } .form-chip i.down { color: var(--neg); }
+.tbl tr.relief td { opacity: .6; }
+.starter .tbl td, .starter .tbl th { white-space: nowrap; }
+.inj-list { list-style: none; display: grid; gap: 6px; font-size: 13px; }
+.inj-list b { font: 700 12px var(--mono); color: var(--draw); margin-right: 8px; }
+.matchup { margin-bottom: 16px; }
+.mtable td { text-align: center; }
+.mtable td.mid { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+.mtable td.num { text-align: center; font-size: 15px; }
+.mtable td.better { color: var(--pos); font-weight: 700; }
+.mtable td.better::after { content: ' ✓'; }
+
 /* ---------- tennis: tournaments, draws, rounds ---------- */
 .tourney { margin-top: 34px; border: 1px solid var(--line); border-radius: 22px; padding: clamp(16px, 2.4vw, 28px); background: rgba(12,12,18,.72); scroll-margin-top: 150px; }
 .tourney-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 14px; padding-bottom: 16px; border-bottom: 1px solid var(--line2); }
