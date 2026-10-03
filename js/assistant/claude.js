@@ -1,6 +1,8 @@
-// Claude mode: the assistant talks to Claude (Anthropic API) with the visitor's own API key, kept in
-// this browser only. Claude answers from the site's live data through tools backed by knowledge.js,
-// so it never has to guess odds, injuries or starters.
+// The assistant's brain: Claude (Anthropic API), reached through the site's proxy (worker/, which holds
+// the API key) or with a visitor's own key kept in their browser. Claude answers from the site's live
+// data through tools backed by knowledge.js, so it never has to guess odds, injuries or starters.
+import { AI_PROXY_URL } from '../config.js';
+
 const KEY = 'atlas-ai-key';
 const MODEL = 'claude-opus-5-5';
 
@@ -9,9 +11,18 @@ export const claudeKey = {
   set(v) { try { if (v) localStorage.setItem(KEY, v.trim()); else localStorage.removeItem(KEY); } catch { /* storage blocked */ } },
 };
 
-const SYSTEM = `You are the ATLAS assistant, a sports-betting analyst living inside the ATLAS dashboard (a site that
-shows fixtures for every sport, margin-free probabilities from bookmaker prices, an ATLAS model for matches with
-no price, injuries/absences, starting-pitcher reports and multiplier slips).
+// Which way to reach Claude: the visitor's own key wins, then the site proxy.
+export const aiRoute = () => (claudeKey.get() ? 'key' : AI_PROXY_URL ? 'proxy' : null);
+
+const SYSTEM = `You are the ATLAS assistant, a sharp, friendly sports-betting analyst living inside the ATLAS dashboard
+(a site that shows fixtures for every sport, margin-free probabilities from bookmaker prices, an ATLAS model for
+matches with no price, injuries/absences, starting-pitcher reports and multiplier slips).
+
+Talk like a knowledgeable friend, not a template: answer the actual question first, in your own words, then the
+reasoning that matters (form, injuries, starters, price vs. estimate). Match the user's tone and length: a quick
+question gets two or three sentences; "break this match down" gets a proper breakdown. Ask a short follow-up
+question when the request is ambiguous (which match? which sport?). Small talk and general sports questions are
+fine; answer from your own knowledge there, and say when something is not from the site's live data.
 
 Rules:
 - Use the tools for every fact: matches, odds, probabilities, injuries, starters, slips. Never invent a number,
@@ -25,8 +36,8 @@ Rules:
   say that before using it.
 - Probabilities are estimates, never guarantees; call them "estimated" chances and never promise wins. Keep a light responsible-gambling note
   only when recommending bets, in one short line.
-- Write short, scannable answers: a one-line headline, then bullets. Bold pick names with **double asterisks**.
-  Link matches as [Home vs Away](#/match/ID) using the id from the tools. No tables, no headings beyond bold text.`;
+- Formatting: plain sentences, with bullets only for lists of picks or players. Bold pick names with
+  **double asterisks**. Link matches as [Home vs Away](#/match/ID) using the id from the tools. No tables or headings.`;
 
 const TOOLS = [
   { name: 'get_page_context', description: 'What the user is looking at: the page and, on a match page, that match in full (win probabilities, best prices, model markets, starters).', input_schema: { type: 'object', properties: {} } },
@@ -68,38 +79,48 @@ function runners(K) {
 }
 
 let sdk;
-async function client(key) {
+async function client() {
   sdk = sdk || (await import('../../vendor/anthropic-sdk.mjs')).Anthropic;
-  // The key belongs to the visitor and never leaves their browser except to api.anthropic.com.
-  return new sdk({ apiKey: key, dangerouslyAllowBrowser: true });
+  const key = claudeKey.get();
+  // A visitor's own key never leaves their browser except to api.anthropic.com.
+  if (key) return new sdk({ apiKey: key, dangerouslyAllowBrowser: true });
+  // The site proxy adds the real key server-side; this placeholder is discarded there.
+  return new sdk({ apiKey: 'atlas-proxy', baseURL: AI_PROXY_URL.replace(/\/+$/, ''), dangerouslyAllowBrowser: true, maxRetries: 1 });
 }
 
-// One chat turn with the tool loop. `history` holds prior user/assistant messages (full content).
-export async function askClaude(K, history, text, { onStatus } = {}) {
-  const key = claudeKey.get();
-  if (!key) throw new Error('No API key set');
-  const anthropic = await client(key);
+const toolsFor = () => TOOLS.map((t) => ({ ...t, eager_input_streaming: true }));
+
+// One chat turn with the tool loop, streamed. `history` holds prior user/assistant messages (full content).
+// onText(snapshot) receives the answer so far as it is written.
+export async function askClaude(K, history, text, { onStatus, onText } = {}) {
+  if (!aiRoute()) throw new Error('The AI is not connected yet');
+  const anthropic = await client();
   const run = runners(K);
   const messages = [...history, { role: 'user', content: text }];
+  const said = []; // text from every step, shown as one answer
   for (let step = 0; step < 8; step++) {
-    const response = await anthropic.beta.messages.create({
+    const stream = anthropic.beta.messages.stream({
       model: MODEL,
-      max_tokens: 16000,
-      output_config: { effort: 'low' }, // chat: quick answers; the tools carry the facts
+      max_tokens: 4000,
+      output_config: { effort: 'medium' },
       // Server-side fallback: if a request is declined, the API retries it on a fallback model.
       betas: ['server-side-fallback-2026-07-01'],
       fallbacks: 'default',
       system: SYSTEM,
-      tools: TOOLS,
+      tools: toolsFor(),
       messages,
     });
+    stream.on('text', (_, snap) => onText?.([...said, snap].join('\n\n')));
+    const response = await stream.finalMessage();
     messages.push({ role: 'assistant', content: response.content });
-    if (response.stop_reason === 'refusal') return { text: "I can't help with that one.", messages };
+    const stepText = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+    if (stepText) said.push(stepText);
+    if (response.stop_reason === 'refusal') return { text: said.join('\n\n') || "I can't help with that one.", messages };
+    if (response.stop_reason === 'max_tokens') return { text: `${said.join('\n\n')}\n\n(Answer cut short: ask me to continue.)`.trim(), messages: messages.slice(0, -1) };
     if (response.stop_reason === 'pause_turn') continue;
     const calls = response.content.filter((b) => b.type === 'tool_use');
     if (response.stop_reason !== 'tool_use' || !calls.length) {
-      const textOut = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
-      return { text: textOut || '(no answer)', messages };
+      return { text: said.join('\n\n') || '(no answer)', messages };
     }
     onStatus?.(calls.map((c) => c.name.replace(/_/g, ' ')).join(', '));
     // All results for this turn go back in one user message.
@@ -107,6 +128,11 @@ export async function askClaude(K, history, text, { onStatus } = {}) {
       try {
         const fn = run[c.name];
         if (!fn) throw new Error(`unknown tool ${c.name}`);
+        // Streamed tool input arrives unvalidated: it must be an object of the declared shape.
+        if (!c.input || typeof c.input !== 'object' || Array.isArray(c.input)) throw new Error('INVALID_JSON: tool input was not an object');
+        const need = TOOLS.find((t) => t.name === c.name)?.input_schema.required || [];
+        const missing = need.filter((k) => c.input[k] == null);
+        if (missing.length) throw new Error(`INVALID_JSON: missing ${missing.join(', ')}`);
         return { type: 'tool_result', tool_use_id: c.id, content: await fn(c.input || {}) };
       } catch (err) {
         return { type: 'tool_result', tool_use_id: c.id, content: String(err?.message || err), is_error: true };
@@ -120,11 +146,11 @@ export async function askClaude(K, history, text, { onStatus } = {}) {
 // Friendly message for API failures (typed SDK errors).
 export function claudeError(err) {
   const A = sdk;
-  if (A && err instanceof A.AuthenticationError) return 'That API key was rejected. Check it in ⚙ settings.';
+  if (A && err instanceof A.AuthenticationError) return claudeKey.get() ? 'That API key was rejected. Check it in ⚙ settings.' : 'The AI service key was rejected. The site owner needs to check the proxy setup.';
   if (A && err instanceof A.PermissionDeniedError) return 'This API key does not have access to that model.';
-  if (A && err instanceof A.RateLimitError) return 'Rate limited by the Anthropic API. Wait a moment and try again.';
+  if (A && err instanceof A.RateLimitError) return err.error?.error?.message || 'Too many questions right now. Wait a moment and try again.';
   if (A && err instanceof A.BadRequestError) return `The API rejected the request: ${err.message}`;
-  if (A && err instanceof A.APIConnectionError) return 'Could not reach the Anthropic API (offline or blocked).';
+  if (A && err instanceof A.APIConnectionError) return 'Could not reach the AI service (offline or blocked).';
   if (A && err instanceof A.APIError) return `Anthropic API error ${err.status}: ${err.message}`;
   return String(err?.message || err);
 }
