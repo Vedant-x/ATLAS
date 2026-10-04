@@ -774,3 +774,21 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .more-leagues > .grid, .more-leagues > .list { margin-top: 12px; }
 .sec small { font: 500 12px var(--sans); color: var(--muted); text-transform: none; letter-spacing: 0; }
 .scoreline.long b { font-size: clamp(26px, 6vw, 54px); line-height: 1.1; }
+.dash-track { grid-column: span 6; display: block; }
+.dash-track:hover { border-color: var(--line2); }
+.dt-row { display: flex; flex-wrap: wrap; gap: 14px 40px; }
+.dt-row b { display: block; font: clamp(30px, 3.2vw, 44px)/1 var(--display); }
+.dt-row small { color: var(--muted); font-size: 12px; }
+.dt-last { display: flex; align-items: center; gap: 6px; margin-top: 14px; }
+.dt-last span { margin-left: 8px; color: var(--accent); font-size: 12px; font-weight: 700; }
+.tr-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--dim); }
+.tr-dot.won { background: var(--pos); } .tr-dot.lost { background: var(--neg); }
+
+/* ---------- lineups pitch ---------- */
+.pitch { display: flex; flex-direction: column; gap: 10px; padding: 14px 8px; border-radius: 14px; background: linear-gradient(180deg, rgba(61,255,154,.08), rgba(61,255,154,.03)); border: 1px solid rgba(61,255,154,.2); }
+.prow { display: flex; justify-content: space-around; gap: 4px; }
+.pl { display: grid; justify-items: center; gap: 2px; min-width: 0; flex: 1; }
+.pl b { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--fg); color: #000; font: 700 12px var(--mono); }
+.pl.gk b { background: var(--draw); }
+.pl small { font-size: 10.5px; color: #cfcfd6; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lineup-names { margin-top: 10px; font-size: 12px; line-height: 1.5; }

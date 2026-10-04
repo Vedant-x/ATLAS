@@ -13,6 +13,7 @@ import { fetchAll, LEAGUES } from './espn.js';
 import { prefs, prefEvents } from './prefs.js';
 import { liveWin } from './live.js';
 import { watch } from './alerts.js';
+import { trackCard } from './trackview.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const safeHref = (u) => (/^https?:\/\//i.test(String(u || '')) ? esc(u) : '#');
@@ -415,7 +416,8 @@ function dashboard(ev, live) {
       ${live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${esc(e.score || '')}</b> ${esc(e.away)}</a><small>${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>
     <div class="panel dash-changes reveal"><h3 class="ph">Latest absences <small>soccer · FotMob</small></h3>
       ${changes.length ? `<ul class="dash-list">${changes.map((x) => `<li><a href="#/match/${esc(x.e.id)}"><b>${esc(x.name)}</b> (${esc(x.team)}) · ${esc(x.injury || x.type)}</a><small>${[x.expectedReturn && `back ${esc(x.expectedReturn)}`, `updated ${ago(Date.parse(x.updated))}`].filter(Boolean).join(' · ')}</small></li>`).join('')}</ul>` : '<p class="muted">No recent absence updates.</p>'}</div>
-    <div class="panel dash-health reveal"><h3 class="ph">Source health <a class="more" href="#/track">ATLAS track record →</a></h3>${sourceHealth(ev)}</div>
+    ${trackCard(() => S.refresh?.())}
+    <div class="panel dash-health reveal"><h3 class="ph">Source health</h3>${sourceHealth(ev)}</div>
   </section>`;
 }
 

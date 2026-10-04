@@ -154,7 +154,20 @@ export function dossierSections(e, d, hc, ac) {
     S.push({ id: 'leaders', label: 'Key players', html: `<div class="grid two">${['home', 'away'].map((s) => `<div class="panel reveal" style="border-top:3px solid ${side(s)[1]}"><h3 class="ph">${esc(side(s)[0])}</h3>${(d.leaders[s] || []).map((l) => `<div class="leader"><small>${esc(l.cat)}</small><b>${esc(l.name)}</b><span>${esc(l.pos)}</span><em>${esc(l.value)}</em></div>`).join('') || '<p class="muted">No leaders in feed yet.</p>'}</div>`).join('')}</div>` });
   }
 
-  // Lineups
+  // Lineups: ESPN's when published, otherwise FotMob's (announced, predicted or last match's XI).
+  const fm = (d.absences || e.absences)?.lineup;
+  if (!d.lineups && fm) {
+    const kind = fm.type === 'lastStarting11' ? 'Team news not out yet: showing each side\'s last starting XI' : fm.type === 'predicted' ? 'Predicted lineups (not confirmed)' : 'Confirmed lineups';
+    const pitch = (t) => {
+      const rows = [];
+      for (const p of [...t.starters].sort((a, b) => a.y - b.y)) {
+        const r = rows.find((x) => Math.abs(x.y - p.y) < 0.06);
+        if (r) r.ps.push(p); else rows.push({ y: p.y, ps: [p] });
+      }
+      return `<div class="pitch">${rows.map((r) => `<div class="prow">${r.ps.sort((a, b) => a.x - b.x).map((p) => `<span class="pl ${p.gk ? 'gk' : ''}"><b>${esc(p.number)}</b><small>${esc(p.name.split(' ').slice(-1)[0])}</small></span>`).join('')}</div>`).join('')}</div>`;
+    };
+    S.push({ id: 'lineups', label: fm.type === 'lastStarting11' ? 'Lineups (last XI)' : 'Lineups', html: `<p class="note">${kind} · source: FotMob.</p><div class="grid two">${['home', 'away'].map((s) => { const t = fm[s]; return `<div class="panel reveal" style="border-top:3px solid ${side(s)[1]}"><h3 class="ph">${esc(side(s)[0])}${t.formation ? ` <small>${esc(t.formation)}</small>` : ''}</h3>${pitch(t)}<p class="muted lineup-names">${t.starters.map((p) => esc(p.name)).join(', ')}${t.subs.length ? `<br><small>Bench: ${t.subs.map(esc).join(', ')}</small>` : ''}</p></div>`; }).join('')}</div>` });
+  }
   if (d.lineups) {
     S.push({ id: 'lineups', label: 'Lineups', html: `<div class="grid two">${['home', 'away'].map((s) => { const l = d.lineups[s]; return `<div class="panel reveal" style="border-top:3px solid ${side(s)[1]}"><h3 class="ph">${esc(side(s)[0])}${l?.formation ? ` <small>${esc(l.formation)}</small>` : ''}</h3>${l ? `<ol class="lineup">${l.players.map((p) => `<li><span>${esc(p.pos)}</span>${esc(p.name)}<em>${p.jersey ? '#' + esc(p.jersey) : ''}</em></li>`).join('')}</ol>` : '<p class="muted">Not published yet.</p>'}</div>`; }).join('')}</div>` });
   }

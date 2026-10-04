@@ -66,3 +66,15 @@ export const trackViews = {
     };
   },
 };
+
+// Home dashboard card: the record so far (loads in the background, then the page redraws).
+export function trackCard(refresh) {
+  if (!cache) { load().then(() => refresh?.()).catch(() => {}); return ''; }
+  const s = summarize(cache.data.picks || []);
+  const a = s.all;
+  if (!a.won && !a.lost) return `<a class="panel dash-track reveal" href="#/track"><h3 class="ph">Track record <small>tracking started</small></h3><p class="muted">${s.pending.length} picks locked before kick-off, waiting on results.</p></a>`;
+  const last = s.recent.slice(0, 10).map((h) => `<i class="tr-dot ${h.status}" title="${esc(h.pick)}: ${h.status}"></i>`).join('');
+  return `<a class="panel dash-track reveal" href="#/track"><h3 class="ph">Track record <small>every pick, locked before kick-off</small></h3>
+    <div class="dt-row"><div><b>${a.won}–${a.lost}</b><small>won–lost</small></div><div><b>${pct(a.hitRate, 0)}</b><small>hit rate (est. ${pct(a.expected, 0)})</small></div><div><b class="${a.profit >= 0 ? 'pos' : 'neg'}">${units(a.profit)}</b><small>1 unit per pick</small></div></div>
+    <div class="dt-last">${last}<span>latest results →</span></div></a>`;
+}
