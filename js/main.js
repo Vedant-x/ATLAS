@@ -3,7 +3,7 @@ import { mountAssistant } from './assistant/ui.js';
 import { legalViews, ageGate } from './legal.js';
 import { trackViews } from './trackview.js';
 import { watch, checkAlerts } from './alerts.js';
-import { loadEvents, refreshLive } from './data.js';
+import { loadEvents, refreshLive, refreshCricket, refreshTeamNews } from './data.js';
 import { buildSlips, todayEvents, localDay } from './engine.js';
 import { prefs, prefEvents } from './prefs.js';
 import { applyModel, bankers } from './intel.js';
@@ -46,21 +46,44 @@ function setData(d) {
   if (Date.now() - state.slipsAt > 60000) { state.slipCache.clear(); state.slipsAt = Date.now(); }
   ticker();
 }
-// Snapshot mode: refresh live/imminent leagues straight from ESPN every 20 s, and reload the
-// full index every 10 min. Without a snapshot (local preview) poll ESPN every 5 s.
-const refreshMs = () => (state.snapshot ? 20000 : 5000);
-let polling = false, lastIndex = Date.now();
+// Live loop. While anything is in play, live leagues refresh straight from ESPN every 5 s; leagues
+// starting soon every 30 s; the full snapshot (every league, NPB/KBO, absences, lineups) every 5 min.
+// The page redraws only when something real changed (score, status, prices, fixtures); otherwise
+// just the game clocks update in place, so nothing flickers or closes.
+const anyLive = () => state.events.some((e) => e.live);
+const following = () => watch.ids().length > 0 || slip.legs.length > 0;
+const refreshMs = () => (document.hidden ? 60000 : anyLive() ? 5000 : state.snapshot ? 30000 : 5000);
+let polling = false, lastIndex = Date.now(), lastWide = 0, lastNews = 0;
+const sigOf = (events) => events.map((e) => `${e.id}|${e.live ? 1 : 0}|${e.score || ''}|${(e.markets || []).map((m) => m.outcomes.map((o) => o.odds).join(',')).join(';')}|${e.absences ? `${e.absences.home.length},${e.absences.away.length},${e.absences.lineup?.type || ''}` : ''}`).join('~');
+let lastSig = '';
+function apply(events) {
+  const sig = sigOf(events);
+  setData({ ...state, events, fetchedAt: Date.now() });
+  if (sig === lastSig) { patchClocks(); return; }
+  lastSig = sig;
+  softRender(); refreshSlip();
+}
+function patchClocks() {
+  const byId = new Map(state.events.map((e) => [e.id, e]));
+  document.querySelectorAll('[data-clock]').forEach((el) => { const e = byId.get(el.dataset.clock); if (e && el.textContent !== (e.clock || '')) el.textContent = e.clock || ''; });
+}
 async function poll() {
-  if (polling || document.hidden || state.demo) return;
+  if (polling || state.demo || (document.hidden && !following())) return; // background: only for alerts
   polling = true;
   try {
-    if (state.snapshot && Date.now() - lastIndex < 600000) {
-      const merged = await refreshLive(state.events).catch(() => null);
-      if (merged) { setData({ ...state, events: merged, fetchedAt: Date.now() }); softRender(); refreshSlip(); }
+    if (state.snapshot && Date.now() - lastIndex < 300000) {
+      const wide = Date.now() - lastWide > 30000;
+      let next = (await refreshLive(state.events, { liveOnly: !wide }).catch(() => null)) || null;
+      // Cricket: every cycle while a match is live, otherwise with the 30 s sweep.
+      if (wide || state.events.some((e) => e.live && e.sport === 'cricket')) next = (await refreshCricket(next || state.events).catch(() => null)) || next;
+      // Soccer team news (absences, confirmed XIs) every 2 minutes around kick-off.
+      if (Date.now() - lastNews > 120000) { lastNews = Date.now(); next = (await refreshTeamNews(next || state.events).catch(() => null)) || next; }
+      if (wide) lastWide = Date.now();
+      if (next) apply(next);
     } else {
       const d = await loadEvents();
       lastIndex = Date.now();
-      if (!d.demo) { setData(d); softRender(); refreshSlip(); }
+      if (!d.demo) { lastSig = ''; setData(d); lastSig = sigOf(state.events); softRender(); refreshSlip(); }
     }
   } finally { polling = false; }
 }
@@ -150,8 +173,10 @@ function softRender() {
   if (a && /INPUT|SELECT|TEXTAREA/.test(a.tagName)) return;
   if (current === 'edge') { refreshEdge(); return; }
   const y = scrollY;
+  const open = [...app.querySelectorAll('details[open] > summary')].map((s) => s.textContent);
   const { v } = build();
   app.innerHTML = v.html;
+  app.querySelectorAll('details > summary').forEach((s) => { if (open.includes(s.textContent)) s.parentElement.open = true; });
   app.querySelectorAll('.reveal, .grow, .grow-y, .draw').forEach((el) => el.classList.add('in'));
   app.querySelectorAll('.ch').forEach((el) => { el.style.opacity = 1; });
   app.querySelectorAll('[data-count-to]').forEach((el) => { el.textContent = el.dataset.countTo; });
@@ -308,4 +333,5 @@ preloader(loadEvents()).then((d) => {
   scene.pulse();
   state.ai = mountAssistant(state);
   (function tick() { setTimeout(() => poll().finally(tick), refreshMs()); })();
+  addEventListener('visibilitychange', () => { if (!document.hidden) poll(); }); // back on the tab: catch up now
 });
