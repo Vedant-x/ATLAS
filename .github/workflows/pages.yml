@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write # saves the track record to the track-record branch
+  issues: write # opens/closes the automatic data-alert issue
   pages: write
   id-token: write
 
@@ -19,6 +20,8 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }} # empty unless email alerts are set up
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -36,6 +39,30 @@ jobs:
         continue-on-error: true
       - name: Update track record
         run: node scripts/record.mjs track/picks.json dist/pages/data/index.json dist/pages/data/track.json
+      # Data alert: a GitHub issue assigned to the owner (GitHub emails them), closed when data recovers.
+      - name: Data alert
+        id: alert
+        uses: actions/github-script@v7
+        with:
+          script: return require('./scripts/alert.cjs')({ github, context, core })
+      # Optional direct email: set secrets ALERT_EMAIL, MAIL_USERNAME and MAIL_PASSWORD (a Gmail app password).
+      - name: Email data alert
+        if: steps.alert.outputs.notify != 'false' && steps.alert.outputs.notify != '' && env.MAIL_USERNAME != ''
+        continue-on-error: true
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          to: ${{ secrets.ALERT_EMAIL }}
+          from: "ATLAS alerts <${{ secrets.MAIL_USERNAME }}>"
+          subject: "${{ steps.alert.outputs.notify == 'recovered' && 'ATLAS data recovered' || 'ATLAS data alert - the site is missing data' }}"
+          body: |
+            ${{ steps.alert.outputs.notify == 'recovered' && 'The latest build found no data problems.' || steps.alert.outputs.summary }}
+
+            Details: ${{ github.server_url }}/${{ github.repository }}/issues?q=label%3Adata-alert
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

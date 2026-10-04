@@ -28,6 +28,8 @@ const clean = (s) => String(s ?? '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g,
 const day = (off) => new Date(Date.now() + 9 * 3600e3 + off * 864e5);
 const ymd = (d) => d.toISOString().slice(0, 10).replaceAll('-', '');
 const log = (...a) => console.log(...a);
+// Data health: anything here opens an alert (GitHub issue, and email if configured) after the build.
+const problems = [];
 
 // Parse every <table> into { headers, rows } (cells as clean text).
 function tables(html) {
@@ -368,10 +370,10 @@ const cricket = async () => {
   return list;
 };
 const [espn, npbEvents, kboEvents, cricketEvents] = await Promise.all([
-  fetchAll(AbortSignal.timeout(720000), ordered, { days: 4, concurrency: 3 }).catch((e) => { log('ESPN failed', e.message); return []; }),
-  npb().catch((e) => { log('NPB failed', e.message); return []; }),
-  kbo().catch((e) => { log('KBO failed', e.message); return []; }),
-  cricket().catch((e) => { log('Cricket failed', e.message); return []; }),
+  fetchAll(AbortSignal.timeout(720000), ordered, { days: 4, concurrency: 3 }).catch((e) => { log('ESPN failed', e.message); problems.push(`ESPN scoreboards failed entirely: ${e.message}`); return []; }),
+  npb().catch((e) => { log('NPB failed', e.message); problems.push(`NPB (Japan) schedule failed: ${e.message}`); return []; }),
+  kbo().catch((e) => { log('KBO failed', e.message); problems.push(`KBO (Korea) schedule failed: ${e.message}`); return []; }),
+  cricket().catch((e) => { log('Cricket failed', e.message); problems.push(`Cricket feed failed: ${e.message}`); return []; }),
 ]);
 const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents].filter((e) => leagueByPath(e.leaguePath));
 
@@ -399,10 +401,10 @@ const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents].filter((e
   for (const m of missing) {
     const l = LEAGUES.find((x) => x.path === m.path);
     const got = l ? await fetchAll(AbortSignal.timeout(60000), [l], { days: 4, concurrency: 1 }).catch(() => []) : [];
-    if (got.length) { events.push(...got); recovered++; } else log(`  COMPLETENESS: ${m.path} has ${m.open} game(s) today on ESPN but none could be loaded`);
+    if (got.length) { events.push(...got); recovered++; } else { log(`  COMPLETENESS: ${m.path} has ${m.open} game(s) today on ESPN but none could be loaded`); problems.push(`${m.path}: ${m.open} game(s) today on ESPN but none loaded`); }
   }
   log(`Completeness check: ${checked} league(s) with games today on ESPN compared, ${missing.length} missing games${missing.length ? `, ${recovered} recovered` : ''}`);
-  if (!checked) log('  COMPLETENESS: the check compared nothing - ESPN header format may have changed');
+  if (!checked) { log('  COMPLETENESS: the check compared nothing - ESPN header format may have changed'); problems.push('Completeness check compared nothing (ESPN header format may have changed)'); }
 }
 
 // Soccer absences: ESPN's soccer injury feed is empty, FotMob lists who is injured or suspended.
@@ -447,5 +449,14 @@ await writeFile(`${out}/data/index.json`, JSON.stringify({ source: 'ATLAS snapsh
 await writeFile(`${out}/data/odds.json`, JSON.stringify({ source: 'ATLAS snapshot', fetchedAt: Date.now(), events }));
 if (fetchErrors.length) log('ESPN errors (first 20):', fetchErrors.join(' | '));
 log(`ESPN: ${espn.length} events`);
+{
+  const failedLeagues = [...leagueStatus.entries()].filter(([, st]) => !st.ok).map(([p]) => p);
+  if (espn.length < 150) problems.push(`Only ${espn.length} ESPN games loaded (normally 500+): ESPN may have changed its API again`);
+  if (failedLeagues.length > LEAGUES.length * 0.15) problems.push(`${failedLeagues.length} of ${LEAGUES.length} leagues failed to load: ${failedLeagues.slice(0, 12).join(', ')}${failedLeagues.length > 12 ? ' …' : ''}`);
+  const soccerSoon = events.filter((e) => e.leaguePath?.startsWith('soccer/') && e.start < Date.now() + 2 * 864e5).length;
+  if (soccerSoon > 30 && !events.some((e) => e.absences)) problems.push(`FotMob linked no soccer matches (${soccerSoon} soccer games in the next 2 days): injuries and lineups missing`);
+  await writeFile(`${out}/data/health.json`, JSON.stringify({ checkedAt: Date.now(), ok: !problems.length, problems, espnGames: espn.length, failedLeagues }));
+  log(problems.length ? `DATA HEALTH: ${problems.length} problem(s)\n  - ${problems.join('\n  - ')}` : 'DATA HEALTH: ok');
+}
 log(`Pages build: ${events.length} events across ${Object.keys(byLeague).length} leagues`);
 log(Object.entries(byLeague).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}:${v}`).join(' '));
