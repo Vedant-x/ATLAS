@@ -139,37 +139,43 @@ async function fetchUrl(u, league, signal) {
   }
   throw new Error('HTTP 429');
 }
+// Per-league load status: { ok, at, n }. "No fixtures" may only be shown for a league whose feed
+// actually answered; a failed or throttled league is retried instead.
+export const leagueStatus = new Map();
+
 export async function fetchLeague(league, { days = 3, signal } = {}) {
   const from = new Date(Date.now() - 864e5), to = new Date(Date.now() + days * 864e5);
+  // ESPN's date-range form can drop games already under way or on the current matchday (seen with
+  // tennis and international soccer), and the plain form only covers the current matchday. Ask both
+  // and merge, so neither gap can hide a game.
   const urls = [`${BASE}/${league.path}/scoreboard?dates=${ymd(from)}-${ymd(to)}`, `${BASE}/${league.path}/scoreboard`];
-  // Tennis: the date-range form drops tournaments already under way (e.g. a combined ATP/WTA event),
-  // so take the current scoreboard and add any extra days the range form has.
-  if (league.sport === 'tennis') {
-    const one = (u) => fetchUrl(u, league, signal).catch(() => []);
-    const [cur, range] = await Promise.all([one(urls[1]), one(urls[0])]);
-    const map = new Map([...range, ...cur].map((e) => [e.id, e]));
-    if (map.size) { const list = [...map.values()]; await attachRankings(list, league, signal); return list; }
-  }
-  let lastErr;
   // Node (the Pages build) sends a browser-like agent; browsers set their own.
   const headers = typeof window === 'undefined' ? { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', Accept: 'application/json' } : undefined;
-  for (const u of urls) {
-    // ESPN answers bursts with 403/429: back off and retry before giving up on this form.
-    for (let attempt = 0; attempt < 2; attempt++) {
+  const one = async (u) => {
+    let err;
+    // ESPN answers bursts with 403/429: back off and retry.
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const res = await fetch(u, { signal, headers });
-        if (res.status === 403 || res.status === 429) { lastErr = new Error(`HTTP ${res.status}`); await new Promise((r) => setTimeout(r, 1500 * (attempt + 1))); continue; }
+        if (res.status === 403 || res.status === 429) { err = new Error(`HTTP ${res.status}`); await new Promise((r) => setTimeout(r, 1500 * (attempt + 1))); continue; }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const events = parseScoreboard(await res.json(), league);
-        // An empty range answer is not final: the plain scoreboard can still have games.
-        if (events.length || u === urls[urls.length - 1]) return events;
-        lastErr = new Error('empty');
-        break;
-      } catch (e) { lastErr = e; break; }
+        return parseScoreboard(await res.json(), league);
+      } catch (e) { err = e; if (signal?.aborted) break; }
     }
+    throw err;
+  };
+  const [cur, range] = await Promise.allSettled([one(urls[1]), one(urls[0])]);
+  if (cur.status === 'rejected' && range.status === 'rejected') {
+    leagueStatus.set(league.path, { ok: false, at: Date.now() });
+    if (fetchErrors.length < 20) fetchErrors.push(`${league.path}: ${cur.reason?.message}`);
+    throw cur.reason;
   }
-  if (fetchErrors.length < 20) fetchErrors.push(`${league.path}: ${lastErr?.message}`);
-  throw lastErr;
+  // Current-matchday data is the freshest, so it wins on duplicates.
+  const map = new Map([...(range.value || []), ...(cur.value || [])].map((e) => [e.id, e]));
+  const list = [...map.values()];
+  if (league.sport === 'tennis' && list.length) await attachRankings(list, league, signal);
+  leagueStatus.set(league.path, { ok: true, at: Date.now(), n: list.length });
+  return list;
 }
 
 // Official singles rankings (rank + points) for ATP/WTA players, used by the tennis model since the
