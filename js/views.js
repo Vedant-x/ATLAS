@@ -9,7 +9,7 @@ import { slip } from './slip.js';
 import { CATALOG, sportById, leagueByPath, leagueKey, leagueFromKey } from './catalog.js';
 import { detailFor, loadDetail as fetchDetail } from './detail.js';
 import { dossierSections } from './dossier.js';
-import { fetchAll, LEAGUES } from './espn.js';
+import { fetchAll, LEAGUES, leagueStatus } from './espn.js';
 import { prefs, prefEvents } from './prefs.js';
 import { liveWin } from './live.js';
 import { watch } from './alerts.js';
@@ -216,7 +216,8 @@ export const views = {
   sport([id]) {
     const sp = sportById(id);
     if (!sp) return views.notfound();
-    const after = () => liveLoad(sp.groups.flatMap((g) => g.leagues.map((l) => l.path)));
+    // Only leagues the snapshot couldn't load are fetched again here (each league is several requests).
+    const after = () => liveLoad(sp.groups.flatMap((g) => g.leagues.map((l) => l.path)).filter((p) => !leagueKnown(p)));
     const by = countBy();
     const list = S.events.filter((e) => e.sport === id).sort((a, b) => (b.live - a.live) || a.start - b.start);
     return {
@@ -228,7 +229,7 @@ export const views = {
             const c = by[l.path] || { n: 0, live: 0 };
             const next = S.events.filter((e) => e.leaguePath === l.path && !e.live).sort((a, b) => a.start - b.start)[0];
             return `<a class="leaguec tilt reveal ${c.n ? '' : 'empty'}" href="#/league/${leagueKey(l.path)}" style="--c:${sp.color}" data-cursor="OPEN"><b>${esc(l.name)}</b>
-              <small>${c.n ? `${c.n} match${c.n > 1 ? 'es' : ''}` : 'No fixtures in the next 4 days'}${c.live ? ` · <span class="live">${c.live} live</span>` : ''}</small>
+              <small>${c.n ? `${c.n} match${c.n > 1 ? 'es' : ''}` : emptyText([l.path])}${c.live ? ` · <span class="live">${c.live} live</span>` : ''}</small>
               ${next ? `<em>Next: ${esc(next.home)} v ${esc(next.away)} · <span data-start="${next.start}">${countdown(next.start)}</span></em>` : ''}</a>`;
           };
           const sorted = [...g.leagues].sort((x, y) => (by[y.path]?.n || 0) - (by[x.path]?.n || 0));
@@ -245,7 +246,7 @@ export const views = {
             <em>${n('Singles')} singles · ${n('Doubles') + n('Mixed doubles')} doubles${t.events.some((e) => e.live) ? ` · <span class="live">${t.events.filter((e) => e.live).length} live</span>` : ''}</em></a>`;
         }).join('') || '<p class="muted">No tournaments in the next 4 days.</p>'}</div>` : ''}
         <h2 class="sec reveal"><span>◆</span>Every ${esc(sp.name)} match</h2>
-        <section class="list cv">${list.slice(0, 20).map(eventRow).join('') || '<p class="muted">Nothing scheduled in the next 4 days.</p>'}</section>
+        <section class="list cv">${list.slice(0, 20).map(eventRow).join('') || `<p class="muted">${emptyText(sp.groups.flatMap((g) => g.leagues.map((x) => x.path)))}.</p>`}</section>
         ${list.length > 20 ? `<details class="more-leagues"><summary>Show ${Math.min(list.length, 80) - 20} more matches</summary><section class="list">${list.slice(20, 80).map(eventRow).join('')}</section></details>` : ''}`,
     };
   },
@@ -262,7 +263,7 @@ export const views = {
       after: () => { loadStandings(l); liveLoad([l.path]); },
       html: `<section class="hero small"><p class="kicker reveal"><a href="#/sports">ALL SPORTS</a> / <a href="#/sport/${sp.id}">${esc(sp.name)}</a> / ${esc(l.group)}</p><h1>${split(l.name.toUpperCase())}</h1></section>
         ${notice()}
-        ${(l.sport === 'tennis' && tennisBoard(list)) || [...days.entries()].map(([d, evs]) => `<h2 class="sec reveal"><span>${evs.length}</span>${esc(d)}</h2><section class="list">${evs.map(eventRow).join('')}</section>`).join('') || '<p class="muted reveal">No fixtures in the next 4 days.</p>'}
+        ${(l.sport === 'tennis' && tennisBoard(list)) || [...days.entries()].map(([d, evs]) => `<h2 class="sec reveal"><span>${evs.length}</span>${esc(d)}</h2><section class="list">${evs.map(eventRow).join('')}</section>`).join('') || `<p class="muted reveal">${emptyText([l.path])}.</p>`}
         <section class="sec-block" id="league-standings"></section>`,
     };
   },
@@ -587,18 +588,28 @@ export function edgeTable(f) {
 // Load leagues live in the browser (once per visit each), merge, and redraw. Covers every league,
 // including any the hourly snapshot could not fetch.
 const liveLoaded = new Set();
-async function liveLoad(paths) {
+// Load leagues straight from ESPN when their page opens. A league that fails is retried (never
+// marked as loaded), so a hiccup can't leave a page saying there are no fixtures.
+async function liveLoad(paths, tries = 0) {
   const todo = LEAGUES.filter((l) => paths.includes(l.path) && !liveLoaded.has(l.path));
   if (!todo.length) return;
   todo.forEach((l) => liveLoaded.add(l.path));
+  const started = Date.now();
   const fresh = await fetchAll(undefined, todo, { days: 4, concurrency: 4 }).catch(() => []);
-  if (!fresh.length) return;
-  applyModel(fresh);
-  const map = new Map(S.events.map((e) => [e.id, e]));
-  fresh.forEach((f) => map.set(f.id, { ...map.get(f.id), ...f }));
-  S.events.splice(0, S.events.length, ...map.values());
+  const failed = todo.filter((l) => !(leagueStatus.get(l.path)?.ok && leagueStatus.get(l.path).at >= started));
+  failed.forEach((l) => liveLoaded.delete(l.path));
+  if (fresh.length) {
+    applyModel(fresh);
+    const map = new Map(S.events.map((e) => [e.id, e]));
+    fresh.forEach((f) => map.set(f.id, { ...map.get(f.id), ...f }));
+    S.events.splice(0, S.events.length, ...map.values());
+  }
   S.refresh?.();
+  if (failed.length && tries < 4) setTimeout(() => liveLoad(failed.map((l) => l.path), tries + 1), 6000 * (tries + 1));
 }
+// "No fixtures" only for leagues whose feed actually answered; otherwise we are still loading.
+const leagueKnown = (path) => path.startsWith('atlas/') || leagueStatus.get(path)?.ok === true;
+const emptyText = (paths) => (paths.every(leagueKnown) ? 'No fixtures in the next 4 days' : 'Loading fixtures…');
 
 function countBy() {
   const out = {};

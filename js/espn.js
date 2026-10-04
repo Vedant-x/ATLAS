@@ -129,47 +129,46 @@ const ymd = (d) => d.toISOString().slice(0, 10).replaceAll('-', '');
 // One league's fixtures from yesterday through `days` ahead (live + upcoming). Falls back to the
 // default scoreboard (today) if the date-range form is rejected.
 export const fetchErrors = [];
-async function fetchUrl(u, league, signal) {
+// Per-league load status: { ok, at, n }. "No fixtures" may only be shown for a league whose feed
+// actually answered; a failed or throttled league is retried instead.
+export const leagueStatus = new Map();
+
+export async function fetchLeague(league, { days = 3, signal, live = false } = {}) {
+  // ESPN rejects multi-day ranges (HTTP 400 since Oct 2026; tennis aside), so ask one day at a time,
+  // yesterday through `days` ahead. The live loop only needs the current scoreboard (games in play).
+  const dayList = Array.from({ length: days + 2 }, (_, i) => ymd(new Date(Date.now() + (i - 1) * 864e5)));
+  const urls = live ? [`${BASE}/${league.path}/scoreboard`] : [`${BASE}/${league.path}/scoreboard`, ...dayList.map((d) => `${BASE}/${league.path}/scoreboard?dates=${d}`)];
   const headers = typeof window === 'undefined' ? { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', Accept: 'application/json' } : undefined;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const res = await fetch(u, { signal, headers });
-    if (res.status === 403 || res.status === 429) { await new Promise((r) => setTimeout(r, 1500 * (attempt + 1))); continue; }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return parseScoreboard(await res.json(), league);
-  }
-  throw new Error('HTTP 429');
-}
-export async function fetchLeague(league, { days = 3, signal } = {}) {
-  const from = new Date(Date.now() - 864e5), to = new Date(Date.now() + days * 864e5);
-  const urls = [`${BASE}/${league.path}/scoreboard?dates=${ymd(from)}-${ymd(to)}`, `${BASE}/${league.path}/scoreboard`];
-  // Tennis: the date-range form drops tournaments already under way (e.g. a combined ATP/WTA event),
-  // so take the current scoreboard and add any extra days the range form has.
-  if (league.sport === 'tennis') {
-    const one = (u) => fetchUrl(u, league, signal).catch(() => []);
-    const [cur, range] = await Promise.all([one(urls[1]), one(urls[0])]);
-    const map = new Map([...range, ...cur].map((e) => [e.id, e]));
-    if (map.size) { const list = [...map.values()]; await attachRankings(list, league, signal); return list; }
-  }
-  let lastErr;
-  // Node (the Pages build) sends a browser-like agent; browsers set their own.
-  const headers = typeof window === 'undefined' ? { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', Accept: 'application/json' } : undefined;
-  for (const u of urls) {
-    // ESPN answers bursts with 403/429: back off and retry before giving up on this form.
-    for (let attempt = 0; attempt < 2; attempt++) {
+  const one = async (u) => {
+    let err;
+    // ESPN answers bursts with 403/429: back off and retry.
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const res = await fetch(u, { signal, headers });
-        if (res.status === 403 || res.status === 429) { lastErr = new Error(`HTTP ${res.status}`); await new Promise((r) => setTimeout(r, 1500 * (attempt + 1))); continue; }
+        if (res.status === 403 || res.status === 429) { err = new Error(`HTTP ${res.status}`); await new Promise((r) => setTimeout(r, 1500 * (attempt + 1))); continue; }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const events = parseScoreboard(await res.json(), league);
-        // An empty range answer is not final: the plain scoreboard can still have games.
-        if (events.length || u === urls[urls.length - 1]) return events;
-        lastErr = new Error('empty');
-        break;
-      } catch (e) { lastErr = e; break; }
+        return parseScoreboard(await res.json(), league);
+      } catch (e) { err = e; if (signal?.aborted) break; }
+    }
+    throw err;
+  };
+  const results = await Promise.allSettled(urls.map(one));
+  const ok = results.filter((r) => r.status === 'fulfilled');
+  // A league counts as loaded only if every day answered; otherwise games could be missing.
+  if (ok.length < results.length) {
+    leagueStatus.set(league.path, { ok: false, at: Date.now() });
+    if (!ok.length) {
+      const why = results.find((r) => r.status === 'rejected')?.reason;
+      if (fetchErrors.length < 20) fetchErrors.push(`${league.path}: ${why?.message}`);
+      throw why;
     }
   }
-  if (fetchErrors.length < 20) fetchErrors.push(`${league.path}: ${lastErr?.message}`);
-  throw lastErr;
+  // Later answers (specific days) override the current scoreboard on duplicates.
+  const map = new Map(ok.flatMap((r) => r.value).map((e) => [e.id, e]));
+  const list = [...map.values()];
+  if (league.sport === 'tennis' && list.length) await attachRankings(list, league, signal);
+  if (ok.length === results.length) leagueStatus.set(league.path, { ok: true, at: Date.now(), n: list.length });
+  return list;
 }
 
 // Official singles rankings (rank + points) for ATP/WTA players, used by the tennis model since the

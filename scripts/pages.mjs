@@ -13,7 +13,7 @@ import { CRICKET_URL, parseCricket } from '../js/cricket.js';
 import { enrichMlb, formOf } from '../js/mlbstats.js';
 import { validateReport } from '../js/validate.js';
 import { mkdir, copyFile, cp, writeFile, rm, readFile } from 'node:fs/promises';
-import { fetchAll, LEAGUES, fetchErrors } from '../js/espn.js';
+import { fetchAll, LEAGUES, fetchErrors, leagueStatus } from '../js/espn.js';
 import { leagueByPath } from '../js/catalog.js';
 
 const out = 'dist/pages';
@@ -368,12 +368,42 @@ const cricket = async () => {
   return list;
 };
 const [espn, npbEvents, kboEvents, cricketEvents] = await Promise.all([
-  fetchAll(AbortSignal.timeout(300000), ordered, { days: 4, concurrency: 2 }).catch((e) => { log('ESPN failed', e.message); return []; }),
+  fetchAll(AbortSignal.timeout(720000), ordered, { days: 4, concurrency: 3 }).catch((e) => { log('ESPN failed', e.message); return []; }),
   npb().catch((e) => { log('NPB failed', e.message); return []; }),
   kbo().catch((e) => { log('KBO failed', e.message); return []; }),
   cricket().catch((e) => { log('Cricket failed', e.message); return []; }),
 ]);
 const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents].filter((e) => leagueByPath(e.leaguePath));
+
+// Completeness check: ESPN's all-sports header lists what is being played today. Any catalogued
+// league with games there but none in this build is fetched again; anything still missing is
+// logged loudly so a broken feed can never quietly show "no fixtures".
+{
+  const H = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130 Safari/537.36' };
+  const have = new Map();
+  for (const e of events) have.set(e.leaguePath, (have.get(e.leaguePath) || 0) + 1);
+  const missing = [];
+  let checked = 0;
+  for (const [sport, prefix] of [['soccer', 'soccer'], ['basketball', 'basketball'], ['football', 'football'], ['hockey', 'hockey'], ['baseball', 'baseball'], ['mma', 'mma']]) {
+    try {
+      const j = await (await fetch(`https://site.web.api.espn.com/apis/v2/scoreboard/header?sport=${sport}`, { headers: H, signal: AbortSignal.timeout(15000) })).json();
+      for (const lg of j.sports?.flatMap((x) => x.leagues || []) || []) {
+        const slug = lg.slug || lg.abbreviation;
+        const path = `${prefix}/${slug}`;
+        const open = (lg.events || []).filter((ev) => (ev.status || ev.fullStatus?.type?.state) !== 'post').length;
+        if (open && leagueByPath(path)) { checked++; if (!have.get(path)) missing.push({ path, open }); }
+      }
+    } catch (err) { log(`Completeness check: ${sport} header failed (${err.message})`); }
+  }
+  let recovered = 0;
+  for (const m of missing) {
+    const l = LEAGUES.find((x) => x.path === m.path);
+    const got = l ? await fetchAll(AbortSignal.timeout(60000), [l], { days: 4, concurrency: 1 }).catch(() => []) : [];
+    if (got.length) { events.push(...got); recovered++; } else log(`  COMPLETENESS: ${m.path} has ${m.open} game(s) today on ESPN but none could be loaded`);
+  }
+  log(`Completeness check: ${checked} league(s) with games today on ESPN compared, ${missing.length} missing games${missing.length ? `, ${recovered} recovered` : ''}`);
+  if (!checked) log('  COMPLETENESS: the check compared nothing - ESPN header format may have changed');
+}
 
 // Soccer absences: ESPN's soccer injury feed is empty, FotMob lists who is injured or suspended.
 const soccer = events.filter((e) => e.leaguePath?.startsWith('soccer/') && e.start < Date.now() + 5 * 864e5).sort((a, b) => a.start - b.start).slice(0, 400);
@@ -412,7 +442,7 @@ for (const e of events) for (const p of (e.probables || []).filter((x) => x.repo
 }
 const byLeague = {};
 for (const e of events) byLeague[e.leaguePath] = (byLeague[e.leaguePath] || 0) + 1;
-await writeFile(`${out}/data/index.json`, JSON.stringify({ source: 'ATLAS snapshot', fetchedAt: Date.now(), events }));
+await writeFile(`${out}/data/index.json`, JSON.stringify({ source: 'ATLAS snapshot', fetchedAt: Date.now(), leagueStatus: Object.fromEntries(leagueStatus), events }));
 // Back-compat file name used by older builds of the front end.
 await writeFile(`${out}/data/odds.json`, JSON.stringify({ source: 'ATLAS snapshot', fetchedAt: Date.now(), events }));
 if (fetchErrors.length) log('ESPN errors (first 20):', fetchErrors.join(' | '));
