@@ -383,6 +383,7 @@ const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents].filter((e
   const have = new Map();
   for (const e of events) have.set(e.leaguePath, (have.get(e.leaguePath) || 0) + 1);
   const missing = [];
+  let checked = 0;
   for (const [sport, prefix] of [['soccer', 'soccer'], ['basketball', 'basketball'], ['football', 'football'], ['hockey', 'hockey'], ['baseball', 'baseball'], ['mma', 'mma']]) {
     try {
       const j = await (await fetch(`https://site.web.api.espn.com/apis/v2/scoreboard/header?sport=${sport}`, { headers: H, signal: AbortSignal.timeout(15000) })).json();
@@ -390,7 +391,7 @@ const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents].filter((e
         const slug = lg.slug || lg.abbreviation;
         const path = `${prefix}/${slug}`;
         const open = (lg.events || []).filter((ev) => (ev.status || ev.fullStatus?.type?.state) !== 'post').length;
-        if (open && leagueByPath(path) && !have.get(path)) missing.push({ path, open });
+        if (open && leagueByPath(path)) { checked++; if (!have.get(path)) missing.push({ path, open }); }
       }
     } catch (err) { log(`Completeness check: ${sport} header failed (${err.message})`); }
   }
@@ -400,7 +401,8 @@ const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents].filter((e
     const got = l ? await fetchAll(AbortSignal.timeout(60000), [l], { days: 4, concurrency: 1 }).catch(() => []) : [];
     if (got.length) { events.push(...got); recovered++; } else log(`  COMPLETENESS: ${m.path} has ${m.open} game(s) today on ESPN but none could be loaded`);
   }
-  log(`Completeness check: ${missing.length} league(s) missing games${missing.length ? `, ${recovered} recovered` : ''}`);
+  log(`Completeness check: ${checked} league(s) with games today on ESPN compared, ${missing.length} missing games${missing.length ? `, ${recovered} recovered` : ''}`);
+  if (!checked) log('  COMPLETENESS: the check compared nothing - ESPN header format may have changed');
 }
 
 // Soccer absences: ESPN's soccer injury feed is empty, FotMob lists who is injured or suspended.
