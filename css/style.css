@@ -665,7 +665,8 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .pchip:hover { border-color: var(--accent); }
 .pchip.on { background: var(--accent); color: #000; border-color: var(--accent); }
 .prefs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 16px 0 6px; }
-.prefs .pl { font: 700 11px var(--mono); letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin: 0 4px 0 8px; }
+.prefs .pl { font: 700 11px var(--mono); letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin: 0 4px 0 8px; flex: 0 0 auto; white-space: nowrap; }
+@media (max-width: 680px) { .prefs .pl { flex-basis: 100%; margin: 6px 0 0; } }
 .prefs .pl:first-child { margin-left: 0; }
 .dash-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
 .dash-list li { display: flex; flex-direction: column; gap: 2px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }

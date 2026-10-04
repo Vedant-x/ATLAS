@@ -5,6 +5,8 @@ import { legalViews, ageGate } from './legal.js';
 import { trackViews } from './trackview.js';
 import { watch, checkAlerts } from './alerts.js';
 import { loadEvents, refreshLive, refreshCricket, refreshTeamNews } from './data.js';
+import { overlayLive } from './merge.js';
+import { enrichMlb } from './mlbstats.js';
 import { buildSlips, todayEvents, localDay } from './engine.js';
 import { prefs, prefEvents } from './prefs.js';
 import { applyModel, bankers } from './intel.js';
@@ -57,9 +59,19 @@ const refreshMs = () => (document.hidden ? 60000 : anyLive() ? 5000 : state.snap
 let polling = false, lastIndex = Date.now(), lastWide = 0, lastNews = 0;
 const sigOf = (events) => events.map((e) => `${e.id}|${e.live ? 1 : 0}|${e.score || ''}|${(e.markets || []).map((m) => m.outcomes.map((o) => o.odds).join(',')).join(';')}|${e.absences ? `${e.absences.home.length},${e.absences.away.length},${e.absences.lineup?.type || ''}` : ''}`).join('~');
 let lastSig = '';
+// A starter announced or changed after the snapshot has no report yet: fetch it from the MLB Stats
+// API (browser-friendly) and redraw, so nobody has to reload the page to see it.
+const enriching = new Set();
+function fillStarters(events) {
+  const due = events.filter((e) => e.leaguePath === 'baseball/mlb' && !e.live && e.probables?.some((p) => !p.report) && !enriching.has(e.id)).slice(0, 4);
+  if (!due.length) return;
+  due.forEach((e) => enriching.add(e.id));
+  enrichMlb(due, { signal: AbortSignal.timeout(15000) }).then((n) => { if (n) { lastSig = ''; apply(state.events); } }).catch(() => {}).finally(() => setTimeout(() => due.forEach((e) => enriching.delete(e.id)), 10 * 6e4));
+}
 function apply(events) {
   const sig = sigOf(events);
   setData({ ...state, events, fetchedAt: Date.now() });
+  fillStarters(state.events);
   if (sig === lastSig) { patchClocks(); return; }
   lastSig = sig;
   softRender(); refreshSlip();
@@ -82,9 +94,9 @@ async function poll() {
       if (wide) lastWide = Date.now();
       if (next) apply(next);
     } else {
-      const d = await loadEvents();
+      let d = await loadEvents();
       lastIndex = Date.now();
-      if (!d.demo) { lastSig = ''; setData(d); lastSig = sigOf(state.events); softRender(); refreshSlip(); }
+      if (!d.demo) { d = { ...d, events: overlayLive(d.events, state.events) }; lastSig = ''; setData(d); lastSig = sigOf(state.events); softRender(); refreshSlip(); }
     }
   } finally { polling = false; }
 }
