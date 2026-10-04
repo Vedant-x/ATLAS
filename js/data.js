@@ -4,7 +4,7 @@
 //   2. ESPN live scoreboards fetched straight from the browser (local preview without a snapshot)
 //   3. data/odds.json, an older snapshot file name
 //   4. Simulated DEMO fixtures, so the UI still works offline. Demo odds are NOT real prices.
-import { fetchAll, fetchLeague, LEAGUES } from './espn.js';
+import { fetchAll, fetchLeague, LEAGUES, leagueStatus } from './espn.js';
 import { CRICKET_URL, parseCricket } from './cricket.js';
 import { absencesFor } from './fotmob.js';
 
@@ -16,13 +16,14 @@ export async function refreshLive(events, { liveOnly = false } = {}) {
   const soon = Date.now() + 3 * 3600e3, recent = Date.now() - 4 * 3600e3;
   const paths = [...new Set(events.filter((e) => e.leaguePath && !e.leaguePath.startsWith('atlas/') && (e.live || (!liveOnly && e.start < soon && e.start > recent))).map((e) => e.leaguePath))].slice(0, 25);
   if (!paths.length) return null;
-  const fresh = await fetchAll(AbortSignal.timeout(liveOnly ? 8000 : 15000), LEAGUES.filter((l) => paths.includes(l.path)), { days: 1 });
+  const fresh = await fetchAll(AbortSignal.timeout(liveOnly ? 8000 : 15000), LEAGUES.filter((l) => paths.includes(l.path)), liveOnly ? { live: true } : { days: 1 });
   if (!fresh.length) return null;
   const map = new Map(events.map((e) => [e.id, e]));
   for (const f of fresh) map.set(f.id, { ...map.get(f.id), ...f });
-  // Drop events that finished (no longer on a refreshed scoreboard).
-  const freshIds = new Set(fresh.map((f) => f.id));
-  return [...map.values()].filter((e) => !paths.includes(e.leaguePath) || freshIds.has(e.id));
+  // Drop games that already started and are no longer on the refreshed board (finished). Upcoming
+  // games are kept: a refresh only covers some days, so absence from it means nothing for them.
+  const freshIds = new Set(fresh.map((f) => f.id)), now = Date.now();
+  return [...map.values()].filter((e) => !paths.includes(e.leaguePath) || freshIds.has(e.id) || e.start > now);
 }
 export { fetchLeague };
 
@@ -151,7 +152,11 @@ export async function loadEvents() {
     const res = await fetch('data/index.json', { cache: 'no-store' });
     if (res.ok) {
       const json = await res.json();
-      if (json.events?.length) return { events: json.events, source: 'ATLAS live index', demo: false, server: false, snapshot: true, fetchedAt: json.fetchedAt };
+      if (json.events?.length) {
+        // Which leagues the build actually loaded (so pages never claim "no fixtures" for one that failed).
+        for (const [path, st] of Object.entries(json.leagueStatus || {})) { const cur = leagueStatus.get(path); if (!cur || cur.at < st.at) leagueStatus.set(path, st); }
+        return { events: json.events, source: 'ATLAS live index', demo: false, server: false, snapshot: true, fetchedAt: json.fetchedAt };
+      }
     }
   } catch { /* no snapshot (local server or file) */ }
 

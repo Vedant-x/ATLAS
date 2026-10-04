@@ -129,27 +129,15 @@ const ymd = (d) => d.toISOString().slice(0, 10).replaceAll('-', '');
 // One league's fixtures from yesterday through `days` ahead (live + upcoming). Falls back to the
 // default scoreboard (today) if the date-range form is rejected.
 export const fetchErrors = [];
-async function fetchUrl(u, league, signal) {
-  const headers = typeof window === 'undefined' ? { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', Accept: 'application/json' } : undefined;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const res = await fetch(u, { signal, headers });
-    if (res.status === 403 || res.status === 429) { await new Promise((r) => setTimeout(r, 1500 * (attempt + 1))); continue; }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return parseScoreboard(await res.json(), league);
-  }
-  throw new Error('HTTP 429');
-}
 // Per-league load status: { ok, at, n }. "No fixtures" may only be shown for a league whose feed
 // actually answered; a failed or throttled league is retried instead.
 export const leagueStatus = new Map();
 
-export async function fetchLeague(league, { days = 3, signal } = {}) {
-  const from = new Date(Date.now() - 864e5), to = new Date(Date.now() + days * 864e5);
-  // ESPN's date-range form can drop games already under way or on the current matchday (seen with
-  // tennis and international soccer), and the plain form only covers the current matchday. Ask both
-  // and merge, so neither gap can hide a game.
-  const urls = [`${BASE}/${league.path}/scoreboard?dates=${ymd(from)}-${ymd(to)}`, `${BASE}/${league.path}/scoreboard`];
-  // Node (the Pages build) sends a browser-like agent; browsers set their own.
+export async function fetchLeague(league, { days = 3, signal, live = false } = {}) {
+  // ESPN rejects multi-day ranges (HTTP 400 since Oct 2026; tennis aside), so ask one day at a time,
+  // yesterday through `days` ahead. The live loop only needs the current scoreboard (games in play).
+  const dayList = Array.from({ length: days + 2 }, (_, i) => ymd(new Date(Date.now() + (i - 1) * 864e5)));
+  const urls = live ? [`${BASE}/${league.path}/scoreboard`] : [`${BASE}/${league.path}/scoreboard`, ...dayList.map((d) => `${BASE}/${league.path}/scoreboard?dates=${d}`)];
   const headers = typeof window === 'undefined' ? { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', Accept: 'application/json' } : undefined;
   const one = async (u) => {
     let err;
@@ -164,17 +152,22 @@ export async function fetchLeague(league, { days = 3, signal } = {}) {
     }
     throw err;
   };
-  const [cur, range] = await Promise.allSettled([one(urls[1]), one(urls[0])]);
-  if (cur.status === 'rejected' && range.status === 'rejected') {
+  const results = await Promise.allSettled(urls.map(one));
+  const ok = results.filter((r) => r.status === 'fulfilled');
+  // A league counts as loaded only if every day answered; otherwise games could be missing.
+  if (ok.length < results.length) {
     leagueStatus.set(league.path, { ok: false, at: Date.now() });
-    if (fetchErrors.length < 20) fetchErrors.push(`${league.path}: ${cur.reason?.message}`);
-    throw cur.reason;
+    if (!ok.length) {
+      const why = results.find((r) => r.status === 'rejected')?.reason;
+      if (fetchErrors.length < 20) fetchErrors.push(`${league.path}: ${why?.message}`);
+      throw why;
+    }
   }
-  // Current-matchday data is the freshest, so it wins on duplicates.
-  const map = new Map([...(range.value || []), ...(cur.value || [])].map((e) => [e.id, e]));
+  // Later answers (specific days) override the current scoreboard on duplicates.
+  const map = new Map(ok.flatMap((r) => r.value).map((e) => [e.id, e]));
   const list = [...map.values()];
   if (league.sport === 'tennis' && list.length) await attachRankings(list, league, signal);
-  leagueStatus.set(league.path, { ok: true, at: Date.now(), n: list.length });
+  if (ok.length === results.length) leagueStatus.set(league.path, { ok: true, at: Date.now(), n: list.length });
   return list;
 }
 
