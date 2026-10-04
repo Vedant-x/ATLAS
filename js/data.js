@@ -7,6 +7,7 @@
 import { fetchAll, fetchLeague, LEAGUES, leagueStatus } from './espn.js';
 import { CRICKET_URL, parseCricket } from './cricket.js';
 import { absencesFor } from './fotmob.js';
+import { mergeEvent } from './merge.js';
 
 // Leagues fetched directly when no snapshot exists (static file or local dev).
 const FEATURED = LEAGUES.filter((l) => ['soccer/eng.1', 'soccer/esp.1', 'soccer/ger.1', 'soccer/ita.1', 'soccer/fra.1', 'soccer/uefa.champions', 'soccer/uefa.europa', 'soccer/usa.1', 'soccer/mex.1', 'soccer/bra.1', 'soccer/arg.1', 'soccer/ned.1', 'soccer/por.1', 'soccer/tur.1', 'soccer/ksa.1', 'basketball/nba', 'basketball/wnba', 'football/nfl', 'football/college-football', 'hockey/nhl', 'baseball/mlb', 'tennis/atp', 'tennis/wta', 'mma/ufc', 'rugby/267979', 'australian-football/afl'].includes(l.path));
@@ -19,7 +20,7 @@ export async function refreshLive(events, { liveOnly = false } = {}) {
   const fresh = await fetchAll(AbortSignal.timeout(liveOnly ? 8000 : 15000), LEAGUES.filter((l) => paths.includes(l.path)), liveOnly ? { live: true } : { days: 1 });
   if (!fresh.length) return null;
   const map = new Map(events.map((e) => [e.id, e]));
-  for (const f of fresh) map.set(f.id, { ...map.get(f.id), ...f });
+  for (const f of fresh) map.set(f.id, mergeEvent(map.get(f.id), f));
   // Drop games that already started and are no longer on the refreshed board (finished). Upcoming
   // games are kept: a refresh only covers some days, so absence from it means nothing for them.
   const freshIds = new Set(fresh.map((f) => f.id)), now = Date.now();

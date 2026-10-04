@@ -15,6 +15,7 @@ import { prefs, prefEvents } from './prefs.js';
 import { liveWin } from './live.js';
 import { watch } from './alerts.js';
 import { trackCard } from './trackview.js';
+import { mergeEvent } from './merge.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const safeHref = (u) => (/^https?:\/\//i.test(String(u || '')) ? esc(u) : '#');
@@ -602,7 +603,7 @@ async function liveLoad(paths, tries = 0) {
   if (fresh.length) {
     applyModel(fresh);
     const map = new Map(S.events.map((e) => [e.id, e]));
-    fresh.forEach((f) => map.set(f.id, { ...map.get(f.id), ...f }));
+    fresh.forEach((f) => map.set(f.id, mergeEvent(map.get(f.id), f)));
     S.events.splice(0, S.events.length, ...map.values());
   }
   S.refresh?.();
