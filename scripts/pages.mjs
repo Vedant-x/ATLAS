@@ -389,7 +389,7 @@ await Promise.all(Array.from({ length: 4 }, async () => {
 }));
 const injNames = await injuryNames();
 await writeFile(`${out}/data/injury-names.json`, JSON.stringify(injNames));
-log(`FotMob: ${absMatched}/${soccer.length} soccer matches linked, ${absFound} absences, ${Object.keys(injNames).length} injury names`);
+log(`FotMob: ${absMatched}/${soccer.length} soccer matches linked, ${absFound} absences, ${soccer.filter((e) => e.absences?.lineup).length} lineups (${soccer.filter((e) => e.absences?.lineup && !['lastStarting11', 'predicted'].includes(e.absences.lineup.type)).length} confirmed), ${Object.keys(injNames).length} injury names`);
 
 // MLB starters: full reports from the official MLB Stats API.
 const mlbN = await enrichMlb(events, { signal: AbortSignal.timeout(90000), addMissing: true }).catch((e) => { log('MLB Stats API failed', e.message); return 0; });

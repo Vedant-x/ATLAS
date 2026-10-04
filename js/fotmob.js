@@ -64,6 +64,18 @@ export function injuryNames(samplePlayerId) {
   return namesP;
 }
 
+// Starting XIs with pitch positions. type: FotMob's lineupType ('lastStarting11' before team news,
+// 'predicted', otherwise the announced lineup).
+const xi = (t) => ({
+  formation: t.formation || null,
+  starters: (t.starters || []).map((p) => ({ name: p.name, number: p.shirtNumber || '', gk: p.positionId === 11, x: p.verticalLayout?.x ?? 0.5, y: p.verticalLayout?.y ?? 0.5 })),
+  subs: (t.subs || []).slice(0, 12).map((p) => p.name),
+});
+export function lineupOf(lu) {
+  if (!lu || (lu.homeTeam?.starters || []).length < 11 || (lu.awayTeam?.starters || []).length < 11) return null;
+  return { type: lu.lineupType || null, home: xi(lu.homeTeam), away: xi(lu.awayTeam) };
+}
+
 // { home: [...], away: [...], matchId, source } or null when FotMob has no such match.
 export async function absencesFor(e, signal) {
   const m = await findMatch(e, signal);
@@ -75,6 +87,7 @@ export async function absencesFor(e, signal) {
   return {
     source: 'FotMob', matchId: m.id, fetchedAt: Date.now(),
     lineupType: lu.lineupType || null,
+    lineup: lineupOf(lu),
     home: (lu.homeTeam?.unavailable || []).map((p) => player(p, names)),
     away: (lu.awayTeam?.unavailable || []).map((p) => player(p, names)),
   };

@@ -47,6 +47,8 @@ export async function buildContext(K, text, max = 6000) {
       const side = (list) => (list.length ? list.slice(0, 8).map((i) => `${i.name} (${i.detail}${i.back ? `, back ${i.back}` : ''})`).join(', ') : 'none listed');
       lines.push(`  Injuries/absences (${inj.source}): ${e.home}: ${side(inj.home)}. ${e.away}: ${side(inj.away)}.`);
     } else lines.push('  Injuries: no source covers this match (unknown, not none).');
+    const lu = e.absences?.lineup;
+    if (lu) lines.push(`  Lineups (${lu.type === 'lastStarting11' ? 'not announced; last match XI' : lu.type === 'predicted' ? 'predicted' : 'confirmed'}): ${e.home} ${lu.home.formation || ''}: ${lu.home.starters.map((p) => p.name).join(', ')}. ${e.away} ${lu.away.formation || ''}: ${lu.away.starters.map((p) => p.name).join(', ')}.`);
   }
 
   const today = /\b(today|tonight|now)\b/.test(q);
