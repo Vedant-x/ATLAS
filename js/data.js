@@ -1,19 +1,22 @@
 // Data layer. Order of preference:
-//   1. data/index.json, the snapshot the Pages workflow builds every 15 minutes (every league, NPB/KBO,
+//   1. data/index.json, the snapshot the Pages workflow rebuilds (every league, NPB/KBO,
 //      MLB starter reports, soccer absences)
 //   2. ESPN live scoreboards fetched straight from the browser (local preview without a snapshot)
 //   3. data/odds.json, an older snapshot file name
 //   4. Simulated DEMO fixtures, so the UI still works offline. Demo odds are NOT real prices.
 import { fetchAll, fetchLeague, LEAGUES } from './espn.js';
+import { CRICKET_URL, parseCricket } from './cricket.js';
+import { absencesFor } from './fotmob.js';
 
 // Leagues fetched directly when no snapshot exists (static file or local dev).
 const FEATURED = LEAGUES.filter((l) => ['soccer/eng.1', 'soccer/esp.1', 'soccer/ger.1', 'soccer/ita.1', 'soccer/fra.1', 'soccer/uefa.champions', 'soccer/uefa.europa', 'soccer/usa.1', 'soccer/mex.1', 'soccer/bra.1', 'soccer/arg.1', 'soccer/ned.1', 'soccer/por.1', 'soccer/tur.1', 'soccer/ksa.1', 'basketball/nba', 'basketball/wnba', 'football/nfl', 'football/college-football', 'hockey/nhl', 'baseball/mlb', 'tennis/atp', 'tennis/wta', 'mma/ufc', 'rugby/267979', 'australian-football/afl'].includes(l.path));
 
-// Refresh only leagues with something live or starting soon, and merge into the current list.
-export async function refreshLive(events) {
+// Refresh leagues with something live (liveOnly) or also starting soon, and merge into the current list.
+export async function refreshLive(events, { liveOnly = false } = {}) {
   const soon = Date.now() + 3 * 3600e3, recent = Date.now() - 4 * 3600e3;
-  const paths = [...new Set(events.filter((e) => e.leaguePath && !e.leaguePath.startsWith('atlas/') && (e.live || (e.start < soon && e.start > recent))).map((e) => e.leaguePath))].slice(0, 25);
-  const fresh = await fetchAll(AbortSignal.timeout(15000), LEAGUES.filter((l) => paths.includes(l.path)), { days: 1 });
+  const paths = [...new Set(events.filter((e) => e.leaguePath && !e.leaguePath.startsWith('atlas/') && (e.live || (!liveOnly && e.start < soon && e.start > recent))).map((e) => e.leaguePath))].slice(0, 25);
+  if (!paths.length) return null;
+  const fresh = await fetchAll(AbortSignal.timeout(liveOnly ? 8000 : 15000), LEAGUES.filter((l) => paths.includes(l.path)), { days: 1 });
   if (!fresh.length) return null;
   const map = new Map(events.map((e) => [e.id, e]));
   for (const f of fresh) map.set(f.id, { ...map.get(f.id), ...f });
@@ -22,6 +25,30 @@ export async function refreshLive(events) {
   return [...map.values()].filter((e) => !paths.includes(e.leaguePath) || freshIds.has(e.id));
 }
 export { fetchLeague };
+
+// Cricket straight from ESPN's score panel (replaces every cricket match with the fresh list).
+export async function refreshCricket(events) {
+  const res = await fetch(CRICKET_URL, { signal: AbortSignal.timeout(8000) });
+  if (!res.ok) return null;
+  const fresh = parseCricket(await res.json());
+  if (!fresh.length) return null;
+  return [...events.filter((e) => e.sport !== 'cricket'), ...fresh];
+}
+
+// Soccer team news from FotMob for matches about to start or in play: injuries, suspensions and
+// the starting XIs as soon as they are announced.
+export async function refreshTeamNews(events) {
+  const now = Date.now();
+  const due = events.filter((e) => e.leaguePath?.startsWith('soccer/') && (e.live || (e.start > now - 3 * 36e5 && e.start < now + 3 * 36e5))).slice(0, 10);
+  if (!due.length) return null;
+  let changed = false;
+  const fresh = new Map();
+  await Promise.all(due.map(async (e) => {
+    const a = await absencesFor(e, AbortSignal.timeout(10000)).catch(() => null);
+    if (a && JSON.stringify([a.home, a.away, a.lineup]) !== JSON.stringify([e.absences?.home, e.absences?.away, e.absences?.lineup])) { fresh.set(e.id, a); changed = true; }
+  }));
+  return changed ? events.map((e) => (fresh.has(e.id) ? { ...e, absences: fresh.get(e.id) } : e)) : null;
+}
 
 
 import { CATALOG } from './catalog.js';
