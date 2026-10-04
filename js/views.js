@@ -1,3 +1,4 @@
+import { stakeMatchSection } from './stake.js';
 // Page templates. Each view returns { html, mode, accent, sceneOpts?, title, after? }.
 import { SPORTS } from './data.js';
 import { devig, buildSlips, todayEvents } from './engine.js';
@@ -327,7 +328,7 @@ export const views = {
             <span class="mo-n">${esc(o.name)}</span><div class="meter"><i class="grow" style="--w:${(o.p * 100).toFixed(1)}%"></i></div>
             <span class="mo-p">${pc(o.p)}</span>${legButton(fairLeg(e, m, o), odd(o.fair))}</div>`).join('')}</div>`).join('')}</div>`).join('')}</div>
       </section>
-      <section class="panel reveal" id="sec-book">${bookPanel(e)}</section>
+      <section class="panel reveal" id="sec-book">${bookPanel(e)}${stakeMatchSection(e, S.stake)}</section>
       <section class="grid two" id="sec-form">${formPanel(e, hc, ac)}</section>
       <section class="panel reveal" id="sec-calc">${calcPanel(e, w, book)}</section>
       <section class="panel reveal" id="sec-notes"><h2 class="ph">Model notes</h2>${notes(e, a)}</section>`,

@@ -1,3 +1,4 @@
+import { loadStakeFeed, stakeView } from './stake.js';
 import { createScene } from './scene.js';
 import { mountAssistant } from './assistant/ui.js';
 import { legalViews, ageGate } from './legal.js';
@@ -22,7 +23,7 @@ const scene = fxOff ? (bg.classList.add('no-webgl'), { setMode() {}, setAccent()
 document.querySelectorAll('[data-fx-toggle]').forEach((b) => { b.setAttribute('aria-pressed', String(!fxOff)); b.querySelector('b').textContent = fxOff ? 'OFF' : 'ON'; });
 
 const state = {
-  events: [], source: 'demo', demo: true, news: [], odds: null, fetchedAt: 0,
+  stake: null, events: [], source: 'demo', demo: true, news: [], odds: null, fetchedAt: 0,
   slipCache: new Map(), slipsAt: 0,
   // opts.today: only matches still to start today (local time); cached per day so midnight rolls over.
   slips(target, opts = {}) {
@@ -95,7 +96,7 @@ let current = null;
 function build() {
   const { name, args } = parse();
   legIndex.clear();
-  return { name, v: (views[name] || legalViews[name] || trackViews[name] || views.notfound)(args.map(decodeURIComponent)) };
+  return { name, v: (name === 'stake' ? (() => stakeView(state.stake, state.events)) : views[name] || legalViews[name] || trackViews[name] || views.notfound)(args.map(decodeURIComponent)) };
 }
 
 function render(animate) {
@@ -143,7 +144,7 @@ function trail() {
   if (sp) parts.push([`#/sport/${sp.id}`, sp.name]);
   if (l) parts.push([`#/league/${leagueKey(l.path)}`, l.short || l.name]);
   if (e) parts.push(['', `${e.home} v ${e.away}`]);
-  const label = { edge: 'Edge board', x: 'Multipliers', mega: 'Mega bets', bankers: 'Bankers' }[name];
+  const label = { stake: 'Stake odds', edge: 'Edge board', x: 'Multipliers', mega: 'Mega bets', bankers: 'Bankers' }[name];
   if (label) parts.push(['', label]);
   return parts;
 }
@@ -159,7 +160,7 @@ function dock() {
 function route() {
   if (!location.hash.startsWith('#/')) return; // in-page anchors
   const { name } = parse();
-  const label = { home: 'DASHBOARD', sports: 'ALL SPORTS', sport: 'SPORT', league: 'LEAGUE', match: 'MATCH DOSSIER', edge: 'EDGE BOARD', x: 'MULTIPLIERS', mega: 'MEGA BETS', bankers: 'BANKERS' }[name] || '';
+  const label = { stake: 'STAKE ODDS', home: 'DASHBOARD', sports: 'ALL SPORTS', sport: 'SPORT', league: 'LEAGUE', match: 'MATCH DOSSIER', edge: 'EDGE BOARD', x: 'MULTIPLIERS', mega: 'MEGA BETS', bankers: 'BANKERS' }[name] || '';
   const h = location.hash || '#/';
   if (replacing) { stack[stack.length - 1] = h; replacing = false; } else if (stack.length > 1 && stack[stack.length - 2] === h) stack.pop(); else stack.push(h);
   // instant: html has scroll-behavior:smooth, and a smooth scroll still running when a live refresh
@@ -335,3 +336,12 @@ preloader(loadEvents()).then((d) => {
   (function tick() { setTimeout(() => poll().finally(tick), refreshMs()); })();
   addEventListener('visibilitychange', () => { if (!document.hidden) poll(); }); // back on the tab: catch up now
 });
+
+// Separate feed and timestamps: score refreshes never make Stake prices look newer.
+let stakeLoading = false;
+async function refreshStakeFeed() {
+  if (stakeLoading) return; stakeLoading = true;
+  try { state.stake = await loadStakeFeed(); if (current === 'stake' || current === 'match') softRender(); } finally { stakeLoading = false; }
+}
+refreshStakeFeed();
+setInterval(() => { if (!document.hidden) refreshStakeFeed(); }, 60000);
