@@ -34,7 +34,7 @@ jobs:
         with:
           node-version: 22
       - run: npm test
-      - run: npm install --no-save esbuild@0.24 || true # bundler for the speed step; the build works without it
+      - run: npm install --no-save esbuild@0.24.2 || true # bundler for the speed step; the build works without it
       - run: node scripts/pages.mjs
       # Track record: history lives on the track-record branch (created on the first run).
       - name: Load track record
