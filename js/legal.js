@@ -75,6 +75,7 @@ export function ageGate() {
   d.className = 'age-gate';
   d.setAttribute('role', 'dialog');
   d.setAttribute('aria-modal', 'true');
+  d.setAttribute('aria-label', 'Age check');
   d.innerHTML = `<div class="age-card"><b>18+</b><h2>Are you 18 or older?</h2>
     <p>ATLAS shows sports betting analysis. You must be 18 or over (or the legal age where you live) to use it.
     Estimates are never guarantees: bet only what you can afford to lose.</p>

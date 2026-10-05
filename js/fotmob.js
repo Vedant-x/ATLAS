@@ -78,6 +78,9 @@ export function lineupOf(lu) {
 
 // { home: [...], away: [...], matchId, source } or null when FotMob has no such match.
 export async function absencesFor(e, signal) {
+  // FotMob's match details refuse browser requests (CORS): in the browser this would only log errors,
+  // so team news comes from the build (refreshed every few minutes) instead.
+  if (typeof document !== 'undefined') return null;
   const m = await findMatch(e, signal);
   if (!m) return null;
   const md = await getJson(`${BASE}/matchDetails?matchId=${m.id}`, signal);

@@ -47,7 +47,7 @@ export function mountAssistant(S) {
   const root = document.createElement('div');
   root.className = 'ai-root';
   root.innerHTML = `
-    <button class="ai-launch" aria-label="Open the ATLAS assistant" data-cursor="ASK">
+    <button class="ai-launch" aria-label="Ask me for bets! Open the ATLAS assistant" data-cursor="ASK">
       <span class="ai-shadow"></span><span class="ai-avatar"></span>
       <span class="ai-bubble" hidden></span>
     </button>

@@ -1,5 +1,4 @@
 import { loadStakeFeed, stakeView } from './stake.js';
-import { createScene } from './scene.js';
 import { mountAssistant } from './assistant/ui.js';
 import { legalViews, ageGate } from './legal.js';
 import { trackViews } from './trackview.js';
@@ -24,7 +23,27 @@ const app = document.getElementById('app');
 // Effects switch: the 3D background can be turned off (remembered per device, or ?lite in the URL).
 const fxOff = (() => { try { return /[?&]lite\b/.test(location.search) || localStorage.getItem('atlas-fx') === 'off'; } catch { return false; } })();
 const bg = document.getElementById('bg');
-const scene = fxOff ? (bg.classList.add('no-webgl'), { setMode() {}, setAccent() {}, pulse() {}, ok: false }) : createScene(bg);
+// The 3D scene (three.js) loads after the first paint; calls made before it's ready are replayed.
+const scene = (() => {
+  let real = null;
+  const queue = [];
+  const call = (m) => (...a) => (real ? real[m]?.(...a) : queue.push([m, a]));
+  const api = { ok: false, setMode: call('setMode'), setAccent: call('setAccent'), pulse: call('pulse'), setTrack: call('setTrack'), setCars: call('setCars') };
+  api.start = () => {
+    if (fxOff || api.started) return;
+    api.started = true;
+    import('./scene.js').then(({ createScene }) => {
+      real = createScene(bg);
+      api.ok = real.ok;
+      const last = new Map(); // only the latest mode/accent/track matter
+      for (const [m, a] of queue) if (m === 'pulse') continue; else last.set(m, a);
+      for (const m of ['setAccent', 'setTrack', 'setMode', 'setCars']) if (last.has(m)) real[m]?.(...last.get(m));
+      queue.length = 0;
+    }).catch(() => bg.classList.add('no-webgl'));
+  };
+  if (fxOff) bg.classList.add('no-webgl');
+  return api;
+})();
 document.querySelectorAll('[data-fx-toggle]').forEach((b) => { b.setAttribute('aria-pressed', String(!fxOff)); b.querySelector('b').textContent = fxOff ? 'OFF' : 'ON'; });
 
 const state = {
@@ -357,7 +376,7 @@ addEventListener('scroll', () => {
 }, { passive: true });
 
 // Installable app: service worker (deployed site only) and an "Install app" button where supported.
-if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator && location.protocol === 'https:') addEventListener('load', () => setTimeout(() => navigator.serviceWorker.register('sw.js').catch(() => {}), 3000));
 let installEvt = null;
 addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; document.querySelectorAll('[data-install]').forEach((b) => { b.hidden = false; }); });
 document.addEventListener('click', (e) => {
@@ -371,9 +390,19 @@ ageGate();
 cursor();
 tilt();
 renderSlip();
-preloader(loadEvents()).then((d) => {
-  setData(d);
+// First paint doesn't wait for the full data file: after a short beat the page renders with what it
+// has and fills in when the snapshot arrives.
+const firstData = loadEvents();
+preloader(Promise.race([firstData, new Promise((r) => setTimeout(() => r(null), 350))])).then((d) => {
+  if (d) setData(d);
   render(true);
+  if (!d) firstData.then((x) => { setData(x); lastSig = sigOf(state.events); softRender(); refreshSlip(); });
+  // 3D after the page is up: on phones at the first touch/scroll (or after 5 s) to keep loading light.
+  if (matchMedia('(max-width: 700px)').matches) {
+    const go = () => { scene.start(); ['pointerdown', 'scroll', 'keydown'].forEach((t) => removeEventListener(t, go)); };
+    ['pointerdown', 'scroll', 'keydown'].forEach((t) => addEventListener(t, go, { once: true, passive: true }));
+    setTimeout(go, 5000);
+  } else (window.requestIdleCallback || ((f) => setTimeout(f, 300)))(() => scene.start(), { timeout: 1500 });
   addEventListener('hashchange', route);
   scene.pulse();
   state.ai = mountAssistant(state);
