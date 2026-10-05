@@ -20,7 +20,7 @@ export function parseNpbScoreboard(html) {
     else if (/中止|ノーゲーム/.test(state)) status = 'cancelled';
     else if (inn || (sc && !/（/.test(state))) status = 'live';
     out.push({
-      id: `atlas_npb-${yyyy}${mmdd}-${home}-${away}`, status,
+      id: `atlas_npb-${yyyy}${mmdd}-${home}-${away}`, status, path: m[0].match(/href="([^"]+)"/)[1].replace(/\/?$/, '/'),
       score: sc ? `${sc[1]} – ${sc[2]}` : null,
       clock: inn ? `${inn[2] === '表' ? 'Top' : 'Bot'} ${ORD(Number(inn[1]))}` : status === 'final' ? 'Final' : '',
       period: inn ? Number(inn[1]) : null,
@@ -62,3 +62,13 @@ export function applyAsiaLive(events, live, now = Date.now()) {
   }
   return changed ? out : null;
 }
+
+// Starting pitchers from an NPB box score (npb.jp/scores/…/box.html): the pitching tables list each
+// side's pitchers in the order they appeared, so the first is the starter. The bottom table is the
+// home team (it pitches the top of the innings), the top table the visitors.
+export function npbBoxStarters(html) {
+  const first = (id) => html.match(new RegExp(`id="${id}"[\\s\\S]*?/bis/players/(\\d+)\\.html`))?.[1] || null;
+  const home = first('tablefix_b_p'), away = first('tablefix_t_p');
+  return home || away ? { home, away } : null;
+}
+

@@ -11,7 +11,7 @@ import { collectStake } from './stake-provider.mjs';
 // Japan/Korea data that only the official league sites carry.
 import { absencesFor, injuryNames } from '../js/fotmob.js';
 import { CRICKET_URL, parseCricket } from '../js/cricket.js';
-import { parseNpbScoreboard, kboLive } from '../js/asia-live.js';
+import { parseNpbScoreboard, kboLive, npbBoxStarters } from '../js/asia-live.js';
 import { BO3, ESB, BO3_GAMES, parseBo3, parseEsb, esbForm } from '../js/esports.js';
 import { JOLPICA, OPENF1, ESPN_F1, currentRace, sessionsOf, driverForm, expectedPosition, simulateRace, normalizeTrack, espnSessions } from '../js/f1.js';
 import { enrichMlb, formOf } from '../js/mlbstats.js';
@@ -225,6 +225,18 @@ async function npb() {
         source: 'NPB official', fetchedAt: Date.now(), sourceUrl: `https://npb.jp/bis/eng/${key.slice(0, 4)}/games/gm${key}.html`,
       });
     }
+  }
+  // Games under way whose starters were never announced to us (the starters page moves on to the
+  // next day by mid-afternoon): read them from the game's own box score.
+  for (const e of events) {
+    if (e.probables.length || e.start > Date.now() + 10 * 6e4) continue;
+    const lv = liveNow.get(e.id);
+    if (!lv?.path) continue;
+    try {
+      const st = npbBoxStarters(await get(`https://npb.jp${lv.path}box.html`));
+      if (st?.home) e.probables.push({ side: 'home', npbId: st.home, role: 'SP' });
+      if (st?.away) e.probables.push({ side: 'away', npbId: st.away, role: 'SP' });
+    } catch (err) { log('NPB box score failed', lv.path, err.message); }
   }
   // Full report for every announced starter, then recent starts from box scores.
   const targets = [];
