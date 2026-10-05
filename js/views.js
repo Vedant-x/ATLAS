@@ -174,7 +174,7 @@ export const views = {
     const ev = S.events;
     const live = ev.filter((e) => e.live);
     const upcoming = [...ev].filter((e) => !e.live && e.sport !== 'efootball').sort((a, b) => a.start - b.start); // eSoccer runs round the clock: it has its own page
-    const day = todayEvents(prefFilter(ev)); // today's date only (IST)
+    const day = todayEvents(prefFilter(ev)); // next 12 hours
     const bk = smartBankers(day, { limit: 10, minOdds: prefs.get().minOdds });
     const val = valueSpots(day, { limit: 8, minOdds: prefs.get().minOdds });
     const ts = trackStats();
@@ -378,22 +378,21 @@ export const views = {
   x([n]) {
     const target = Math.round(Number(n) * 100) / 100;
     if (![2, 3, 4, 5, 10, 20].includes(target)) return views.notfound();
-    // Same-day only: every leg kicks off later today (viewer's local time).
+    // Every leg kicks off in the next 12 hours.
     const left = todayEvents(S.events);
     const priced = left.filter((e) => e.markets?.length).length;
     const list = S.slips(target, { count: 5, today: target < 100 });
-    const day = new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
     ensureTrack(() => S.refresh?.());
     const r = trackStats()?.byTarget?.find((t) => t.target === target), all = trackStats()?.multi;
     return {
       mode: 'x', accent: ['#d2ff00', '#00ffc3', '#4fd1ff', '#b08cff'][[2, 3, 4, 5].indexOf(target)] || '#ff9f43', title: `${target}x slips`,
-      html: `<section class="hero small"><p class="kicker reveal">MULTIPLIER · BREAK-EVEN ${pc(1 / target, target >= 100 ? 2 : 1)}${target < 100 ? ' · TODAY ONLY' : ''}</p><h1>${split(`${target}X SLIPS`)}</h1>
+      html: `<section class="hero small"><p class="kicker reveal">MULTIPLIER · BREAK-EVEN ${pc(1 / target, target >= 100 ? 2 : 1)}${target < 100 ? ' · NEXT 12 HOURS' : ''}</p><h1>${split(`${target}X SLIPS`)}</h1>
         <nav class="tabs reveal">${[2, 3, 4, 5, 10, 20].map((x) => `<a href="#/x/${x}" class="${x === target ? 'on' : ''}">${x}x</a>`).join('')}</nav></section>
         ${notice()}
         ${r && r.won + r.lost ? `<p class="rec-line reveal">Track record · official ${target}x slips ${recordLine(r)}${all?.won + all?.lost ? ` · all multipliers ${recordLine(all)}` : ''} · <a href="#/track">details</a></p>` : MULTI_TARGETS.includes(target) ? '<p class="rec-line reveal">Track record: the top slip here is saved each day and graded leg by leg on the Record page.</p>' : ''}
         <p class="lede reveal">Built from <b>bankers</b>: short-priced favourites the model rates highly (about 1.05 to 1.6 each), stacked until the total reaches ${target}x. Many safe legs beat a few long shots: each leg is chosen for the most win chance per unit of odds.</p>
-        <p class="note reveal">${target < 100 ? `📅 Only matches on <b>${esc(day)}</b> that haven't started yet: ${left.length} left today, ${priced} with prices.` : 'Big targets use every priced match in the next few days.'} Every leg is a real bookmaker price.</p>
-        <section class="grid slips">${list.map((s, i) => slipCard(s, i, target)).join('') || `<p class="muted">Not enough strong favourites ${target < 100 ? 'left today' : 'on the board'} to reach about ${target}x. Try a smaller target.</p>`}</section>`,
+        <p class="note reveal">${target < 100 ? `⏱ Only matches starting in the next 12 hours: ${left.length} in range, ${priced} with prices.` : 'Big targets use every priced match in the next few days.'} Every leg is a real bookmaker price.</p>
+        <section class="grid slips">${list.map((s, i) => slipCard(s, i, target)).join('') || `<p class="muted">Not enough strong favourites ${target < 100 ? 'in the next 12 hours' : 'on the board'} to reach about ${target}x. Try a smaller target.</p>`}</section>`,
     };
   },
 
@@ -431,17 +430,17 @@ export const views = {
   bankers() {
     const ev = prefFilter(S.events), minOdds = prefs.get().minOdds;
     ensureTrack(() => S.refresh?.());
-    const day = todayEvents(ev); // today's date only (IST)
+    const day = todayEvents(ev); // next 12 hours
     const list = smartBankers(day, { limit: 40, minOdds });
     const val = valueSpots(day, { limit: 20, minOdds });
     const ts = trackStats();
     return {
       mode: 'bankers', accent: '#00ffc3', title: 'Bankers',
-      html: `<section class="hero small"><p class="kicker reveal">TODAY · ${new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', day: 'numeric', month: 'short' }).toUpperCase()} · ODDS ≥ ${minOdds.toFixed(2)}</p><h1>${split('BANKERS')}</h1>
+      html: `<section class="hero small"><p class="kicker reveal">NEXT 12 HOURS · ODDS ≥ ${minOdds.toFixed(2)}</p><h1>${split('BANKERS')}</h1>
         <p class="lede reveal">Picks the model estimates at 70%+ (from margin-free bookmaker prices, adjusted by record and form, then checked against how each market type has actually done in the track record). These are estimates, not certainties: favourites at this level still lose roughly one time in four to one time in ten.</p>
         ${recordLine(ts?.byType.find((r) => r.key === 'banker')) ? `<p class="rec-line reveal">Track record · bankers ${recordLine(ts.byType.find((r) => r.key === 'banker'))}${recordLine(ts.byType.find((r) => r.key === 'value')) ? ` · value ${recordLine(ts.byType.find((r) => r.key === 'value'))}` : ''} · <a href="#/track">see every pick</a></p>` : ''}</section>
         ${notice()}${prefsBar()}
-        <div class="list">${list.map((b) => bigPick(b)).join('') || '<p class="muted">No 70%+ favourites left today. Tomorrow\'s appear after midnight IST.</p>'}</div>
+        <div class="list">${list.map((b) => bigPick(b)).join('') || '<p class="muted">No 70%+ favourites in the next 12 hours right now. The board refreshes as new matches come into range.</p>'}</div>
         <h2 class="sec reveal"><span>◆</span>Value spots <small>model above the price, odds ≤ 5</small></h2>
         <div class="list">${val.map((b) => bigPick(b, true)).join('') || '<p class="muted">No value spots right now.</p>'}</div>`,
     };
@@ -458,15 +457,15 @@ function dashboard(ev, live) {
   const minOdds = prefs.get().minOdds;
   const pool = prefFilter(ev);
   ensureTrack(() => S.refresh?.());
-  // Today's date only (IST): never mixes in games from the next few days.
-  const short = smartBankers(todayEvents(pool), { min: 0.6, minOdds, limit: 10 }), when2 = `today, ${new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' })}`;
+  // Matches starting in the next 12 hours: never fixtures days away, never empty at midnight.
+  const short = smartBankers(todayEvents(pool), { min: 0.6, minOdds, limit: 10 }), when2 = 'next 12 hours';
   const rec = recordLine(trackStats()?.byType.find((r) => r.key === 'banker'));
   const changes = ev.flatMap((e) => ['home', 'away'].flatMap((sd) => (e.absences?.[sd] || []).map((x) => ({ e, team: sd === 'home' ? e.home : e.away, ...x }))))
     .filter((x) => x.updated).sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated)).slice(0, 6);
   return `<section class="dash">
-    <div class="panel dash-short reveal"><h2 class="ph">Today's shortlist <small>${when2} · estimated 60%+ after the track-record check · odds ≥ ${minOdds.toFixed(2)}</small></h2>
+    <div class="panel dash-short reveal"><h2 class="ph">Shortlist <small>${when2} · estimated 60%+ after the track-record check · odds ≥ ${minOdds.toFixed(2)}</small></h2>
       ${rec ? `<p class="rec-line">Bankers so far: ${rec} · <a href="#/track">full record</a></p>` : ''}
-      <div class="minilist">${short.map((b) => miniPick(b)).join('') || '<p class="muted">No more strong picks today. Tomorrow\'s appear after midnight IST (or lower the minimum odds / add sports).</p>'}</div>${prefsBar()}</div>
+      <div class="minilist">${short.map((b) => miniPick(b)).join('') || '<p class="muted">No strong picks in the next 12 hours right now. New matches join as they come into range (or lower the minimum odds / add sports).</p>'}</div>${prefsBar()}</div>
     <div class="panel dash-live reveal"><h2 class="ph">Live now <small>${live.length}</small></h2>
       ${live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${esc(e.score || '')}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>
     <div class="panel dash-changes reveal"><h2 class="ph">Latest absences <small>soccer · FotMob</small></h2>
