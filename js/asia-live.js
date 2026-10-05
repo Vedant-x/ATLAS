@@ -1,6 +1,6 @@
-// Live scores for NPB (Japan) and KBO (Korea). Their official sites don't allow browser requests,
-// so the GitHub job reads them every minute (scripts/live-lane.mjs) and publishes a small file the
-// site polls. Both parsers are pure so they can be tested.
+// Live scores for sources whose sites don't allow browser requests: NPB (Japan), KBO (Korea) and the
+// esports feeds. The GitHub job reads them every 20 seconds (scripts/live-lane.mjs) and publishes a
+// small file the site polls. The parsers are pure so they can be tested.
 
 const ORD = (n) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th'}`;
 
@@ -56,7 +56,8 @@ export function applyAsiaLive(events, live, now = Date.now()) {
     if (!g) { out.push(e); continue; }
     if (g.status === 'final' || g.status === 'cancelled') { changed = true; continue; }
     const next = { ...e, live: g.status === 'live', score: g.score ?? e.score, clock: g.clock || e.clock, period: g.period ?? e.period, fetchedAt: live.at || now };
-    if (next.live !== e.live || next.score !== e.score || next.clock !== e.clock) changed = true;
+    if (g.maps && e.esports) next.esports = { ...e.esports, maps: g.maps };
+    if (next.live !== e.live || next.score !== e.score || next.clock !== e.clock || JSON.stringify(g.maps || null) !== JSON.stringify(g.maps ? e.esports?.maps : null)) changed = true;
     out.push(next);
   }
   return changed ? out : null;

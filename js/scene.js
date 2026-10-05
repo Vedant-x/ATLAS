@@ -158,7 +158,7 @@ function beam() {
   return new THREE.Mesh(new THREE.TubeGeometry(curve, 120, 0.05, 12, false), mat);
 }
 
-const FORMATION = { home: [1, 0, 0, 0], sport: [0, 1, 0, 0], match: [0, 1, 0, 0], x: [0, 0, 1, 0], mega: [0, 0, 0, 1], bankers: [1, 0, 0, 0], edge: [0, 0, 1, 0], other: [1, 0, 0, 0] };
+const FORMATION = { home: [1, 0, 0, 0], sport: [0, 1, 0, 0], match: [0, 1, 0, 0], x: [0, 0, 1, 0], mega: [0, 0, 0, 1], bankers: [1, 0, 0, 0], edge: [0, 0, 1, 0], race: [0, 0, 0, 1], other: [1, 0, 0, 0] };
 
 // Soft radial glow drawn once; replaces the bloom post-process.
 let glowTex;
@@ -184,7 +184,7 @@ export function createScene(canvas) {
   } catch {
     canvas.classList.add('no-webgl');
     const noop = () => {};
-    return { setMode: noop, setAccent: noop, pulse: noop, ok: false };
+    return { setMode: noop, setAccent: noop, pulse: noop, setTrack: noop, setCars: noop, ok: false };
   }
   const small = Math.min(innerWidth, innerHeight) < 700;
   const pixelRatio = () => Math.min(devicePixelRatio || 1, small ? 1.25 : 1.5);
@@ -234,6 +234,64 @@ export function createScene(canvas) {
   const link = beam();
   world.add(link);
 
+  // ---------- race mode: the Grand Prix circuit in 3D ----------
+  // Built from real car position data (data/f1.json): a glowing racing line, a soft halo, kerb dots,
+  // the start/finish line and cars lapping it (real positions during live sessions).
+  const track = new THREE.Group();
+  track.visible = false;
+  scene.add(track);
+  const TRACK_R = 5.4;
+  let curve = null, trackParts = [], ghosts = [], liveCars = [], liveMode = 0;
+  const carSprite = (color, size) => {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }));
+    sp.scale.setScalar(size);
+    return sp;
+  };
+  function setTrack(points) {
+    trackParts.forEach((m) => { track.remove(m); m.geometry?.dispose(); m.material?.dispose(); });
+    ghosts.forEach((g) => g.parts.forEach((p) => { track.remove(p); p.material.dispose(); }));
+    liveCars.forEach((c) => { track.remove(c); c.material.dispose(); });
+    trackParts = []; ghosts = []; liveCars = []; curve = null; liveMode = 0;
+    if (!points?.length) return;
+    curve = new THREE.CatmullRomCurve3(points.map(([x, y]) => new THREE.Vector3(x * TRACK_R, 0, -y * TRACK_R)), true, 'centripetal');
+    const seg = Math.min(900, points.length * 3);
+    const line = new THREE.Mesh(new THREE.TubeGeometry(curve, seg, 0.06, 6, true), new THREE.MeshBasicMaterial({ color: target.accent.clone(), transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const halo = new THREE.Mesh(new THREE.TubeGeometry(curve, seg, 0.24, 8, true), new THREE.MeshBasicMaterial({ color: target.accent.clone(), transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const asphalt = new THREE.Mesh(new THREE.TubeGeometry(curve, seg, 0.16, 6, true), new THREE.MeshBasicMaterial({ color: '#16161c', transparent: true, opacity: 0.85, depthWrite: false }));
+    asphalt.position.y = -0.05;
+    // Kerb dots alongside the line.
+    const n = 360, kerb = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { const p = curve.getPointAt(i / n), tg = curve.getTangentAt(i / n); kerb.set([p.x - tg.z * 0.3, 0, p.z + tg.x * 0.3], i * 3); }
+    const kg = new THREE.BufferGeometry(); kg.setAttribute('position', new THREE.BufferAttribute(kerb, 3));
+    const kerbs = new THREE.Points(kg, new THREE.PointsMaterial({ color: '#ffffff', size: 0.05, transparent: true, opacity: 0.45, depthWrite: false }));
+    // Start/finish line.
+    const s0 = curve.getPointAt(0), t0 = curve.getTangentAt(0);
+    const start = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.02, 0.07), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.9 }));
+    start.position.copy(s0); start.lookAt(s0.clone().add(new THREE.Vector3(-t0.z, 0, t0.x)));
+    trackParts = [asphalt, halo, line, kerbs, start];
+    track.add(...trackParts);
+    // Three "ghost" cars lapping with trails until live positions arrive.
+    ghosts = [['#ff2a2a', 0, 1], ['#ffffff', 0.035, 0.985], ['#ffd84d', 0.07, 0.97]].map(([c, off, sp]) => {
+      const parts = Array.from({ length: 7 }, (_, k) => carSprite(c, k ? 0.42 - k * 0.05 : 0.7));
+      parts.forEach((p, k) => { p.material.opacity = k ? 0.5 - k * 0.06 : 1; track.add(p); });
+      return { parts, off, sp };
+    });
+  }
+  // Live: [{ x, y, color }] in the same normalised map coordinates as the track points.
+  function setCars(cars) {
+    if (!curve) return;
+    while (liveCars.length < cars.length) { const c = carSprite('#ffffff', 0.55); track.add(c); liveCars.push(c); }
+    liveCars.forEach((c, i) => {
+      const car = cars[i];
+      c.visible = Boolean(car);
+      if (!car) return;
+      c.material.color.set(car.color || '#ffffff');
+      c.userData.to = new THREE.Vector3(car.x * TRACK_R, 0.06, -car.y * TRACK_R);
+      if (!c.userData.placed) { c.position.copy(c.userData.to); c.userData.placed = true; }
+    });
+    liveMode = 1;
+  }
+
   const resize = () => {
     dpr = pixelRatio();
     renderer.setPixelRatio(dpr);
@@ -259,7 +317,7 @@ export function createScene(canvas) {
   const st = {
     pulse: 0, scatter: 0,
     coreAx: 3.2, coreAy: 0, coreAs: 1, coreBx: 6, coreBs: 0.001, beam: 0, split: 0.5,
-    camZ: 11, camY: 0, fieldY: 0, worldRotZ: 0,
+    camZ: 11, camY: 0, fieldY: 0, worldRotZ: 0, track: 0,
   };
   const target = { accent: new THREE.Color('#d2ff00'), a: new THREE.Color('#d2ff00'), b: new THREE.Color('#ff3d6e') };
   const w = field.material.uniforms.uW.value;
@@ -308,6 +366,28 @@ export function createScene(canvas) {
     field.position.y = st.fieldY;
     field.rotation.x = 0.25 + sp * 0.6;
 
+    // Race mode: fade the circuit in, lap the cars, ease live cars to their latest positions.
+    track.visible = st.track > 0.01 && Boolean(curve);
+    if (track.visible) {
+      const aspect = innerWidth / innerHeight;
+      // Desktop: the circuit fills the right of the hero; phones: smaller, behind the session strip.
+      const wideNow = innerWidth > 900;
+      track.scale.setScalar((wideNow ? 0.7 : Math.min(0.58, aspect * 0.95)) * (0.9 + st.track * 0.1));
+      track.position.set(wideNow ? 3.4 : 0.2, (wideNow ? 1.4 : 3.4) + sp * 4, 0);
+      track.rotation.y = mouse.x * 0.25 + Math.sin(t * 0.05) * 0.2;
+      track.rotation.x = 0.75 + mouse.y * 0.08; // tipped toward the viewer: read as a circuit seen from above
+      trackParts.forEach((m, i) => { m.material.opacity = [0.85, 0.12, 0.95, 0.45, 0.9][i] * st.track; if (i === 1 || i === 2) m.material.color.lerp(target.accent, 0.05); });
+      for (const g of ghosts) {
+        g.parts.forEach((p, k) => {
+          p.visible = !liveMode;
+          const u = ((t * 0.045 * g.sp - g.off - k * 0.0035) % 1 + 1) % 1;
+          p.position.copy(curve.getPointAt(u)); p.position.y = 0.06;
+          p.material.opacity = (k ? 0.5 - k * 0.06 : 1) * st.track;
+        });
+      }
+      for (const c of liveCars) if (c.userData.to) { c.position.lerp(c.userData.to, 0.08); c.material.opacity = st.track; }
+    }
+
     world.rotation.y = mouse.x * 0.18;
     world.rotation.x = mouse.y * 0.1;
     world.rotation.z = st.worldRotZ;
@@ -324,12 +404,20 @@ export function createScene(canvas) {
   return {
     ok: true,
     setAccent(hex) { target.accent.set(hex); target.a.set(hex); },
+    setTrack(points) { if (JSON.stringify(points?.[0]) !== track.userData.first || (points?.length || 0) !== track.userData.n) { track.userData.first = JSON.stringify(points?.[0]); track.userData.n = points?.length || 0; setTrack(points); } },
+    setCars,
     pulse() { st.pulse = 1; if (window.gsap) window.gsap.fromTo(st, { scatter: 1 }, { scatter: 0, duration: 1.4, ease: 'expo.out' }); },
     // mode: home | sport | match | x | mega | bankers | edge | other
     setMode(mode, opts = {}) {
       const fw = FORMATION[mode] || FORMATION.other;
       tween(w, { x: fw[0], y: fw[1], z: fw[2], w: fw[3] });
       const wide = innerWidth > 900;
+      if (mode === 'race') {
+        if (opts.track) this.setTrack(opts.track);
+        tween(st, { coreAx: wide ? 4.2 : 1.55, coreAy: wide ? 2.4 : 3.4, coreAs: 0.001, coreBx: 7, coreBs: 0.001, beam: 0, camZ: wide ? 10.5 : 12, camY: 3.2, fieldY: -2.5, worldRotZ: 0, track: 1 });
+        return;
+      }
+      tween(st, { track: 0 });
       if (mode === 'match') {
         const ph = opts.pHome ?? 0.5, pa = opts.pAway ?? 0.5;
         target.a.set(opts.home || '#d2ff00'); target.b.set(opts.away || '#ff3d6e');

@@ -12,6 +12,8 @@ import { collectStake } from './stake-provider.mjs';
 import { absencesFor, injuryNames } from '../js/fotmob.js';
 import { CRICKET_URL, parseCricket } from '../js/cricket.js';
 import { parseNpbScoreboard, kboLive } from '../js/asia-live.js';
+import { BO3, ESB, BO3_GAMES, parseBo3, parseEsb, esbForm } from '../js/esports.js';
+import { JOLPICA, OPENF1, ESPN_F1, currentRace, sessionsOf, driverForm, expectedPosition, simulateRace, normalizeTrack, espnSessions } from '../js/f1.js';
 import { enrichMlb, formOf } from '../js/mlbstats.js';
 import { validateReport } from '../js/validate.js';
 import { mkdir, copyFile, cp, writeFile, rm, readFile } from 'node:fs/promises';
@@ -354,6 +356,155 @@ async function kbo() {
   return events;
 }
 
+// ---------- esports ----------
+// bo3.gg: every upcoming/live CS2, Valorant, LoL and Dota 2 series in the next 4 days.
+async function esports() {
+  const all = [];
+  for (const d of Object.keys(BO3_GAMES)) {
+    for (let page = 0; page < 4; page++) {
+      const j = JSON.parse(await get(`${BO3}/matches?page[offset]=${page * 100}&page[limit]=100&sort=start_date&filter[matches.status][in]=current,upcoming&filter[matches.discipline_id][eq]=${d}&with=teams,tournament,games`));
+      all.push(...(j.results || []));
+      const last = Date.parse(j.results?.at(-1)?.start_date);
+      if ((page + 1) * 100 >= (j.total?.count || 0) || last > Date.now() + 4 * 864e5) break;
+    }
+  }
+  const list = parseBo3(all);
+  const by = (p) => list.filter((e) => e.leaguePath === p).length;
+  log(`Esports (bo3.gg): ${list.length} series (CS2 ${by('atlas/cs2')}, Valorant ${by('atlas/valorant')}, LoL ${by('atlas/lol')}, Dota 2 ${by('atlas/dota2')}), ${list.filter((e) => e.markets.length).length} priced, ${list.filter((e) => e.live).length} live`);
+  return list;
+}
+
+// EsportsBattle eSoccer: the next 75 minutes of matches, with each player's form from the last day.
+async function esoccer() {
+  const iso = (off) => new Date(Date.now() + off * 864e5).toISOString().slice(0, 10);
+  const tours = [];
+  for (let page = 1; page <= 10; page++) {
+    const j = JSON.parse(await get(`${ESB}/tournaments?page=${page}&dateFrom=${iso(-1)}&dateTo=${iso(1)}`));
+    tours.push(...(j.tournaments || []));
+    if (page >= (j.totalPages || 1)) break;
+  }
+  const now = Date.now();
+  const active = tours.filter((t) => t.status_id !== 4 && Date.parse(t.start_date) < now + 3 * 36e5);
+  const recent = tours.filter((t) => t.status_id === 4).sort((a, b) => Date.parse(b.start_date) - Date.parse(a.start_date)).slice(0, 40);
+  const withMatches = [];
+  const queue = [...active, ...recent];
+  await Promise.all(Array.from({ length: 6 }, async () => {
+    for (let t = queue.shift(); t; t = queue.shift()) {
+      try { withMatches.push({ tournament: t, matches: JSON.parse(await get(`${ESB}/tournaments/${t.id}/matches`)) }); } catch (e) { log('eSoccer tournament failed', t.id, e.message); }
+    }
+  }));
+  const form = esbForm(withMatches.flatMap((x) => x.matches));
+  const list = parseEsb(withMatches.filter((x) => x.tournament.status_id !== 4), now, form);
+  log(`eSoccer (EsportsBattle): ${list.length} matches in the next 75 minutes (${list.filter((e) => e.live).length} live), form for ${form.size} players from ${withMatches.length} tournaments`);
+  return list;
+}
+
+// ---------- Formula 1 ----------
+// The weekend on now (or next): sessions, classification, driver form, the race model, team colours
+// and the circuit map. Written to data/f1.json; the site switches to the next Grand Prix by itself.
+async function f1(prevF1) {
+  const J = async (path) => JSON.parse(await get(`${JOLPICA}/${path}`));
+  // OpenF1 rate-limits bursts (HTTP 429): pause and retry.
+  const O = async (path) => {
+    for (let i = 0; ; i++) {
+      try { return JSON.parse(await get(`${OPENF1}/${path}`)); } catch (e) { if (i >= 3 || !/^429/.test(e.message)) throw e; await new Promise((r) => setTimeout(r, 2500 * (i + 1))); }
+    }
+  };
+  // Jolpica pages results 100 rows at a time and may split one race across pages: merge by round.
+  const allRows = async (path) => {
+    const out = [];
+    for (let off = 0; off < 3000; off += 100) {
+      const j = await J(`${path}?limit=100&offset=${off}`);
+      for (const r of j.MRData.RaceTable.Races) {
+        const ex = out.find((x) => x.round === r.round);
+        if (ex) { ex.Results = [...(ex.Results || []), ...(r.Results || [])]; ex.QualifyingResults = [...(ex.QualifyingResults || []), ...(r.QualifyingResults || [])]; } else out.push(r);
+      }
+      if (off + 100 >= Number(j.MRData.total)) break;
+    }
+    return out;
+  };
+  const calendar = (await J('current.json')).MRData.RaceTable.Races;
+  const race = currentRace(calendar);
+  if (!race) { log('F1: season over, no upcoming race'); return null; }
+  const [results, qualis, ds, cs] = await Promise.all([allRows('current/results.json'), allRows('current/qualifying.json'), J('current/driverStandings.json'), J('current/constructorStandings.json')]);
+  const standings = ds.MRData.StandingsTable.StandingsLists[0]?.DriverStandings || [];
+  const constructors = (cs.MRData.StandingsTable.StandingsLists[0]?.ConstructorStandings || []).map((c) => ({ pos: Number(c.position), name: c.Constructor.name, points: Number(c.points), wins: Number(c.wins) }));
+  const form = driverForm(results, qualis);
+
+  // This weekend's sessions: schedule from Jolpica, status and classification from ESPN.
+  let espn = [];
+  try {
+    const j = JSON.parse(await get(`${ESPN_F1}?dates=${race.date.replaceAll('-', '')}`));
+    const ev = (j.events || []).find((e) => Math.abs(Date.parse(e.date) - Date.parse(race.date)) < 5 * 864e5);
+    espn = espnSessions(ev);
+  } catch (e) { log('F1: ESPN sessions failed', e.message); }
+  const sessions = sessionsOf(race).map((s) => {
+    const m = espn.find((x) => x.code === s.code || (s.code === 'Race' && x.code === 'Race') || Math.abs(x.start - s.start) < 30 * 6e4);
+    return { ...s, state: m?.state || (Date.now() > s.start + 3 * 36e5 ? 'post' : 'pre'), detail: m?.detail || '', top: (m?.order || []).slice(0, 10).map((x) => x.name) };
+  });
+
+  // Starting grid once qualifying is in (Jolpica first, ESPN's qualifying order as a fallback).
+  const grid = new Map();
+  try { for (const q of (await J(`${race.season}/${race.round}/qualifying.json`)).MRData.RaceTable.Races[0]?.QualifyingResults || []) grid.set(q.Driver.driverId, Number(q.position)); } catch { /* not yet */ }
+  const qualEspn = sessions.find((s) => s.code === 'Qual' && s.state === 'post');
+
+  const drivers = standings.map((d) => {
+    const name = `${d.Driver.givenName} ${d.Driver.familyName}`;
+    let g = grid.get(d.Driver.driverId) || null;
+    if (!g && qualEspn?.top.length) { const i = qualEspn.top.findIndex((n) => n.toLowerCase().endsWith(d.Driver.familyName.toLowerCase())); if (i >= 0) g = i + 1; }
+    const f = form.get(d.Driver.driverId);
+    return {
+      id: d.Driver.driverId, code: d.Driver.code || d.Driver.familyName.slice(0, 3).toUpperCase(), number: d.Driver.permanentNumber || null, name, family: d.Driver.familyName,
+      team: d.Constructors?.[0]?.name || '', points: Number(d.points), pos: Number(d.position), wins: Number(d.wins), grid: g,
+      avgFinish: f?.avgFinish ?? null, avgFinish5: f?.avgFinish5 ?? null, avgQuali5: f?.avgQuali5 ?? null, last5: f?.last5 || [], dnfRate: f?.dnfRate ?? 0.08,
+    };
+  }).filter((d) => form.get(d.id)?.starts); // drivers who raced this season
+  drivers.forEach((d) => { d.expected = expectedPosition(d, d.grid, drivers.length); });
+  const model = simulateRace(drivers);
+
+  // OpenF1: this meeting's sessions (for live timing), team colours and the circuit outline.
+  let meeting = null, track = null, colours = {};
+  try {
+    const first = sessions[0].start, last = sessions.at(-1).start;
+    const ses = await O(`sessions?year=${race.season}`);
+    const mine = ses.filter((x) => Date.parse(x.date_start) > first - 6 * 36e5 && Date.parse(x.date_start) < last + 6 * 36e5);
+    if (mine.length) meeting = { key: mine[0].meeting_key, circuitKey: mine[0].circuit_key, circuit: mine[0].circuit_short_name, sessions: mine.map((x) => ({ key: x.session_key, name: x.session_name, start: Date.parse(x.date_start), end: Date.parse(x.date_end) })) };
+    for (const d of await O('drivers?session_key=latest')) if (d.last_name) colours[d.last_name.toLowerCase()] = { colour: d.team_colour ? `#${d.team_colour}` : null, number: d.driver_number, headshot: d.headshot_url || null };
+  } catch (e) { log('F1: OpenF1 meeting/drivers failed', e.message); }
+  drivers.forEach((d) => { const c = colours[d.family.toLowerCase()]; if (c) Object.assign(d, { colour: c.colour, number: c.number ?? d.number, headshot: c.headshot }); });
+  model.drivers.forEach((d) => { const x = drivers.find((y) => y.id === d.id); Object.assign(d, { colour: x.colour, number: x.number, headshot: x.headshot }); });
+
+  if (meeting?.circuitKey && prevF1?.track?.circuitKey === meeting.circuitKey) track = prevF1.track; // drawn before: keep it
+  else if (meeting?.circuitKey) {
+    try {
+      const past = (await O(`sessions?circuit_key=${meeting.circuitKey}`)).filter((x) => Date.parse(x.date_end) < Date.now() - 36e5).sort((a, b) => (a.session_name === 'Race') - (b.session_name === 'Race') || Date.parse(a.date_start) - Date.parse(b.date_start));
+      const src = past.at(-1);
+      if (src) {
+        const laps = (await O(`laps?session_key=${src.session_key}&lap_number=${src.session_name === 'Race' ? 8 : 4}`)).filter((l) => l.lap_duration && !l.is_pit_out_lap).sort((a, b) => a.lap_duration - b.lap_duration);
+        const lap = laps[0];
+        if (lap) {
+          const a = new Date(Date.parse(lap.date_start)).toISOString(), b = new Date(Date.parse(lap.date_start) + lap.lap_duration * 1000).toISOString();
+          const n = normalizeTrack(await O(`location?session_key=${src.session_key}&driver_number=${lap.driver_number}&date>${a}&date<${b}`));
+          if (n) track = { ...n, circuitKey: meeting.circuitKey, from: `${src.session_name}, ${new Date(Date.parse(src.date_start)).getUTCFullYear()} (OpenF1 car data)`, lapSeconds: lap.lap_duration };
+        }
+      }
+    } catch (e) { log('F1: circuit map failed', e.message); }
+  }
+
+  const lastRace = results.at(-1);
+  const out = {
+    updatedAt: Date.now(), season: race.season, round: Number(race.round), rounds: calendar.length,
+    race: { name: race.raceName, circuit: race.Circuit.circuitName, circuitId: race.Circuit.circuitId, locality: race.Circuit.Location.locality, country: race.Circuit.Location.country, start: sessions.at(-1).start, url: race.url, sessions },
+    drivers: model.drivers, h2h: model.h2h, teams: model.teams, sims: model.sims, gridKnown: drivers.some((d) => d.grid),
+    standings: drivers.slice().sort((a, b) => a.pos - b.pos).map((d) => ({ pos: d.pos, name: d.name, team: d.team, points: d.points, wins: d.wins, colour: d.colour })), constructors,
+    lastRace: lastRace ? { name: lastRace.raceName, round: Number(lastRace.round), podium: (lastRace.Results || []).slice(0, 3).map((r) => `${r.Driver.givenName} ${r.Driver.familyName}`) } : null,
+    upcoming: calendar.filter((r) => Date.parse(r.date) > Date.parse(race.date)).slice(0, 5).map((r) => ({ round: Number(r.round), name: r.raceName, date: r.date, locality: r.Circuit.Location.locality })),
+    meeting, track,
+  };
+  log(`F1: ${out.race.name} (round ${out.round}), ${drivers.length} drivers, favourite ${model.drivers[0]?.name} ${(model.drivers[0]?.win * 100).toFixed(0)}%, grid ${out.gridKnown ? 'known' : 'not yet'}, circuit map ${track ? `${track.points.length} points` : 'missing'}`);
+  return out;
+}
+
 // ---------- build ----------
 await rm(out, { recursive: true, force: true });
 await mkdir(`${out}/data`, { recursive: true });
@@ -376,13 +527,15 @@ const cricket = async () => {
   log(`Cricket: ${list.length} matches (${list.filter((e) => e.live).length} live)`);
   return list;
 };
-const [espn, npbEvents, kboEvents, cricketEvents] = await Promise.all([
+const [espn, npbEvents, kboEvents, cricketEvents, esportsEvents, esoccerEvents] = await Promise.all([
   fetchAll(AbortSignal.timeout(720000), ordered, { days: 4, concurrency: 3 }).catch((e) => { log('ESPN failed', e.message); problems.push(`ESPN scoreboards failed entirely: ${e.message}`); return []; }),
   npb().catch((e) => { log('NPB failed', e.message); problems.push(`NPB (Japan) schedule failed: ${e.message}`); return []; }),
   kbo().catch((e) => { log('KBO failed', e.message); problems.push(`KBO (Korea) schedule failed: ${e.message}`); return []; }),
   cricket().catch((e) => { log('Cricket failed', e.message); problems.push(`Cricket feed failed: ${e.message}`); return []; }),
+  esports().catch((e) => { log('Esports failed', e.message); problems.push(`Esports feed (bo3.gg) failed: ${e.message}`); return []; }),
+  esoccer().catch((e) => { log('eSoccer failed', e.message); problems.push(`eSoccer feed (EsportsBattle) failed: ${e.message}`); return []; }),
 ]);
-const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents].filter((e) => leagueByPath(e.leaguePath));
+const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents, ...esportsEvents, ...esoccerEvents].filter((e) => leagueByPath(e.leaguePath));
 
 // Carry-forward: start from the previously published snapshot and restore anything a source has
 // since dropped for a match that hasn't finished: announced starters (the NPB page shows only one
@@ -473,6 +626,14 @@ log(`Starter validation: ${dropped} item(s) dropped`);
 for (const e of events) for (const p of (e.probables || []).filter((x) => x.report).slice(0, 2)) {
   const r = p.report;
   log(`  SP ${r.league} ${r.name || '?'} (${e.away} @ ${e.home}) · ${r.throws || '?'}HP age ${r.age ?? '?'} · season ERA ${r.season?.era ?? '-'} WHIP ${r.season?.whip ?? '-'} K/9 ${r.season?.k9 ?? '-'} · career ERA ${r.career?.era ?? '-'} in ${r.career?.ip ?? '-'} IP · recent ${r.recent?.length || 0}${r.recent?.[0] ? ` (last: ${r.recent[0].date} ${r.recent[0].ip} IP ${r.recent[0].er} ER)` : ''} · form3 ${r.form3?.era ?? '-'} · splits ${r.splits?.length || 0} · years ${r.years?.length || 0} · vsOpp ${r.vsOpp ? r.vsOpp.avg ?? r.vsOpp.era : '-'} · inj ${r.injuries?.length || 0} · rest ${r.rest ?? '-'}${r.error ? ` · ERROR ${r.error}` : ''}`);
+}
+// Formula 1 weekend (its own file: a race is a field of 20+ drivers, not a two-sided match).
+{
+  let prevF1 = null;
+  try { const r = await fetch((process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json').replace('index.json', 'f1.json'), { signal: AbortSignal.timeout(15000) }); if (r.ok) prevF1 = await r.json(); } catch { /* first build */ }
+  const data = await f1(prevF1).catch((e) => { log('F1 failed', e.message); problems.push(`Formula 1 data failed: ${e.message}`); return null; });
+  if (data) await writeFile(`${out}/data/f1.json`, JSON.stringify(data));
+  else if (prevF1) await writeFile(`${out}/data/f1.json`, JSON.stringify(prevF1));
 }
 const byLeague = {};
 for (const e of events) byLeague[e.leaguePath] = (byLeague[e.leaguePath] || 0) + 1;

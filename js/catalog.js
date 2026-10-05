@@ -1,6 +1,6 @@
 // Every sport and competition ATLAS tracks, organised Sport → Group → League.
 // `path` is the ESPN API path (sport/league). NPB and KBO come from the official league sites
-// (built by scripts/pages.mjs), so their path starts with "atlas/".
+// (built by scripts/pages.mjs), so their path starts with "atlas/". So do cricket, F1 and esports.
 
 const L = (path, name, short) => ({ path, name, short: short || name });
 
@@ -82,6 +82,21 @@ export const CATALOG = [
   {
     id: 'cricket', name: 'Cricket', icon: '🏏', color: '#4dd2ff', model: 'binary',
     groups: [{ name: 'Cricket', leagues: [L('atlas/cricket-intl', 'International (Tests, ODIs, T20Is)', 'International'), L('atlas/cricket-t20', 'T20 & franchise leagues', 'T20 leagues'), L('atlas/cricket-dom', 'Domestic & other', 'Domestic')] }],
+  },
+  {
+    id: 'f1', name: 'Formula 1', icon: '🏎️', color: '#ff2a2a', model: 'race',
+    groups: [{ name: 'World Championship', leagues: [L('atlas/f1', 'Formula 1 World Championship', 'F1')] }],
+  },
+  {
+    id: 'esports', name: 'Esports', icon: '🎮', color: '#a46bff', model: 'esports',
+    groups: [
+      { name: 'Shooters', leagues: [L('atlas/cs2', 'Counter-Strike 2', 'CS2'), L('atlas/valorant', 'Valorant')] },
+      { name: 'MOBA', leagues: [L('atlas/lol', 'League of Legends', 'LoL'), L('atlas/dota2', 'Dota 2')] },
+    ],
+  },
+  {
+    id: 'efootball', name: 'eSoccer (FIFA)', icon: '🕹️', color: '#2bff88', model: 'football',
+    groups: [{ name: 'EA FC', leagues: [L('atlas/esoccer', 'eSoccer Battle (EA FC, 2×4 min)', 'eSoccer')] }],
   },
   {
     id: 'volleyball', name: 'Volleyball', icon: '🏐', color: '#ffe36e', model: 'binary',

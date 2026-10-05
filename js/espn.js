@@ -15,6 +15,7 @@ export const toDecimal = (ml) => {
   return +(n > 0 ? 1 + n / 100 : 1 + 100 / -n).toFixed(2);
 };
 
+const lineVal = (l) => String(l?.displayValue ?? l?.value ?? '');
 const recs = (c) => Object.fromEntries((c?.records || []).map((r) => [r.type || r.name, r.summary]));
 const probs = (c, side) => (c?.probables || []).map((p) => ({ side, id: p.athlete?.id || String(p.playerId || ''), name: p.athlete?.displayName || '', role: p.shortDisplayName || p.abbreviation || 'Starter', position: p.athlete?.position || '', status: p.status?.name || null, record: p.record || '' }));
 const name = (c) => c?.team?.displayName || c?.athlete?.displayName || c?.athlete?.fullName || c?.roster?.displayName || 'TBD';
@@ -102,6 +103,8 @@ export function parseScoreboard(json, league) {
         score: state === 'in' ? `${homeC.score ?? ''} – ${awayC.score ?? ''}` : null,
         clock: (comp.status || ev.status)?.type?.shortDetail || '',
         period: (comp.status || ev.status)?.period ?? null, displayClock: (comp.status || ev.status)?.displayClock || null,
+        // Period-by-period score (quarters, innings, sets…) while in play.
+        lines: state === 'in' && (homeC.linescores?.length || awayC.linescores?.length) ? { home: (homeC.linescores || []).map(lineVal), away: (awayC.linescores || []).map(lineVal) } : null,
         bookmaker: comp.odds?.[0]?.provider?.name || null,
         markets: marketsFrom(comp, home, away),
         stats: {

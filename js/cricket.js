@@ -28,7 +28,7 @@ export function parseCricket(json, now = Date.now()) {
       if (!Number.isFinite(start) || start > now + 5 * 864e5) continue;
       const fmt = FORMAT(c.class);
       out.push({
-        id: `cricket-${ev.id}`, compId: String(ev.id), sport: 'cricket', leaguePath: sectionOf(c.class, lg.name || ''),
+        id: `cricket-${ev.id}`, compId: String(ev.id), seriesId: lg.id ? String(lg.id) : null, sport: 'cricket', leaguePath: sectionOf(c.class, lg.name || ''),
         league: lg.name || 'Cricket', home, away, start, live: state === 'in',
         score: state === 'in' ? `${h.score || 'yet to bat'} – ${a.score || 'yet to bat'}` : null,
         clock: (c.status || ev.status)?.type?.detail || '', note: [fmt, c.description, c.status?.summary || ev.status?.summary].filter(Boolean).join(' · '),
