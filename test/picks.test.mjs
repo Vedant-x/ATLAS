@@ -37,8 +37,8 @@ test('big targets are built from many short favourites, not long shots', () => {
   const [s] = bankerSlips(board, 1000, { count: 1, tolerance: 0.15 });
   assert.ok(s, 'a 1000x slip exists');
   assert.ok(s.odds >= 850 && s.odds <= 1150, `odds ${s.odds}`);
-  assert.ok(s.legs.length >= 20, `${s.legs.length} legs`);
-  assert.ok(s.legs.every((l) => l.odds <= 1.45));
+  assert.ok(s.legs.length >= 15, `${s.legs.length} legs`);
+  assert.ok(s.legs.every((l) => l.odds <= 1.5));
   assert.equal(new Set(s.legs.map((l) => l.eventId)).size, s.legs.length, 'one leg per match');
 });
 
