@@ -17,7 +17,9 @@ natural sentences in your own words, never a template. Answer the question first
 (form, injuries, starting pitchers, price versus estimate). Keep quick questions short (2-4 sentences).
 Facts about matches, odds, chances, injuries and starters must come from SITE DATA; never invent numbers,
 players or injuries. If the data doesn't cover it, say so. Chances are estimates, never guarantees. On a live
-match the numbers are pre-match. Link matches as [Home vs Away](#/match/ID). Bold pick names with **double asterisks**.`;
+match the numbers are pre-match. Link matches as [Home vs Away](#/match/ID). Bold pick names with **double asterisks**.
+For one match recommend only its "Recommended" picks (1-3): never back both teams and never pair an over with an
+under. Fewer consistent bets beat a hedge. Big accumulators are built from many short favourites, never long shots.`;
 
 // ---------- site data, as compact text (small models have a short memory) ----------
 export async function buildContext(K, text, max = 6000) {
@@ -38,8 +40,8 @@ export async function buildContext(K, text, max = 6000) {
     lines.push(`MATCH${e === here ? ' (on screen)' : ''}: [${e.home} vs ${e.away}](#/match/${e.id}) · ${e.league} · ${e.live ? `LIVE ${e.score || ''} (numbers are pre-match)` : when(e.start)}${e.venue ? ` · ${e.venue}` : ''}`);
     lines.push(`  Pre-match estimated win chance: ${e.home} ${pc(w.home)}${w.draw ? `, draw ${pc(w.draw)}` : ''}, ${e.away} ${pc(w.away)} (${m.basis})`);
     if (m.liveEstimate) { const l = m.liveEstimate; lines.push(`  LIVE estimate from the current score (${Math.round(l.gameLeft * 100)}% of game left): ${e.home} ${pc(l.home)}${l.draw != null ? `, draw ${pc(l.draw)}` : ''}, ${e.away} ${pc(l.away)}`); }
-    const prices = m.bestPrices.slice(0, 5).map((x) => `${x.pick} (${x.market}) ${od(x.odds)} est. ${pc(x.probability)}${x.priced ? (x.edge > 0 ? ` edge +${(x.edge * 100).toFixed(1)}%` : '') : ' [model fair odds]'}`);
-    if (prices.length) lines.push(`  Prices: ${prices.join('; ')}`);
+    const prices = (m.recommended || []).map((x) => `${x.pick} (${x.market}) ${od(x.odds)} est. ${pc(x.probability)}${x.priced ? (x.edge > 0 ? ` edge +${(x.edge * 100).toFixed(1)}%` : '') : ' [model fair odds]'}`);
+    if (prices.length) lines.push(`  Recommended (consistent, one side): ${prices.join('; ')}`);
     if (m.form) lines.push(`  Form (last results): ${e.home} ${m.form.home || '-'}, ${e.away} ${m.form.away || '-'}`);
     for (const s of m.starters || []) lines.push(`  Starter ${s.team}: ${s.name}${s.season ? ` ${s.season.era} ERA, ${s.season.whip} WHIP, ${s.season.k9} K/9, ${s.season.w}-${s.season.l}` : ''}${s.last3 ? `, last 3 starts ${s.last3.era} ERA` : ''}${s.rest != null ? `, ${s.rest} days rest` : ''}`);
     const inj = await Promise.race([K.injuriesOf(e), new Promise((r) => setTimeout(() => r(null), 6000))]).catch(() => null);

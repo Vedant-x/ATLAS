@@ -25,13 +25,14 @@ test('multiplier slips: lost on any loss, won when all settle, pushes drop out',
 test('daily multiplier picks lock one slip per target with gradeable legs', () => {
   const now = Date.parse('2026-10-05T08:00:00Z');
   const ev = (i, h, a) => ({ id: `e${i}`, compId: String(i), leaguePath: 'basketball/nba', sport: 'basketball', home: `H${i}`, away: `A${i}`, start: now + (2 + i) * 36e5, markets: [{ name: 'Winner', outcomes: [{ name: `H${i}`, odds: h }, { name: `A${i}`, odds: a }] }] });
-  const events = [ev(1, 1.42, 2.9), ev(2, 1.4, 3), ev(3, 1.45, 2.8), ev(4, 2.0, 1.8), ev(5, 1.7, 2.15), ev(6, 1.25, 4)];
+  const events = Array.from({ length: 30 }, (_, i) => ev(i + 1, [1.18, 1.22, 1.25, 1.3, 1.35, 1.4][i % 6], [5.5, 4.6, 4.1, 3.6, 3.2, 2.95][i % 6]));
   const m = multiPicks(events, now);
   assert.ok(m.length >= 2);
   for (const s of m) {
     assert.equal(s.type, 'multi');
-    assert.match(s.key, /^multi\|2026-10-05\|\dx$/);
-    assert.ok(Math.abs(s.odds / s.target - 1) <= 0.11);
+    assert.match(s.key, /^multi\|2026-10-05\|\d+x$/);
+    assert.ok(Math.abs(s.odds / s.target - 1) <= (s.target >= 100 ? 0.16 : 0.11), `${s.target}x at ${s.odds}`);
+    assert.ok(s.legs.every((l) => l.odds <= 1.7), 'banker legs only');
     assert.ok(s.legs.every((l) => l.compId && l.status === 'pending'));
   }
   const st = summarize([...m.map((x, i) => ({ ...x, status: i ? 'lost' : 'won' })), pick('Winner', 'won')]);
