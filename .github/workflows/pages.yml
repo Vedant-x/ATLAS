@@ -16,7 +16,9 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  # A push replaces a running build at once; the self-queued refresh and the cron wait their turn
+  # instead, so a finished run is never marked "cancelled" by the next one.
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 jobs:
   deploy:
@@ -101,4 +103,8 @@ jobs:
             git push -q -f origin HEAD:live-data || true
             sleep 55
           done
-          cd .. && gh workflow run pages.yml --ref main
+          cd ..
+          # One chain only: skip if a run (cron, push) is already waiting.
+          if [ -z "$(gh run list --workflow pages.yml --json status --jq '.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested") | .status')" ]; then
+            gh workflow run pages.yml --ref main
+          fi
