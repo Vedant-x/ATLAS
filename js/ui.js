@@ -28,7 +28,7 @@ export function preloader(promise) {
           .to('#preloader', { clipPath: 'inset(0 0 100% 0)', duration: 1, ease: 'expo.inOut' }, '-=0.1')
           .add(() => { el.remove(); res(v); }, '-=0.45');
       } else { el.remove(); res(v); }
-    }, 450));
+    }, 150));
   });
 }
 
