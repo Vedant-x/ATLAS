@@ -22,6 +22,7 @@ export function allLegs(events) {
         legs.push({
           eventId: ev.id,
           sport: ev.sport,
+          start: ev.start,
           match: `${ev.home} vs ${ev.away}`,
           market: m.name,
           pick: o.name,

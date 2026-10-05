@@ -1,5 +1,5 @@
 // Record page: every official ATLAS pick (locked before kick-off) and how it turned out.
-import { esc, sportOf } from './views.js';
+import { esc, sportOf, ist } from './views.js';
 import { summarize, MIN_ODDS, calibration } from './track.js';
 
 const pct = (x, d = 1) => (x == null ? '—' : `${(x * 100).toFixed(d)}%`);
@@ -35,9 +35,9 @@ const statCards = (s) => `<div class="tr-stats">
 const table = (rows, label) => (rows.length ? `<table class="tr-table"><thead><tr><th>${label}</th><th>Picks</th><th>Hit rate</th><th>Estimated</th><th>Profit</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${r.won + r.lost}</td><td>${pct(r.hitRate)}</td><td>${pct(r.expected)}</td><td class="${r.profit >= 0 ? 'pos' : 'neg'}">${units(r.profit)}</td></tr>`).join('')}</tbody></table>` : '');
 
 const pickRow = (h) => (h.type === 'multi' ? `<li class="tr-${h.status}"><span class="tr-badge">${h.status === 'pending' ? day(h.start) : h.status.toUpperCase()}</span>
-  <div><b>${esc(h.target)}x slip · ${h.legs.length} legs</b><small>${h.legs.map((l) => `${l.status === 'won' ? '✅' : l.status === 'lost' ? '❌' : l.status === 'pending' ? '⏳' : '➖'} ${esc(l.pick)} (${esc(l.home)} v ${esc(l.away)})`).join(' · ')}</small></div>
+  <div><b>${esc(h.target)}x slip · ${h.legs.length} legs</b><small>${h.legs.map((l) => `${l.status === 'won' ? '✅' : l.status === 'lost' ? '❌' : l.status === 'pending' ? '⏳' : '➖'} ${esc(l.pick)} (${esc(l.home)} v ${esc(l.away)}, ${esc(ist(l.start))})`).join(' · ')}</small></div>
   <em>${Number(h.odds).toFixed(2)}</em><i>${pct(h.p, 0)}</i></li>` : `<li class="tr-${h.status}"><span class="tr-badge">${h.status === 'pending' ? day(h.start) : h.status.toUpperCase()}</span>
-  <div><b>${esc(h.pick)}</b><small>${sportOf(h.sport).icon} ${esc(h.home)} v ${esc(h.away)} · ${esc(h.market)}${h.score ? ` · final ${esc(h.score)}` : ''} · ${h.type === 'value' ? 'value spot' : 'banker'}</small></div>
+  <div><b>${esc(h.pick)}</b><small>${sportOf(h.sport).icon} ${esc(h.home)} v ${esc(h.away)} · ${esc(ist(h.start))} · ${esc(h.market)}${h.score ? ` · final ${esc(h.score)}` : ''} · ${h.type === 'value' ? 'value spot' : 'banker'}</small></div>
   <em>${Number(h.odds).toFixed(2)}</em><i>${pct(h.p, 0)}</i></li>`);
 
 function body(data) {

@@ -904,3 +904,6 @@ p a:not(.btn):not(.more), .rec-line a, .lede a, .note a, .muted a { text-decorat
 .teams .sp-line { color: var(--accent); font: 600 11px var(--mono); letter-spacing: .3px; }
 
 .odds .odds-src, .row .odds > .odds-src { flex: 0 0 100%; text-align: right; color: var(--muted); font: 500 10px var(--mono); letter-spacing: .3px; }
+
+.ist { display: inline-block; margin-left: 6px; color: var(--accent); font: 600 11px var(--mono); letter-spacing: .2px; white-space: nowrap; }
+.slipc .ist, .bb .ist, .mini .ist, .slip-legs .ist { display: block; margin: 2px 0 0; }
