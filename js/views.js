@@ -238,7 +238,7 @@ export const views = {
     const by = countBy();
     const list = S.events.filter((e) => e.sport === id).sort((a, b) => (b.live - a.live) || a.start - b.start);
     return {
-      mode: 'sport', accent: sp.color, title: sp.name, after,
+      mode: 'sport', accent: sp.color, title: sp.name, after, sceneOpts: { sport: id },
       html: `<section class="hero small"><p class="kicker reveal"><a href="#/sports">ALL SPORTS</a> / ${list.length} MATCHES · ${list.filter((e) => e.live).length} LIVE</p><h1>${split(sp.name.toUpperCase())}</h1></section>
         ${notice()}
         ${sp.groups.map((g) => {
@@ -277,7 +277,7 @@ export const views = {
     const days = new Map();
     list.forEach((e) => { const d = e.live ? 'Live now' : new Date(e.start).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' }); if (!days.has(d)) days.set(d, []); days.get(d).push(e); });
     return {
-      mode: 'sport', accent: sp.color, title: l.name,
+      mode: 'sport', accent: sp.color, title: l.name, sceneOpts: { sport: l.sport },
       after: () => { loadStandings(l); liveLoad([l.path]); },
       html: `<section class="hero small"><p class="kicker reveal"><a href="#/sports">ALL SPORTS</a> / <a href="#/sport/${sp.id}">${esc(sp.name)}</a> / ${esc(l.group)}</p><h1>${split(l.name.toUpperCase())}</h1></section>
         ${notice()}
@@ -310,7 +310,7 @@ export const views = {
     if (a.kind === 'binary') sections.splice(sections.findIndex((x) => x[0] === 'model'), 1);
     return {
       mode: 'match', accent: hc, title: `${e.home} v ${e.away}`,
-      sceneOpts: { home: hc, away: ac, pHome: w.home, pAway: w.away },
+      sceneOpts: { home: hc, away: ac, pHome: w.home, pAway: w.away, sport: e.sport },
       // Fetch the full dossier once, then redraw in place (scroll kept).
       after: () => {
         if (detailFor(e.id)) return;

@@ -4,6 +4,7 @@
 //  - Energy beam between the match cores, orbit rings, additive glow halos (single pass, no post-processing)
 // API: setMode(mode, opts), setAccent(hex), pulse()
 import * as THREE from '../vendor/three.module.js';
+import { VENUES } from './venues.js';
 
 const NOISE = /* glsl */ `
 vec3 mod289(vec3 x){return x-floor(x*(1./289.))*289.;}
@@ -158,6 +159,7 @@ function beam() {
   return new THREE.Mesh(new THREE.TubeGeometry(curve, 120, 0.05, 12, false), mat);
 }
 
+const lerpN = (a, b, k) => a + (b - a) * k;
 const FORMATION = { home: [1, 0, 0, 0], sport: [0, 1, 0, 0], match: [0, 1, 0, 0], x: [0, 0, 1, 0], mega: [0, 0, 0, 1], bankers: [1, 0, 0, 0], edge: [0, 0, 1, 0], race: [0, 0, 0, 1], other: [1, 0, 0, 0] };
 
 // Soft radial glow drawn once; replaces the bloom post-process.
@@ -277,6 +279,42 @@ export function createScene(canvas) {
       return { parts, off, sp };
     });
   }
+  // ---------- every other sport: its own playing surface ----------
+  // Real markings drawn as glowing lines on a canvas (to scale), the sport's posts/hoops/nets as 3D
+  // lines and a ball moving the way that sport's ball moves (venues.js).
+  const venue = new THREE.Group();
+  venue.visible = false;
+  scene.add(venue);
+  let venueId = null, venueParts = [], venueBall = null, venueDef = null;
+  function setVenue(id) {
+    if (id === venueId) return;
+    venueParts.forEach((m) => { venue.remove(m); m.geometry?.dispose(); m.material?.map?.dispose(); m.material?.dispose(); });
+    if (venueBall) { venue.remove(venueBall); venueBall.material.dispose(); }
+    venueParts = []; venueBall = null; venueId = id; venueDef = VENUES[id] || null;
+    if (!venueDef) return;
+    const W = 1024, H = Math.round(W / venueDef.aspect);
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const c = cv.getContext('2d');
+    c.fillStyle = 'rgba(255,255,255,.035)'; c.fillRect(0, 0, W, H);
+    c.strokeStyle = '#fff'; c.fillStyle = '#fff'; c.lineWidth = 3.2; c.lineJoin = 'round'; c.lineCap = 'round';
+    c.shadowColor = '#fff'; c.shadowBlur = 14;
+    try { venueDef.draw(c, W, H); } catch { /* a drawing error must never break the page */ }
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+    const R = TRACK_R, depth = (2 * R) / venueDef.aspect;
+    const surface = new THREE.Mesh(new THREE.PlaneGeometry(2 * R, depth), new THREE.MeshBasicMaterial({ map: tex, color: target.accent.clone(), transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    surface.rotation.x = -Math.PI / 2;
+    venueParts.push(surface);
+    if (venueDef.props?.length) {
+      const pos = new Float32Array(venueDef.props.length * 3);
+      venueDef.props.forEach(([x, y, z], i) => pos.set([x * R, y * R, z * R], i * 3));
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      venueParts.push(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false })));
+    }
+    venue.add(...venueParts);
+    if (venueDef.ball) { venueBall = carSprite('#ffffff', 0.45); venue.add(venueBall); }
+  }
+
   // Live: [{ x, y, color }] in the same normalised map coordinates as the track points.
   function setCars(cars) {
     if (!curve) return;
@@ -317,7 +355,7 @@ export function createScene(canvas) {
   const st = {
     pulse: 0, scatter: 0,
     coreAx: 3.2, coreAy: 0, coreAs: 1, coreBx: 6, coreBs: 0.001, beam: 0, split: 0.5,
-    camZ: 11, camY: 0, fieldY: 0, worldRotZ: 0, track: 0,
+    camZ: 11, camY: 0, fieldY: 0, worldRotZ: 0, track: 0, venue: 0, venueFloor: 0,
   };
   const target = { accent: new THREE.Color('#d2ff00'), a: new THREE.Color('#d2ff00'), b: new THREE.Color('#ff3d6e') };
   const w = field.material.uniforms.uW.value;
@@ -387,6 +425,18 @@ export function createScene(canvas) {
       }
       for (const c of liveCars) if (c.userData.to) { c.position.lerp(c.userData.to, 0.08); c.material.opacity = st.track; }
     }
+    // Sport venues: beside the headline on sport/league pages, as the floor under the two teams on a match.
+    venue.visible = st.venue > 0.01 && Boolean(venueDef);
+    if (venue.visible) {
+      const wideNow = innerWidth > 900, aspect = innerWidth / innerHeight, fl = st.venueFloor;
+      const side = { s: wideNow ? 0.7 : Math.min(0.55, aspect * 0.95), x: wideNow ? 3.4 : 0.2, y: wideNow ? 1.3 : 2.3, rx: 0.8 };
+      const floor = { s: wideNow ? 1.25 : Math.min(0.9, aspect * 1.4), x: 0, y: wideNow ? -2.7 : -1.2, rx: 0.42 };
+      venue.scale.setScalar(lerpN(side.s, floor.s, fl) * (0.9 + st.venue * 0.1));
+      venue.position.set(lerpN(side.x, floor.x, fl), lerpN(side.y, floor.y, fl) + sp * (fl ? 1 : 4), 0);
+      venue.rotation.set(lerpN(side.rx, floor.rx, fl) + mouse.y * 0.06, mouse.x * 0.25 + Math.sin(t * 0.05) * (fl ? 0.05 : 0.2), 0);
+      venueParts.forEach((m, i) => { m.material.opacity = (i ? 0.85 : 0.95) * st.venue * (1 - 0.45 * fl); if (!i) m.material.color.lerp(target.accent, 0.05); }); // dimmer as a floor, behind text
+      if (venueBall && venueDef.ball) { const [x, y, z] = venueDef.ball(t); venueBall.position.set(x * TRACK_R, y * TRACK_R + 0.04, z * TRACK_R); venueBall.material.opacity = st.venue; }
+    }
 
     world.rotation.y = mouse.x * 0.18;
     world.rotation.x = mouse.y * 0.1;
@@ -412,6 +462,9 @@ export function createScene(canvas) {
       const fw = FORMATION[mode] || FORMATION.other;
       tween(w, { x: fw[0], y: fw[1], z: fw[2], w: fw[3] });
       const wide = innerWidth > 900;
+      const sportVenue = (mode === 'sport' || mode === 'match') && opts.sport && VENUES[opts.sport] ? opts.sport : null;
+      if (sportVenue) setVenue(sportVenue);
+      tween(st, { venue: sportVenue ? 1 : 0, venueFloor: mode === 'match' ? 1 : 0 });
       if (mode === 'race') {
         if (opts.track) this.setTrack(opts.track);
         tween(st, { coreAx: wide ? 4.2 : 1.55, coreAy: wide ? 2.4 : 3.4, coreAs: 0.001, coreBx: 7, coreBs: 0.001, beam: 0, camZ: wide ? 10.5 : 12, camY: 3.2, fieldY: -2.5, worldRotZ: 0, track: 1 });
@@ -437,6 +490,7 @@ export function createScene(canvas) {
         const lay = { coreAy: 0, ...(layouts[mode] || layouts.home) };
         // Phones: a smaller core tucked into the top-right corner so it never sits behind text.
         if (!wide) Object.assign(lay, { coreAx: 1.55, coreAy: 3.4, coreAs: Math.min(lay.coreAs, 0.5), camY: 0, camZ: 11, fieldY: 0 });
+        if (sportVenue) lay.coreAs = 0.001; // the venue takes the core's place on sport pages
         tween(st, { ...lay, coreBx: 7, coreBs: 0.001, beam: 0, worldRotZ: mode === 'x' ? 0.2 : 0 });
       }
     },
