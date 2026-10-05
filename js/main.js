@@ -211,7 +211,7 @@ function trail() {
   if (sp) parts.push([`#/sport/${sp.id}`, sp.name]);
   if (l) parts.push([`#/league/${leagueKey(l.path)}`, l.short || l.name]);
   if (e) parts.push(['', `${e.home} v ${e.away}`]);
-  const label = { edge: 'Edge board', x: 'Multipliers', mega: 'Mega bets', bankers: 'Bankers' }[name];
+  const label = { edge: 'Edge board', x: 'Multipliers', target: 'Target', mega: 'Mega bets', bankers: 'Bankers' }[name];
   if (label) parts.push(['', label]);
   return parts;
 }
@@ -227,7 +227,7 @@ function dock() {
 function route() {
   if (!location.hash.startsWith('#/')) return; // in-page anchors
   const { name } = parse();
-  const label = { home: 'DASHBOARD', sports: 'ALL SPORTS', sport: 'SPORT', league: 'LEAGUE', match: 'MATCH DOSSIER', edge: 'EDGE BOARD', x: 'MULTIPLIERS', mega: 'MEGA BETS', bankers: 'BANKERS' }[name] || '';
+  const label = { home: 'DASHBOARD', sports: 'ALL SPORTS', sport: 'SPORT', league: 'LEAGUE', match: 'MATCH DOSSIER', edge: 'EDGE BOARD', x: 'MULTIPLIERS', target: 'TARGET', mega: 'MEGA BETS', bankers: 'BANKERS' }[name] || '';
   const h = location.hash || '#/';
   if (replacing) { stack[stack.length - 1] = h; replacing = false; } else if (stack.length > 1 && stack[stack.length - 2] === h) stack.pop(); else stack.push(h);
   // instant: html has scroll-behavior:smooth, and a smooth scroll still running when a live refresh
@@ -363,13 +363,13 @@ document.addEventListener('input', (e) => {
   if (e.target.matches('[data-ef]')) refreshEdge();
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') openSlip(false); });
-// "Your target" on the multipliers page: any target from 1.2x up.
+// Target page: any multiplier from 1.2x up.
 document.addEventListener('submit', (e) => {
   const f = e.target.closest('[data-xtarget]');
   if (!f) return;
   e.preventDefault();
   const t = Number(f.elements.t.value);
-  if (t >= 1.2 && t <= 100000) location.hash = `#/x/${Math.round(t * 100) / 100}`;
+  if (t >= 1.2 && t <= 100000) location.hash = `#/target/${Math.round(t * 100) / 100}`;
 });
 
 // Clocks: countdowns + "updated Xs ago".

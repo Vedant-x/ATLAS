@@ -209,7 +209,7 @@ export const views = {
       <section class="sec-block"><h2 class="sec reveal"><span>◆</span>Multipliers</h2>
         <div class="grid xs">${[2, 3, 4, 5].map((x) => { const r = ts?.byTarget?.find((t) => t.target === x); return `<a class="xcard tilt reveal" href="#/x/${x}" data-cursor="BUILD"><b>${x}x</b><small>5 slips · ${pc(1 / x, 0)} break-even</small>${r && r.won + r.lost ? `<small class="xrec">record ${r.won}–${r.lost} · ${pc(r.hitRate, 0)}</small>` : ''}</a>`; }).join('')}
         <a class="xcard mega tilt reveal" href="#/mega" data-cursor="DARE"><b>100x+</b><small>Mega accumulators from bankers</small></a>
-        <a class="xcard tilt reveal" href="#/x/7.5" data-cursor="BUILD"><b>Any x</b><small>Set your own target</small></a></div></section>
+        <a class="xcard tilt reveal" href="#/target" data-cursor="BUILD"><b>Target</b><small>Pick any multiplier</small></a></div></section>
       <section class="sec-block"><h2 class="sec reveal"><span>◆</span>Up next</h2><div class="list">${upcoming.slice(0, 14).map(eventRow).join('')}</div></section>`,
     };
   },
@@ -373,7 +373,7 @@ export const views = {
 
   x([n]) {
     const target = Math.round(Number(n) * 100) / 100;
-    if (!(target >= 1.2 && target <= 100000)) return views.notfound();
+    if (![2, 3, 4, 5, 10, 20].includes(target)) return views.notfound();
     // Same-day only: every leg kicks off later today (viewer's local time).
     const left = todayEvents(S.events);
     const priced = left.filter((e) => e.markets?.length).length;
@@ -384,13 +384,30 @@ export const views = {
     return {
       mode: 'x', accent: ['#d2ff00', '#00ffc3', '#4fd1ff', '#b08cff'][[2, 3, 4, 5].indexOf(target)] || '#ff9f43', title: `${target}x slips`,
       html: `<section class="hero small"><p class="kicker reveal">MULTIPLIER · BREAK-EVEN ${pc(1 / target, target >= 100 ? 2 : 1)}${target < 100 ? ' · TODAY ONLY' : ''}</p><h1>${split(`${target}X SLIPS`)}</h1>
-        <nav class="tabs reveal">${[2, 3, 4, 5, 10, 20].map((x) => `<a href="#/x/${x}" class="${x === target ? 'on' : ''}">${x}x</a>`).join('')}</nav>
-        <form class="xtarget reveal" data-xtarget><label>Your target<input type="number" name="t" min="1.2" max="100000" step="0.1" value="${target}" inputmode="decimal" aria-label="Target multiplier"></label><button class="btn">Build from bankers</button></form></section>
+        <nav class="tabs reveal">${[2, 3, 4, 5, 10, 20].map((x) => `<a href="#/x/${x}" class="${x === target ? 'on' : ''}">${x}x</a>`).join('')}</nav></section>
         ${notice()}
         ${r && r.won + r.lost ? `<p class="rec-line reveal">Track record · official ${target}x slips ${recordLine(r)}${all?.won + all?.lost ? ` · all multipliers ${recordLine(all)}` : ''} · <a href="#/track">details</a></p>` : MULTI_TARGETS.includes(target) ? '<p class="rec-line reveal">Track record: the top slip here is saved each day and graded leg by leg on the Record page.</p>' : ''}
         <p class="lede reveal">Built from <b>bankers</b>: short-priced favourites the model rates highly (about 1.05 to 1.6 each), stacked until the total reaches ${target}x. Many safe legs beat a few long shots: each leg is chosen for the most win chance per unit of odds.</p>
         <p class="note reveal">${target < 100 ? `📅 Only matches on <b>${esc(day)}</b> that haven't started yet: ${left.length} left today, ${priced} with prices.` : 'Big targets use every priced match in the next few days.'} Every leg is a real bookmaker price.</p>
         <section class="grid slips">${list.map((s, i) => slipCard(s, i, target)).join('') || `<p class="muted">Not enough strong favourites ${target < 100 ? 'left today' : 'on the board'} to reach about ${target}x. Try a smaller target.</p>`}</section>`,
+    };
+  },
+
+  // Target: the user picks any multiplier and gets the best slips for it, built from bankers.
+  target([n]) {
+    const t = Math.round(Number(n) * 100) / 100;
+    const has = t >= 1.2 && t <= 100000;
+    const list = has ? S.slips(t, { count: 5, today: false }) : [];
+    const presets = [1.5, 2.5, 7.5, 15, 50, 250];
+    return {
+      mode: 'x', accent: '#ff9f43', title: has ? `Target ${t}x` : 'Target',
+      html: `<section class="hero small"><p class="kicker reveal">YOUR TARGET · BUILT FROM BANKERS</p><h1>${split(has ? `TARGET ${t}X` : 'TARGET')}</h1>
+        <p class="lede reveal">Type any multiplier. ATLAS stacks short-priced favourites the model rates highly (about 1.05 to 1.6 each) until the total reaches it, picking the legs that give the most win chance per unit of odds.</p>
+        <form class="xtarget reveal" data-xtarget><label>Target multiplier<input type="number" name="t" min="1.2" max="100000" step="0.1" value="${has ? t : ''}" placeholder="e.g. 7.5" inputmode="decimal" aria-label="Target multiplier"></label><button class="btn">Build slips</button></form>
+        <nav class="tabs reveal">${presets.map((x) => `<a href="#/target/${x}" class="${x === t ? 'on' : ''}">${x}x</a>`).join('')}</nav></section>
+        ${notice()}
+        ${has ? `<p class="note reveal">Uses every priced match that hasn't started (next few days). Break-even ${pc(1 / t, t >= 100 ? 2 : 1)}. Every leg is a real bookmaker price.</p>
+        <section class="grid slips">${list.map((s, i) => slipCard(s, i, t)).join('') || `<p class="muted">Not enough strong favourites on the board to reach about ${t}x right now. Try a smaller target.</p>`}</section>` : '<p class="muted reveal">Pick a target above to see the best slips for it.</p>'}`,
     };
   },
 

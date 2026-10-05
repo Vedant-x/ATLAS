@@ -81,11 +81,12 @@ export function coherentBets(e, a, { cal = null, max = 3 } = {}) {
 // scores 1.0; legs the model rates above their price score below 1.
 const ratio = (l) => -Math.log(Math.max(1e-9, l.p)) / Math.log(l.odds);
 
-export function legPool(events, { minP = 0.7, minOdds = 1.04, maxOdds = 1.6, cal = null } = {}) {
+export function legPool(events, { minP = 0.55, minOdds = 1.04, maxOdds = 1.6, cal = null } = {}) {
   const best = new Map();
   for (const l of allLegs(events.filter((e) => e.markets?.length && !e.live))) {
     const p = calibrated(l.p, l.market, cal);
-    if (l.odds < minOdds || l.odds > maxOdds || p < minP || p * l.odds < 0.95) continue;
+    // A banker is a clear favourite at a fair-ish price: short odds and an estimate close to the price.
+    if (l.odds < minOdds || l.odds > maxOdds || p < minP || p * l.odds < 0.93) continue;
     const leg = { ...l, p };
     const cur = best.get(l.eventId);
     if (!cur || ratio(leg) < ratio(cur)) best.set(l.eventId, leg);
@@ -95,8 +96,16 @@ export function legPool(events, { minP = 0.7, minOdds = 1.04, maxOdds = 1.6, cal
 
 // Up to `count` slips near `target` built from the pool, each using its own legs where possible.
 export function bankerSlips(events, target, { count = 5, tolerance = 0.1, cal = null, minOdds = 1.04 } = {}) {
-  const maxOdds = target <= 2.5 ? 1.7 : target <= 10 ? 1.6 : 1.45;
-  const pool = legPool(events, { minP: target <= 5 ? 0.66 : 0.72, maxOdds, cal, minOdds: Math.max(1.04, minOdds) });
+  // Strictest first; if the board is thin, allow slightly longer legs and a wider band so the page is
+  // never empty while there are priced favourites.
+  for (const [maxOdds, tol] of [[target <= 2.5 ? 1.7 : target <= 10 ? 1.6 : 1.5, tolerance], [target <= 10 ? 1.9 : 1.7, Math.max(tolerance, 0.15)], [2.2, 0.2]]) {
+    const out = buildFrom(legPool(events, { maxOdds, cal, minOdds: Math.max(1.04, Math.min(minOdds, maxOdds - 0.15)) }), target, count, tol);
+    if (out.length) return out;
+  }
+  return [];
+}
+
+function buildFrom(pool, target, count, tolerance) {
   const lo = target * (1 - tolerance), hi = target * (1 + tolerance);
   const slips = [];
   const used = new Set();

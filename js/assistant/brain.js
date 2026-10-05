@@ -114,7 +114,7 @@ export function createBrain(K) {
     if (!list.length) return { text: mega ? `Not enough priced matches to build a ${t}x slip right now.` : `Today's remaining prices can't be combined into about ${t}x. Try another multiplier or ask tomorrow.` };
     const s = list[0];
     return {
-      text: `**Top ${t}x slip${mega ? '' : ' (today only)'}**: ${s.legs.length} legs at **${od(s.odds)}x**, estimated **${pc(s.p)}** chance to land.\n\n${s.legs.map((l) => `- **${l.pick}** · ${l.market} · ${l.match} @ ${od(l.odds)} (${pc(l.p)})`).join('\n')}\n\n${list.length > 1 ? `${list.length - 1} more on the [${t}x page](#/${mega ? 'mega' : `x/${t}`}).` : ''}`,
+      text: `**Top ${t}x slip${mega ? '' : ' (today only)'}**: ${s.legs.length} legs at **${od(s.odds)}x**, estimated **${pc(s.p)}** chance to land.\n\n${s.legs.map((l) => `- **${l.pick}** · ${l.market} · ${l.match} @ ${od(l.odds)} (${pc(l.p)})`).join('\n')}\n\n${list.length > 1 ? `${list.length - 1} more on the [${t}x page](#/${mega ? 'mega' : [2, 3, 4, 5, 10, 20].includes(t) ? `x/${t}` : `target/${t}`}).` : ''}`,
       cards: s.legs.map((l) => ({ type: 'leg', leg: l })),
     };
   }
