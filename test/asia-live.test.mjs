@@ -34,3 +34,11 @@ test('live file updates scores, keeps starters, and removes finished games', () 
   assert.equal(out[0].probables[0].report, report);
   assert.equal(applyAsiaLive(out, { at: 2, games: [{ id: 'atlas_kbo-A', status: 'live', score: '0 – 0', clock: 'Top 1st' }] }), null); // nothing changed
 });
+
+test('NPB box score gives both starters (first pitcher in each table), home = bottom table', async () => {
+  const { npbBoxStarters } = await import('../js/asia-live.js');
+  const html = '<div id="table_top_p"><table id="tablefix_t_p"><tr><td class="player"><a href="/bis/players/81585138.html">上茶谷</a></td></tr></table></div>'
+    + '<div id="table_bottom_p"><table id="tablefix_b_p"><tr><td class="player"><a href="/bis/players/51655114.html">前田健</a></td></tr><tr><td><a href="/bis/players/12345678.html">x</a></td></tr></table></div>';
+  assert.deepEqual(npbBoxStarters(html), { home: '51655114', away: '81585138' });
+  assert.equal(npbBoxStarters('<p>pre-game</p>'), null);
+});
