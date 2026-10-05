@@ -88,7 +88,7 @@ export function createBrain(K) {
   }
 
   function bets(q) {
-    const today = /\btoday|tonight|now\b/.test(q);
+    const today = !/\b(tomorrow|week|weekend|upcoming|next|later|days)\b/.test(q); // today (IST) unless asked about later
     const mode = /\b(safe|safest|banker|bankers|sure|lock|locks|certain|guarantee)/.test(q) ? 'safe' : /\b(value|edge|\+ev|underpriced)\b/.test(q) ? 'value' : 'balanced';
     const n = howMany(q, 5);
     const scope = names(scopeFrom(q, !/\b(all|every|any)\b/.test(q)));

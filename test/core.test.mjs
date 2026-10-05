@@ -1,17 +1,18 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-test('multiplier slips can be limited to matches still to start today', async () => {
+test('multiplier slips can be limited to matches still to start today (IST calendar day)', async () => {
   const { todayEvents, localDay } = await import('../js/engine.js');
-  const now = new Date(2026, 9, 2, 15, 0).getTime(); // 3pm local
-  const at = (h) => new Date(2026, 9, 2, h, 0).getTime();
+  const ist = (d, h, m = 0) => Date.UTC(2026, 9, d, h, m) - 330 * 60000; // h:m IST on 2026-10-d
+  const now = ist(2, 15); // 3pm IST
   const evs = [
-    { id: 'a', start: at(18) },
-    { id: 'b', start: at(23) },
-    { id: 'c', start: new Date(2026, 9, 3, 1, 0).getTime() }, // tomorrow
-    { id: 'd', start: at(13) }, // already started
-    { id: 'e', start: at(14), live: true },
+    { id: 'a', start: ist(2, 18) },
+    { id: 'b', start: ist(2, 23, 30) },
+    { id: 'c', start: ist(3, 1) }, // tomorrow in IST (still Oct 2 in UTC)
+    { id: 'd', start: ist(2, 13) }, // already started
+    { id: 'e', start: ist(2, 14), live: true },
   ];
   assert.deepEqual(todayEvents(evs, now).map((e) => e.id), ['a', 'b']);
-  assert.equal(localDay(at(18)), localDay(now));
+  assert.equal(localDay(ist(2, 18)), '2026-10-02');
+  assert.equal(localDay(ist(3, 0, 10)), '2026-10-03');
 });
 
 test('tennis: draws split by tour, doubles pairs named, tournament/location/round/court kept', async () => {
