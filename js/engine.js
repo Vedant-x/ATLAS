@@ -37,12 +37,14 @@ export function allLegs(events) {
   return legs;
 }
 
-// "Today" is the Indian calendar date (IST), whatever the device's clock zone. Events still to start
-// today (live games are out: their stored prices are pre-match).
+// Calendar date in IST, whatever the device's clock zone.
 export const localDay = (t = Date.now()) => new Date(t).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-export function todayEvents(events, now = Date.now()) {
-  const today = localDay(now);
-  return events.filter((e) => !e.live && e.start > now && localDay(e.start) === today);
+// The dashboard window: matches starting in the next `hours` (12 by default), so the board never
+// shows fixtures days away and never goes empty just because the date is about to change. Live
+// games are out: their stored prices are pre-match.
+export const WINDOW_HOURS = 12;
+export function todayEvents(events, now = Date.now(), hours = WINDOW_HOURS) {
+  return events.filter((e) => !e.live && e.start > now && e.start <= now + hours * 36e5);
 }
 
 // Find combinations (one leg per event) whose total odds land near `target`,

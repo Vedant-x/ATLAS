@@ -1,17 +1,16 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-test('multiplier slips can be limited to matches still to start today (IST calendar day)', async () => {
+test('dashboard window: matches starting in the next 12 hours, across midnight', async () => {
   const { todayEvents, localDay } = await import('../js/engine.js');
   const ist = (d, h, m = 0) => Date.UTC(2026, 9, d, h, m) - 330 * 60000; // h:m IST on 2026-10-d
-  const now = ist(2, 15); // 3pm IST
+  const now = ist(2, 20); // 8pm IST
   const evs = [
-    { id: 'a', start: ist(2, 18) },
-    { id: 'b', start: ist(2, 23, 30) },
-    { id: 'c', start: ist(3, 1) }, // tomorrow in IST (still Oct 2 in UTC)
-    { id: 'd', start: ist(2, 13) }, // already started
-    { id: 'e', start: ist(2, 14), live: true },
+    { id: 'a', start: ist(2, 22) },
+    { id: 'b', start: ist(3, 1) }, // after midnight but inside 12h
+    { id: 'c', start: ist(3, 9) }, // 13h away
+    { id: 'd', start: ist(2, 19) }, // already started
+    { id: 'e', start: ist(2, 21), live: true },
   ];
   assert.deepEqual(todayEvents(evs, now).map((e) => e.id), ['a', 'b']);
-  assert.equal(localDay(ist(2, 18)), '2026-10-02');
   assert.equal(localDay(ist(3, 0, 10)), '2026-10-03');
 });
 
