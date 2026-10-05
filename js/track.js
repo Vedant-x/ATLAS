@@ -2,22 +2,80 @@
 // statistics shown on the Record page. Pure functions, shared by the build (scripts/record.mjs) and
 // the browser.
 import { applyModel, bankers, valueSpots } from './intel.js';
+import { buildSlips } from './engine.js';
 
 export const MIN_ODDS = 1.3;
 
+// Market families the track record learns from: winner, 1X2 result, spread/handicap, totals.
+export const familyOf = (market = '') => (/^Total/.test(market) ? 'total' : market === 'Spread' ? 'spread' : market === 'Match Result' ? 'result' : 'winner');
+
+// Self-correcting accuracy: per market family, how the settled picks did against their estimates.
+// A family that lands less often than estimated gets its probabilities scaled down (so it needs a
+// stronger estimate to qualify); one that beats its estimates gets a small lift. The weight grows
+// with the number of settled picks, so a few results can't swing it.
+export function calibration(history = []) {
+  const out = {};
+  for (const h of history) {
+    if (h.type === 'multi' || (h.status !== 'won' && h.status !== 'lost')) continue;
+    const r = (out[familyOf(h.market)] ||= { n: 0, won: 0, exp: 0 });
+    r.n++; r.won += h.status === 'won' ? 1 : 0; r.exp += h.p;
+  }
+  for (const r of Object.values(out)) {
+    r.hit = r.won / r.n; r.expected = r.exp / r.n;
+    const w = r.n / (r.n + 15);
+    r.factor = Math.max(0.85, Math.min(1.05, 1 + 1.5 * w * (r.hit / r.expected - 1)));
+  }
+  return out;
+}
+export const calibrated = (p, market, cal) => Math.min(0.99, p * (cal?.[familyOf(market)]?.factor ?? 1));
+
 // Official picks for matches starting in the next `hours`: bankers (estimated 60%+) and value spots
 // (model 3%+ above the price), all at odds of at least MIN_ODDS. Locked at the first price seen.
-export function selectPicks(events, now = Date.now(), hours = 12) {
+export function selectPicks(events, now = Date.now(), hours = 12, history = []) {
   const soon = applyModel(events.filter((e) => !e.live && e.compId && e.start > now && e.start < now + hours * 36e5));
+  const cal = calibration(history);
+  const keep = (b) => calibrated(b.p, b.market, cal) >= 0.6;
   const row = (type) => (b) => ({
     key: `${b.event.id}|${b.market}|${b.pick}`, type, eventId: b.event.id, leaguePath: b.event.leaguePath, compId: b.event.compId,
     sport: b.event.sport, league: b.event.league, home: b.event.home, away: b.event.away, start: b.event.start,
     market: b.market, pick: b.pick, odds: b.odds, p: +b.p.toFixed(4), recordedAt: now, status: 'pending',
   });
   return [
-    ...bankers(soon, { min: 0.6, minOdds: MIN_ODDS, limit: 40 }).map(row('banker')),
+    ...bankers(soon, { min: 0.6, minOdds: MIN_ODDS, limit: 40 }).filter(keep).map(row('banker')),
     ...valueSpots(soon, { minEdge: 0.03, minOdds: MIN_ODDS, limit: 40 }).map(row('value')),
+    ...multiPicks(events, now),
   ];
+}
+
+// The day's official multiplier slips (2x, 3x, 5x): the most likely combination near each target from
+// bookmaker-priced matches in the next 18 hours, locked once per UTC day and graded leg by leg.
+export const MULTI_TARGETS = [2, 3, 5];
+export function multiPicks(events, now = Date.now()) {
+  const pool = applyModel(events.filter((e) => !e.live && e.compId && e.markets?.length && e.start > now + 30 * 6e4 && e.start < now + 18 * 36e5));
+  const byId = new Map(pool.map((e) => [e.id, e]));
+  const day = new Date(now).toISOString().slice(0, 10);
+  const out = [];
+  for (const target of MULTI_TARGETS) {
+    const best = buildSlips(pool, target, { count: 5, maxLegs: 3, tolerance: 0.1, minOdds: 1.2 }).sort((a, b) => b.p - a.p)[0];
+    if (!best) continue;
+    const legs = best.legs.map((l) => { const e = byId.get(l.eventId); return { eventId: e.id, leaguePath: e.leaguePath, compId: e.compId, sport: e.sport, league: e.league, home: e.home, away: e.away, start: e.start, market: l.market, pick: l.pick, odds: l.odds, p: +l.p.toFixed(4), status: 'pending' }; });
+    out.push({
+      key: `multi|${day}|${target}x`, type: 'multi', target, legs, eventId: legs[0].eventId, sport: 'multi', league: `${target}x multiplier`,
+      home: `${legs.length}-leg ${target}x slip`, away: '', start: Math.max(...legs.map((l) => l.start)), market: `${target}x multiplier`,
+      pick: legs.map((l) => l.pick).join(' + '), odds: +best.odds.toFixed(2), p: +best.p.toFixed(4), recordedAt: now, status: 'pending',
+    });
+  }
+  return out;
+}
+
+// A multiplier is lost as soon as one leg loses; won once every leg is settled with no loss (pushed or
+// void legs drop out and the odds shrink accordingly); void if every leg is void.
+export function settleMulti(m) {
+  if (m.legs.some((l) => l.status === 'lost')) return { status: 'lost' };
+  if (m.legs.some((l) => l.status === 'pending')) return { status: 'pending' };
+  const won = m.legs.filter((l) => l.status === 'won');
+  if (!won.length) return { status: 'void' };
+  return { status: 'won', odds: +won.reduce((x, l) => x * l.odds, 1).toFixed(2) };
 }
 
 // Add new picks to the history (first price wins; a pick already recorded is never changed).
@@ -72,7 +130,9 @@ export function resultFromSummary(sm) {
 
 // Summary statistics for the Record page. Profit is in units at a flat 1-unit stake.
 export function summarize(history) {
-  const graded = history.filter((h) => h.status === 'won' || h.status === 'lost' || h.status === 'push');
+  const settledAll = history.filter((h) => h.status === 'won' || h.status === 'lost' || h.status === 'push');
+  const graded = settledAll.filter((h) => h.type !== 'multi');
+  const multis = settledAll.filter((h) => h.type === 'multi');
   const stat = (list) => {
     const won = list.filter((h) => h.status === 'won'), lost = list.filter((h) => h.status === 'lost');
     const settled = won.length + lost.length;
@@ -93,8 +153,19 @@ export function summarize(history) {
   });
   const firstAt = history.reduce((t, h) => Math.min(t, h.recordedAt || Infinity), Infinity);
   return {
-    since: Number.isFinite(firstAt) ? firstAt : null, all: stat(graded), byType: group((h) => h.type), bySport: group((h) => h.sport), buckets,
+    since: Number.isFinite(firstAt) ? firstAt : null, all: stat(graded), multi: stat(multis), byTarget: MULTI_TARGETS.map((t) => ({ key: `${t}x`, target: t, ...stat(multis.filter((m) => m.target === t)) })),
+    byType: [...group((h) => h.type), ...(multis.length ? [{ key: 'multi', ...stat(multis) }] : [])], bySport: group((h) => h.sport), byFamily: group((h) => familyOf(h.market)), buckets,
     pending: history.filter((h) => h.status === 'pending').sort((a, b) => a.start - b.start),
-    recent: graded.slice().sort((a, b) => b.start - a.start).slice(0, 40),
+    recent: settledAll.slice().sort((a, b) => b.start - a.start).slice(0, 40),
   };
 }
+
+// Final result of a bo3.gg series (esports): map score and winner, or { done: false } / { void: true }.
+export function resultFromBo3(m) {
+  if (!m) return { done: false };
+  if (m.status === 'canceled' || m.status === 'cancelled') return { void: true };
+  if (m.status !== 'finished' && m.status !== 'defwin') return { done: false };
+  const winner = m.winner_team_id == null ? null : String(m.winner_team_id) === String(m.team1_id) ? 'home' : 'away';
+  return { done: true, homeScore: m.team1_score, awayScore: m.team2_score, winner };
+}
+

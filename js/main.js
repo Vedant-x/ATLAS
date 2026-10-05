@@ -5,6 +5,9 @@ import { legalViews, ageGate } from './legal.js';
 import { trackViews } from './trackview.js';
 import { watch, checkAlerts } from './alerts.js';
 import { loadEvents, refreshLive, refreshCricket, refreshTeamNews, refreshAsia } from './data.js';
+import { refreshLiveCenter, liveCenterHtml } from './livecenter.js';
+import { loadF1, f1Data, pollF1Live } from './f1view.js';
+import { liveSession } from './f1.js';
 import { overlayLive } from './merge.js';
 import { enrichMlb } from './mlbstats.js';
 import { buildSlips, todayEvents, localDay } from './engine.js';
@@ -41,6 +44,8 @@ const state = {
 };
 bind(state);
 state.refresh = () => softRender();
+state.scene = scene;
+loadF1().then((d) => { if (d && ['home', 'sports'].includes(parse().name)) softRender(); });
 
 // ---------- data ----------
 function setData(d) {
@@ -57,7 +62,7 @@ const anyLive = () => state.events.some((e) => e.live);
 const following = () => watch.ids().length > 0 || slip.legs.length > 0;
 const refreshMs = () => (document.hidden ? 60000 : anyLive() ? 5000 : state.snapshot ? 30000 : 5000);
 let polling = false, lastIndex = Date.now(), lastWide = 0, lastNews = 0, lastAsia = 0;
-const sigOf = (events) => events.map((e) => `${e.id}|${e.live ? 1 : 0}|${e.score || ''}|${(e.markets || []).map((m) => m.outcomes.map((o) => o.odds).join(',')).join(';')}|${e.absences ? `${e.absences.home.length},${e.absences.away.length},${e.absences.lineup?.type || ''}` : ''}`).join('~');
+const sigOf = (events) => events.map((e) => `${e.id}|${e.live ? 1 : 0}|${e.score || ''}|${e.lines ? `${e.lines.home}/${e.lines.away}` : ''}|${(e.esports?.maps || []).map((m) => m.score || m.status).join(",")}|${(e.markets || []).map((m) => m.outcomes.map((o) => o.odds).join(',')).join(';')}|${e.absences ? `${e.absences.home.length},${e.absences.away.length},${e.absences.lineup?.type || ''}` : ''}`).join('~');
 let lastSig = '';
 // A starter announced or changed after the snapshot has no report yet: fetch it from the MLB Stats
 // API (browser-friendly) and redraw, so nobody has to reload the page to see it.
@@ -91,8 +96,8 @@ async function poll() {
       if (wide || state.events.some((e) => e.live && e.sport === 'cricket')) next = (await refreshCricket(next || state.events).catch(() => null)) || next;
       // Soccer team news (absences, confirmed XIs) every 2 minutes around kick-off.
       if (Date.now() - lastNews > 120000) { lastNews = Date.now(); next = (await refreshTeamNews(next || state.events).catch(() => null)) || next; }
-      // NPB/KBO live scores (published every minute by the deploy workflow).
-      if (Date.now() - lastAsia > 45000) { lastAsia = Date.now(); next = (await refreshAsia(next || state.events).catch(() => null)) || next; }
+      // NPB/KBO/esports live scores (published every 20 seconds by the deploy workflow).
+      if (Date.now() - lastAsia > 10000) { lastAsia = Date.now(); next = (await refreshAsia(next || state.events).catch(() => null)) || next; }
       if (wide) lastWide = Date.now();
       if (next) apply(next);
     } else {
@@ -102,6 +107,30 @@ async function poll() {
     }
   } finally { polling = false; }
 }
+
+// Live scoreboard on an open match page: refreshed every 8 seconds, patched in place.
+let lcHtml = '';
+async function tickLiveCenter() {
+  if (document.hidden || current !== 'match') return;
+  const e = state.events.find((x) => x.id === decodeURIComponent(parse().args[0] || ''));
+  if (!e?.live) return;
+  await refreshLiveCenter(e);
+  const el = document.getElementById('live-center');
+  const html = liveCenterHtml(e);
+  if (el && html && html !== lcHtml) { lcHtml = html; el.outerHTML = html; }
+}
+setInterval(tickLiveCenter, 8000);
+
+// Formula 1: the weekend file every few minutes (so the next Grand Prix and new results appear on
+// their own), live timing every 5 seconds while a session runs and the F1 page is open.
+const onF1 = () => current === 'sport' && parse().args[0] === 'f1';
+async function tickF1() {
+  const before = f1Data()?.updatedAt;
+  const d = await loadF1();
+  if (d && d.updatedAt !== before && (onF1() || current === 'home' || current === 'sports')) softRender();
+}
+setInterval(tickF1, 4 * 6e4);
+setInterval(() => { const d = f1Data(); if (d && onF1() && !document.hidden && liveSession(d.race.sessions)) pollF1Live(d, scene); }, 5000);
 
 // ---------- routing ----------
 const parse = () => { const [, name = '', ...args] = (location.hash || '#/').split('/'); return { name: name || 'home', args }; };
@@ -129,6 +158,7 @@ function render(animate) {
   v.after?.();
   current = name;
   dock();
+  if (name === 'match') { lcHtml = ''; tickLiveCenter(); }
 }
 
 // Back / Home dock: always reachable, so no page is a dead end. "Back" goes to the previous ATLAS

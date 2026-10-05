@@ -86,8 +86,8 @@ jobs:
           git commit -qm "Track record $(date -u +%FT%TZ)" || exit 0
           git push -q origin HEAD:track-record
       # Self-refreshing: GitHub runs the cron above only every few hours, so each run queues the
-      # next one ~7 minutes after it finishes. Meanwhile it publishes NPB/KBO live scores every minute
-      # (their sites block browsers) to the live-data branch, which the site polls. A newer run (push,
+      # next one ~8 minutes after it finishes. Meanwhile it publishes live scores every 20 seconds for
+      # sources whose sites block browsers (NPB, KBO, esports, eSoccer) to the live-data branch, which the site polls. A newer run (push,
       # cron) cancels a waiting one via the concurrency group, so there is only ever one chain; the cron
       # restarts it if it ever breaks.
       - name: Live scores, then queue the next refresh
@@ -97,11 +97,11 @@ jobs:
           mkdir -p lane && cd lane && git init -q && git checkout -q --orphan live-data
           git config user.name "atlas-bot" && git config user.email "atlas-bot@users.noreply.github.com"
           git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          for i in 1 2 3 4 5 6 7; do
+          for i in $(seq 1 20); do
             node ../scripts/live-lane.mjs live.json || true
             git add live.json && git commit -q --amend --allow-empty -m "Live scores" 2>/dev/null || git commit -q -m "Live scores"
             git push -q -f origin HEAD:live-data || true
-            sleep 55
+            sleep 18
           done
           cd ..
           # One chain only: skip if a run (cron, push) is already waiting.

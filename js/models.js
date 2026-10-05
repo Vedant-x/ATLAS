@@ -109,15 +109,44 @@ function baselineWin(event) {
     const t = tennisRankWin(event.tennis);
     if (t) return { win: { home: t.p, draw: 0, away: 1 - t.p }, confidence: 'medium', starterNote: t.note };
   }
+  // Esports: bo3.gg team rankings (unranked teams count as #150).
+  if (event.sport === 'esports') {
+    const rh = Number(st.homeRank) || null, ra = Number(st.awayRank) || null;
+    if (rh || ra) {
+      const p = rankWin(rh || 150, ra || 150);
+      return { win: { home: p, draw: 0, away: 1 - p }, confidence: 'medium', starterNote: `team ranking ${rh ? `#${rh}` : 'unranked'} vs ${ra ? `#${ra}` : 'unranked'}` };
+    }
+  }
+  // eSoccer: each player's recent goals for and against.
+  if (event.sport === 'efootball') {
+    const l = esoccerLambdas(event);
+    if (l) { const o = outcome3(grid(l.lh, l.la, MAXG.efootball)); return { win: { home: o.h, draw: o.d, away: o.a }, confidence: 'medium', starterNote: l.note }; }
+    return { win: { home: 0.41, draw: 0.18, away: 0.41 }, confidence: 'low', starterNote: null };
+  }
   // Multi-day cricket (Tests, first-class) is often drawn.
   const multiDay = event.sport === 'cricket' && /test|first-class/i.test(`${event.format || ''} ${event.note || ''}`);
   const draw = soccer ? 0.26 * (1 - Math.abs(pHome - 0.5)) : multiDay ? 0.3 : 0;
   return { win: { home: pHome * (1 - draw), draw, away: (1 - pHome) * (1 - draw) }, confidence, starterNote };
 }
 
+// Higher-ranked side's series win chance from two rankings (1 = best): a team ranked 1 beats a team
+// ranked 10 about 85% of the time, a near-even pair stays near 50%.
+export const rankWin = (rh, ra) => 1 / (1 + (rh / ra) ** 0.75);
+
+// eSoccer goal expectancies: average of a player's goals scored and the opponent's goals conceded,
+// shrunk toward the typical 2.7 goals per player until there are enough games.
+export function esoccerLambdas(e) {
+  const a = e.stats?.homePlayer, b = e.stats?.awayPlayer;
+  if (!a?.g || !b?.g || a.g + b.g < 6) return null;
+  const K = 4, M = GOAL_DEFAULTS.efootball / 2;
+  const rate = (sum, g) => (sum + K * M) / (g + K);
+  const lh = (rate(a.gf, a.g) + rate(b.ga, b.g)) / 2, la = (rate(b.gf, b.g) + rate(a.ga, a.g)) / 2;
+  return { lh, la, note: `player form (${a.w}-${a.d}-${a.l} vs ${b.w}-${b.d}-${b.l}, last ${a.g}/${b.g} games)` };
+}
+
 // ---------- Poisson (goals / runs) ----------
-const GOAL_DEFAULTS = { football: 2.65, hockey: 6.0, baseball: 8.8 };
-const MAXG = { football: 10, hockey: 12, baseball: 22 };
+const GOAL_DEFAULTS = { football: 2.65, efootball: 5.4, hockey: 6.0, baseball: 8.8 };
+const MAXG = { football: 10, efootball: 16, hockey: 12, baseball: 22 };
 
 function grid(lh, la, n) {
   const ph = Array.from({ length: n + 1 }, (_, k) => poisson(k, lh));
@@ -139,7 +168,7 @@ const pOver = (T, line) => {
 
 export function fitPoisson(win, total, sport) {
   const n = MAXG[sport] || 10;
-  const twoWay = sport !== 'football'; // hockey/baseball winner prices include OT/extras: split ties 50/50
+  const twoWay = sport !== 'football' && sport !== 'efootball'; // hockey/baseball winner prices include OT/extras: split ties 50/50
   const T = total ? bisect((t) => pOver(t, total.line), 0.2, 30, total.over) : GOAL_DEFAULTS[sport] || 2.6;
   const target = twoWay ? win.home / (win.home + win.away) : win.home - win.away;
   const fitS = (Tt) => bisect((s) => {
@@ -160,13 +189,13 @@ function poissonMarkets(e, fit) {
   const { g, lh, la, n } = fit;
   const sum = (pred) => g.reduce((s, row, i) => s + row.reduce((t, p, j) => t + (pred(i, j) ? p : 0), 0), 0);
   const o3 = outcome3(g);
-  const unit = { football: 'goals', hockey: 'goals', baseball: 'runs' }[e.sport];
+  const unit = { football: 'goals', efootball: 'goals', hockey: 'goals', baseball: 'runs' }[e.sport];
   const H = e.home, A = e.away;
   const groups = [];
   const two = (name, p, yes = 'Yes', no = 'No') => ({ name, outcomes: [{ name: yes, p }, { name: no, p: 1 - p }] });
 
   groups.push({ group: 'Result', markets: [
-    { name: e.sport === 'football' ? 'Match result (90 min)' : 'Regulation result', outcomes: [{ name: H, p: o3.h }, { name: 'Draw', p: o3.d }, { name: A, p: o3.a }] },
+    { name: e.sport === 'football' ? 'Match result (90 min)' : e.sport === 'efootball' ? 'Match result' : 'Regulation result', outcomes: [{ name: H, p: o3.h }, { name: 'Draw', p: o3.d }, { name: A, p: o3.a }] },
     { name: 'Double chance', outcomes: [{ name: `${H} or draw`, p: o3.h + o3.d }, { name: `${A} or draw`, p: o3.a + o3.d }, { name: `${H} or ${A}`, p: o3.h + o3.a }], overlap: true },
     { name: 'Draw no bet', outcomes: [{ name: H, p: o3.h / (o3.h + o3.a) }, { name: A, p: o3.a / (o3.h + o3.a) }] },
   ] });
@@ -190,7 +219,7 @@ function poissonMarkets(e, fit) {
     ...[0, 1, 2].map((k) => { const l = tt(Math.max(0, Math.round(la) - 1 + k)); const p = 1 - Array.from({ length: Math.floor(l) + 1 }, (_, x) => poisson(x, la)).reduce((a, b) => a + b); return { name: `${A} over/under ${l}`, outcomes: [{ name: 'Over', p }, { name: 'Under', p: 1 - p }] }; }),
   ] });
 
-  if (e.sport === 'football' || e.sport === 'hockey') {
+  if (e.sport === 'football' || e.sport === 'efootball' || e.sport === 'hockey') {
     groups.push({ group: 'Specials', markets: [
       two('Both teams to score', sum((i, j) => i > 0 && j > 0)),
       two(`${H} clean sheet`, sum((i, j) => j === 0)),
@@ -201,7 +230,7 @@ function poissonMarkets(e, fit) {
       { name: 'Odd/even total', outcomes: [{ name: 'Odd', p: sum((i, j) => (i + j) % 2 === 1) }, { name: 'Even', p: sum((i, j) => (i + j) % 2 === 0) }] },
     ] });
   }
-  const exactMax = e.sport === 'baseball' ? 14 : e.sport === 'hockey' ? 9 : 6;
+  const exactMax = e.sport === 'baseball' ? 14 : e.sport === 'hockey' || e.sport === 'efootball' ? 9 : 6;
   const exact = Array.from({ length: exactMax + 1 }, (_, k) => ({ name: k === exactMax ? `${k}+` : String(k), p: k === exactMax ? sum((i, j) => i + j >= k) : sum((i, j) => i + j === k) }));
   groups.push({ group: `Exact total ${unit}`, markets: [{ name: `Exact ${unit}`, outcomes: exact, overlap: true }] });
 
@@ -214,7 +243,7 @@ function poissonMarkets(e, fit) {
   ] }] });
 
   // Correct score grid (top-left of the matrix is enough to show)
-  const show = e.sport === 'baseball' ? 10 : e.sport === 'hockey' ? 7 : 5;
+  const show = e.sport === 'baseball' ? 10 : e.sport === 'hockey' || e.sport === 'efootball' ? 7 : 5;
   const cells = [];
   for (let i = 0; i <= show; i++) for (let j = 0; j <= show; j++) cells.push({ h: i, a: j, p: g[i][j] });
   const top = [...cells].sort((a, b) => b.p - a.p).slice(0, 8);
@@ -302,6 +331,33 @@ function tennisModel(e, win) {
   };
 }
 
+// Esports series (best of 3 / 5): the same maths as tennis sets, per map.
+function seriesModel(e, win) {
+  const bo5 = e.bestOf === 5;
+  const pm = win.home / (win.home + win.away);
+  const matchP = bo5 ? (q) => q ** 3 * (1 + 3 * (1 - q) + 6 * (1 - q) ** 2) : (q) => q * q * (3 - 2 * q);
+  const q = bisect(matchP, 0.001, 0.999, clamp(pm, 0.001, 0.999));
+  const r = 1 - q, H = e.home, A = e.away;
+  const maps = bo5
+    ? [['3-0', q ** 3], ['3-1', 3 * q ** 3 * r], ['3-2', 6 * q ** 3 * r * r], ['2-3', 6 * r ** 3 * q * q], ['1-3', 3 * r ** 3 * q], ['0-3', r ** 3]]
+    : [['2-0', q * q], ['2-1', 2 * q * q * r], ['1-2', 2 * r * r * q], ['0-2', r * r]];
+  const decider = bo5 ? 6 * q ** 3 * r * r + 6 * r ** 3 * q * q : 2 * q * q * r + 2 * r * r * q;
+  const sweepH = bo5 ? q ** 3 : q * q, sweepA = bo5 ? r ** 3 : r * r;
+  return {
+    groups: [
+      { group: 'Map score', markets: [{ name: `Correct map score (best of ${bo5 ? 5 : 3})`, overlap: true, outcomes: maps.map(([n, p]) => ({ name: `${n[0] > n[2] ? H : A} ${n}`, p })) }] },
+      { group: 'Maps', markets: [
+        { name: bo5 ? 'Total maps over 4.5' : 'Total maps over 2.5', outcomes: [{ name: 'Over', p: decider }, { name: 'Under', p: 1 - decider }] },
+        { name: `${H} wins a map`, outcomes: [{ name: 'Yes', p: 1 - sweepA }, { name: 'No', p: sweepA }] },
+        { name: `${A} wins a map`, outcomes: [{ name: 'Yes', p: 1 - sweepH }, { name: 'No', p: sweepH }] },
+        { name: `${H} map handicap -1.5`, outcomes: [{ name: 'Yes', p: bo5 ? q ** 3 + 3 * q ** 3 * r : sweepH }, { name: 'No', p: 1 - (bo5 ? q ** 3 + 3 * q ** 3 * r : sweepH) }] },
+        { name: `${A} map handicap -1.5`, outcomes: [{ name: 'Yes', p: bo5 ? r ** 3 + 3 * r ** 3 * q : sweepA }, { name: 'No', p: 1 - (bo5 ? r ** 3 + 3 * r ** 3 * q : sweepA) }] },
+      ] },
+    ],
+    params: { setWin: q, bestOf: bo5 ? 5 : 3 },
+  };
+}
+
 // ESPN's matchup predictor gives two-way win shares; soccer gets a draw share carved out.
 function predictorWin(e) {
   const t = e.predictor.home + e.predictor.away || 1;
@@ -329,16 +385,22 @@ export function analyse(event) {
   if (!win) {
     const b = baselineWin(event);
     win = b.win; confidence = b.confidence;
-    basis = b.starterNote ? `ATLAS model: ${event.sport === 'tennis' ? '' : 'home advantage + '}${b.starterNote}${event.stats?.homeRecord ? ' + records' : ''} (no bookmaker price)` : b.confidence === 'medium' ? 'ATLAS model from season record and form (no bookmaker price)' : event.neutral ? 'ATLAS baseline: neutral ground and no form data, so close to even' : 'ATLAS baseline: home advantage only, too little data';
+    basis = b.starterNote ? `ATLAS model: ${event.sport === 'tennis' || event.neutral ? '' : 'home advantage + '}${b.starterNote}${event.stats?.homeRecord ? ' + records' : ''} (no bookmaker price)` : b.confidence === 'medium' ? 'ATLAS model from season record and form (no bookmaker price)' : event.neutral ? 'ATLAS baseline: neutral ground and no form data, so close to even' : 'ATLAS baseline: home advantage only, too little data';
   }
   const out = { win, confidence, basis, groups: [], grid: null, dist: null, params: {} };
-  if (['football', 'hockey', 'baseball'].includes(event.sport)) {
+  const lam = event.sport === 'efootball' && !view.win ? esoccerLambdas(event) : null;
+  if (lam) {
+    const n = MAXG.efootball;
+    Object.assign(out, poissonMarkets(event, { lh: lam.lh, la: lam.la, T: lam.lh + lam.la, g: grid(lam.lh, lam.la, n), n }), { kind: 'poisson' });
+  } else if (['football', 'efootball', 'hockey', 'baseball'].includes(event.sport)) {
     const fit = fitPoisson(win, view.total, event.sport);
     Object.assign(out, poissonMarkets(event, fit), { kind: 'poisson' });
   } else if (['basketball', 'americanfootball', 'rugby', 'aussierules'].includes(event.sport)) {
     Object.assign(out, normalModel(event, win, view.total, view.spread), { kind: 'normal' });
   } else if (event.sport === 'tennis') {
     Object.assign(out, tennisModel(event, win), { kind: 'tennis' });
+  } else if (event.sport === 'esports' && (event.bestOf === 3 || event.bestOf === 5)) {
+    Object.assign(out, seriesModel(event, win), { kind: 'tennis' });
   } else {
     out.kind = 'binary';
     out.groups = [{ group: 'Winner', markets: [{ name: 'Winner', outcomes: [{ name: event.home, p: win.home / (win.home + win.away) }, { name: event.away, p: win.away / (win.home + win.away) }] }] }];

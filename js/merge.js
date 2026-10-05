@@ -54,7 +54,7 @@ export function mergeEvent(old, fresh) {
 
 // A reloaded snapshot (built minutes or hours ago) must not roll back live scores the page already
 // refreshed: keep the snapshot's enrichments but the newer live fields.
-const LIVE = ['live', 'score', 'clock', 'period', 'displayClock', 'markets', 'bookmaker', 'fetchedAt'];
+const LIVE = ['live', 'score', 'clock', 'period', 'displayClock', 'lines', 'markets', 'bookmaker', 'fetchedAt'];
 export function overlayLive(snapshotEvents, current) {
   const byId = new Map(current.map((e) => [e.id, e]));
   const leagues = new Set(current.map((e) => e.leaguePath));

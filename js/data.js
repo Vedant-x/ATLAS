@@ -9,6 +9,7 @@ import { CRICKET_URL, parseCricket } from './cricket.js';
 import { absencesFor } from './fotmob.js';
 import { mergeEvent } from './merge.js';
 import { applyAsiaLive } from './asia-live.js';
+import { LANE_PATHS } from './esports.js';
 import { ASIA_LIVE_URL } from './config.js';
 
 // Leagues fetched directly when no snapshot exists (static file or local dev).
@@ -186,11 +187,11 @@ export async function loadEvents() {
 // block browsers). Only fetched while one of those games is on or about to start.
 export async function refreshAsia(events) {
   const now = Date.now();
-  const due = events.some((e) => (e.leaguePath === 'atlas/npb' || e.leaguePath === 'atlas/kbo') && (e.live || (e.start < now + 20 * 6e4 && e.start > now - 5 * 36e5)));
+  const due = events.some((e) => LANE_PATHS.includes(e.leaguePath) && (e.live || (e.start < now + 20 * 6e4 && e.start > now - 5 * 36e5)));
   if (!due) return null;
-  const res = await fetch(`${ASIA_LIVE_URL}?t=${Math.floor(now / 3e4)}`, { signal: AbortSignal.timeout(8000), cache: 'no-store' });
+  const res = await fetch(`${ASIA_LIVE_URL}?t=${Math.floor(now / 1e4)}`, { signal: AbortSignal.timeout(8000), cache: 'no-store' });
   if (!res.ok) return null;
   const live = await res.json();
-  if (!(live.at > now - 10 * 6e4)) return null; // the lane isn't running: keep what we have
+  if (!(live.at > now - 5 * 6e4)) return null; // the lane isn't running: keep what we have
   return applyAsiaLive(events, live, now);
 }

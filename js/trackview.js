@@ -1,6 +1,6 @@
 // Record page: every official ATLAS pick (locked before kick-off) and how it turned out.
 import { esc, sportOf } from './views.js';
-import { summarize, MIN_ODDS } from './track.js';
+import { summarize, MIN_ODDS, calibration } from './track.js';
 
 const pct = (x, d = 1) => (x == null ? '—' : `${(x * 100).toFixed(d)}%`);
 const units = (x) => `${x > 0 ? '+' : ''}${x.toFixed(2)}u`;
@@ -16,6 +16,16 @@ async function load() {
   return cache.data;
 }
 
+// For the rest of the site: summary and per-market calibration once the record has loaded.
+export const trackStats = () => (cache ? summarize(cache.data.picks || []) : null);
+export const trackCalibration = () => (cache ? calibration(cache.data.picks || []) : null);
+export function ensureTrack(refresh) { if (!cache) load().then(() => refresh?.()).catch(() => {}); }
+// One line of record for a section: "41–16 · 72% hit rate · +4.9u".
+export function recordLine(st) {
+  if (!st || !(st.won + st.lost)) return '';
+  return `${st.won}–${st.lost} · ${pct(st.hitRate, 0)} hit rate · <span class="${st.profit >= 0 ? 'pos' : 'neg'}">${units(st.profit)}</span>`;
+}
+
 const statCards = (s) => `<div class="tr-stats">
   <div><small>Settled picks</small><b>${s.won + s.lost}</b><span>${s.won} won · ${s.lost} lost${s.push ? ` · ${s.push} push` : ''}</span></div>
   <div><small>Hit rate</small><b>${pct(s.hitRate)}</b><span>ATLAS estimated ${pct(s.expected)}</span></div>
@@ -24,9 +34,11 @@ const statCards = (s) => `<div class="tr-stats">
 
 const table = (rows, label) => (rows.length ? `<table class="tr-table"><thead><tr><th>${label}</th><th>Picks</th><th>Hit rate</th><th>Estimated</th><th>Profit</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${r.won + r.lost}</td><td>${pct(r.hitRate)}</td><td>${pct(r.expected)}</td><td class="${r.profit >= 0 ? 'pos' : 'neg'}">${units(r.profit)}</td></tr>`).join('')}</tbody></table>` : '');
 
-const pickRow = (h) => `<li class="tr-${h.status}"><span class="tr-badge">${h.status === 'pending' ? day(h.start) : h.status.toUpperCase()}</span>
+const pickRow = (h) => (h.type === 'multi' ? `<li class="tr-${h.status}"><span class="tr-badge">${h.status === 'pending' ? day(h.start) : h.status.toUpperCase()}</span>
+  <div><b>${esc(h.target)}x slip · ${h.legs.length} legs</b><small>${h.legs.map((l) => `${l.status === 'won' ? '✅' : l.status === 'lost' ? '❌' : l.status === 'pending' ? '⏳' : '➖'} ${esc(l.pick)} (${esc(l.home)} v ${esc(l.away)})`).join(' · ')}</small></div>
+  <em>${Number(h.odds).toFixed(2)}</em><i>${pct(h.p, 0)}</i></li>` : `<li class="tr-${h.status}"><span class="tr-badge">${h.status === 'pending' ? day(h.start) : h.status.toUpperCase()}</span>
   <div><b>${esc(h.pick)}</b><small>${sportOf(h.sport).icon} ${esc(h.home)} v ${esc(h.away)} · ${esc(h.market)}${h.score ? ` · final ${esc(h.score)}` : ''} · ${h.type === 'value' ? 'value spot' : 'banker'}</small></div>
-  <em>${Number(h.odds).toFixed(2)}</em><i>${pct(h.p, 0)}</i></li>`;
+  <em>${Number(h.odds).toFixed(2)}</em><i>${pct(h.p, 0)}</i></li>`);
 
 function body(data) {
   const s = summarize(data.picks || []);
@@ -34,11 +46,16 @@ function body(data) {
     return `<div class="panel reveal"><h3 class="ph">Tracking has started</h3><p class="muted">Every banker and value spot (odds ${MIN_ODDS.toFixed(2)}+) is now saved before kick-off and graded from the final score. Results appear here as matches finish.</p></div>
       ${s.pending.length ? `<div class="panel reveal"><h3 class="ph">Waiting on results <small>${s.pending.length}</small></h3><ul class="tr-list">${s.pending.slice(0, 30).map(pickRow).join('')}</ul></div>` : ''}`;
   }
-  const typeName = { banker: 'Bankers (est. 60%+)', value: 'Value spots (model above price)' };
+  const typeName = { banker: 'Bankers (est. 60%+)', value: 'Value spots (model above price)', multi: 'Multipliers (daily 2x/3x/5x slips)' };
+  const famName = { winner: 'Winner / moneyline', result: '1X2 result', spread: 'Spread / handicap', total: 'Totals (over/under)' };
   return `${statCards(s.all)}
     <div class="two">
       <div class="panel reveal"><h3 class="ph">By pick type</h3>${table(s.byType.map((r) => ({ ...r, name: typeName[r.key] || r.key })), 'Type')}</div>
       <div class="panel reveal"><h3 class="ph">By sport</h3>${table(s.bySport.map((r) => ({ ...r, name: `${sportOf(r.key).icon} ${sportOf(r.key).name}` })), 'Sport')}</div>
+    </div>
+    <div class="two">
+      <div class="panel reveal"><h3 class="ph">By market <small>the model needs more confidence where a market has underperformed</small></h3>${table(s.byFamily.map((r) => ({ ...r, name: famName[r.key] || r.key })), 'Market')}</div>
+      <div class="panel reveal"><h3 class="ph">Multipliers <small>one official slip per target per day</small></h3>${s.multi.won + s.multi.lost ? table(s.byTarget.filter((r) => r.won + r.lost).map((r) => ({ ...r, name: `${r.target}x slips` })), 'Slip') : `<p class="muted">The first daily 2x, 3x and 5x slips are being tracked: results appear here as their matches finish.</p>`}</div>
     </div>
     <div class="panel reveal"><h3 class="ph">Are the estimates honest? <small>calibration</small></h3>
       <p class="muted">When ATLAS says 65%, it should land about 65% of the time. Small samples swing a lot.</p>
@@ -76,5 +93,6 @@ export function trackCard(refresh) {
   const last = s.recent.slice(0, 10).map((h) => `<i class="tr-dot ${h.status}" title="${esc(h.pick)}: ${h.status}"></i>`).join('');
   return `<a class="panel dash-track reveal" href="#/track"><h3 class="ph">Track record <small>every pick, locked before kick-off</small></h3>
     <div class="dt-row"><div><b>${a.won}–${a.lost}</b><small>won–lost</small></div><div><b>${pct(a.hitRate, 0)}</b><small>hit rate (est. ${pct(a.expected, 0)})</small></div><div><b class="${a.profit >= 0 ? 'pos' : 'neg'}">${units(a.profit)}</b><small>1 unit per pick</small></div></div>
+    <ul class="dt-types">${s.byType.filter((r) => r.won + r.lost).map((r) => `<li><span>${{ banker: 'Bankers', value: 'Value', multi: 'Multipliers' }[r.key] || esc(r.key)}</span><b>${pct(r.hitRate, 0)}</b><small>${r.won}–${r.lost}</small></li>`).join('')}${s.bySport.slice(0, 4).map((r) => `<li><span>${sportOf(r.key).icon} ${esc(sportOf(r.key).name)}</span><b>${pct(r.hitRate, 0)}</b><small>${r.won}–${r.lost}</small></li>`).join('')}</ul>
     <div class="dt-last">${last}<span>latest results →</span></div></a>`;
 }
