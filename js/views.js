@@ -1,4 +1,3 @@
-import { stakeMatchSection } from './stake.js';
 // Page templates. Each view returns { html, mode, accent, sceneOpts?, title, after? }.
 import { SPORTS } from './data.js';
 import { devig, buildSlips, todayEvents } from './engine.js';
@@ -17,7 +16,8 @@ import { prefs, prefEvents } from './prefs.js';
 import { liveWin } from './live.js';
 import { watch } from './alerts.js';
 import { trackCard, trackStats, trackCalibration, recordLine, ensureTrack } from './trackview.js';
-import { calibrated } from './track.js';
+import { calibrated, MULTI_TARGETS } from './track.js';
+import { coherentBets } from './picks.js';
 import { mergeEvent } from './merge.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -143,7 +143,7 @@ function eventRow(e, compact = false) {
     <div class="teams"><b>${esc(e.home)}${seedTag(e.tennis?.home)}</b><b>${esc(e.away)}${seedTag(e.tennis?.away)}</b><small>${e.tennis ? esc(compact === true ? e.tennis.court || e.tennis.round : tennisLine(e.tennis)) : esc(e.league)} · ${when(e)}</small>${starterLine(e)}</div>
     <div class="row-prob">${probBar([{ label: e.home, p: w.home, color: hc }, ...(w.draw ? [{ label: 'Draw', p: w.draw, color: DRAW_COLOR }] : []), { label: e.away, p: w.away, color: ac }])}
       <small><span>${pc(w.home, 0)}</span>${w.draw ? `<span>${pc(w.draw, 0)}</span>` : ''}<span>${pc(w.away, 0)}</span></small></div>
-    <div class="odds">${main ? main.outcomes.map((o, i) => legButton(bookLeg(e, main, o, o.model ?? d.outcomes[i].fair), `<small>${esc(o.name === 'Draw' ? 'X' : o.name.split(' ').pop().slice(0, 4))}</small>${odd(o.odds)}`)).join('') : `<span class="nobook">model line</span>`}</div>
+    <div class="odds">${main ? main.outcomes.map((o, i) => legButton(bookLeg(e, main, o, o.model ?? d.outcomes[i].fair), `<small>${esc(o.name === 'Draw' ? 'X' : o.name.split(' ').pop().slice(0, 4))}</small>${odd(o.odds)}`)).join('') : `<span class="nobook">model line</span>`}${main && e.bookmaker ? `<small class="odds-src">odds via ${esc(e.bookmaker.replace(/^Bookmaker price via /, '').split(' (')[0])}</small>` : ''}</div>
     ${confBadge(w.confidence)}
   </article>`;
 }
@@ -208,7 +208,8 @@ export const views = {
       ${perSport.length ? `<section class="sec-block"><h2 class="sec reveal"><span>◆</span>Top pick in every sport <small>the strongest priced favourite per sport</small></h2><div class="minilist cols">${perSport.map((b) => miniPick(b)).join('')}</div></section>` : ''}
       <section class="sec-block"><h2 class="sec reveal"><span>◆</span>Multipliers</h2>
         <div class="grid xs">${[2, 3, 4, 5].map((x) => { const r = ts?.byTarget?.find((t) => t.target === x); return `<a class="xcard tilt reveal" href="#/x/${x}" data-cursor="BUILD"><b>${x}x</b><small>5 slips · ${pc(1 / x, 0)} break-even</small>${r && r.won + r.lost ? `<small class="xrec">record ${r.won}–${r.lost} · ${pc(r.hitRate, 0)}</small>` : ''}</a>`; }).join('')}
-        <a class="xcard mega tilt reveal" href="#/mega" data-cursor="DARE"><b>100x+</b><small>Mega accumulators</small></a></div></section>
+        <a class="xcard mega tilt reveal" href="#/mega" data-cursor="DARE"><b>100x+</b><small>Mega accumulators from bankers</small></a>
+        <a class="xcard tilt reveal" href="#/x/7.5" data-cursor="BUILD"><b>Any x</b><small>Set your own target</small></a></div></section>
       <section class="sec-block"><h2 class="sec reveal"><span>◆</span>Up next</h2><div class="list">${upcoming.slice(0, 14).map(eventRow).join('')}</div></section>`,
     };
   },
@@ -237,7 +238,7 @@ export const views = {
     const by = countBy();
     const list = S.events.filter((e) => e.sport === id).sort((a, b) => (b.live - a.live) || a.start - b.start);
     return {
-      mode: 'sport', accent: sp.color, title: sp.name, after,
+      mode: 'sport', accent: sp.color, title: sp.name, after, sceneOpts: { sport: id },
       html: `<section class="hero small"><p class="kicker reveal"><a href="#/sports">ALL SPORTS</a> / ${list.length} MATCHES · ${list.filter((e) => e.live).length} LIVE</p><h1>${split(sp.name.toUpperCase())}</h1></section>
         ${notice()}
         ${sp.groups.map((g) => {
@@ -276,7 +277,7 @@ export const views = {
     const days = new Map();
     list.forEach((e) => { const d = e.live ? 'Live now' : new Date(e.start).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' }); if (!days.has(d)) days.set(d, []); days.get(d).push(e); });
     return {
-      mode: 'sport', accent: sp.color, title: l.name,
+      mode: 'sport', accent: sp.color, title: l.name, sceneOpts: { sport: l.sport },
       after: () => { loadStandings(l); liveLoad([l.path]); },
       html: `<section class="hero small"><p class="kicker reveal"><a href="#/sports">ALL SPORTS</a> / <a href="#/sport/${sp.id}">${esc(sp.name)}</a> / ${esc(l.group)}</p><h1>${split(l.name.toUpperCase())}</h1></section>
         ${notice()}
@@ -309,7 +310,7 @@ export const views = {
     if (a.kind === 'binary') sections.splice(sections.findIndex((x) => x[0] === 'model'), 1);
     return {
       mode: 'match', accent: hc, title: `${e.home} v ${e.away}`,
-      sceneOpts: { home: hc, away: ac, pHome: w.home, pAway: w.away },
+      sceneOpts: { home: hc, away: ac, pHome: w.home, pAway: w.away, sport: e.sport },
       // Fetch the full dossier once, then redraw in place (scroll kept).
       after: () => {
         if (detailFor(e.id)) return;
@@ -345,7 +346,7 @@ export const views = {
             <span class="mo-n">${esc(o.name)}</span><div class="meter"><i class="grow" style="--w:${(o.p * 100).toFixed(1)}%"></i></div>
             <span class="mo-p">${pc(o.p)}</span>${legButton(fairLeg(e, m, o), odd(o.fair))}</div>`).join('')}</div>`).join('')}</div>`).join('')}</div>
       </section>
-      <section class="panel reveal" id="sec-book">${bookPanel(e)}${stakeMatchSection(e, S.stake)}</section>
+      <section class="panel reveal" id="sec-book">${bookPanel(e)}</section>
       <section class="grid two" id="sec-form">${formPanel(e, hc, ac)}</section>
       <section class="panel reveal" id="sec-calc">${calcPanel(e, w, book)}</section>
       <section class="panel reveal" id="sec-notes"><h2 class="ph">Model notes</h2>${notes(e, a)}</section>`,
@@ -371,32 +372,38 @@ export const views = {
   },
 
   x([n]) {
-    const target = Number(n);
-    if (![2, 3, 4, 5, 10, 20].includes(target)) return views.notfound();
+    const target = Math.round(Number(n) * 100) / 100;
+    if (!(target >= 1.2 && target <= 100000)) return views.notfound();
     // Same-day only: every leg kicks off later today (viewer's local time).
     const left = todayEvents(S.events);
     const priced = left.filter((e) => e.markets?.length).length;
-    const list = S.slips(target, { count: 5, maxLegs: target <= 5 ? 3 : 5, tolerance: 0.08, today: true });
+    const list = S.slips(target, { count: 5, today: target < 100 });
     const day = new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+    ensureTrack(() => S.refresh?.());
+    const r = trackStats()?.byTarget?.find((t) => t.target === target), all = trackStats()?.multi;
     return {
       mode: 'x', accent: ['#d2ff00', '#00ffc3', '#4fd1ff', '#b08cff'][[2, 3, 4, 5].indexOf(target)] || '#ff9f43', title: `${target}x slips`,
-      html: `<section class="hero small"><p class="kicker reveal">MULTIPLIER · BREAK-EVEN ${pc(1 / target, 1)} · TODAY ONLY</p><h1>${split(`${target}X SLIPS`)}</h1>
-        <nav class="tabs reveal">${[2, 3, 4, 5, 10, 20].map((x) => `<a href="#/x/${x}" class="${x === target ? 'on' : ''}">${x}x</a>`).join('')}</nav></section>
+      html: `<section class="hero small"><p class="kicker reveal">MULTIPLIER · BREAK-EVEN ${pc(1 / target, target >= 100 ? 2 : 1)}${target < 100 ? ' · TODAY ONLY' : ''}</p><h1>${split(`${target}X SLIPS`)}</h1>
+        <nav class="tabs reveal">${[2, 3, 4, 5, 10, 20].map((x) => `<a href="#/x/${x}" class="${x === target ? 'on' : ''}">${x}x</a>`).join('')}</nav>
+        <form class="xtarget reveal" data-xtarget><label>Your target<input type="number" name="t" min="1.2" max="100000" step="0.1" value="${target}" inputmode="decimal" aria-label="Target multiplier"></label><button class="btn">Build from bankers</button></form></section>
         ${notice()}
-        ${(() => { ensureTrack(() => S.refresh?.()); const r = trackStats()?.byTarget?.find((t) => t.target === target); const all = trackStats()?.multi; return r && r.won + r.lost ? `<p class="rec-line reveal">Track record · official ${target}x slips ${recordLine(r)}${all?.won + all?.lost ? ` · all multipliers ${recordLine(all)}` : ''} · <a href="#/track">details</a></p>` : [2, 3, 5].includes(target) ? '<p class="rec-line reveal">Track record: the top slip here is saved each day and graded leg by leg on the Record page.</p>' : ''; })()}
-        <p class="lede reveal">Combinations whose total odds land near ${target}x, ranked by edge and estimated win chance. A fairly priced ${target}x slip wins about ${pc(1 / target, 0)} of the time; each extra leg adds another bookmaker margin.</p>
-        <p class="note reveal">📅 Only matches on <b>${esc(day)}</b> that haven't started yet: ${left.length} left today, ${priced} with prices. Slips rebuild as games kick off and roll over at midnight.</p>
-        <section class="grid slips">${list.map((s, i) => slipCard(s, i, target)).join('') || `<p class="muted">${left.length ? `Today's remaining prices can't be combined to about ${target}x. Try another multiplier.` : 'No more matches left today. Tomorrow\'s slips appear after midnight.'}</p>`}</section>`,
+        ${r && r.won + r.lost ? `<p class="rec-line reveal">Track record · official ${target}x slips ${recordLine(r)}${all?.won + all?.lost ? ` · all multipliers ${recordLine(all)}` : ''} · <a href="#/track">details</a></p>` : MULTI_TARGETS.includes(target) ? '<p class="rec-line reveal">Track record: the top slip here is saved each day and graded leg by leg on the Record page.</p>' : ''}
+        <p class="lede reveal">Built from <b>bankers</b>: short-priced favourites the model rates highly (about 1.05 to 1.6 each), stacked until the total reaches ${target}x. Many safe legs beat a few long shots: each leg is chosen for the most win chance per unit of odds.</p>
+        <p class="note reveal">${target < 100 ? `📅 Only matches on <b>${esc(day)}</b> that haven't started yet: ${left.length} left today, ${priced} with prices.` : 'Big targets use every priced match in the next few days.'} Every leg is a real bookmaker price.</p>
+        <section class="grid slips">${list.map((s, i) => slipCard(s, i, target)).join('') || `<p class="muted">Not enough strong favourites ${target < 100 ? 'left today' : 'on the board'} to reach about ${target}x. Try a smaller target.</p>`}</section>`,
     };
   },
 
   mega() {
+    ensureTrack(() => S.refresh?.());
+    const ts = trackStats();
     return {
       mode: 'mega', accent: '#ff3d6e', title: 'Mega bets',
-      html: `<section class="hero small"><p class="kicker reveal">ONCE IN A LIFETIME · BREAK-EVEN UNDER 1%</p><h1>${split('MEGA BETS')}</h1></section>
+      html: `<section class="hero small"><p class="kicker reveal">BIG PAYOUTS · BUILT FROM BANKERS</p><h1>${split('MEGA BETS')}</h1>
+        <p class="lede reveal">Huge targets reached the sensible way: dozens of short-priced favourites rather than a handful of long shots. Still long odds overall, so stake small.</p></section>
         ${notice()}
-        ${[100, 500, 1000].map((t) => `<h2 class="sec reveal"><span>${t}x</span>${t === 100 ? 'Century' : t === 500 ? 'Half-thousand' : 'Thousand'} <small>about ${pc(1 / t, 2)} chance if fairly priced</small></h2>
-          <section class="grid slips">${S.slips(t, { count: 4, maxLegs: 10, tolerance: 0.15 }).map((s, i) => slipCard(s, i, t)).join('') || '<p class="muted">Not enough priced events.</p>'}</section>`).join('')}`,
+        ${[100, 1000].map((t) => { const r = ts?.byTarget?.find((x) => x.target === t); return `<h2 class="sec reveal"><span>${t}x</span>${t === 100 ? 'Century' : 'Thousand'} <small>${r && r.won + r.lost ? `track record ${recordLine(r)}` : 'tracked daily on the Record page'}</small></h2>
+          <section class="grid slips">${S.slips(t, { count: 3 }).map((s, i) => slipCard(s, i, t)).join('') || '<p class="muted">Not enough strong favourites on the board to reach this yet.</p>'}</section>`; }).join('')}`,
     };
   },
 
@@ -508,35 +515,13 @@ function smartBankers(events, { min = 0.7, limit = 10, minOdds = 1 } = {}) {
     .sort((x, y) => y.pc - x.pc).slice(0, limit);
 }
 
-// Best bets for one match: the safest pick, a value pick (model above the bookmaker), the main-market
-// lean, a goals/points angle and a bigger-priced shot, each with the reason.
-export function matchBestBets(e, a) {
-  const cal = trackCalibration();
-  const cands = [];
-  for (const m of e.markets || []) {
-    const d = devig(m);
-    d.outcomes.forEach((o, i) => { const p = m.outcomes[i].model ?? o.fair; cands.push({ market: m.name, pick: o.name, p, q: calibrated(p, m.name, cal), odds: o.odds, book: true, ev: p * o.odds - 1, main: m.name === 'Winner' || m.name === 'Match Result' }); });
-  }
-  for (const g of a.groups) for (const m of g.markets) for (const o of m.outcomes) if (o.p > 0 && o.p < 1) cands.push({ market: m.name, pick: o.name, p: o.p, q: o.p, odds: o.fair, book: false, ev: 0, main: /^(Winner|Match result|Regulation result)/i.test(m.name), group: g.group });
-  const out = [], used = new Set();
-  const take = (label, c, why) => { if (!c || used.has(`${c.market}|${c.pick}`)) return; used.add(`${c.market}|${c.pick}`); out.push({ label, ...c, why }); };
-  const safe = cands.filter((c) => c.q >= 0.6 && c.q <= 0.92 && c.odds >= 1.2).sort((x, y) => y.q - x.q || y.book - x.book)[0];
-  take('Safest pick', safe, safe && (safe.book ? 'bookmaker price, margin removed' : 'ATLAS model'));
-  const val = cands.filter((c) => c.book && c.ev >= 0.02 && c.odds <= 5).sort((x, y) => y.ev - x.ev)[0];
-  take('Value pick', val, val && `model ${pc(val.p, 0)} vs price ${pc(1 / val.odds, 0)}: +${(val.ev * 100).toFixed(1)}% edge`);
-  const main = cands.filter((c) => c.main && c.q >= 0.5).sort((x, y) => y.q - x.q)[0];
-  take('Match winner lean', main, main && `${pc(main.q, 0)} to win`);
-  const goals = cands.filter((c) => /total|over|under|both teams|wins a (set|map)|goes the distance/i.test(`${c.market} ${c.pick}`) && c.q >= 0.58 && c.q <= 0.85).sort((x, y) => y.q - x.q)[0];
-  take(e.sport === 'football' || e.sport === 'efootball' || e.sport === 'hockey' ? 'Goals angle' : e.sport === 'tennis' || e.sport === 'esports' ? 'Sets / maps angle' : 'Points angle', goals, goals && 'from the expected score model');
-  const shot = cands.filter((c) => c.q >= 0.33 && c.q <= 0.5 && c.odds >= 2 && c.odds <= 3.2).sort((x, y) => (y.book - x.book) || y.q - x.q)[0];
-  take('Bigger price', shot, shot && `about ${pc(shot.q, 0)}: pays ${odd(shot.odds)}`);
-  return out.slice(0, 5);
-}
+// Best bets for one match: 1-3 picks that agree with each other (see coherentBets in picks.js).
+export function matchBestBets(e, a) { return coherentBets(e, a, { cal: trackCalibration() }).picks; }
 
 function bestBetsPanel(e, a) {
   const list = matchBestBets(e, a);
   if (!list.length) return '';
-  return `<section class="sec-block" id="sec-best"><h2 class="sec reveal"><span>◆</span>Best bets for this match <small>${e.live ? 'pre-match estimates · ' : ''}tap to add to your slip</small></h2>
+  return `<section class="sec-block" id="sec-best"><h2 class="sec reveal"><span>◆</span>Best bets for this match <small>${e.live ? 'pre-match estimates · ' : ''}one consistent view: same side, one goals direction · tap to add</small></h2>
     <div class="best-bets">${list.map((b) => {
       const leg = b.book ? { key: `${e.id}|${b.market}|${b.pick}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p }
         : { key: `${e.id}|fair|${b.market}|${b.pick}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: b.market, pick: b.pick, odds: +b.odds.toFixed(2), p: b.p, derived: true };

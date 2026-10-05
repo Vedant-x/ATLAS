@@ -1,4 +1,3 @@
-import { loadStakeFeed, stakeView } from './stake.js';
 import { mountAssistant } from './assistant/ui.js';
 import { legalViews, ageGate } from './legal.js';
 import { trackViews } from './trackview.js';
@@ -9,7 +8,9 @@ import { loadF1, f1Data, pollF1Live } from './f1view.js';
 import { liveSession } from './f1.js';
 import { overlayLive } from './merge.js';
 import { enrichMlb } from './mlbstats.js';
-import { buildSlips, todayEvents, localDay } from './engine.js';
+import { todayEvents, localDay } from './engine.js';
+import { bankerSlips } from './picks.js';
+import { trackCalibration } from './trackview.js';
 import { prefs, prefEvents } from './prefs.js';
 import { applyModel, bankers } from './intel.js';
 import { fetchLineups } from './espn.js';
@@ -49,14 +50,15 @@ const scene = (() => {
 document.querySelectorAll('[data-fx-toggle]').forEach((b) => { b.setAttribute('aria-pressed', String(!fxOff)); b.querySelector('b').textContent = fxOff ? 'OFF' : 'ON'; });
 
 const state = {
-  stake: null, events: [], source: 'demo', demo: true, news: [], odds: null, fetchedAt: 0,
+  events: [], source: 'demo', demo: true, news: [], odds: null, fetchedAt: 0,
   slipCache: new Map(), slipsAt: 0,
   // opts.today: only matches still to start today (local time); cached per day so midnight rolls over.
   slips(target, opts = {}) {
     // Personal filters (min odds per leg, preferred sports) shape every slip.
     const key = `${target}|${opts.today ? localDay() : 'all'}|${prefs.sig()}`;
     const pool = prefEvents(opts.today ? todayEvents(this.events) : this.events);
-    if (!this.slipCache.has(key)) this.slipCache.set(key, buildSlips(prefs.get().pricedOnly ? pool.filter((e) => e.markets?.length) : pool, target, { minOdds: prefs.get().minOdds, ...opts }));
+    // Built from bankers: many short-priced favourites, never a few long shots (picks.js).
+    if (!this.slipCache.has(key)) this.slipCache.set(key, bankerSlips(pool, target, { count: opts.count || 5, tolerance: target <= 20 ? 0.08 : 0.12, cal: trackCalibration(), minOdds: prefs.get().minOdds }));
     return this.slipCache.get(key);
   },
   async detail(e) {
@@ -160,7 +162,7 @@ let current = null;
 function build() {
   const { name, args } = parse();
   legIndex.clear();
-  return { name, v: (name === 'stake' ? (() => stakeView(state.stake, state.events)) : views[name] || legalViews[name] || trackViews[name] || views.notfound)(args.map(decodeURIComponent)) };
+  return { name, v: (views[name] || legalViews[name] || trackViews[name] || views.notfound)(args.map(decodeURIComponent)) };
 }
 
 function render(animate) {
@@ -209,7 +211,7 @@ function trail() {
   if (sp) parts.push([`#/sport/${sp.id}`, sp.name]);
   if (l) parts.push([`#/league/${leagueKey(l.path)}`, l.short || l.name]);
   if (e) parts.push(['', `${e.home} v ${e.away}`]);
-  const label = { stake: 'Stake odds', edge: 'Edge board', x: 'Multipliers', mega: 'Mega bets', bankers: 'Bankers' }[name];
+  const label = { edge: 'Edge board', x: 'Multipliers', mega: 'Mega bets', bankers: 'Bankers' }[name];
   if (label) parts.push(['', label]);
   return parts;
 }
@@ -225,7 +227,7 @@ function dock() {
 function route() {
   if (!location.hash.startsWith('#/')) return; // in-page anchors
   const { name } = parse();
-  const label = { stake: 'STAKE ODDS', home: 'DASHBOARD', sports: 'ALL SPORTS', sport: 'SPORT', league: 'LEAGUE', match: 'MATCH DOSSIER', edge: 'EDGE BOARD', x: 'MULTIPLIERS', mega: 'MEGA BETS', bankers: 'BANKERS' }[name] || '';
+  const label = { home: 'DASHBOARD', sports: 'ALL SPORTS', sport: 'SPORT', league: 'LEAGUE', match: 'MATCH DOSSIER', edge: 'EDGE BOARD', x: 'MULTIPLIERS', mega: 'MEGA BETS', bankers: 'BANKERS' }[name] || '';
   const h = location.hash || '#/';
   if (replacing) { stack[stack.length - 1] = h; replacing = false; } else if (stack.length > 1 && stack[stack.length - 2] === h) stack.pop(); else stack.push(h);
   // instant: html has scroll-behavior:smooth, and a smooth scroll still running when a live refresh
@@ -361,6 +363,14 @@ document.addEventListener('input', (e) => {
   if (e.target.matches('[data-ef]')) refreshEdge();
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') openSlip(false); });
+// "Your target" on the multipliers page: any target from 1.2x up.
+document.addEventListener('submit', (e) => {
+  const f = e.target.closest('[data-xtarget]');
+  if (!f) return;
+  e.preventDefault();
+  const t = Number(f.elements.t.value);
+  if (t >= 1.2 && t <= 100000) location.hash = `#/x/${Math.round(t * 100) / 100}`;
+});
 
 // Clocks: countdowns + "updated Xs ago".
 setInterval(() => {
@@ -413,11 +423,4 @@ preloader(Promise.race([firstData, new Promise((r) => setTimeout(() => r(null), 
   addEventListener('visibilitychange', () => { if (!document.hidden) poll(); }); // back on the tab: catch up now
 });
 
-// Separate feed and timestamps: score refreshes never make Stake prices look newer.
-let stakeLoading = false;
-async function refreshStakeFeed() {
-  if (stakeLoading) return; stakeLoading = true;
-  try { state.stake = await loadStakeFeed(); if (current === 'stake' || current === 'match') softRender(); } finally { stakeLoading = false; }
-}
-refreshStakeFeed();
-setInterval(() => { if (!document.hidden) refreshStakeFeed(); }, 60000);
+

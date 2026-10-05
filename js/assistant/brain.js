@@ -75,17 +75,15 @@ export function createBrain(K) {
     const s = K.matchSummary(e);
     const w = s.winProbability;
     const fav = w.home >= w.away ? e.home : e.away;
-    const best = s.bestPrices.filter((x) => x.priced).sort((a, b) => b.probability - a.probability)[0];
-    const value = s.bestPrices.filter((x) => x.priced && x.edge > 0).sort((a, b) => b.edge - a.edge)[0];
+    const rec = s.recommended || [];
     const lines = [
       `**${e.home} vs ${e.away}** · ${e.league}${e.live ? ` · LIVE ${e.score || ''}` : ''}`,
       `${e.live ? 'Pre-match estimate (does not include the live score)' : 'Estimated win chance'}: ${e.home} **${pc(w.home)}**${w.draw ? ` · draw ${pc(w.draw)}` : ''} · ${e.away} **${pc(w.away)}** (${s.basis.toLowerCase()})`,
       `Favourite: **${fav}**.`,
-      best ? `Safest priced pick: **${best.pick}** (${best.market}) at ${od(best.odds)}, estimated ${pc(best.probability)}.` : 'No bookmaker price yet: fair odds come from the ATLAS model.',
-      value ? `Best value: **${value.pick}** (${value.market}) at ${od(value.odds)}, model edge ${(value.edge * 100).toFixed(1)}%.` : '',
+      rec.length ? `My bet${rec.length > 1 ? 's' : ''} (all pointing the same way):\n${rec.map((x) => `- **${x.pick}** · ${x.market} at ${od(x.odds)}${x.priced ? '' : ' (fair odds)'}, est. ${pc(x.probability)}`).join('\n')}` : 'No pick strong enough to recommend here.',
       s.starters?.length === 2 && s.starters[0].season && s.starters[1].season ? `Starters: ${s.starters[0].name} (${s.starters[0].season.era} ERA) vs ${s.starters[1].name} (${s.starters[1].season.era} ERA).` : '',
     ].filter(Boolean);
-    const cards = s.bestPrices.slice(0, 3).map((x) => ({ type: 'pick', e, market: x.market, pick: x.pick, odds: x.odds, p: x.probability, ev: x.edge, priced: x.priced }));
+    const cards = rec.map((x) => ({ type: 'pick', e, market: x.market, pick: x.pick, odds: x.odds, p: x.probability, ev: x.edge, priced: x.priced }));
     return { text: lines.join('\n'), cards: [{ type: 'match', e }, ...cards] };
   }
 
@@ -108,10 +106,9 @@ export function createBrain(K) {
   }
 
   function multiplier(q) {
-    const m = q.match(/(\d{1,4})\s*x\b|\b(\d{1,4})\s*times\b/);
+    const m = q.match(/(\d{1,5}(?:\.\d+)?)\s*x\b|\b(\d{1,5}(?:\.\d+)?)\s*times\b/);
     const target = Number(m?.[1] || m?.[2]);
-    const valid = [2, 3, 4, 5, 10, 20, 100, 500, 1000];
-    const t = valid.reduce((a, b) => (Math.abs(b - target) < Math.abs(a - target) ? b : a), 2);
+    const t = target >= 1.2 && target <= 100000 ? target : /mega/.test(q) ? 100 : 2; // any target, built from bankers
     const mega = t >= 100;
     const list = K.slips(t, !mega);
     if (!list.length) return { text: mega ? `Not enough priced matches to build a ${t}x slip right now.` : `Today's remaining prices can't be combined into about ${t}x. Try another multiplier or ask tomorrow.` };

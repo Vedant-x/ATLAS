@@ -1,7 +1,7 @@
 // What the assistant knows: read-only views over the site's live state (matches, prices, model
 // probabilities, injuries, starters, slips). Used by both the built-in brain and the Claude tools,
 // so every answer comes from the same numbers the pages show.
-import { analysisFor } from '../views.js';
+import { analysisFor, matchBestBets } from '../views.js';
 import { devig, todayEvents } from '../engine.js';
 import { loadDetail, detailFor } from '../detail.js';
 import { CATALOG, ALL_LEAGUES, sportById } from '../catalog.js';
@@ -155,13 +155,15 @@ export function createKnowledge(S) {
       winProbability: { home: r2(a.win.home), draw: a.win.draw ? r2(a.win.draw) : undefined, away: r2(a.win.away) },
       liveEstimate: (() => { const lw = liveWin(e, a); return lw ? { home: r2(lw.home), draw: lw.draw != null ? r2(lw.draw) : undefined, away: r2(lw.away), gameLeft: r2(lw.left) } : undefined; })(),
       basis: a.basis, confidence: a.confidence, bookmaker: e.bookmaker || null, bestPrices: top, modelMarkets: derived,
+      // The picks to recommend: 1-3 that agree with each other (one side, one goals direction).
+      recommended: matchBestBets(e, a).map((x) => ({ label: x.label, market: x.market, pick: x.pick, odds: r2(x.odds), probability: r2(x.q), priced: x.book, edge: x.book ? r2(x.ev) : null })),
       records: e.stats?.homeRecord || e.stats?.awayRecord ? { home: e.stats.homeRecord, away: e.stats.awayRecord } : undefined,
       form: e.stats?.homeForm ? { home: (e.stats.homeForm || []).join(''), away: (e.stats.awayForm || []).join('') } : undefined,
       starters: startersOf(e), tennis: e.tennis ? { tournament: e.tennis.tournament, location: e.tennis.location, draw: e.tennis.drawName, round: e.tennis.round, bestOf: e.tennis.bestOf } : undefined,
     };
   }
 
-  const slips = (target, today = true) => S.slips(target, { count: 5, maxLegs: target <= 5 ? 3 : target <= 20 ? 5 : 10, tolerance: target <= 20 ? 0.08 : 0.15, today });
+  const slips = (target, today = true) => S.slips(target, { count: 5, today: today && target < 100 });
 
   const catalog = () => CATALOG.map((s) => ({ id: s.id, name: s.name, matches: S.events.filter((e) => e.sport === s.id).length }));
 

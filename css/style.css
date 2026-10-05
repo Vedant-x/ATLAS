@@ -214,7 +214,7 @@ h1.vs small { font: 700 14px var(--mono); letter-spacing: 6px; color: var(--acce
 .teams b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .teams small { color: var(--muted); font-size: 12px; margin-top: 2px; }
 .row-prob small { display: flex; justify-content: space-between; font: 11px var(--mono); color: var(--muted); margin-top: 6px; }
-.odds { display: flex; gap: 6px; }
+.odds { display: flex; flex-wrap: wrap; gap: 6px; }
 .leg { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 62px; padding: 7px 10px; border: 1px solid var(--line2); border-radius: 12px; font: 700 14px var(--mono); background: rgba(255,255,255,.03); transition: background .25s, color .25s, border-color .25s, transform .3s var(--ease); }
 .leg small { font: 600 9px var(--sans); color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
 .leg:hover { border-color: var(--accent); transform: translateY(-2px); }
@@ -902,3 +902,5 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 /* Links inside sentences are underlined, not told apart by colour alone. */
 p a:not(.btn):not(.more), .rec-line a, .lede a, .note a, .muted a { text-decoration: underline; text-underline-offset: 2px; }
 .teams .sp-line { color: var(--accent); font: 600 11px var(--mono); letter-spacing: .3px; }
+
+.odds .odds-src, .row .odds > .odds-src { flex: 0 0 100%; text-align: right; color: var(--muted); font: 500 10px var(--mono); letter-spacing: .3px; }

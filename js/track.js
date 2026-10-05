@@ -2,7 +2,7 @@
 // statistics shown on the Record page. Pure functions, shared by the build (scripts/record.mjs) and
 // the browser.
 import { applyModel, bankers, valueSpots } from './intel.js';
-import { buildSlips } from './engine.js';
+import { bankerSlips } from './picks.js';
 
 export const MIN_ODDS = 1.3;
 
@@ -43,20 +43,23 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
   return [
     ...bankers(soon, { min: 0.6, minOdds: MIN_ODDS, limit: 40 }).filter(keep).map(row('banker')),
     ...valueSpots(soon, { minEdge: 0.03, minOdds: MIN_ODDS, limit: 40 }).map(row('value')),
-    ...multiPicks(events, now),
+    ...multiPicks(events, now, history),
   ];
 }
 
-// The day's official multiplier slips (2x, 3x, 5x): the most likely combination near each target from
-// bookmaker-priced matches in the next 18 hours, locked once per UTC day and graded leg by leg.
-export const MULTI_TARGETS = [2, 3, 5];
-export function multiPicks(events, now = Date.now()) {
-  const pool = applyModel(events.filter((e) => !e.live && e.compId && e.markets?.length && e.start > now + 30 * 6e4 && e.start < now + 18 * 36e5));
+// The day's official multiplier and mega slips (2x up to 1000x), built from bankers exactly as the site
+// shows them (picks.js), from bookmaker-priced matches in the next 18 hours (36 for 100x+), locked
+// once per UTC day and graded leg by leg.
+export const MULTI_TARGETS = [2, 3, 5, 10, 100, 1000];
+export function multiPicks(events, now = Date.now(), history = []) {
+  const pool = applyModel(events.filter((e) => !e.live && e.compId && e.markets?.length && e.start > now + 30 * 6e4 && e.start < now + 36 * 36e5));
   const byId = new Map(pool.map((e) => [e.id, e]));
+  const cal = calibration(history);
   const day = new Date(now).toISOString().slice(0, 10);
   const out = [];
   for (const target of MULTI_TARGETS) {
-    const best = buildSlips(pool, target, { count: 5, maxLegs: 3, tolerance: 0.1, minOdds: 1.2 }).sort((a, b) => b.p - a.p)[0];
+    const near = target >= 100 ? pool : pool.filter((e) => e.start < now + 18 * 36e5);
+    const best = bankerSlips(near, target, { count: 1, tolerance: target >= 100 ? 0.15 : 0.1, cal })[0];
     if (!best) continue;
     const legs = best.legs.map((l) => { const e = byId.get(l.eventId); return { eventId: e.id, leaguePath: e.leaguePath, compId: e.compId, sport: e.sport, league: e.league, home: e.home, away: e.away, start: e.start, market: l.market, pick: l.pick, odds: l.odds, p: +l.p.toFixed(4), status: 'pending' }; });
     out.push({

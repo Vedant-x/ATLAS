@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { collectStake } from './stake-provider.mjs';
 // Builds the static GitHub Pages site into dist/pages, with data/index.json holding every fixture ATLAS
 // tracks for the next few days:
 //   - ESPN scoreboards for every league in js/catalog.js
@@ -708,6 +707,3 @@ log(Object.entries(byLeague).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}:$
 
 // Collect at the end so the long sports build does not age the odds before publication.
 // API keys remain in the process environment; only sanitized quotes go into the Pages artifact.
-const stakeFeed = await collectStake();
-await writeFile(`${out}/data/stake.json`, JSON.stringify(stakeFeed));
-log(`Stake: ${stakeFeed.status}; ${stakeFeed.events.length} events`);
