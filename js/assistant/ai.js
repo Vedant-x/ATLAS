@@ -101,7 +101,7 @@ export function loadEngine() {
       const webllm = await import('../../vendor/web-llm.mjs');
       const report = (r) => progressSubs.forEach((f) => f(r.progress ?? 0, r.text || ''));
       try {
-        const worker = new Worker(new URL('./llm-worker.js', import.meta.url), { type: 'module' });
+        const worker = new Worker(new URL('js/assistant/llm-worker.js', document.baseURI), { type: 'module' }) /* page-relative: works bundled or not */;
         return await webllm.CreateWebWorkerMLCEngine(worker, MODEL(), { initProgressCallback: report });
       } catch {
         return webllm.CreateMLCEngine(MODEL(), { initProgressCallback: report });

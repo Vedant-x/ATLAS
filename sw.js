@@ -4,7 +4,7 @@
 const BUILD = '__BUILD__';
 const SHELL = `atlas-shell-${BUILD}`;
 const DATA = 'atlas-data';
-const CORE = ['./', 'index.html', 'css/style.css', 'js/main.js', 'vendor/gsap.min.js', 'vendor/three.module.js', 'manifest.webmanifest', 'favicon.svg'];
+const CORE = ['./', 'index.html', 'js/main.js', 'vendor/gsap.min.js', 'manifest.webmanifest', 'favicon.svg']; // the rest is cached as it's used
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(SHELL).then((c) => c.addAll(CORE)).then(() => self.skipWaiting()));

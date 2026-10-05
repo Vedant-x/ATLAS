@@ -125,6 +125,13 @@ function tennisBoard(list) {
 }
 
 // compact: inside a tournament/draw/round section, so the subtitle only needs court and time.
+// Baseball: the starting pitchers right in the list ("SP Maeda v Kamichatani").
+function starterLine(e) {
+  if (e.sport !== 'baseball' || !e.probables?.length) return '';
+  const nm = (side) => { const p = e.probables.find((x) => x.side === side); const n = p?.report?.name || p?.name || ''; return (n.includes(',') ? n.split(',')[0] : n.split(' ').slice(-1)[0]) || 'TBA'; };
+  return `<small class="sp-line">SP ${esc(nm('home'))} v ${esc(nm('away'))}</small>`;
+}
+
 function eventRow(e, compact = false) {
   const s = sportOf(e.sport), w = winProbs(e);
   const hc = safeColor(e.colors?.home, s.color), ac = safeColor(e.colors?.away, AWAY_COLOR);
@@ -133,7 +140,7 @@ function eventRow(e, compact = false) {
   return `<article class="row tilt reveal" style="--c:${s.color}">
     <a class="row-link" href="#/match/${esc(e.id)}" data-cursor="OPEN" aria-label="${esc(e.home)} vs ${esc(e.away)}"></a>
     <span class="ico">${s.icon}</span>
-    <div class="teams"><b>${esc(e.home)}${seedTag(e.tennis?.home)}</b><b>${esc(e.away)}${seedTag(e.tennis?.away)}</b><small>${e.tennis ? esc(compact === true ? e.tennis.court || e.tennis.round : tennisLine(e.tennis)) : esc(e.league)} · ${when(e)}</small></div>
+    <div class="teams"><b>${esc(e.home)}${seedTag(e.tennis?.home)}</b><b>${esc(e.away)}${seedTag(e.tennis?.away)}</b><small>${e.tennis ? esc(compact === true ? e.tennis.court || e.tennis.round : tennisLine(e.tennis)) : esc(e.league)} · ${when(e)}</small>${starterLine(e)}</div>
     <div class="row-prob">${probBar([{ label: e.home, p: w.home, color: hc }, ...(w.draw ? [{ label: 'Draw', p: w.draw, color: DRAW_COLOR }] : []), { label: e.away, p: w.away, color: ac }])}
       <small><span>${pc(w.home, 0)}</span>${w.draw ? `<span>${pc(w.draw, 0)}</span>` : ''}<span>${pc(w.away, 0)}</span></small></div>
     <div class="odds">${main ? main.outcomes.map((o, i) => legButton(bookLeg(e, main, o, o.model ?? d.outcomes[i].fair), `<small>${esc(o.name === 'Draw' ? 'X' : o.name.split(' ').pop().slice(0, 4))}</small>${odd(o.odds)}`)).join('') : `<span class="nobook">model line</span>`}</div>
@@ -428,15 +435,15 @@ function dashboard(ev, live) {
   const changes = ev.flatMap((e) => ['home', 'away'].flatMap((sd) => (e.absences?.[sd] || []).map((x) => ({ e, team: sd === 'home' ? e.home : e.away, ...x }))))
     .filter((x) => x.updated).sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated)).slice(0, 6);
   return `<section class="dash">
-    <div class="panel dash-short reveal"><h3 class="ph">Today's shortlist <small>${when2} · estimated 60%+ after the track-record check · odds ≥ ${minOdds.toFixed(2)}</small></h3>
+    <div class="panel dash-short reveal"><h2 class="ph">Today's shortlist <small>${when2} · estimated 60%+ after the track-record check · odds ≥ ${minOdds.toFixed(2)}</small></h2>
       ${rec ? `<p class="rec-line">Bankers so far: ${rec} · <a href="#/track">full record</a></p>` : ''}
       <div class="minilist">${short.map((b) => miniPick(b)).join('') || '<p class="muted">Nothing passes your filters right now. Lower the minimum odds or add sports.</p>'}</div>${prefsBar()}</div>
-    <div class="panel dash-live reveal"><h3 class="ph">Live now <small>${live.length}</small></h3>
+    <div class="panel dash-live reveal"><h2 class="ph">Live now <small>${live.length}</small></h2>
       ${live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${esc(e.score || '')}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>
-    <div class="panel dash-changes reveal"><h3 class="ph">Latest absences <small>soccer · FotMob</small></h3>
+    <div class="panel dash-changes reveal"><h2 class="ph">Latest absences <small>soccer · FotMob</small></h2>
       ${changes.length ? `<ul class="dash-list">${changes.map((x) => `<li><a href="#/match/${esc(x.e.id)}"><b>${esc(x.name)}</b> (${esc(x.team)}) · ${esc(x.injury || x.type)}</a><small>${[x.expectedReturn && `back ${esc(x.expectedReturn)}`, `updated ${ago(Date.parse(x.updated))}`].filter(Boolean).join(' · ')}</small></li>`).join('')}</ul>` : '<p class="muted">No recent absence updates.</p>'}</div>
     ${trackCard(() => S.refresh?.())}
-    <div class="panel dash-health reveal"><h3 class="ph">Source health</h3>${sourceHealth(ev)}</div>
+    <div class="panel dash-health reveal"><h2 class="ph">Source health</h2>${sourceHealth(ev)}</div>
   </section>`;
 }
 

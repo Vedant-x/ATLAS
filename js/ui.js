@@ -24,11 +24,11 @@ export function preloader(promise) {
       const g = gsap();
       if (g && !reduced) {
         g.timeline()
-          .to('#preloader .pl-word span', { yPercent: -110, stagger: 0.04, duration: 0.6, ease: 'expo.in' })
-          .to('#preloader', { clipPath: 'inset(0 0 100% 0)', duration: 1, ease: 'expo.inOut' }, '-=0.1')
-          .add(() => { el.remove(); res(v); }, '-=0.45');
+          .to('#preloader .pl-word span', { yPercent: -110, stagger: 0.02, duration: 0.25, ease: 'expo.in' })
+          .to('#preloader', { clipPath: 'inset(0 0 100% 0)', duration: 0.4, ease: 'expo.inOut' }, '-=0.1')
+          .add(() => { el.remove(); res(v); }, '-=0.35');
       } else { el.remove(); res(v); }
-    }, 150));
+    }, 60));
   });
 }
 

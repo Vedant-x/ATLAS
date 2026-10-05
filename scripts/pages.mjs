@@ -525,6 +525,24 @@ for (const d of ['js', 'css', 'vendor', 'icons']) await cp(d, `${out}/${d}`, { r
 // Service worker, stamped with this build so visitors pick up new code on the next visit.
 await writeFile(`${out}/sw.js`, (await readFile('sw.js', 'utf8')).replace('__BUILD__', String(Date.now())));
 await writeFile(`${out}/.nojekyll`, '');
+// Speed: bundle + minify the JavaScript (three.js and the AI model load as separate lazy chunks, unused
+// code is dropped) and inline the minified CSS so nothing blocks the first paint. If esbuild isn't
+// installed the plain source files are served as before.
+{
+  let esbuild = null;
+  try { esbuild = await import('esbuild'); } catch { log('Bundling skipped (esbuild not installed): serving source files'); }
+  if (esbuild) {
+    const r = await esbuild.build({
+      entryPoints: ['js/main.js'], bundle: true, splitting: true, format: 'esm', minify: true, target: 'es2020',
+      outdir: `${out}/js`, entryNames: '[name]', chunkNames: 'chunks/[name]-[hash]', legalComments: 'none', metafile: true, logLevel: 'warning',
+    });
+    const css = (await esbuild.transform(await readFile('css/style.css', 'utf8'), { loader: 'css', minify: true })).code;
+    const html = (await readFile(`${out}/index.html`, 'utf8')).replace('<link rel="stylesheet" href="css/style.css" />', () => `<style>${css}</style>`);
+    await writeFile(`${out}/index.html`, html);
+    const sizes = Object.entries(r.metafile.outputs).map(([f, o]) => [f.replace(`${out}/`, ''), o.bytes]).sort((x, y) => y[1] - x[1]);
+    log(`Bundled: main ${(sizes.find(([f]) => f === 'js/main.js')?.[1] / 1024).toFixed(0)} KB, ${sizes.length} files (largest ${sizes.slice(0, 3).map(([f, n]) => `${f} ${(n / 1024).toFixed(0)} KB`).join(', ')}); CSS inlined (${(css.length / 1024).toFixed(0)} KB)`);
+  }
+}
 
 // ESPN throttles bursts from one server, so fetch the most-followed leagues first; any league the
 // build misses is still loaded live in the visitor's browser when its sport/league page opens.
@@ -547,7 +565,8 @@ const [espn, npbEvents, kboEvents, cricketEvents, esportsEvents, esoccerEvents] 
   esports().catch((e) => { log('Esports failed', e.message); problems.push(`Esports feed (bo3.gg) failed: ${e.message}`); return []; }),
   esoccer().catch((e) => { log('eSoccer failed', e.message); problems.push(`eSoccer feed (EsportsBattle) failed: ${e.message}`); return []; }),
 ]);
-const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents, ...esportsEvents, ...esoccerEvents].filter((e) => leagueByPath(e.leaguePath));
+// Known leagues only, and no stale fixtures: a game that started 12+ hours ago and isn't live is over.
+const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents, ...esportsEvents, ...esoccerEvents].filter((e) => leagueByPath(e.leaguePath) && (e.live || !(e.start < Date.now() - 12 * 36e5)));
 
 // Carry-forward: start from the previously published snapshot and restore anything a source has
 // since dropped for a match that hasn't finished: announced starters (the NPB page shows only one
