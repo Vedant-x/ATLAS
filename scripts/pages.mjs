@@ -11,6 +11,7 @@ import { collectStake } from './stake-provider.mjs';
 // Japan/Korea data that only the official league sites carry.
 import { absencesFor, injuryNames } from '../js/fotmob.js';
 import { CRICKET_URL, parseCricket } from '../js/cricket.js';
+import { parseNpbScoreboard, kboLive } from '../js/asia-live.js';
 import { enrichMlb, formOf } from '../js/mlbstats.js';
 import { validateReport } from '../js/validate.js';
 import { mkdir, copyFile, cp, writeFile, rm, readFile } from 'node:fs/promises';
@@ -192,6 +193,9 @@ async function npb() {
       if (codes.length === 2 && ids.length === 2) starters.set(`${codes[0]}-${codes[1]}`, { home: ids[0], away: ids[1], month: dateTxt?.[1], day: dateTxt?.[2] });
     }
   } catch (e) { log('NPB starters failed', e.message); }
+  // Today's live state (the English schedule shows digits for games in progress and finished alike).
+  const liveNow = new Map();
+  try { for (const g of parseNpbScoreboard(await get(`https://npb.jp/games/${ymd(day(0)).slice(0, 4)}/`))) liveNow.set(g.id, g); } catch (e) { log('NPB live state failed', e.message); }
   for (let off = 0; off < 4; off++) {
     const d = day(off), key = ymd(d);
     let html;
@@ -202,8 +206,9 @@ async function npb() {
       const round = clean(m[2].match(/class="round"[^>]*>([\s\S]*?)<\/div>/)?.[1]);
       const time = round.match(/(\d{1,2}):(\d{2})/);
       const scores = [...m[2].matchAll(/class="score_text[^"]*"[^>]*>([\s\S]*?)<\/div>/g)].map((x) => clean(x[1]));
-      if (scores.every((s) => /^\d+$/.test(s))) continue; // finished
       const [hc, ac] = codes;
+      const lv = liveNow.get(`atlas_npb-${key}-${hc}-${ac}`);
+      if (lv?.status === 'final' || lv?.status === 'cancelled' || (!lv && scores.every((s) => /^\d+$/.test(s)))) continue; // finished
       const s0 = starters.get(`${hc}-${ac}`);
       // The starters page covers one date; series repeat the same pairing, so match the date too.
       const st = s0 && Number(s0.month) === d.getUTCMonth() + 1 && Number(s0.day) === d.getUTCDate() ? s0 : null;
@@ -211,7 +216,8 @@ async function npb() {
         id: `atlas_npb-${key}-${hc}-${ac}`, sport: 'baseball', league: 'NPB', leaguePath: 'atlas/npb', group: 'Pro',
         home: NPB_TEAMS[hc] || hc, away: NPB_TEAMS[ac] || ac,
         start: time ? Date.parse(`${d.toISOString().slice(0, 10)}T${time[1].padStart(2, '0')}:${time[2]}:00+09:00`) : Date.parse(`${d.toISOString().slice(0, 10)}T09:00:00Z`),
-        live: false, venue: round.replace(/\d{1,2}:\d{2}/, '').trim(), markets: [], stats: {}, lineups: null,
+        live: lv?.status === 'live', score: lv?.status === 'live' ? lv.score : null, clock: lv?.clock || '', period: lv?.period ?? null,
+        venue: round.replace(/\d{1,2}:\d{2}/, '').trim(), markets: [], stats: {}, lineups: null,
         colors: { home: NPB_COLORS[hc], away: NPB_COLORS[ac] },
         probables: st ? [{ side: 'home', npbId: st.home, role: 'SP' }, { side: 'away', npbId: st.away, role: 'SP' }] : [],
         source: 'NPB official', fetchedAt: Date.now(), sourceUrl: `https://npb.jp/bis/eng/${key.slice(0, 4)}/games/gm${key}.html`,
@@ -331,7 +337,7 @@ async function kbo() {
         id: `atlas_kbo-${g.G_ID}`, sport: 'baseball', league: 'KBO', leaguePath: 'atlas/kbo', group: 'Pro',
         home: KBO_TEAMS[g.HOME_ID] || g.HOME_NM, away: KBO_TEAMS[g.AWAY_ID] || g.AWAY_NM,
         start: Date.parse(`${key.slice(0, 4)}-${key.slice(4, 6)}-${key.slice(6)}T${hh.padStart(2, '0')}:${mm}:00+09:00`),
-        live: g.GAME_STATE_SC === '2', score: g.GAME_STATE_SC === '2' ? `${g.B_SCORE_CN} – ${g.T_SCORE_CN}` : null,
+        live: g.GAME_STATE_SC === '2', score: g.GAME_STATE_SC === '2' ? `${g.B_SCORE_CN} – ${g.T_SCORE_CN}` : null, clock: kboLive([g])[0]?.clock || '', period: Number(g.GAME_INN_NO) || null,
         venue: g.S_NM, broadcast: g.TV_IF || null, markets: [], lineups: null,
         stats: { homeRank: g.B_RANK_NO, awayRank: g.T_RANK_NO },
         colors: { home: KBO_COLORS[g.HOME_ID], away: KBO_COLORS[g.AWAY_ID] },
@@ -377,6 +383,31 @@ const [espn, npbEvents, kboEvents, cricketEvents] = await Promise.all([
   cricket().catch((e) => { log('Cricket failed', e.message); problems.push(`Cricket feed failed: ${e.message}`); return []; }),
 ]);
 const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents].filter((e) => leagueByPath(e.leaguePath));
+
+// Carry-forward: start from the previously published snapshot and restore anything a source has
+// since dropped for a match that hasn't finished: announced starters (the NPB page shows only one
+// day's starters and moves on to tomorrow's by mid-afternoon), absences and lineups. Sources can
+// only add or change information, never silently remove it.
+{
+  let prev = [];
+  try {
+    const r = await fetch(process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json', { signal: AbortSignal.timeout(20000) });
+    if (r.ok) prev = (await r.json()).events || [];
+  } catch (err) { log(`Carry-forward: previous snapshot unavailable (${err.message})`); }
+  const old = new Map(prev.map((e) => [e.id, e]));
+  let starters = 0, news = 0;
+  for (const e of events) {
+    const o = old.get(e.id);
+    if (!o || e.start < Date.now() - 6 * 36e5) continue;
+    const kept = (o.probables || []).filter((p) => p.report || p.npbId || p.kboId || p.name);
+    if (!(e.probables || []).length && kept.length) { e.probables = kept; starters++; }
+    else if (kept.length) {
+      for (const p of kept) if (!e.probables.some((x) => x.side === p.side)) { e.probables.push(p); starters++; }
+    }
+    if (!e.absences && o.absences) { e.absences = o.absences; news++; }
+  }
+  log(`Carry-forward: ${prev.length ? `restored starters for ${starters} side(s), team news for ${news} match(es)` : 'nothing to carry (no previous snapshot)'}`);
+}
 
 // Completeness check: ESPN's all-sports header lists what is being played today. Any catalogued
 // league with games there but none in this build is fetched again; anything still missing is

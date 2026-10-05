@@ -8,6 +8,8 @@ import { fetchAll, fetchLeague, LEAGUES, leagueStatus } from './espn.js';
 import { CRICKET_URL, parseCricket } from './cricket.js';
 import { absencesFor } from './fotmob.js';
 import { mergeEvent } from './merge.js';
+import { applyAsiaLive } from './asia-live.js';
+import { ASIA_LIVE_URL } from './config.js';
 
 // Leagues fetched directly when no snapshot exists (static file or local dev).
 const FEATURED = LEAGUES.filter((l) => ['soccer/eng.1', 'soccer/esp.1', 'soccer/ger.1', 'soccer/ita.1', 'soccer/fra.1', 'soccer/uefa.champions', 'soccer/uefa.europa', 'soccer/usa.1', 'soccer/mex.1', 'soccer/bra.1', 'soccer/arg.1', 'soccer/ned.1', 'soccer/por.1', 'soccer/tur.1', 'soccer/ksa.1', 'basketball/nba', 'basketball/wnba', 'football/nfl', 'football/college-football', 'hockey/nhl', 'baseball/mlb', 'tennis/atp', 'tennis/wta', 'mma/ufc', 'rugby/267979', 'australian-football/afl'].includes(l.path));
@@ -178,4 +180,17 @@ export async function loadEvents() {
   const r = rng(Math.floor(now / 86400000));
   const events = SPORTS.filter((s) => TEAMS[s.id]).flatMap((s) => Array.from({ length: 8 }, (_, i) => makeEvent(s.id, i, r, now)));
   return { events, source: 'demo', demo: true, server: false };
+}
+
+// NPB/KBO live scores from the minute-by-minute file the deploy workflow publishes (their own sites
+// block browsers). Only fetched while one of those games is on or about to start.
+export async function refreshAsia(events) {
+  const now = Date.now();
+  const due = events.some((e) => (e.leaguePath === 'atlas/npb' || e.leaguePath === 'atlas/kbo') && (e.live || (e.start < now + 20 * 6e4 && e.start > now - 5 * 36e5)));
+  if (!due) return null;
+  const res = await fetch(`${ASIA_LIVE_URL}?t=${Math.floor(now / 3e4)}`, { signal: AbortSignal.timeout(8000), cache: 'no-store' });
+  if (!res.ok) return null;
+  const live = await res.json();
+  if (!(live.at > now - 10 * 6e4)) return null; // the lane isn't running: keep what we have
+  return applyAsiaLive(events, live, now);
 }

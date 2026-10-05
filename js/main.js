@@ -4,7 +4,7 @@ import { mountAssistant } from './assistant/ui.js';
 import { legalViews, ageGate } from './legal.js';
 import { trackViews } from './trackview.js';
 import { watch, checkAlerts } from './alerts.js';
-import { loadEvents, refreshLive, refreshCricket, refreshTeamNews } from './data.js';
+import { loadEvents, refreshLive, refreshCricket, refreshTeamNews, refreshAsia } from './data.js';
 import { overlayLive } from './merge.js';
 import { enrichMlb } from './mlbstats.js';
 import { buildSlips, todayEvents, localDay } from './engine.js';
@@ -56,7 +56,7 @@ function setData(d) {
 const anyLive = () => state.events.some((e) => e.live);
 const following = () => watch.ids().length > 0 || slip.legs.length > 0;
 const refreshMs = () => (document.hidden ? 60000 : anyLive() ? 5000 : state.snapshot ? 30000 : 5000);
-let polling = false, lastIndex = Date.now(), lastWide = 0, lastNews = 0;
+let polling = false, lastIndex = Date.now(), lastWide = 0, lastNews = 0, lastAsia = 0;
 const sigOf = (events) => events.map((e) => `${e.id}|${e.live ? 1 : 0}|${e.score || ''}|${(e.markets || []).map((m) => m.outcomes.map((o) => o.odds).join(',')).join(';')}|${e.absences ? `${e.absences.home.length},${e.absences.away.length},${e.absences.lineup?.type || ''}` : ''}`).join('~');
 let lastSig = '';
 // A starter announced or changed after the snapshot has no report yet: fetch it from the MLB Stats
@@ -91,6 +91,8 @@ async function poll() {
       if (wide || state.events.some((e) => e.live && e.sport === 'cricket')) next = (await refreshCricket(next || state.events).catch(() => null)) || next;
       // Soccer team news (absences, confirmed XIs) every 2 minutes around kick-off.
       if (Date.now() - lastNews > 120000) { lastNews = Date.now(); next = (await refreshTeamNews(next || state.events).catch(() => null)) || next; }
+      // NPB/KBO live scores (published every minute by the deploy workflow).
+      if (Date.now() - lastAsia > 45000) { lastAsia = Date.now(); next = (await refreshAsia(next || state.events).catch(() => null)) || next; }
       if (wide) lastWide = Date.now();
       if (next) apply(next);
     } else {
@@ -345,7 +347,8 @@ preloader(loadEvents()).then((d) => {
   addEventListener('hashchange', route);
   scene.pulse();
   state.ai = mountAssistant(state);
-  (function tick() { setTimeout(() => poll().finally(tick), refreshMs()); })();
+  // Catch up on live scores straight away (the snapshot can be minutes old), then keep polling.
+  poll().finally(function tick() { setTimeout(() => poll().finally(tick), refreshMs()); });
   addEventListener('visibilitychange', () => { if (!document.hidden) poll(); }); // back on the tab: catch up now
 });
 
