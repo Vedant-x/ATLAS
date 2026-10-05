@@ -371,16 +371,37 @@ async function kbo() {
 // ---------- esports ----------
 // bo3.gg: every upcoming/live CS2, Valorant, LoL and Dota 2 series in the next 4 days.
 async function esports() {
-  const all = [];
-  for (const d of Object.keys(BO3_GAMES)) {
-    for (let page = 0; page < 4; page++) {
-      const j = JSON.parse(await get(`${BO3}/matches?page[offset]=${page * 100}&page[limit]=100&sort=start_date&filter[matches.status][in]=current,upcoming&filter[matches.discipline_id][eq]=${d}&with=teams,tournament,games`));
-      all.push(...(j.results || []));
-      const last = Date.parse(j.results?.at(-1)?.start_date);
-      if ((page + 1) * 100 >= (j.total?.count || 0) || last > Date.now() + 4 * 864e5) break;
+  // bo3.gg is sometimes slow: each request gets 30 s and two retries, each game is fetched on its own
+  // (in parallel), and a game that still fails keeps its fixtures from the last published snapshot,
+  // so a slow source never empties the esports pages or raises a false alarm.
+  const getJson = async (url) => {
+    for (let i = 0; ; i++) {
+      try { return JSON.parse(await get(url, { signal: AbortSignal.timeout(30000) })); } catch (e) { if (i >= 2) throw e; await new Promise((r) => setTimeout(r, 3000 * (i + 1))); }
     }
+  };
+  const failed = [];
+  const lists = await Promise.all(Object.entries(BO3_GAMES).map(async ([d, g]) => {
+    const rows = [];
+    try {
+      for (let page = 0; page < 4; page++) {
+        const j = await getJson(`${BO3}/matches?page[offset]=${page * 100}&page[limit]=100&sort=start_date&filter[matches.status][in]=current,upcoming&filter[matches.discipline_id][eq]=${d}&with=teams,tournament,games`);
+        rows.push(...(j.results || []));
+        const last = Date.parse(j.results?.at(-1)?.start_date);
+        if ((page + 1) * 100 >= (j.total?.count || 0) || last > Date.now() + 4 * 864e5) break;
+      }
+      return parseBo3(rows);
+    } catch (e) { failed.push(g); log(`Esports: ${g.game} failed (${e.message})`); return []; }
+  }));
+  const list = lists.flat();
+  if (failed.length) {
+    let kept = 0;
+    try {
+      const prev = await (await fetch(process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json', { signal: AbortSignal.timeout(20000) })).json();
+      for (const e of prev.events || []) if (failed.some((g) => g.path === e.leaguePath) && (e.live || e.start > Date.now() - 3 * 36e5)) { list.push(e); kept++; }
+    } catch { /* no previous snapshot */ }
+    log(`Esports: kept ${kept} fixture(s) from the last snapshot for ${failed.map((g) => g.game).join(', ')}`);
+    if (!kept) problems.push(`Esports feed (bo3.gg) failed for ${failed.map((g) => g.game).join(', ')} with no earlier fixtures to fall back on`);
   }
-  const list = parseBo3(all);
   const by = (p) => list.filter((e) => e.leaguePath === p).length;
   log(`Esports (bo3.gg): ${list.length} series (CS2 ${by('atlas/cs2')}, Valorant ${by('atlas/valorant')}, LoL ${by('atlas/lol')}, Dota 2 ${by('atlas/dota2')}), ${list.filter((e) => e.markets.length).length} priced, ${list.filter((e) => e.live).length} live`);
   return list;
@@ -481,7 +502,7 @@ async function f1(prevF1) {
     const ses = await O(`sessions?year=${race.season}`);
     const mine = ses.filter((x) => Date.parse(x.date_start) > first - 6 * 36e5 && Date.parse(x.date_start) < last + 6 * 36e5);
     if (mine.length) meeting = { key: mine[0].meeting_key, circuitKey: mine[0].circuit_key, circuit: mine[0].circuit_short_name, sessions: mine.map((x) => ({ key: x.session_key, name: x.session_name, start: Date.parse(x.date_start), end: Date.parse(x.date_end) })) };
-    for (const d of await O('drivers?session_key=latest')) if (d.last_name) colours[d.last_name.toLowerCase()] = { colour: d.team_colour ? `#${d.team_colour}` : null, number: d.driver_number, headshot: d.headshot_url || null };
+    for (const d of await O('drivers?session_key=latest')) if (d.last_name) colours[d.last_name.toLowerCase()] = { colour: /^[0-9a-f]{6}$/i.test(d.team_colour || '') ? `#${d.team_colour}` : null, number: d.driver_number, headshot: d.headshot_url || null };
   } catch (e) { log('F1: OpenF1 meeting/drivers failed', e.message); }
   drivers.forEach((d) => { const c = colours[d.family.toLowerCase()]; if (c) Object.assign(d, { colour: c.colour, number: c.number ?? d.number, headshot: c.headshot }); });
   model.drivers.forEach((d) => { const x = drivers.find((y) => y.id === d.id); Object.assign(d, { colour: x.colour, number: x.number, headshot: x.headshot }); });

@@ -20,6 +20,8 @@ import { pc, odd } from './charts.js';
 import { leagueByPath, leagueKey, sportById } from './catalog.js';
 
 const app = document.getElementById('app');
+// Web fonts were loaded with media=print so they don't block the first paint: switch them on now.
+document.querySelectorAll('link[data-fonts]').forEach((l) => { l.media = 'all'; });
 // Effects switch: the 3D background can be turned off (remembered per device, or ?lite in the URL).
 const fxOff = (() => { try { return /[?&]lite\b/.test(location.search) || localStorage.getItem('atlas-fx') === 'off'; } catch { return false; } })();
 const bg = document.getElementById('bg');
@@ -271,7 +273,7 @@ function renderSlip() {
       <div><small>Total odds</small><b>${s.odds.toFixed(2)}x</b></div>
       <div><small>Est. chance</small><b>${pc(s.p, s.p < 0.01 ? 2 : 1)}</b></div>
       <div><small>Edge</small><b class="${s.ev >= 0 ? 'pos' : 'neg'}">${(s.ev * 100).toFixed(1)}%</b></div>
-      <label><small>Stake</small><input type="number" min="0" step="1" value="${slip.stake}" data-slip-stake></label>
+      <label><small>Stake</small><input type="number" min="0" step="1" value="${Number(slip.stake) || 0}" data-slip-stake></label>
       <div><small>Potential return</small><b data-sum-pay>${s.payout.toFixed(2)}</b></div>
       <div><small>Expected return</small><b data-sum-exp>${(slip.stake * s.p * s.odds).toFixed(2)}</b></div>
     </div>
