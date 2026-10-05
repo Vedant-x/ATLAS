@@ -14,7 +14,7 @@ import { trackCalibration } from './trackview.js';
 import { prefs, prefEvents } from './prefs.js';
 import { applyModel, bankers } from './intel.js';
 import { fetchLineups } from './espn.js';
-import { views, bind, legIndex, edgeTable, countdown, esc, sportOf } from './views.js';
+import { views, bind, legIndex, edgeTable, countdown, esc, sportOf, ist } from './views.js';
 import { slip } from './slip.js';
 import { preloader, cursor, wipe, magnetic, tilt, countUp, reveal } from './ui.js';
 import { pc, odd } from './charts.js';
@@ -269,7 +269,7 @@ function renderSlip() {
   const s = slip.summary();
   document.querySelectorAll('[data-slip-count]').forEach((el) => { el.textContent = s.n; el.classList.toggle('has', s.n > 0); });
   drawer.querySelector('.slip-body').innerHTML = s.n ? `
-    <ul class="slip-legs">${slip.legs.map((l) => `<li><span>${sportOf(l.sport).icon}</span><div><b>${esc(l.pick)}</b><small>${esc(l.market)} · ${esc(l.match)}</small>${l.derived ? '<small class="warn">ATLAS fair price, not a bookmaker quote</small>' : ''}${staleNote(l)}</div><em>${odd(l.odds)}</em><button data-unleg="${esc(l.key)}" aria-label="Remove">×</button></li>`).join('')}</ul>
+    <ul class="slip-legs">${slip.legs.map((l) => `<li><span>${sportOf(l.sport).icon}</span><div><b>${esc(l.pick)}</b><small>${esc(l.market)} · ${esc(l.match)}</small>${(() => { const ev = state.events.find((x) => x.id === l.eventId); return ev?.live ? '<small class="live">LIVE</small>' : ev?.start ? `<time class="ist">🕒 ${ist(ev.start)}</time>` : ''; })()}${l.derived ? '<small class="warn">ATLAS fair price, not a bookmaker quote</small>' : ''}${staleNote(l)}</div><em>${odd(l.odds)}</em><button data-unleg="${esc(l.key)}" aria-label="Remove">×</button></li>`).join('')}</ul>
     ${s.correlated ? '<p class="warn">Two legs from the same match are correlated: the true combined chance differs from the product shown, and bookmakers may refuse the combination.</p>' : ''}
     <div class="slip-sum">
       <div><small>Total odds</small><b>${s.odds.toFixed(2)}x</b></div>

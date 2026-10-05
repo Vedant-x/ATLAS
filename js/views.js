@@ -65,7 +65,10 @@ function prefsBar() {
 }
 const prefFilter = (list) => { const p = prefs.get(); const ev = prefEvents(list); return p.pricedOnly ? ev.filter((e) => e.markets?.length) : ev; };
 
-const when = (e) => (e.live ? `<span class="live">LIVE${e.score ? ` · ${esc(e.score)}` : ''}</span>${e.clock ? ` <small class="lclock" data-clock="${esc(e.id)}">${esc(e.clock)}</small>` : ''}` : `<span data-start="${e.start}">${countdown(e.start)}</span>`);
+// Kick-off in Indian time, e.g. "Mon 6 Oct, 7:30 pm IST".
+export const ist = (t) => (Number.isFinite(t) ? `${new Date(t).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true })} IST` : '');
+const istTag = (t) => (Number.isFinite(t) ? `<time class="ist" datetime="${new Date(t).toISOString()}">🕒 ${ist(t)}</time>` : '');
+const when = (e) => (e.live ? `<span class="live">LIVE${e.score ? ` · ${esc(e.score)}` : ''}</span>${e.clock ? ` <small class="lclock" data-clock="${esc(e.id)}">${esc(e.clock)}</small>` : ''}` : `<span data-start="${e.start}">${countdown(e.start)}</span> ${istTag(e.start)}`);
 export function countdown(ms) {
   const d = ms - Date.now();
   if (!Number.isFinite(d)) return 'TBC';
@@ -156,7 +159,7 @@ function slipCard(s, i, target) {
   });
   return `<article class="slipc tilt reveal">
     <header><span class="tag">#${String(i + 1).padStart(2, '0')}</span><span class="mult">${s.odds.toFixed(2)}<small>x</small></span></header>
-    <ul>${s.legs.map((l) => `<li><span class="sp">${sportOf(l.sport).icon}</span><div><b>${esc(l.pick)}</b><small>${esc(l.market)} · ${esc(l.match)}</small></div><em>${l.odds.toFixed(2)}</em><i>${pc(l.p, 0)}</i></li>`).join('')}</ul>
+    <ul>${s.legs.map((l) => `<li><span class="sp">${sportOf(l.sport).icon}</span><div><b>${esc(l.pick)}</b><small>${esc(l.market)} · ${esc(l.match)}</small>${istTag(l.start ?? S.events.find((x) => x.id === l.eventId)?.start)}</div><em>${l.odds.toFixed(2)}</em><i>${pc(l.p, 0)}</i></li>`).join('')}</ul>
     <footer>
       <div class="meter"><i class="grow" style="--w:${Math.min(100, s.p * 100 * (target >= 100 ? 40 : 1)).toFixed(1)}%"></i></div>
       <span>Estimated chance <b>${pc(s.p, s.p < 0.01 ? 2 : 1)}</b></span><span>Edge <b class="${s.p * s.odds - 1 >= 0 ? 'pos' : 'neg'}">${((s.p * s.odds - 1) * 100).toFixed(1)}%</b></span>
@@ -543,14 +546,14 @@ function bestBetsPanel(e, a) {
       const leg = b.book ? { key: `${e.id}|${b.market}|${b.pick}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p }
         : { key: `${e.id}|fair|${b.market}|${b.pick}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: b.market, pick: b.pick, odds: +b.odds.toFixed(2), p: b.p, derived: true };
       const yn = /^(Yes|No|Over|Under)$/.test(b.pick);
-      return `<div class="bb panel reveal"><small>${esc(b.label)}</small><b>${esc(yn ? `${b.market}: ${b.pick}` : b.pick)}</b><p class="muted bb-m">${yn ? '' : `${esc(b.market)} · `}${b.book ? 'bookmaker odds' : 'ATLAS fair odds'}</p><div class="bb-row"><span>${pc(b.q, 0)}</span><em>${esc(b.why || '')}</em>${legButton(leg, odd(b.odds))}</div></div>`;
+      return `<div class="bb panel reveal"><small>${esc(b.label)}</small><b>${esc(yn ? `${b.market}: ${b.pick}` : b.pick)}</b><p class="muted bb-m">${yn ? '' : `${esc(b.market)} · `}${b.book ? 'bookmaker odds' : 'ATLAS fair odds'}</p>${e.live ? '' : istTag(e.start)}<div class="bb-row"><span>${pc(b.q, 0)}</span><em>${esc(b.why || '')}</em>${legButton(leg, odd(b.odds))}</div></div>`;
     }).join('')}</div></section>`;
 }
 
 function miniPick(b, value) {
   const s = sportOf(b.event.sport);
   const leg = { key: `${b.event.id}|${b.market}|${b.pick}`, eventId: b.event.id, sport: b.event.sport, match: `${b.event.home} vs ${b.event.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p };
-  return `<div class="mini reveal"><span>${s.icon}</span><a href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(b.event.home)} v ${esc(b.event.away)}</small></a>
+  return `<div class="mini reveal"><span>${s.icon}</span><a href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(b.event.home)} v ${esc(b.event.away)}</small>${b.event.live ? '<small class="live">LIVE</small>' : istTag(b.event.start)}</a>
     <em>${pc(b.p, 0)}</em>${value ? `<em class="pos">+${(b.ev * 100).toFixed(1)}%</em>` : ''}${legButton(leg, odd(b.odds))}</div>`;
 }
 
