@@ -98,7 +98,7 @@ export function mountAssistant(S) {
   const pos = store.get('atlas-ai-pos', null);
   const place = (x, y) => {
     const s = launch.offsetWidth || 84;
-    const nx = Math.max(6, Math.min(innerWidth - s - 6, x)), ny = Math.max(70, Math.min(innerHeight - s - 6, y));
+    const nx = Math.max(6, Math.min(innerWidth - s - 6, x)), ny = Math.max(70, Math.min(innerHeight - s - (innerWidth <= 820 ? 92 : 6), y)); // phones: never over the tab bar
     root.style.setProperty('--ax', `${nx}px`); root.style.setProperty('--ay', `${ny}px`);
     root.classList.add('placed');
     return [nx, ny];
@@ -222,5 +222,5 @@ export function mountAssistant(S) {
   if (!store.get('atlas-ai-greeted', false)) {
     setTimeout(() => { const b = $('.ai-bubble'); b.textContent = 'Ask me for bets!'; b.hidden = false; store.set('atlas-ai-greeted', true); setTimeout(() => { b.hidden = true; }, 6000); }, 2500);
   }
-  return { open: () => toggle(true), ask };
+  return { open: () => toggle(true), close: () => toggle(false), isOpen: () => !panel.hidden, ask };
 }

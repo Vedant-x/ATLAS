@@ -140,3 +140,16 @@ export function reveal(root = document, animateTitle = true) {
 export function split(text) {
   return String(text).split(' ').map((w) => `<span class="word">${[...w].map((c) => `<span class="ch">${c.replace(/[&<>"']/g, (x) => `&#${x.charCodeAt(0)};`)}</span>`).join('')}</span>`).join(' ');
 }
+
+// Big titles never run off a small screen: shrink a title until its longest word fits its box
+// (long names like "AUGER-ALIASSIME" or "SINGAPORE" on a 360 px phone).
+export function fitTitles(root = document) {
+  root.querySelectorAll('h1').forEach((h) => {
+    h.style.fontSize = '';
+    const box = h.clientWidth;
+    if (!box) return;
+    let size = parseFloat(getComputedStyle(h).fontSize);
+    const widest = () => Math.max(0, ...[...h.querySelectorAll('.word')].map((w) => w.scrollWidth));
+    for (let i = 0; i < 14 && widest() > box && size > 16; i++) { size *= 0.9; h.style.fontSize = `${size}px`; }
+  });
+}

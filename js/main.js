@@ -17,7 +17,7 @@ import { applyModel } from './intel.js';
 import { fetchLineups } from './espn.js';
 import { views, bind, legIndex, edgeTable, countdown, esc, sportOf, ist } from './views.js';
 import { slip } from './slip.js';
-import { preloader, cursor, wipe, magnetic, tilt, countUp, reveal } from './ui.js';
+import { preloader, cursor, wipe, magnetic, tilt, countUp, reveal, fitTitles } from './ui.js';
 import { pc, odd } from './charts.js';
 import { bindResearch, quickView, togglePin, compareView, watchlistView, setResearchPrefs, pins } from './research.js';
 import { loadTimeline, markReviewed } from './timeline.js';
@@ -182,6 +182,7 @@ function render(animate) {
   const tab = ['sport', 'league', 'match'].includes(name) ? 'sports' : name; // deeper pages keep the Sports tab lit
   document.querySelectorAll('nav.top a').forEach((a) => { const h = a.getAttribute('href'); a.classList.toggle('on', h.startsWith('#/') && (h.split('/')[1] || 'home') === tab); });
   reveal(app, animate);
+  fitTitles(app);
   countUp(app);
   magnetic(app);
   calc();
@@ -190,6 +191,8 @@ function render(animate) {
   dock();
   if (name === 'match') { lcHtml = ''; tickLiveCenter(); markReviewed(decodeURIComponent(parse().args[0] || '')); }
   closeQv();
+  document.getElementById('display-panel')?.classList.remove('open'); // never carried over to the next page
+  if (innerWidth <= 820 && state.ai?.isOpen?.()) state.ai.close(); // phones: the chat sheet covers the page, so a new page closes it
 }
 
 // Back / Home dock: always reachable, so no page is a dead end. "Back" goes to the previous ATLAS
@@ -256,6 +259,7 @@ function softRender() {
   app.querySelectorAll('.reveal, .grow, .grow-y, .draw').forEach((el) => el.classList.add('in'));
   app.querySelectorAll('.ch').forEach((el) => { el.style.opacity = 1; });
   app.querySelectorAll('[data-count-to]').forEach((el) => { el.textContent = el.dataset.countTo; });
+  fitTitles(app);
   calc();
   v.after?.();
   scrollTo({ top: y, behavior: 'instant' });
@@ -428,8 +432,10 @@ document.addEventListener('click', (e) => {
   openQv(row.dataset.qv, row);
 });
 document.addEventListener('click', (e) => {
+  // Quick view: a tap anywhere outside it (other than another row) closes it, like any sheet.
+  if (qv?.classList.contains('open') && e.target.isConnected && !e.target.closest('#qv, [data-qv], .ai-root, #slip, .slip-btn')) closeQv();
   const p = document.getElementById('display-panel');
-  if (p?.classList.contains('open') && !e.target.closest('#display-panel, [data-display-toggle]')) p.classList.remove('open');
+  if (p?.classList.contains('open') && e.target.isConnected && !e.target.closest('#display-panel, [data-display-toggle]')) p.classList.remove('open'); // a chip that just redrew the panel is detached: not an outside tap
 });
 function toast(text, href) {
   let box = document.querySelector('.toasts');
@@ -490,6 +496,7 @@ preloader(Promise.race([firstData, new Promise((r) => setTimeout(() => r(null), 
     setTimeout(go, 5000);
   } else (window.requestIdleCallback || ((f) => setTimeout(f, 300)))(() => scene.start(), { timeout: 1500 });
   addEventListener('hashchange', route);
+  addEventListener('resize', () => fitTitles(app), { passive: true });
   scene.pulse();
   state.ai = mountAssistant(state);
   // Evidence timeline (what changed): loaded now, refreshed every 5 minutes.
