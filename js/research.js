@@ -5,12 +5,13 @@
 //   - the case: why a pick qualifies, what supports it, what weakens it, what is still unknown,
 //     what would change the call, and which factors are actually inside the number
 //   - compare (up to 4 pinned matches) and the watchlist
+import { ico, kindIco, watchLabel, pinLabel } from './icons.js';
 import { esc, sportOf, ist, analysisFor } from './views.js';
 import { coherentBets } from './picks.js';
 import { trackCalibration } from './trackview.js';
 import { readiness, readyBadge, READY_ORDER } from './readiness.js';
 import { changesFor, latestChange, needsReview, changesSince, lastVisit, timelineUpdatedAt } from './timeline.js';
-import { KIND_ICON, FORECAST_NOTE } from './changelog.js';
+import { FORECAST_NOTE } from './changelog.js';
 import { watch } from './alerts.js';
 import { pc, odd } from './charts.js';
 
@@ -65,8 +66,8 @@ function card(x) {
     <h3>${esc(e.home)} <i>v</i> ${esc(e.away)}</h3>
     <div class="rs-pick"><div><b>${esc(m.pick)}</b><small>${esc(m.market)}${m.book ? '' : ' · ATLAS fair price'}</small></div><span class="rs-odds">${odd(m.odds)}</span></div>
     <div class="rs-nums"><div><small>Market</small><b>${m.fair != null ? pc(m.fair, 0) : '—'}</b></div><div><small>ATLAS</small><b>${pc(m.q, 0)}</b></div><div><small>Edge</small><b class="${m.book ? (m.ev >= 0 ? 'pos' : 'neg') : ''}">${edge}</b></div></div>
-    ${x.change ? `<p class="rs-cchange">${KIND_ICON[x.change.kind] || '•'} ${esc(x.change.text)} <small>· ${ago(x.change.at)} ago</small></p>` : ''}
-    <footer>${readyBadge(x.r)}<span class="rs-cact"><button class="icon-btn ${watch.has(e.id) ? 'on' : ''}" data-watch="${esc(e.id)}" aria-pressed="${watch.has(e.id)}" aria-label="Save to watchlist">${watch.has(e.id) ? '★' : '☆'}</button><button class="icon-btn ${pins().includes(e.id) ? 'on' : ''}" data-pin="${esc(e.id)}" aria-label="Pin to compare">⇄</button></span></footer>
+    ${x.change ? `<p class="rs-cchange">${kindIco(x.change.kind)} ${esc(x.change.text)} <small>· ${ago(x.change.at)} ago</small></p>` : ''}
+    <footer>${readyBadge(x.r)}<span class="rs-cact"><button class="icon-btn ${watch.has(e.id) ? 'on' : ''}" data-watch="${esc(e.id)}" aria-pressed="${watch.has(e.id)}" aria-label="Save to watchlist">${ico(watch.has(e.id) ? 'star-on' : 'star')}</button><button class="icon-btn ${pins().includes(e.id) ? 'on' : ''}" data-pin="${esc(e.id)}" aria-label="Pin to compare">⇄</button></span></footer>
   </article>`;
 }
 
@@ -101,10 +102,10 @@ export function candidateTable(events, { limit = 25 } = {}) {
         <td class="num"><b>${pc(m.q, 0)}</b></td>
         <td class="num ${m.book ? (m.ev >= 0 ? 'pos' : 'neg') : ''}">${m.book ? `${m.ev >= 0 ? '+' : ''}${(m.ev * 100).toFixed(1)}%` : '—'}</td>
         <td>${readyBadge(x.r)}</td>
-        <td class="rs-change">${x.change ? `<span title="${esc(x.change.text)}">${KIND_ICON[x.change.kind] || '•'} ${esc(x.change.text.slice(0, 48))}${x.change.text.length > 48 ? '…' : ''}</span><small>${ago(x.change.at)} ago</small>` : '<small class="muted">no change recorded</small>'}</td>
+        <td class="rs-change">${x.change ? `<span title="${esc(x.change.text)}">${kindIco(x.change.kind)} ${esc(x.change.text.slice(0, 48))}${x.change.text.length > 48 ? '…' : ''}</span><small>${ago(x.change.at)} ago</small>` : '<small class="muted">no change recorded</small>'}</td>
         <td class="num"><small>${m.book ? ago(e.fetchedAt || S?.fetchedAt) : '—'}</small></td>
-        <td class="rs-act"><button class="icon-btn ${watch.has(e.id) ? 'on' : ''}" data-watch="${esc(e.id)}" aria-pressed="${watch.has(e.id)}" title="${watch.has(e.id) ? 'Watching' : 'Save to watchlist'}">${watch.has(e.id) ? '★' : '☆'}</button>
-          <button class="icon-btn ${pins().includes(e.id) ? 'on' : ''}" data-pin="${esc(e.id)}" title="Pin to compare">⇄</button></td></tr>`;
+        <td class="rs-act"><button class="icon-btn ${watch.has(e.id) ? 'on' : ''}" data-watch="${esc(e.id)}" aria-pressed="${watch.has(e.id)}" title="${watch.has(e.id) ? 'Watching' : 'Save to watchlist'}">${ico(watch.has(e.id) ? 'star-on' : 'star')}</button>
+          <button class="icon-btn ${pins().includes(e.id) ? 'on' : ''}" data-pin="${esc(e.id)}" title="Pin to compare" aria-label="Pin to compare">${ico('compare')}</button></td></tr>`;
     }).join('') || `<tr><td colspan="10"><p class="muted">${EMPTY}</p></td></tr>`}</tbody></table></div>
     <div class="rs-cards">${rows.map(card).join('') || `<p class="muted">${EMPTY}</p>`}</div>
     ${rows.length > 8 ? `<button class="btn-ghost rs-more" data-rmore aria-expanded="false">Show all ${rows.length}</button>` : ''}
@@ -125,7 +126,7 @@ export function changesPanel(events, { limit = 8, title = 'What changed' } = {})
   </div>`;
 }
 export const changeItem = (c) => `<li class="chg ${watch.has(c.eventId) ? 'watched' : ''}"><a href="#/match/${esc(c.eventId)}" data-qv="${esc(c.eventId)}">
-  <span class="ch-ico">${KIND_ICON[c.kind] || '•'}</span>
+  <span class="ch-ico">${kindIco(c.kind)}</span>
   <div><b>${esc(c.home)} v ${esc(c.away)}</b><p>${esc(c.text)}</p>
   <small>${esc(sportOf(c.sport).name)} · seen ${ago(c.at)} ago${c.source ? ` · source: ${esc(c.source)}` : ''}${FORECAST_NOTE[c.forecast] ? ` · <em class="fc-${c.forecast}">${FORECAST_NOTE[c.forecast]}</em>` : ''}${watch.has(c.eventId) ? ' · ★ watched' : ''}</small></div></a></li>`;
 
@@ -190,7 +191,7 @@ export function casePanel(x) {
       <div><h3>Still unknown</h3>${li(c.unknown, 'Everything this sport needs is in.')}</div>
       <div><h3>Would change the call</h3>${li(c.invalid, '—')}</div>
     </div>
-    <details class="inside"><summary>What is inside the number</summary><ul>${c.inside.map(([t, on]) => `<li class="${on ? 'yes' : 'no'}">${on ? '✓' : '✗'} ${esc(t)}</li>`).join('')}</ul></details>
+    <details class="inside"><summary>What is inside the number</summary><ul>${c.inside.map(([t, on]) => `<li class="${on ? 'yes' : 'no'}">${ico(on ? 'check' : 'cross')} ${esc(t)}</li>`).join('')}</ul></details>
   </section>`;
 }
 
@@ -198,7 +199,7 @@ export function casePanel(x) {
 export function historyPanel(e) {
   const list = changesFor(e.id);
   return `<section class="panel reveal" id="sec-history"><h2 class="ph">Evidence timeline <small>every material change ATLAS recorded for this match</small></h2>
-    ${list.length ? `<ol class="timeline">${list.map((c) => `<li><time>${esc(ist(c.at))}</time><b>${KIND_ICON[c.kind] || '•'} ${esc(c.text)}</b><small>${c.source ? `Source: ${esc(c.source)}` : ''}${FORECAST_NOTE[c.forecast] ? ` · ${FORECAST_NOTE[c.forecast]}` : ''}</small></li>`).join('')}</ol>` : '<p class="muted">No changes recorded yet: starters, lineups, absences and price moves appear here as they happen.</p>'}
+    ${list.length ? `<ol class="timeline">${list.map((c) => `<li><time>${esc(ist(c.at))}</time><b>${kindIco(c.kind)} ${esc(c.text)}</b><small>${c.source ? `Source: ${esc(c.source)}` : ''}${FORECAST_NOTE[c.forecast] ? ` · ${FORECAST_NOTE[c.forecast]}` : ''}</small></li>`).join('')}</ol>` : '<p class="muted">No changes recorded yet: starters, lineups, absences and price moves appear here as they happen.</p>'}
   </section>`;
 }
 
@@ -215,11 +216,11 @@ export function quickView(id) {
     <div class="qv-probs">${[[e.home, w.home], ...(w.draw ? [['Draw', w.draw]] : []), [e.away, w.away]].map(([n, p]) => `<div><small>${esc(n)}</small><b>${pc(p, 0)}</b></div>`).join('')}</div>
     ${x.picks.length ? `<h3>Picks</h3><ul class="qv-picks">${x.picks.map((p) => `<li><b>${esc(p.pick)}</b><small>${esc(p.market)} · ${p.book ? `odds ${odd(p.odds)} · market ${pc(p.fair, 0)} · ` : 'fair odds · '}ATLAS ${pc(p.q, 0)}${p.book ? ` · edge ${(p.ev * 100).toFixed(1)}%` : ''}</small></li>`).join('')}</ul>` : ''}
     <h3>Evidence ${readyBadge(x.r)}</h3>
-    <ul class="qv-checks">${x.r.checks.map((c) => `<li class="${c.ok === true ? 'ok' : c.ok === false ? 'no' : 'na'}">${c.ok === true ? '✓' : c.ok === false ? '✗' : '–'} <b>${esc(c.label)}</b> <small>${esc(c.note)}</small></li>`).join('')}</ul>
-    <h3>Recent changes</h3>${chg.length ? `<ul class="ch-list">${chg.map((c) => `<li class="chg"><span class="ch-ico">${KIND_ICON[c.kind] || '•'}</span><div><p>${esc(c.text)}</p><small>${ago(c.at)} ago${FORECAST_NOTE[c.forecast] ? ` · ${FORECAST_NOTE[c.forecast]}` : ''}</small></div></li>`).join('')}</ul>` : '<p class="muted">None recorded yet.</p>'}
+    <ul class="qv-checks">${x.r.checks.map((c) => `<li class="${c.ok === true ? 'ok' : c.ok === false ? 'no' : 'na'}">${ico(c.ok === true ? 'check' : c.ok === false ? 'cross' : 'dash')} <b>${esc(c.label)}</b> <small>${esc(c.note)}</small></li>`).join('')}</ul>
+    <h3>Recent changes</h3>${chg.length ? `<ul class="ch-list">${chg.map((c) => `<li class="chg"><span class="ch-ico">${kindIco(c.kind)}</span><div><p>${esc(c.text)}</p><small>${ago(c.at)} ago${FORECAST_NOTE[c.forecast] ? ` · ${FORECAST_NOTE[c.forecast]}` : ''}</small></div></li>`).join('')}</ul>` : '<p class="muted">None recorded yet.</p>'}
     <div class="qv-actions"><a class="btn" href="#/match/${esc(e.id)}">Open full dossier</a>
-      <button class="btn-ghost" data-watch="${esc(e.id)}" aria-pressed="${watch.has(e.id)}">${watch.has(e.id) ? '★ Watching' : '☆ Watch'}</button>
-      <button class="btn-ghost" data-pin="${esc(e.id)}">${pins().includes(e.id) ? '⇄ Pinned' : '⇄ Compare'}</button></div>`;
+      <button class="btn-ghost" data-watch="${esc(e.id)}" aria-pressed="${watch.has(e.id)}">${watchLabel(watch.has(e.id), false)}</button>
+      <button class="btn-ghost" data-pin="${esc(e.id)}">${pinLabel(pins().includes(e.id), false)}</button></div>`;
 }
 
 // ---------- compare ----------
@@ -237,7 +238,7 @@ export function compareView() {
   return {
     mode: 'other', accent: '#4fd1ff', title: 'Compare', sceneOpts: { emblem: 'scale' },
     html: `<section class="hero small"><p class="kicker reveal">SIDE BY SIDE · UP TO 4 MATCHES</p><h1>COMPARE</h1>
-      <p class="lede reveal">Pin matches with ⇄ from the research table, the quick view or a match page.</p></section>
+      <p class="lede reveal">Pin matches with Compare from the research table, the quick view or a match page.</p></section>
       ${rows.length ? `<div class="panel table-wrap reveal"><table class="cmp"><thead><tr><th></th>${rows.map((x) => `<th><a href="#/match/${esc(x.e.id)}">${sportOf(x.e.sport).icon} ${esc(x.e.home)} v ${esc(x.e.away)}</a><button class="icon-btn" data-pin="${esc(x.e.id)}" title="Unpin">×</button></th>`).join('')}</tr></thead><tbody>
         ${line('Start (IST)', (x) => esc(ist(x.e.start)))}
         ${line('Main pick', (x) => (x.main ? `<b>${esc(x.main.pick)}</b><small>${esc(x.main.market)}</small>` : '—'))}
@@ -265,7 +266,7 @@ export function watchlistView() {
         <span class="ico">${sportOf(x.e.sport).icon}</span>
         <div class="teams"><b>${esc(x.e.home)} v ${esc(x.e.away)}</b><small>${esc(x.e.league)} · ${x.e.live ? `<span class="live">LIVE ${esc(x.e.score || '')}</span>` : esc(ist(x.e.start))}</small>
           ${x.review.length ? `<small class="nr">⚠ Needs review: ${esc(x.review[0].text)}${x.review.length > 1 ? ` (+${x.review.length - 1} more)` : ''}</small>` : ''}</div>
-        <div class="odds">${x.main ? `<span class="stat"><small>${esc(x.main.pick)}</small>${pc(x.main.q, 0)}</span>` : ''}${readyBadge(x.r)}</div></a>`).join('')}</div>` : '<p class="muted reveal">No saved matches. Use ☆ on any match or in the research table.</p>'}
+        <div class="odds">${x.main ? `<span class="stat"><small>${esc(x.main.pick)}</small>${pc(x.main.q, 0)}</span>` : ''}${readyBadge(x.r)}</div></a>`).join('')}</div>` : '<p class="muted reveal">No saved matches. Use Watch on any match or in the research table.</p>'}
       ${changesPanel(list, { title: 'Changes to your matches', limit: 20 })}`,
   };
 }

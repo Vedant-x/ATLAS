@@ -66,12 +66,12 @@ body.has-cursor, body.has-cursor a, body.has-cursor button { cursor: none; }
 
 /* ---------- header + ticker ---------- */
 .bar { position: fixed; top: 0; left: 0; right: 0; z-index: 50; display: flex; align-items: center; gap: 24px; padding: 16px var(--gutter); transition: transform .5s var(--ease), background .4s, padding .4s; }
-body.scrolled .bar { background: rgba(4,4,6,.72); backdrop-filter: blur(16px); padding-block: 10px; border-bottom: 1px solid var(--line); }
+body.scrolled .bar { background: rgba(4,4,6,.94); backdrop-filter: blur(16px); padding-block: 10px; border-bottom: 1px solid var(--line); }
 body.hide-bar .bar { transform: translateY(-100%); }
-body.hide-bar .ticker { transform: translateY(-200%); }
+body.hide-bar .ticker { transform: translateY(-140px); }
 /* no backdrop-filter while slid off-screen (Chrome GPU paints it as a black block) */
 body.hide-bar .bar, body.hide-bar .ticker { backdrop-filter: none; }
-.logo { font: 26px var(--display); letter-spacing: .04em; display: inline-flex; align-items: center; min-height: 44px; }
+.logo { font: 26px var(--display); letter-spacing: .04em; padding-block: 9px; margin-block: -9px; } /* bigger tap target, same layout */
 .logo sup { font: 10px var(--sans); }
 nav.top { display: flex; gap: clamp(10px, 2.2vw, 30px); margin-left: auto; font: 600 12px var(--sans); text-transform: uppercase; letter-spacing: 1.5px; }
 nav.top svg { display: none; }
@@ -85,7 +85,11 @@ nav.top a:hover::after, nav.top a.on::after { transform: scaleX(1); transform-or
 .fx-btn[aria-pressed="false"] b { color: var(--muted); }
 .slip-btn b { min-width: 24px; height: 24px; border-radius: 999px; display: grid; place-items: center; background: var(--line2); font: 700 12px var(--mono); }
 .slip-btn b.has { background: var(--accent); color: #000; }
-.ticker { position: fixed; top: 64px; left: 0; right: 0; z-index: 49; overflow: hidden; height: 30px; border-block: 1px solid var(--line); background: rgba(4,4,6,.55); backdrop-filter: blur(8px); transition: transform .5s var(--ease), top .4s; -webkit-mask: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent); mask: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent); }
+.ticker { position: fixed; top: 64px; left: 0; right: 0; z-index: 49; overflow: hidden; height: 30px; border-block: 1px solid var(--line); background: #040406; transition: transform .5s var(--ease), top .4s; }
+/* Solid strip (nothing shows through it); the text fades out under two edge overlays. */
+.ticker::before, .ticker::after { content: ''; position: absolute; top: 0; bottom: 0; width: 56px; z-index: 1; pointer-events: none; }
+.ticker::before { left: 0; background: linear-gradient(90deg, #040406, transparent); }
+.ticker::after { right: 0; background: linear-gradient(-90deg, #040406, transparent); }
 body.scrolled .ticker { top: 52px; }
 .ticker-track { display: flex; gap: 40px; width: max-content; padding-left: 40px; animation: tick 90s linear infinite; font: 12px/30px var(--mono); color: #b8b8be; white-space: nowrap; }
 .ticker:hover .ticker-track { animation-play-state: paused; }
@@ -578,7 +582,7 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 /* ---------- phones (kept last so it wins over the base rules above) ---------- */
 @media (max-width: 820px) {
   /* backdrop-filter/transform on the header would trap the fixed bottom nav inside it */
-  .bar, body.scrolled .bar { backdrop-filter: none; transform: none; background: rgba(4,4,6,.94); }
+  .bar, body.scrolled .bar { backdrop-filter: none; transform: none; background: #040406; }
   body.scrolled .ticker { top: 52px; }
   .subnav, body.scrolled .subnav, body.hide-bar .subnav { top: 98px; }
   .sports, .xs { grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -998,7 +1002,7 @@ p a:not(.btn):not(.more), .rec-line a, .lede a, .note a, .muted a { text-decorat
 .inside .yes { color: #3dff9a; } .inside .no { color: #9aa3ad; }
 
 /* Quick view side panel: opens over the page, keeps your place. */
-#qv { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100vw); z-index: 70; background: rgba(10,10,14,.97); border-left: 1px solid var(--line2); padding: 18px 20px 120px; overflow-y: auto; transform: translateX(105%); transition: transform .2s ease; box-shadow: -20px 0 60px rgba(0,0,0,.5); }
+#qv { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100vw); z-index: 70; background: #0a0a0e; border-left: 1px solid var(--line2); padding: 18px 20px 120px; overflow-y: auto; transform: translateX(105%); transition: transform .2s ease; box-shadow: -20px 0 60px rgba(0,0,0,.5); }
 #qv.open { transform: none; }
 :root[data-motion="reduced"] #qv { transition: none; }
 .qv-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted, #9aa3ad); }
@@ -1223,3 +1227,27 @@ p a.chip, .muted a.chip { text-decoration: none; }
   .dock-trail b { overflow: visible; }
 }
 .dock-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+/* Line icons (js/icons.js): one stroke weight everywhere, sized to the text around them. */
+.ico { width: 1.1em; height: 1.1em; flex: none; vertical-align: -0.18em; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.ico.fill { fill: currentColor; }
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; }
+.icon-btn .ico { width: 16px; height: 16px; }
+.watch-btn, .btn-ghost[data-watch], .btn-ghost[data-pin], .set-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.watch-btn.on .ico, .btn-ghost[aria-pressed="true"] .ico { color: var(--accent); }
+time.ist .ico, .note > .ico { margin-right: 2px; opacity: .85; }
+.ch-ico .ico, .rs-cchange .ico, .rs-change .ico, .timeline b .ico { color: var(--accent); }
+.ch-ico .ico.k-injury { color: var(--loss, #ff5a6e); }
+.inside li .ico, .qv-checks li .ico { width: 14px; height: 14px; }
+.inside li.yes .ico, .qv-checks li.ok .ico { color: var(--pos); }
+.inside li.no .ico, .qv-checks li.no .ico { color: var(--loss, #ff5a6e); }
+.toast > span { display: inline-flex; }
+/* Slip legs on the Results page: a status dot instead of emoji. */
+.leg-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin: 0 6px 1px 0; background: var(--dim); vertical-align: middle; }
+.leg-dot.leg-won { background: var(--pos); }
+.leg-dot.leg-lost { background: var(--loss, #ff5a6e); }
+.leg-dot.leg-pending { background: transparent; box-shadow: inset 0 0 0 1.5px var(--muted); }
+/* The header has a fixed height that matches where the ticker starts (64px, 52px once scrolled), so
+   the two never overlap whatever buttons the header holds. */
+.bar { height: 64px; padding-block: 0; }
+body.scrolled .bar { height: 52px; padding-block: 0; }
