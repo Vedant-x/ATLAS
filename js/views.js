@@ -231,7 +231,7 @@ export const views = {
     const soon = S.events.filter((e) => !e.live && e.start > Date.now() && e.start < Date.now() + 36e5 && e.sport !== 'efootball').sort((a, b) => a.start - b.start);
     const groups = SPORTS.map((sp) => [sp, live.filter((e) => e.sport === sp.id)]).filter(([, l]) => l.length);
     return {
-      mode: 'other', accent: '#ff3d6e', title: 'Live',
+      mode: 'other', accent: '#ff3d6e', title: 'Live', sceneOpts: { emblem: 'radar' },
       html: `<section class="hero small"><p class="kicker reveal">IN PLAY · UPDATES EVERY FEW SECONDS</p><h1>${split('LIVE')}</h1>
         <p class="lede reveal">${live.length} match${live.length === 1 ? '' : 'es'} in play. Open one for the live scoreboard; star it to get alerts.</p></section>
         ${notice()}
@@ -411,7 +411,7 @@ export const views = {
     ensureTrack(() => S.refresh?.());
     const r = trackStats()?.byTarget?.find((t) => t.target === target);
     return {
-      mode: 'x', accent: ['#d2ff00', '#00ffc3', '#4fd1ff', '#b08cff'][[2, 3, 4, 5].indexOf(target)] || '#ff9f43', title: `${target}x slips`,
+      mode: 'x', accent: ['#d2ff00', '#00ffc3', '#4fd1ff', '#b08cff'][[2, 3, 4, 5].indexOf(target)] || '#ff9f43', title: `${target}x slips`, sceneOpts: { value: `${target}×` },
       html: `<section class="hero small"><p class="kicker reveal">MULTIPLIER · BREAK-EVEN ${pc(1 / target, target >= 100 ? 2 : 1)}${target < 100 ? ' · NEXT 12 HOURS' : ''}</p><h1>${split(`${target}X SLIPS`)}</h1>${builderNav('x')}
         <nav class="tabs reveal">${[2, 3, 4, 5, 10, 20].map((x) => `<a href="#/x/${x}" class="${x === target ? 'on' : ''}">${x}x</a>`).join('')}</nav></section>
         ${notice()}
@@ -433,6 +433,8 @@ export const views = {
     const presets = [1.5, 2.5, 7.5, 15, 50, 250];
     return {
       mode: 'x', accent: '#ff9f43', title: has ? `Target ${t}x` : 'Target',
+      // Before a number is entered: a bullseye; after: the target itself as a 3D number.
+      sceneOpts: has ? { emblem: 'digits', value: `${t}×` } : { emblem: 'target' },
       html: `<section class="hero small"><p class="kicker reveal">YOUR TARGET · BUILT FROM BANKERS</p><h1>${split(has ? `TARGET ${t}X` : 'TARGET')}</h1>${builderNav('target')}
         <p class="lede reveal">Type any multiplier. ATLAS stacks short-priced favourites the model rates highly (about 1.05 to 1.6 each) until the total reaches it, picking the legs that give the most win chance per unit of odds.</p>
         <form class="xtarget reveal" data-xtarget><label>Target multiplier<input type="number" name="t" min="1.2" max="100000" step="0.1" value="${has ? t : ''}" placeholder="e.g. 7.5" inputmode="decimal" aria-label="Target multiplier"></label><button class="btn">Build slips</button></form>
