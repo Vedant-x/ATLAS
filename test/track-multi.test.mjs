@@ -14,6 +14,13 @@ test('market families learn from results: weak totals need more, strong winners 
   assert.equal(calibrated(0.62, 'Spread', c), 0.62); // no history: unchanged
 });
 
+test('graded multiplier legs feed the market calibration too', () => {
+  const legs = Array.from({ length: 12 }, (_, i) => ({ market: 'Total 2.5', p: 0.72, status: i < 6 ? 'won' : 'lost', odds: 1.3 }));
+  const c = calibration([{ type: 'multi', status: 'lost', legs }]);
+  assert.equal(c.total.n, 12);
+  assert.ok(c.total.factor < 0.85, `leg losses lower totals: ${c.total.factor}`);
+});
+
 test('multiplier slips: lost on any loss, won when all settle, pushes drop out', () => {
   const legs = (...st) => st.map((s, i) => ({ status: s, odds: 1.5 + i * 0.1 }));
   assert.equal(settleMulti({ legs: legs('won', 'lost', 'pending') }).status, 'lost');
@@ -31,12 +38,19 @@ test('daily multiplier picks lock one slip per target with gradeable legs', () =
   for (const s of m) {
     assert.equal(s.type, 'multi');
     assert.match(s.key, /^multi\|2026-10-05\|\d+x$/);
-    assert.ok(Math.abs(s.odds / s.target - 1) <= (s.target >= 100 ? 0.16 : 0.11), `${s.target}x at ${s.odds}`);
+    assert.ok(s.odds / s.target - 1 <= 0.16 && s.odds / s.target - 1 >= -0.08, `${s.target}x at ${s.odds}`); // thin boards fall back to a wider band
     assert.ok(s.legs.every((l) => l.odds <= 1.7), 'banker legs only');
     assert.ok(s.legs.every((l) => l.compId && l.status === 'pending'));
   }
   const st = summarize([...m.map((x, i) => ({ ...x, status: i ? 'lost' : 'won' })), pick('Winner', 'won')]);
   assert.equal(st.all.won, 1); // singles only
   assert.equal(st.multi.won + st.multi.lost, m.length);
-  assert.ok(st.byType.some((r) => r.key === 'multi'));
+  assert.ok(!st.byType.some((r) => r.key === 'multi'), 'multipliers stay out of the main record');
+  assert.ok(st.recent.every((h) => h.type !== 'multi'));
+  for (const s of m) {
+    const own = st.byTarget.find((r) => r.target === s.target);
+    assert.equal(own.won + own.lost, 1, `${s.target}x has its own record`);
+    assert.equal(own.slips[0].key, s.key);
+  }
+  assert.equal(st.mega.won + st.mega.lost, m.filter((x) => x.target >= 100).length);
 });
