@@ -98,6 +98,32 @@ function glowTexture() {
   return glowTex;
 }
 
+// A dark studio with a few bright soft boxes, prefiltered once for image-based lighting. Cheap
+// (one small cube render at start-up) and it is what makes the metals read as metal.
+function studioEnvironment(THREE, renderer) {
+  try {
+    const env = new THREE.Scene();
+    const box = new THREE.BoxGeometry(1, 1, 1);
+    const room = new THREE.Mesh(box, new THREE.MeshBasicMaterial({ color: 0x1a1b22, side: THREE.BackSide }));
+    room.scale.set(20, 14, 20);
+    env.add(room);
+    const panel = (x, y, z, sx, sy, sz, k) => {
+      const m = new THREE.Mesh(box, new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 1, 1).multiplyScalar(k) }));
+      m.position.set(x, y, z); m.scale.set(sx, sy, sz); env.add(m);
+    };
+    panel(0, 6.8, 0, 10, 0.1, 6, 6); // overhead soft box
+    panel(-9.8, 1, 2, 0.1, 6, 6, 3); // left strip
+    panel(9.8, 2, -3, 0.1, 4, 8, 2); // right strip
+    panel(0, 0, 9.8, 8, 3, 0.1, 1.2); // front fill
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const tex = pmrem.fromScene(env, 0.04).texture;
+    pmrem.dispose();
+    env.traverse((o) => { if (o.isMesh) o.material.dispose(); });
+    box.dispose();
+    return tex;
+  } catch { return null; }
+}
+
 // The scene renders in ONE pass straight to the canvas. An earlier bloom post-process (off-screen
 // render targets at a different pixel ratio) could leave part of the canvas black on some GPUs.
 export function createScene(canvas) {
@@ -123,19 +149,59 @@ export function createScene(canvas) {
   const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200);
   camera.position.set(0, 0, 11);
 
+  // Studio lighting for the page emblems (metal, glass, leather): a soft-box room baked into an
+  // environment map for reflections, plus a key light and a rim light tinted with the page colour.
+  scene.environment = studioEnvironment(THREE, renderer);
+  const key = new THREE.DirectionalLight(0xffffff, 2.2);
+  key.position.set(4, 6, 8);
+  const rim = new THREE.DirectionalLight(0xffffff, 1.1);
+  rim.position.set(-6, 2, -4);
+  scene.add(key, rim, new THREE.HemisphereLight(0xdfe6ff, 0x101014, 0.5));
+
   const world = new THREE.Group();
   scene.add(world);
 
-  // The page emblem (replaces the old energy core): built per page, faded in and out.
+  // The page emblem: built per page, faded in and out. It sits in the empty right-hand part of the
+  // page header and scrolls away with it. Its box is fitted to the header's free space (measured
+  // from the header's text), so it never sits behind words or spills over the content below; where
+  // there is no room (phones, narrow windows) it is simply not shown.
+  const EMBLEM_MIN_W = 901;
+  let slot = null, slotAge = 99, pageMode = '';
+  const place = { x: 0, y: 0, size: 0, vis: 0 };
+  function measureSlot() {
+    const hero = document.querySelector('#app section.hero, main section.hero, section.hero');
+    if (!hero) return null;
+    const hr = hero.getBoundingClientRect(), y0 = scrollY;
+    const text = [];
+    const walk = document.createTreeWalker(hero, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+      if (!n.textContent.trim()) continue;
+      range.selectNodeContents(n);
+      for (const r of range.getClientRects()) if (r.width && r.height) text.push([r.left - 24, r.top - 16, r.right + 24, r.bottom + 16]);
+    }
+    hero.querySelectorAll('input, select, button, canvas, svg, img').forEach((el) => { const r = el.getBoundingClientRect(); if (r.width) text.push([r.left - 24, r.top - 16, r.right + 24, r.bottom + 16]); });
+    const top = Math.max(hr.top, 96), bottom = hr.bottom, right = Math.min(hr.right, innerWidth - 24);
+    const max = pageMode === 'home' ? 250 : 210;
+    for (let sz = max; sz >= 120; sz -= 10) {
+      for (const cy of [top + (bottom - top) / 2, top + sz / 2 + 4]) {
+        const box = [right - sz, cy - sz / 2, right, cy + sz / 2];
+        if (box[1] < top - 2 || box[3] > bottom + 8) continue;
+        if (text.some((t) => t[0] < box[2] && t[2] > box[0] && t[1] < box[3] && t[3] > box[1])) continue;
+        return { x: right - sz / 2, y: cy + y0, size: sz };
+      }
+    }
+    return null;
+  }
   const emblemHolder = new THREE.Group();
-  world.add(emblemHolder);
+  scene.add(emblemHolder);
   let emblem = null, leaving = [];
   function setEmblem(kind, value) {
     const key = `${kind}|${JSON.stringify(value ?? null)}`;
     if (emblem?.userData.key === key) return;
     if (emblem) { leaving.push({ g: emblem, f: 1 }); }
     emblem = null;
-    if (!kind) return;
+    if (!kind || innerWidth < EMBLEM_MIN_W) return;
     try { emblem = buildEmblem(THREE, kind, value); } catch { emblem = null; return; } // a broken emblem must never break the page
     emblem.userData.key = key; emblem.userData.fade = 0;
     emblemHolder.add(emblem);
@@ -262,7 +328,7 @@ export function createScene(canvas) {
   // Animated state; GSAP tweens these plain objects, the loop applies them.
   const st = {
     pulse: 0, scatter: 0,
-    coreAx: 3.2, coreAy: 0, coreAs: 1,
+    emb: 0,
     camZ: 11, camY: 0, fieldY: 0, worldRotZ: 0, track: 0, venue: 0, venueFloor: 0,
   };
   const target = { accent: new THREE.Color('#d2ff00'), a: new THREE.Color('#d2ff00'), b: new THREE.Color('#ff3d6e') };
@@ -275,6 +341,7 @@ export function createScene(canvas) {
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const clock = new THREE.Clock();
+  const embV = new THREE.Vector3(), rimTint = new THREE.Color(), WHITE = new THREE.Color('#ffffff');
   function frame() {
     const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime * (reduced ? 0.3 : 1);
     mouse.x += (mouse.tx - mouse.x) * 0.04; mouse.y += (mouse.ty - mouse.y) * 0.04;
@@ -282,12 +349,27 @@ export function createScene(canvas) {
     const sp = scrollY / Math.max(1, document.documentElement.scrollHeight - innerHeight);
 
     // Emblem: eased into place, tinted with the page colour (team colours on a match), faded on swap.
-    emblemHolder.position.set(st.coreAx - sp * 2, st.coreAy - sp * 1.2, 0);
-    emblemHolder.scale.setScalar(Math.max(0.001, st.coreAs * 0.85 * (1 + st.pulse * 0.08)));
+    // Emblem: placed in screen pixels (header corner), projected onto the z = 0 plane.
+    if (++slotAge > 20) { slotAge = 0; slot = innerWidth >= EMBLEM_MIN_W ? measureSlot() : null; }
+    // Eased toward the measured slot, so a re-layout glides instead of jumping.
+    if (slot) { if (!place.size) Object.assign(place, slot); else for (const k of ['x', 'y', 'size']) place[k] += (slot[k] - place[k]) * 0.12; }
+    place.vis += ((slot ? 1 : 0) - place.vis) * 0.12;
+    emblemHolder.visible = place.vis > 0.01 && place.size > 0 && Boolean(emblem || leaving.length);
+    if (emblemHolder.visible) {
+      const sizePx = place.size * place.vis, px = place.x, py = place.y - scrollY;
+      camera.updateMatrixWorld();
+      embV.set((px / innerWidth) * 2 - 1, -(py / innerHeight) * 2 + 1, 0.5).unproject(camera).sub(camera.position).normalize();
+      const d = -camera.position.z / embV.z;
+      emblemHolder.position.copy(camera.position).addScaledVector(embV, d);
+      const unitsPerPx = (2 * d * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) / innerHeight;
+      emblemHolder.scale.setScalar(Math.max(0.001, (sizePx * unitsPerPx / 4) * 0.8 * st.emb /* 0.8: room for depth, perspective and the idle sway */ * (1 + st.pulse * 0.05)));
+      emblemHolder.rotation.set(mouse.y * 0.12, mouse.x * 0.2, 0);
+    }
     if (emblem) {
       emblem.userData.fade = Math.min(1, emblem.userData.fade + dt * 1.6);
-      emblem.userData.setOpacity(emblem.userData.fade * (innerWidth <= 900 ? 0.6 : 1)); // phones: dimmer, so the headline it sits beside stays readable
+      emblem.userData.setOpacity(emblem.userData.fade * Math.max(0, Math.min(1, 1.4 - scrollY / 300))); // fades as the header scrolls away, so the headline it sits beside stays readable
       emblem.userData.tint(target.a, target.b);
+      rim.color.lerp(rimTint.copy(target.a).lerp(WHITE, 0.8), 0.05); // a hint of the page colour, not a colour cast
       emblem.userData.tick(t, dt);
     }
     leaving = leaving.filter((l) => { l.f -= dt * 2.5; if (l.f <= 0) { emblemHolder.remove(l.g); l.g.userData.dispose(); return false; } l.g.userData.setOpacity(l.f); l.g.userData.tick(t, dt); return true; });
@@ -353,6 +435,7 @@ export function createScene(canvas) {
     pulse() { st.pulse = 1; if (window.gsap) window.gsap.fromTo(st, { scatter: 1 }, { scatter: 0, duration: 1.4, ease: 'expo.out' }); },
     // mode: home | sport | match | x | mega | bankers | edge | other
     setMode(mode, opts = {}) {
+      pageMode = mode; slotAge = 99; slot = null; place.size = 0; place.vis = 0; // new page: measure its header afresh
       const fw = FORMATION[mode] || FORMATION.other;
       const sportVenueFor = (mode === 'sport' || mode === 'match') && opts.sport && VENUES[opts.sport];
       const kind = opts.emblem !== undefined ? opts.emblem : mode === 'sport' && sportVenueFor ? null : EMBLEM_FOR_MODE[mode] ?? null;
@@ -365,7 +448,7 @@ export function createScene(canvas) {
       tween(st, { venue: sportVenue ? 1 : 0, venueFloor: mode === 'match' ? 1 : 0 });
       if (mode === 'race') {
         if (opts.track) this.setTrack(opts.track);
-        tween(st, { coreAx: wide ? 4.2 : 1.55, coreAy: wide ? 2.4 : 3.4, coreAs: 0.001, camZ: wide ? 10.5 : 12, camY: 3.2, fieldY: -2.5, worldRotZ: 0, track: 1 });
+        tween(st, { emb: 0, camZ: wide ? 10.5 : 12, camY: 3.2, fieldY: -2.5, worldRotZ: 0, track: 1 });
         return;
       }
       tween(st, { track: 0 });
@@ -374,23 +457,10 @@ export function createScene(canvas) {
         target.a.set(opts.home || '#d2ff00'); target.b.set(opts.away || '#ff3d6e');
         void ph; void pa;
         // The two team columns sit beside the headline (phones: small, in the top corner).
-        tween(st, { coreAx: wide ? 5.6 : 1.75, coreAy: wide ? 0.8 : 3.05, coreAs: wide ? 0.42 : 0.36, camZ: wide ? 12 : 11, camY: 0, fieldY: -0.5, worldRotZ: 0 }); // beside the action buttons, clear of long team names
+        tween(st, { emb: kind ? 1 : 0, camZ: wide ? 12 : 11, camY: 0, fieldY: -0.5, worldRotZ: 0 });
       } else {
-        const layouts = {
-          home: { coreAx: wide ? 4.6 : 0, coreAy: wide ? 2.3 : 0, coreAs: 0.7, camZ: 11, camY: 0, fieldY: 0 },
-          sport: { coreAx: wide ? 3.6 : 0, coreAs: 0.75, camZ: 12, camY: 1.2, fieldY: 0 },
-          x: { coreAx: wide ? 4 : 0, coreAs: 0.75, camZ: 12, camY: 0, fieldY: 0 },
-          mega: { coreAx: wide ? 4 : 0, coreAs: 0.75, camZ: 12, camY: 0, fieldY: 0 },
-          other: { coreAx: wide ? 4 : 0, coreAs: 0.75, camZ: 12, camY: 0, fieldY: 0 },
-          bankers: { coreAx: wide ? 3.6 : 0, coreAs: 0.9, camZ: 11, camY: 0, fieldY: 0 },
-          edge: { coreAx: wide ? 4.2 : 0, coreAs: 0.5, camZ: 13, camY: 0, fieldY: 0 },
-        };
-        const lay = { coreAy: wide ? 1.6 : 0, ...(layouts[mode] || layouts.other) }; // beside the (now compact) page header
-        // Phones: a smaller core tucked into the top-right corner so it never sits behind text.
-        if (!wide) Object.assign(lay, { coreAx: 1.75, coreAy: 3.05, coreAs: Math.min(lay.coreAs, 0.38), camY: 0, camZ: 11, fieldY: 0 });
-        if (sportVenue) lay.coreAs = 0.001; // the venue takes the emblem's place on sport pages
-        if (!kind) lay.coreAs = 0.001;
-        tween(st, { ...lay, worldRotZ: 0 });
+        const lay = { camZ: mode === 'home' ? 11 : 12, camY: mode === 'sport' ? 1.2 : 0, fieldY: 0 };
+        tween(st, { ...lay, emb: kind && !sportVenue ? 1 : 0, worldRotZ: 0 });
       }
     },
   };

@@ -147,19 +147,19 @@ export function f1View(S, { legButton, notice }) {
       <div class="f1-bars">${top.map((x) => `<div class="f1-bar" style="--tc:${esc(x.colour || '#ff2a2a')}"><span class="nm"><b>${esc(x.code)}</b> ${esc(x.name)}<small>${esc(x.team)}${x.grid ? ` · P${x.grid}` : ''}</small></span>
         <div class="meter"><i class="grow" style="--w:${((x.win / maxWin) * 100).toFixed(1)}%"></i></div><span class="pv">${pc(x.win, 1)}</span>${leg(d, 'Race winner', x.name, x.win, legButton)}</div>`).join('')}</div>
     </section>
-    <section class="sec-block"><h2 class="sec reveal"><span>◆</span>Best bets for this Grand Prix <small>highest-confidence picks from the model</small></h2>
+    <section class="sec-block"><h2 class="sec reveal">Best bets for this Grand Prix <small>highest-confidence picks from the model</small></h2>
       <div class="best-bets">${bb.map((b) => `<div class="bb panel reveal"><small>${esc(b.label)}</small><b>${esc(b.pick)}</b><div class="bb-row"><span>${pc(b.p)}</span><em>${esc(b.why)}</em>${leg(d, b.label, b.pick, b.p, legButton)}</div></div>`).join('')}</div></section>
     <section class="panel reveal"><h2 class="ph">Every driver <small>chance to win · podium · top 6 · points · average finish · fair odds</small></h2>
       <div class="table-wrap"><table class="f1-table"><thead><tr><th>Driver</th><th>Grid</th><th>Last 5</th><th>Win</th><th>Podium</th><th>Top 6</th><th>Points</th><th>Avg</th><th>Podium odds</th></tr></thead>
       <tbody>${d.drivers.map((x) => `<tr style="--tc:${esc(x.colour || '#888')}"><td class="drv"><b>${esc(x.code)}</b> ${esc(x.name)}<small>${esc(x.team)}</small></td><td>${x.grid ? `P${x.grid}` : '—'}</td><td class="l5">${x.last5.map((r) => `<i class="${r === 'DNF' ? 'dnf' : Number(r) <= 3 ? 'pod' : Number(r) <= 10 ? 'pts' : ''}">${esc(r)}</i>`).join('')}</td>
         <td>${pc(x.win, 1)}</td><td>${pc(x.podium)}</td><td>${pc(x.top6)}</td><td>${pc(x.points)}</td><td>${x.avgPos.toFixed(1)}</td><td>${leg(d, 'Podium finish', x.name, x.podium, legButton)}</td></tr>`).join('')}</tbody></table></div></section>
-    <div class="two">
+    <div class="grid two">
       <section class="panel reveal"><h2 class="ph">Teammate battles <small>who finishes ahead</small></h2>
         <ul class="f1-h2h">${d.h2h.map((h) => `<li><small>${esc(h.team)}</small><div class="h2h-bar"><span>${esc(h.a)} <b>${pc(h.pA)}</b></span><div class="meter two"><i style="--w:${(h.pA * 100).toFixed(1)}%"></i></div><span><b>${pc(h.pB)}</b> ${esc(h.b)}</span></div></li>`).join('')}</ul></section>
       <section class="panel reveal"><h2 class="ph">Winning constructor</h2>
         <ul class="f1-teams">${d.teams.slice(0, 8).map((t) => `<li><span>${esc(t.name)}</span><b>${pc(t.win, 1)}</b>${leg(d, 'Winning constructor', t.name, t.win, legButton)}</li>`).join('')}</ul></section>
     </div>
-    <div class="two">
+    <div class="grid two">
       <section class="panel reveal"><h2 class="ph">Drivers' championship</h2><ol class="f1-stand">${d.standings.slice(0, 12).map((x) => `<li style="--tc:${esc(x.colour || '#888')}"><b>${x.pos}</b><span>${esc(x.name)}<small>${esc(x.team)}</small></span><em>${x.points} pts</em></li>`).join('')}</ol></section>
       <section class="panel reveal"><h2 class="ph">Constructors' championship</h2><ol class="f1-stand">${d.constructors.map((x) => `<li><b>${x.pos}</b><span>${esc(x.name)}</span><em>${x.points} pts</em></li>`).join('')}</ol></section>
     </div>

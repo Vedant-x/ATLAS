@@ -220,7 +220,7 @@ export function mountAssistant(S) {
   render();
   // A one-time hello so people notice it.
   if (!store.get('atlas-ai-greeted', false)) {
-    setTimeout(() => { const b = $('.ai-bubble'); b.textContent = 'Ask me for bets!'; b.hidden = false; store.set('atlas-ai-greeted', true); setTimeout(() => { b.hidden = true; }, 6000); }, 2500);
+    setTimeout(() => { const b = $('.ai-bubble'); b.textContent = 'Ask about any match'; b.hidden = false; store.set('atlas-ai-greeted', true); setTimeout(() => { b.hidden = true; }, 6000); }, 2500);
   }
   return { open: () => toggle(true), close: () => toggle(false), isOpen: () => !panel.hidden, ask };
 }
