@@ -1,4 +1,5 @@
 // Page templates. Each view returns { html, mode, accent, sceneOpts?, title, after? }.
+import { ico, watchLabel, pinLabel } from './icons.js';
 import { SPORTS } from './data.js';
 import { devig, buildSlips, todayEvents } from './engine.js';
 import { liveCenterHtml } from './livecenter.js';
@@ -70,7 +71,7 @@ const prefFilter = (list) => { const p = prefs.get(); const ev = prefEvents(list
 
 // Kick-off in Indian time, e.g. "Mon 6 Oct, 7:30 pm IST".
 export const ist = (t) => (Number.isFinite(t) ? `${new Date(t).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true })} IST` : '');
-const istTag = (t) => (Number.isFinite(t) ? `<time class="ist" datetime="${new Date(t).toISOString()}">🕒 ${ist(t)}</time>` : '');
+const istTag = (t) => (Number.isFinite(t) ? `<time class="ist" datetime="${new Date(t).toISOString()}">${ico('clock')} ${ist(t)}</time>` : '');
 const when = (e) => (e.live ? `<span class="live">LIVE${e.score ? ` · ${esc(e.score)}` : ''}</span>${e.clock ? ` <small class="lclock" data-clock="${esc(e.id)}">${esc(e.clock)}</small>` : ''}` : `<span data-start="${e.start}">${countdown(e.start)}</span> ${istTag(e.start)}`);
 export function countdown(ms) {
   const d = ms - Date.now();
@@ -353,8 +354,8 @@ export const views = {
         <h1 class="vs"><span style="--tc:${hc}">${split(e.home.toUpperCase())}</span><small>VS</small><span style="--tc:${ac}">${split(e.away.toUpperCase())}</span></h1>
         ${e.tennis ? `<div class="tennis-facts reveal">${[['Tournament', e.tennis.tournament + (e.tennis.major ? ' (Grand Slam)' : '')], ['Location', e.tennis.location], ['Draw', e.tennis.drawName], ['Round', e.tennis.round], ['Court', e.tennis.court], ['Format', e.tennis.bestOf ? `Best of ${e.tennis.bestOf} sets` : ''], [e.home, [e.tennis.home.seed ? `Seed ${e.tennis.home.seed}` : '', e.tennis.home.country].filter(Boolean).join(' · ')], [e.away, [e.tennis.away.seed ? `Seed ${e.tennis.away.seed}` : '', e.tennis.away.country].filter(Boolean).join(' · ')]].filter(([, v]) => v).map(([k, v]) => `<div><small>${esc(k)}</small><b>${esc(v)}</b></div>`).join('')}</div>` : ''}
         ${e.live ? `<div class="scoreline reveal ${String(e.score || '').length > 12 ? 'long' : ''}"><b>${esc(e.score || '')}</b><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></div>${liveCenterHtml(e)}${liveBlock(e)}` : ''}
-        <div class="match-actions reveal"><button class="watch-btn ${watch.has(e.id) ? 'on' : ''}" data-watch="${esc(e.id)}" aria-pressed="${watch.has(e.id)}">${watch.has(e.id) ? '★ Watching' : '☆ Watch match'}</button>
-          <button class="watch-btn ${pins().includes(e.id) ? 'on' : ''}" data-pin="${esc(e.id)}">${pins().includes(e.id) ? '⇄ Pinned to compare' : '⇄ Compare'}</button></div>
+        <div class="match-actions reveal"><button class="watch-btn ${watch.has(e.id) ? 'on' : ''}" data-watch="${esc(e.id)}" aria-pressed="${watch.has(e.id)}">${watchLabel(watch.has(e.id))}</button>
+          <button class="watch-btn ${pins().includes(e.id) ? 'on' : ''}" data-pin="${esc(e.id)}">${pinLabel(pins().includes(e.id))}</button></div>
         ${sourcesLine(e)}
       </section>
       <nav class="subnav reveal">${sections.map(([k, l]) => `<a href="#sec-${k}" data-jump="sec-${k}">${l}</a>`).join('')}</nav>
@@ -417,7 +418,7 @@ export const views = {
         ${notice()}
         <p class="rec-line reveal">${target}x track record · ${r && r.won + r.lost ? recordLine(r) : 'the top slip here is saved each day and graded leg by leg: results appear below as matches finish'}</p>
         <p class="lede reveal">Built from <b>bankers</b>: short-priced favourites the model rates highly (about 1.05 to 1.6 each), stacked until the total reaches ${target}x. Many safe legs beat a few long shots: each leg is chosen for the most win chance per unit of odds.</p>
-        <p class="note reveal">${target < 100 ? `⏱ Only matches starting in the next 12 hours: ${left.length} in range, ${priced} with prices.` : 'Big targets use every priced match in the next few days.'} Every leg is a real bookmaker price.</p>
+        <p class="note reveal">${target < 100 ? `${ico('timer')} Only matches starting in the next 12 hours: ${left.length} in range, ${priced} with prices.` : 'Big targets use every priced match in the next few days.'} Every leg is a real bookmaker price.</p>
         ${officialBlock(target)}
         <h2 class="sec reveal">${officialSlip(target) ? 'More options' : 'Options'} <small>built now with your filters (minimum odds ${prefs.get().minOdds.toFixed(2)} per leg${prefs.get().sports?.length ? ', your sports' : ''})</small></h2>
         <section class="grid slips">${list.map((s, i) => slipCard(s, i, target)).join('') || emptySlips(target)}</section>

@@ -1,3 +1,4 @@
+import { ico, watchLabel, pinLabel } from './icons.js';
 import { mountAssistant } from './assistant/ui.js';
 import { legalViews, ageGate } from './legal.js';
 import { trackViews } from './trackview.js';
@@ -358,13 +359,13 @@ document.addEventListener('click', (e) => {
   else if (d.watch) {
     e.preventDefault(); e.stopPropagation();
     const on = watch.toggle(d.watch);
-    document.querySelectorAll(`[data-watch="${CSS.escape(d.watch)}"]`).forEach((b) => { b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); b.textContent = b.classList.contains('icon-btn') ? (on ? '★' : '☆') : on ? '★ Watching' : (b.closest('#qv') ? '☆ Watch' : '☆ Watch match'); });
+    document.querySelectorAll(`[data-watch="${CSS.escape(d.watch)}"]`).forEach((b) => { b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); b.innerHTML = b.classList.contains('icon-btn') ? ico(on ? 'star-on' : 'star') : watchLabel(on, !b.closest('#qv')); });
     if (current === 'watchlist') softRender();
   }
   else if (d.pin) {
     e.preventDefault(); e.stopPropagation();
     const on = togglePin(d.pin);
-    document.querySelectorAll(`[data-pin="${CSS.escape(d.pin)}"]`).forEach((b) => { b.classList.toggle('on', on); if (!b.classList.contains('icon-btn')) b.textContent = on ? (b.closest('#qv') ? '⇄ Pinned' : '⇄ Pinned to compare') : '⇄ Compare'; });
+    document.querySelectorAll(`[data-pin="${CSS.escape(d.pin)}"]`).forEach((b) => { b.classList.toggle('on', on); if (!b.classList.contains('icon-btn')) b.innerHTML = pinLabel(on, !b.closest('#qv')); });
     if (on && pins().length >= 2) toast(`Pinned · ${pins().length} to compare`, '#/compare');
     if (current === 'compare') softRender();
   }
@@ -444,7 +445,7 @@ document.addEventListener('click', (e) => {
 function toast(text, href) {
   let box = document.querySelector('.toasts');
   if (!box) { box = document.createElement('div'); box.className = 'toasts'; box.setAttribute('aria-live', 'polite'); document.body.append(box); }
-  const t = document.createElement('a'); t.className = 'toast'; t.href = href || '#/'; t.innerHTML = '<span>⇄</span><p></p>'; t.querySelector('p').textContent = text;
+  const t = document.createElement('a'); t.className = 'toast'; t.href = href || '#/'; t.innerHTML = `<span>${ico('compare')}</span><p></p>`; t.querySelector('p').textContent = text;
   box.append(t); setTimeout(() => t.classList.add('out'), 4000); setTimeout(() => t.remove(), 4600);
 }
 // Target page: any multiplier from 1.2x up.
