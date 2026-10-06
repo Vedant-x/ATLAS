@@ -127,7 +127,7 @@ export function liveCenterHtml(e) {
   }
   if (d.innings?.length) parts.push(`<div class="lc-innings">${d.innings.map((i) => `<span class="${i.current ? 'cur' : ''}"><small>${i.side === 'home' ? H : A} · inns ${i.period}</small><b>${esc(i.score)}</b></span>`).join('')}</div>`);
   if (d.maps?.length) {
-    parts.push(`<div class="lc-maps">${d.maps.map((m) => `<div class="lc-map ${m.status}"><small>Map ${m.n}${m.map ? ` · ${esc(m.map)}` : ''}</small><b>${m.score ? esc(m.score) : m.status === 'live' ? 'LIVE' : '—'}</b>${m.winner ? `<em>${m.winner === 'home' ? H : A}</em>` : ''}</div>`).join('')}</div>`);
+    parts.push(`<div class="lc-maps">${d.maps.map((m) => `<div class="lc-map ${m.status}"><small>Map ${m.n ?? m.number ?? ''}${(m.map || m.name) ? ` · ${esc(m.map || m.name)}` : ''}</small><b>${m.score ? esc(m.score) : m.status === 'live' ? 'LIVE' : '—'}</b>${m.winner ? `<em>${m.winner === 'home' ? H : A}</em>` : ''}</div>`).join('')}</div>`);
   }
   const s = d.situation;
   if (s?.kind === 'baseball') {

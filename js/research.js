@@ -102,7 +102,7 @@ export function changesPanel(events, { limit = 8, title = 'What changed' } = {})
     ${list.length ? `<ul class="ch-list">${list.map(changeItem).join('')}</ul>` : `<p class="muted">${timelineUpdatedAt() ? 'No material changes (starters, lineups, absences, price moves) since you last looked.' : 'The change timeline starts with the next data update.'}</p>`}
   </div>`;
 }
-export const changeItem = (c) => `<li class="ch ${watch.has(c.eventId) ? 'watched' : ''}"><a href="#/match/${esc(c.eventId)}" data-qv="${esc(c.eventId)}">
+export const changeItem = (c) => `<li class="chg ${watch.has(c.eventId) ? 'watched' : ''}"><a href="#/match/${esc(c.eventId)}" data-qv="${esc(c.eventId)}">
   <span class="ch-ico">${KIND_ICON[c.kind] || '•'}</span>
   <div><b>${esc(c.home)} v ${esc(c.away)}</b><p>${esc(c.text)}</p>
   <small>${esc(sportOf(c.sport).name)} · seen ${ago(c.at)} ago${c.source ? ` · source: ${esc(c.source)}` : ''}${FORECAST_NOTE[c.forecast] ? ` · <em class="fc-${c.forecast}">${FORECAST_NOTE[c.forecast]}</em>` : ''}${watch.has(c.eventId) ? ' · ★ watched' : ''}</small></div></a></li>`;
@@ -194,7 +194,7 @@ export function quickView(id) {
     ${x.picks.length ? `<h3>Picks</h3><ul class="qv-picks">${x.picks.map((p) => `<li><b>${esc(p.pick)}</b><small>${esc(p.market)} · ${p.book ? `odds ${odd(p.odds)} · market ${pc(p.fair, 0)} · ` : 'fair odds · '}ATLAS ${pc(p.q, 0)}${p.book ? ` · edge ${(p.ev * 100).toFixed(1)}%` : ''}</small></li>`).join('')}</ul>` : ''}
     <h3>Evidence ${readyBadge(x.r)}</h3>
     <ul class="qv-checks">${x.r.checks.map((c) => `<li class="${c.ok === true ? 'ok' : c.ok === false ? 'no' : 'na'}">${c.ok === true ? '✓' : c.ok === false ? '✗' : '–'} <b>${esc(c.label)}</b> <small>${esc(c.note)}</small></li>`).join('')}</ul>
-    <h3>Recent changes</h3>${chg.length ? `<ul class="ch-list">${chg.map((c) => `<li class="ch"><span class="ch-ico">${KIND_ICON[c.kind] || '•'}</span><div><p>${esc(c.text)}</p><small>${ago(c.at)} ago${FORECAST_NOTE[c.forecast] ? ` · ${FORECAST_NOTE[c.forecast]}` : ''}</small></div></li>`).join('')}</ul>` : '<p class="muted">None recorded yet.</p>'}
+    <h3>Recent changes</h3>${chg.length ? `<ul class="ch-list">${chg.map((c) => `<li class="chg"><span class="ch-ico">${KIND_ICON[c.kind] || '•'}</span><div><p>${esc(c.text)}</p><small>${ago(c.at)} ago${FORECAST_NOTE[c.forecast] ? ` · ${FORECAST_NOTE[c.forecast]}` : ''}</small></div></li>`).join('')}</ul>` : '<p class="muted">None recorded yet.</p>'}
     <div class="qv-actions"><a class="btn" href="#/match/${esc(e.id)}">Open full dossier</a>
       <button class="btn-ghost" data-watch="${esc(e.id)}" aria-pressed="${watch.has(e.id)}">${watch.has(e.id) ? '★ Watching' : '☆ Watch'}</button>
       <button class="btn-ghost" data-pin="${esc(e.id)}">${pins().includes(e.id) ? '⇄ Pinned' : '⇄ Compare'}</button></div>`;

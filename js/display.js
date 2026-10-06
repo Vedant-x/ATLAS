@@ -10,6 +10,8 @@ export const DISPLAY_DEFAULTS = { motion: 'standard', density: 'comfortable', ti
 let cur = { ...DISPLAY_DEFAULTS };
 try { cur = { ...DISPLAY_DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { /* storage blocked: defaults */ }
 
+// The 3D background switch (stored by main.js as atlas-fx).
+const fx3d = () => { try { return localStorage.getItem('atlas-fx') !== 'off'; } catch { return true; } };
 const systemReduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 export const motion = () => (systemReduced() ? 'reduced' : cur.motion);
 export const display = {
@@ -32,6 +34,7 @@ export function displayPanel() {
   const opt = (k, v, label) => `<button class="chip ${cur[k] === v ? 'on' : ''}" data-display="${k}" data-value="${v}" aria-pressed="${cur[k] === v}">${label}</button>`;
   return `<div class="dp-row"><span>Motion</span>${opt('motion', 'standard', 'Standard')}${opt('motion', 'cinematic', 'Cinematic')}${opt('motion', 'reduced', 'Reduced')}</div>
     <div class="dp-row"><span>Density</span>${opt('density', 'comfortable', 'Comfortable')}${opt('density', 'compact', 'Compact')}${opt('density', 'focus', 'Focus')}</div>
+    <div class="dp-row"><span>3D scene</span><button class="chip ${fx3d() ? 'on' : ''}" data-fx-toggle aria-pressed="${fx3d()}">${fx3d() ? 'On' : 'Off'} · tap to switch</button></div>
     <div class="dp-row"><span>Ticker</span>${opt('ticker', 'moving', 'Moving')}${opt('ticker', 'paused', 'Paused')}${opt('ticker', 'hidden', 'Hidden')}</div>
-    <p class="cap">${systemReduced() ? 'Your device asks for reduced motion, so animation stays off. ' : ''}Cinematic adds the full-screen page wipes, custom cursor and card tilt (applies after a reload). The 3D background has its own switch in the header.</p>`;
+    <p class="cap">${systemReduced() ? 'Your device asks for reduced motion, so animation stays off. ' : ''}Cinematic adds the full-screen page wipes, custom cursor and card tilt (applies after a reload). The 3D scene switch reloads the page.</p>`;
 }
