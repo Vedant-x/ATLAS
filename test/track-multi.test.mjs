@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calibration, calibrated, familyOf, settleMulti, multiPicks, summarize, rankedBankers, slipWindow } from '../js/track.js';
+import { calibration, calibrated, familyOf, settleMulti, multiPicks, summarize, rankedBankers, slipWindow, updateClosing } from '../js/track.js';
 import { bankerSlips } from '../js/picks.js';
 
 const pick = (market, status, p = 0.62, extra = {}) => ({ market, status, p, odds: 1.6, type: 'banker', sport: 'football', start: 1, ...extra });
@@ -91,4 +91,19 @@ test('slip window: under 10x the next 12 hours, 10x and bigger the next 7 days',
   assert.deepEqual(slipWindow(evs, 5, now).map((e) => e.id), ['e2']);
   assert.deepEqual(slipWindow(evs, 10, now).map((e) => e.id), ['e2', 'e20', 'e100']);
   assert.deepEqual(slipWindow(evs, 1000, now).map((e) => e.id), ['e2', 'e20', 'e100']);
+});
+
+test('closing line: pending picks keep the latest pre-start price; summary compares it with the saved price', () => {
+  const now = Date.parse('2026-10-06T08:00:00Z');
+  const ev = { id: 'm1', start: now + 36e5, markets: [{ name: 'Winner', outcomes: [{ name: 'A', odds: 1.5 }, { name: 'B', odds: 2.6 }] }] };
+  const h = [{ key: 'k', type: 'banker', status: 'pending', eventId: 'm1', market: 'Winner', pick: 'A', odds: 1.6, start: now + 36e5 },
+    { key: 'k2', type: 'banker', status: 'pending', eventId: 'm1', market: 'Winner', pick: 'A', odds: 1.6, start: now - 36e5 }];
+  assert.equal(updateClosing(h, [ev], now), 1);
+  assert.equal(h[0].close, 1.5);
+  assert.equal(h[1].close, undefined, 'started matches keep the last price saved before kick-off');
+  const won = Array.from({ length: 10 }, (_, i) => ({ key: `w${i}`, type: 'banker', status: 'won', odds: 1.6, close: 1.5, p: 0.7, market: 'Winner', sport: 'football' }));
+  const s = summarize(won);
+  assert.equal(s.all.clvN, 10);
+  assert.ok(Math.abs(s.all.clv - (1.6 / 1.5 - 1)) < 1e-9);
+  assert.equal(s.all.beatClose, 1);
 });

@@ -151,14 +151,20 @@ async function askServer(K, history, text, context, onText) {
 }
 
 // Can this visitor get AI answers at all (hosted model configured, or a WebGPU device)?
-export async function aiAvailable() { return Boolean(AI_URL) || deviceAI(); }
+// The on-device model is a large one-time download (about 1 GB on phones, 2 GB on desktops), so it
+// only runs once the visitor turns it on; until then the built-in assistant answers.
+const OPT_KEY = 'atlas-ai-device';
+export const deviceOptIn = () => { try { return localStorage.getItem(OPT_KEY) === 'on'; } catch { return false; } };
+export const setDeviceOptIn = (on) => { try { localStorage.setItem(OPT_KEY, on ? 'on' : 'off'); } catch { /* storage blocked */ } };
+export const downloadSize = () => (small() ? 'about 1 GB' : 'about 2 GB');
+export async function aiAvailable() { return Boolean(AI_URL) || (deviceOptIn() && deviceAI()); }
 
 // One answer. history: [{role:'user'|'assistant', content}] of earlier turns.
 export async function askAI(K, history, text, { onText } = {}) {
   if (AI_URL) {
     try { return await askServer(K, history, text, await buildContext(K, text, 20000), onText); } catch { /* fall through to the device */ }
   }
-  if (!(await deviceAI())) throw new Error('no-ai');
+  if (!deviceOptIn() || !(await deviceAI())) throw new Error('no-ai');
   const context = await buildContext(K, text, 6000);
   const past = history.slice(-4).map((m) => ({ role: m.role, content: m.content.slice(0, 600) }));
   return askDevice([{ role: 'system', content: SYSTEM }, ...past, { role: 'user', content: `SITE DATA:\n${context}\n\nQUESTION: ${text}` }], onText);

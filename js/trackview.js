@@ -51,6 +51,7 @@ const statCards = (s, updatedAt) => `${updatedAt ? `<p class="note reveal">Resul
   <div><small>Hit rate</small><b>${pct(s.hitRate)}</b><span>ATLAS estimated ${pct(s.expected)}</span></div>
   <div><small>Profit, 1 unit per pick</small><b class="${s.profit >= 0 ? 'pos' : 'neg'}">${units(s.profit)}</b><span>ROI ${pct(s.roi)}</span></div>
   <div><small>Average odds</small><b>${s.avgOdds ? s.avgOdds.toFixed(2) : '—'}</b><span>minimum ${MIN_ODDS.toFixed(2)}</span></div>
+  <div><small>Price vs closing line</small><b class="${s.clvN >= 10 ? (s.clv >= 0 ? 'pos' : 'neg') : ''}">${s.clvN >= 10 ? `${s.clv >= 0 ? '+' : ''}${(s.clv * 100).toFixed(1)}%` : '—'}</b><span>${s.clvN >= 10 ? `saved price beat the close on ${pct(s.beatClose, 0)} of ${s.clvN} picks` : 'closing prices are now saved for every pick; shown after 10 settle'}</span></div>
   <div><small>Forecast score (Brier)</small><b>${s.brier == null ? '—' : s.brier.toFixed(3)}</b><span>${s.brierN >= 20 ? `market alone ${s.brierMarket.toFixed(3)} on the same ${s.brierN} picks · lower is better` : 'lower is better · market comparison after 20 picks'}</span></div></div>`;
 
 // Forecast score per row: Brier (lower is better) and, once 10+ picks have a saved market chance,

@@ -165,6 +165,29 @@ export function resultFromSummary(sm) {
 // Forecast quality beyond hit rate: Brier score (mean squared error of the chance shown; lower is
 // better) and, on picks where the margin-free market chance was saved, the same score for the market
 // as a baseline. ATLAS only adds something if its score beats the market's.
+// Closing line: until a match starts, every build stores the latest bookmaker price for each pending
+// pick (and each leg of a pending slip). The last one saved before kick-off is the closing price, the
+// benchmark for whether ATLAS's saved price was better or worse than where the market finished.
+export function updateClosing(history, events, now = Date.now()) {
+  const byId = new Map(events.map((e) => [e.id, e]));
+  const price = (r) => { const e = byId.get(r.eventId); return e && !e.live ? e.markets?.find((m) => m.name === r.market)?.outcomes?.find((o) => o.name === r.pick)?.odds : null; };
+  let n = 0;
+  for (const h of history) {
+    if (h.status !== 'pending') continue;
+    for (const r of h.type === 'multi' ? h.legs : [h]) {
+      if (!(r.start > now)) continue;
+      const o = price(r);
+      if (Number.isFinite(o) && o > 1) { r.close = +o.toFixed(3); r.closeAt = now; n++; }
+    }
+  }
+  return n;
+}
+// Price obtained vs closing price: average edge (saved odds / closing odds - 1) and how often the saved
+// price was better. Context for the record, not proof of profit.
+function closing(list) {
+  const c = list.filter((h) => h.close > 1 && h.odds > 1);
+  return { clvN: c.length, clv: c.length ? c.reduce((s, h) => s + h.odds / h.close - 1, 0) / c.length : null, beatClose: c.length ? c.filter((h) => h.odds > h.close).length / c.length : null };
+}
 function brier(list) {
   const y = (h) => (h.status === 'won' ? 1 : 0);
   const withMkt = list.filter((h) => h.fair != null);
@@ -195,6 +218,7 @@ export function summarize(history) {
       profit: +profit.toFixed(2), roi: settled ? profit / settled : null,
       avgOdds: settled ? [...won, ...lost].reduce((s, h) => s + h.odds, 0) / settled : null,
       ...brier([...won, ...lost]),
+      ...closing([...won, ...lost]),
     };
   };
   const group = (f) => Object.entries(graded.reduce((m, h) => ((m[f(h)] ||= []).push(h), m), {})).map(([k, l]) => ({ key: k, ...stat(l) })).sort((a, b) => b.picks - a.picks);
