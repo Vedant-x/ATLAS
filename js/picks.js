@@ -96,17 +96,20 @@ export function legPool(events, { minP = 0.55, minOdds = 1.04, maxOdds = 1.6, ca
 
 // Up to `count` slips near `target` built from the pool, each using its own legs where possible.
 export function bankerSlips(events, target, { count = 5, tolerance = 0.1, cal = null, minOdds = 1.04 } = {}) {
-  // Strictest first; if the board is thin, allow slightly longer legs and a wider band so the page is
-  // never empty while there are priced favourites.
-  for (const [maxOdds, tol] of [[target <= 2.5 ? 1.7 : target <= 10 ? 1.6 : 1.5, tolerance], [target <= 10 ? 1.9 : 1.7, Math.max(tolerance, 0.15)], [2.2, 0.2]]) {
-    const out = buildFrom(legPool(events, { maxOdds, cal, minOdds: Math.max(1.04, Math.min(minOdds, maxOdds - 0.15)) }), target, count, tol);
+  // Strictest first (every leg rated 70%+ after the track-record check); if the board is thin, allow
+  // slightly weaker or longer legs and a wider band so the page is never empty while there are
+  // priced favourites.
+  const short = target <= 2.5 ? 1.7 : target <= 10 ? 1.6 : 1.5;
+  for (const [minP, maxOdds, tol] of [[0.7, short, tolerance], [0.62, short, tolerance], [0.6, target <= 10 ? 1.9 : 1.7, Math.max(tolerance, 0.15)], [0.55, 2.2, 0.2]]) {
+    const out = buildFrom(legPool(events, { minP, maxOdds, cal, minOdds: Math.max(1.04, Math.min(minOdds, maxOdds - 0.15)) }), target, count, tol);
     if (out.length) return out;
   }
   return [];
 }
 
 function buildFrom(pool, target, count, tolerance) {
-  const lo = target * (1 - tolerance), hi = target * (1 + tolerance);
+  // Land on the target, not well short of it: the band below is half as wide as the band above.
+  const lo = target * (1 - tolerance / 2), hi = target * (1 + tolerance);
   const slips = [];
   const used = new Set();
   for (let k = 0; k < count; k++) {

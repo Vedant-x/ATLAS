@@ -12,18 +12,24 @@ export const familyOf = (market = '') => (/^Total/.test(market) ? 'total' : mark
 // Self-correcting accuracy: per market family, how the settled picks did against their estimates.
 // A family that lands less often than estimated gets its probabilities scaled down (so it needs a
 // stronger estimate to qualify); one that beats its estimates gets a small lift. The weight grows
-// with the number of settled picks, so a few results can't swing it.
+// with the number of settled picks, so a few results can't swing it. Every graded multiplier leg
+// counts too (each is a single prediction with its own result), so the model learns from more data.
+// Penalties bite harder than rewards: an overconfident market costs more than a modest one gains.
 export function calibration(history = []) {
   const out = {};
+  const add = (market, p, status) => {
+    if (status !== 'won' && status !== 'lost') return;
+    const r = (out[familyOf(market)] ||= { n: 0, won: 0, exp: 0 });
+    r.n++; r.won += status === 'won' ? 1 : 0; r.exp += p;
+  };
   for (const h of history) {
-    if (h.type === 'multi' || (h.status !== 'won' && h.status !== 'lost')) continue;
-    const r = (out[familyOf(h.market)] ||= { n: 0, won: 0, exp: 0 });
-    r.n++; r.won += h.status === 'won' ? 1 : 0; r.exp += h.p;
+    if (h.type === 'multi') for (const l of h.legs || []) add(l.market, l.p, l.status);
+    else add(h.market, h.p, h.status);
   }
   for (const r of Object.values(out)) {
     r.hit = r.won / r.n; r.expected = r.exp / r.n;
-    const w = r.n / (r.n + 15);
-    r.factor = Math.max(0.85, Math.min(1.05, 1 + 1.5 * w * (r.hit / r.expected - 1)));
+    const w = r.n / (r.n + 12), d = r.hit / r.expected - 1;
+    r.factor = Math.max(0.8, Math.min(1.05, 1 + (d < 0 ? 2 : 1.2) * w * d));
   }
   return out;
 }
@@ -50,7 +56,7 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
 // The day's official multiplier and mega slips (2x up to 1000x), built from bankers exactly as the site
 // shows them (picks.js), from bookmaker-priced matches in the next 18 hours (36 for 100x+), locked
 // once per UTC day and graded leg by leg.
-export const MULTI_TARGETS = [2, 3, 5, 10, 100, 1000];
+export const MULTI_TARGETS = [2, 3, 4, 5, 10, 20, 100, 1000];
 export function multiPicks(events, now = Date.now(), history = []) {
   const pool = applyModel(events.filter((e) => !e.live && e.compId && e.markets?.length && e.start > now + 30 * 6e4 && e.start < now + 36 * 36e5));
   const byId = new Map(pool.map((e) => [e.id, e]));
@@ -131,11 +137,14 @@ export function resultFromSummary(sm) {
   return { done: true, homeScore: h.score, awayScore: a.score, winner: winner || (h.score != null && h.score === a.score ? 'draw' : null) };
 }
 
-// Summary statistics for the Record page. Profit is in units at a flat 1-unit stake.
+// Summary statistics for the Record page. Profit is in units at a flat 1-unit stake. The main record
+// covers single picks only (bankers and value spots); every multiplier target and the mega slips keep
+// a separate record of their own (byTarget), shown on their own pages.
 export function summarize(history) {
   const settledAll = history.filter((h) => h.status === 'won' || h.status === 'lost' || h.status === 'push');
   const graded = settledAll.filter((h) => h.type !== 'multi');
   const multis = settledAll.filter((h) => h.type === 'multi');
+  const slipsOf = (ts) => history.filter((h) => h.type === 'multi' && ts.includes(h.target)).sort((a, b) => b.start - a.start);
   const stat = (list) => {
     const won = list.filter((h) => h.status === 'won'), lost = list.filter((h) => h.status === 'lost');
     const settled = won.length + lost.length;
@@ -156,10 +165,11 @@ export function summarize(history) {
   });
   const firstAt = history.reduce((t, h) => Math.min(t, h.recordedAt || Infinity), Infinity);
   return {
-    since: Number.isFinite(firstAt) ? firstAt : null, all: stat(graded), multi: stat(multis), byTarget: MULTI_TARGETS.map((t) => ({ key: `${t}x`, target: t, ...stat(multis.filter((m) => m.target === t)) })),
-    byType: [...group((h) => h.type), ...(multis.length ? [{ key: 'multi', ...stat(multis) }] : [])], bySport: group((h) => h.sport), byFamily: group((h) => familyOf(h.market)), buckets,
-    pending: history.filter((h) => h.status === 'pending').sort((a, b) => a.start - b.start),
-    recent: settledAll.slice().sort((a, b) => b.start - a.start).slice(0, 40),
+    since: Number.isFinite(firstAt) ? firstAt : null, all: stat(graded), multi: stat(multis), byTarget: MULTI_TARGETS.map((t) => ({ key: `${t}x`, target: t, ...stat(multis.filter((m) => m.target === t)), slips: slipsOf([t]).slice(0, 12) })),
+    mega: { ...stat(multis.filter((m) => m.target >= 100)), slips: slipsOf([100, 1000]).slice(0, 12) },
+    byType: group((h) => h.type), bySport: group((h) => h.sport), byFamily: group((h) => familyOf(h.market)), buckets,
+    pending: history.filter((h) => h.status === 'pending' && h.type !== 'multi').sort((a, b) => a.start - b.start),
+    recent: graded.slice().sort((a, b) => b.start - a.start).slice(0, 40),
   };
 }
 
