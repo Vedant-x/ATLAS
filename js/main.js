@@ -1,4 +1,5 @@
 import { ico, watchLabel, pinLabel } from './icons.js';
+import { mountPalette } from './palette.js';
 import { mountAssistant } from './assistant/ui.js';
 import { legalViews, ageGate } from './legal.js';
 import { trackViews } from './trackview.js';
@@ -73,6 +74,7 @@ const state = {
 };
 bind(state);
 bindResearch(state);
+mountPalette(state);
 state.refresh = () => softRender();
 state.scene = scene;
 loadF1().then((d) => { if (d && ['home', 'sports'].includes(parse().name)) softRender(); });

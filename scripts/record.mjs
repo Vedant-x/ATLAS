@@ -4,7 +4,7 @@
 // scores, saves the history file (kept on the track-record branch) and writes the public copy.
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { selectPicks, addPicks, gradePick, resultFromSummary, resultFromBo3, settleMulti } from '../js/track.js';
+import { selectPicks, addPicks, updateClosing, gradePick, resultFromSummary, resultFromBo3, settleMulti } from '../js/track.js';
 import { BO3 } from '../js/esports.js';
 
 const [historyPath = 'track/picks.json', eventsPath = 'dist/pages/data/index.json', outPath = 'dist/pages/data/track.json'] = process.argv.slice(2);
@@ -18,6 +18,7 @@ const { events = [] } = JSON.parse(await readFile(eventsPath, 'utf8'));
 const before = history.length;
 history = addPicks(history, selectPicks(events, now, 12, history));
 log(`Track record: ${history.length - before} new pick(s), ${history.length} total`);
+log(`Track record: closing prices updated for ${updateClosing(history, events, now)} pending pick(s)/leg(s)`);
 
 // Grade picks whose match should be over (2h+ after start). One summary request per match.
 // Singles plus the legs of pending multiplier slips are graded the same way.

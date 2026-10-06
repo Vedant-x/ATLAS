@@ -155,7 +155,15 @@ function eventRow(e, compact = false) {
   </article>`;
 }
 
-function slipCard(s, i, target) {
+// How much an option repeats an earlier one: the most legs it shares with any option above it.
+function overlapNote(s, i, all = []) {
+  const ids = (x) => new Set(x.legs.map((l) => `${l.eventId}|${l.pick}`));
+  const mine = ids(s);
+  let best = null;
+  all.slice(0, i).forEach((o, j) => { const n = [...ids(o)].filter((k) => mine.has(k)).length; if (n && (!best || n > best.n)) best = { n, j }; });
+  return best ? `<span class="overlap">Shares ${best.n} of ${s.legs.length} legs with #${String(best.j + 1).padStart(2, '0')}</span>` : (i ? '<span class="overlap fresh">No legs shared with the options above</span>' : '');
+}
+function slipCard(s, i, target, all) {
   const keys = s.legs.map((l) => {
     const leg = { key: `${l.eventId}|${l.market}|${l.pick}`, eventId: l.eventId, sport: l.sport, match: l.match, market: l.market, pick: l.pick, odds: l.odds, p: l.p };
     legIndex.set(leg.key, leg);
@@ -163,11 +171,12 @@ function slipCard(s, i, target) {
   });
   return `<article class="slipc tilt reveal">
     <header><span class="tag">#${String(i + 1).padStart(2, '0')}</span><span class="mult">${s.odds.toFixed(2)}<small>x</small></span></header>
+    ${overlapNote(s, i, all)}
     <ul>${s.legs.map((l) => `<li><span class="sp">${sportOf(l.sport).icon}</span><div><b>${esc(l.pick)}</b><small>${esc(l.market)} · ${esc(l.match)}</small>${istTag(l.start ?? S.events.find((x) => x.id === l.eventId)?.start)}</div><em>${l.odds.toFixed(2)}</em><i>${pc(l.p, 0)}</i></li>`).join('')}</ul>
     <footer>
       <div class="meter"><i class="grow" style="--w:${Math.min(100, s.p * 100 * (target >= 100 ? 40 : 1)).toFixed(1)}%"></i></div>
       <span>Estimated chance <b>${pc(s.p, s.p < 0.01 ? 2 : 1)}</b></span><span>Edge <b class="${s.p * s.odds - 1 >= 0 ? 'pos' : 'neg'}">${((s.p * s.odds - 1) * 100).toFixed(1)}%</b></span>
-      <p class="slip-note">${s.p * s.odds - 1 >= 0 ? 'The model rates this combination above its price.' : `Meets the ${target}x payout target, but it is not a value bet: the ${((1 - s.p * s.odds) * 100).toFixed(1)}% shortfall is mostly bookmaker margin, so on average it loses money.`} Chance of at least one leg failing: ${pc(1 - s.p, 0)}. The combined chance assumes the legs are independent (no two legs share a team).</p>
+      <p class="slip-note">${s.p * s.odds - 1 >= 0 ? 'Priced above its estimated chance' : 'Not a value bet: priced below its estimated chance'} · ${pc(1 - s.p, 0)} chance a leg loses · legs assumed independent</p>
       <button class="btn-ghost" data-addall="${esc(keys.join('~'))}" data-cursor="ADD ALL">Add all to slip</button>
     </footer></article>`;
 }
@@ -245,7 +254,7 @@ export const views = {
     const by = countBy();
     return {
       mode: 'sport', accent: '#d2ff00', title: 'All sports',
-      html: `<section class="hero small"><p class="kicker reveal">${CATALOG.length} SPORTS · ${CATALOG.reduce((n, s) => n + s.groups.reduce((m, g) => m + g.leagues.length, 0), 0)} COMPETITIONS</p><h1>${split('ALL SPORTS')}</h1></section>
+      html: `<section class="hero small"><p class="kicker reveal">${CATALOG.length} SPORTS · ${CATALOG.reduce((n, s) => n + s.groups.reduce((m, g) => m + g.leagues.length, 0), 0)} COMPETITIONS</p><h1>${split('ALL SPORTS')}</h1><button class="pal-open-btn reveal" data-palette>${ico('search')}<span>Search matches, teams and leagues</span></button></section>
         ${notice()}
         <div class="grid sports">${CATALOG.map((sp) => {
           const n = sp.groups.reduce((t, g) => t + g.leagues.reduce((u, l) => u + (by[l.path]?.n || 0), 0), 0);
@@ -415,7 +424,7 @@ export const views = {
         ${notice()}
         ${officialBlock(target)}
         <h2 class="sec reveal">${officialSlip(target) ? 'More options' : 'Options'}</h2>
-        <section class="grid slips">${list.map((s, i) => slipCard(s, i, target)).join('') || emptySlips(target)}</section>
+        <section class="grid slips">${list.map((s, i, arr) => slipCard(s, i, target, arr)).join('') || emptySlips(target)}</section>
         ${recordBlock(`${target}x track record`, r)}`,
     };
   },
@@ -432,7 +441,7 @@ export const views = {
         <form class="xtarget reveal" data-xtarget><label>Target multiplier<input type="number" name="t" min="1.2" max="100000" step="0.1" value="${has ? t : ''}" placeholder="e.g. 7.5" inputmode="decimal" aria-label="Target multiplier"></label><button class="btn">Build slips</button></form>
         <nav class="tabs reveal">${presets.map((x) => `<a href="#/target/${x}" class="${x === t ? 'on' : ''}">${x}x</a>`).join('')}</nav></section>
         ${notice()}
-        ${has ? `<section class="grid slips">${list.map((s, i) => slipCard(s, i, t)).join('') || emptySlips(t)}</section>` : ''}`,
+        ${has ? `<section class="grid slips">${list.map((s, i, arr) => slipCard(s, i, t, arr)).join('') || emptySlips(t)}</section>` : ''}`,
     };
   },
 
@@ -446,7 +455,7 @@ export const views = {
         ${notice()}
         ${[100, 1000].map((t) => { return `<h2 class="sec reveal">${t}x</h2>
           ${officialBlock(t)}
-          <section class="grid slips">${S.slips(t, { count: 3 }).map((s, i) => slipCard(s, i, t)).join('') || emptySlips(t)}</section>`; }).join('')}
+          <section class="grid slips">${S.slips(t, { count: 3 }).map((s, i, arr) => slipCard(s, i, t, arr)).join('') || emptySlips(t)}</section>`; }).join('')}
         ${recordBlock('Mega track record', ts?.mega)}`,
     };
   },

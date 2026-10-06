@@ -1,10 +1,11 @@
 // The floating assistant: an animated character you can drag anywhere, a chat panel, six looks to
 // pick from. Answers come from an AI model running on the visitor's own device (ai.js); browsers
 // without WebGPU get the built-in brain, which answers from the same site data.
+import { ico } from '../icons.js';
 import { createKnowledge } from './knowledge.js';
 import { createBrain } from './brain.js';
 import { CHARACTERS, characterById, svgOf } from './characters.js';
-import { aiAvailable, askAI, loadEngine, engineLoaded, onProgress, deviceAI } from './ai.js';
+import { aiAvailable, askAI, loadEngine, engineLoaded, onProgress, deviceAI, deviceOptIn, setDeviceOptIn, downloadSize } from './ai.js';
 import { esc, legIndex } from '../views.js';
 import { slip } from '../slip.js';
 
@@ -47,7 +48,7 @@ export function mountAssistant(S) {
   const root = document.createElement('div');
   root.className = 'ai-root';
   root.innerHTML = `
-    <button class="ai-launch" aria-label="Ask me for bets! Open the ATLAS assistant" data-cursor="ASK">
+    <button class="ai-launch" aria-label="Open the ATLAS assistant" data-cursor="ASK">
       <span class="ai-shadow"></span><span class="ai-avatar"></span>
       <span class="ai-bubble" hidden></span>
     </button>
@@ -55,14 +56,15 @@ export function mountAssistant(S) {
       <header class="ai-head">
         <span class="ai-mini"></span>
         <div class="ai-title"><b class="ai-name"></b><small class="ai-mode"></small></div>
-        <button class="ai-icon" data-ai="looks" title="Change character" aria-label="Change character">🎭</button>
-        <button class="ai-icon" data-ai="clear" title="Clear chat" aria-label="Clear chat">⟲</button>
-        <button class="ai-icon" data-ai="close" title="Close" aria-label="Close">×</button>
+        <button class="ai-icon" data-ai="looks" title="Change character" aria-label="Change character">${ico('person')}</button>
+        <button class="ai-icon" data-ai="clear" title="Clear chat" aria-label="Clear chat">${ico('refresh')}</button>
+        <button class="ai-icon" data-ai="close" title="Close" aria-label="Close">${ico('close')}</button>
       </header>
       <div class="ai-looks" hidden></div>
       <div class="ai-log" aria-live="polite"></div>
+      <div class="ai-optin" hidden></div>
       <div class="ai-chips"></div>
-      <form class="ai-form"><input class="ai-input" placeholder="Ask about bets, injuries, starters…" autocomplete="off" maxlength="500"/><button class="ai-send" aria-label="Send">➤</button></form>
+      <form class="ai-form"><input class="ai-input" placeholder="Ask about bets, injuries, starters…" autocomplete="off" maxlength="500"/><button class="ai-send" aria-label="Send">${ico('send')}</button></form>
     </section>`;
   document.body.append(root);
   const $ = (s) => root.querySelector(s);
@@ -76,14 +78,22 @@ export function mountAssistant(S) {
     const pend = history[history.length - 1];
     if (busy && pend?.pending && !pend.streamed) { pend.text = p >= 1 ? 'Thinking…' : `Setting up the AI on your device (first time only) · ${Math.round(p * 100)}%`; const el = log.lastElementChild; if (el) el.innerHTML = md(pend.text); }
   });
-  // Warm the model up when the chat opens, unless the visitor is saving data or on mobile data.
+  // Warm the model up when the chat opens, once the visitor has turned it on (and not on mobile data).
   const warm = async () => {
-    if (engineLoaded() || !(await deviceAI())) return;
+    if (engineLoaded() || !deviceOptIn() || !(await deviceAI())) return;
     const c = navigator.connection;
     if (c && (c.saveData || c.type === 'cellular' || /2g|3g/.test(c.effectiveType || ''))) return;
     loadEngine().catch(() => {});
   };
-  deviceAI().then((ok) => { if (ok) setMode('AI · on your device'); });
+  // Devices that can run the model are offered it once, as a choice with the download size shown.
+  const optin = async () => {
+    const box = $('.ai-optin');
+    const show = !deviceOptIn() && (await deviceAI());
+    box.hidden = !show;
+    if (show) box.innerHTML = `<p>Answers now come from ATLAS's built-in assistant. A fuller AI can run on this device: free and private, ${downloadSize()} to download once.</p><button class="ai-optin-btn" data-ai="optin">Use on-device AI</button>`;
+    setMode(deviceOptIn() && (await deviceAI()) ? 'AI · on your device' : 'Built-in assistant');
+  };
+  optin();
 
   function paint() {
     const c = characterById(charId);
@@ -204,6 +214,7 @@ export function mountAssistant(S) {
     if (act === 'close') toggle(false);
     else if (act === 'looks') looks();
     else if (act === 'clear') { history = []; persist(); render(); }
+    else if (act === 'optin') { setDeviceOptIn(true); optin(); warm(); }
     else if (t.dataset.look) { charId = t.dataset.look; store.set('atlas-ai-char', charId); paint(); looks(); looks(); root.classList.add('wave'); setTimeout(() => root.classList.remove('wave'), 900); }
     else if (t.classList.contains('ai-chip')) ask(t.textContent);
     else if (t.tagName === 'A' && t.getAttribute('href')?.startsWith('#/') && innerWidth < 820) toggle(false); // phones: get out of the way
