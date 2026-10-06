@@ -369,6 +369,9 @@ document.addEventListener('click', (e) => {
     if (current === 'compare') softRender();
   }
   else if (d.rsort) { setResearchPrefs({ sort: d.rsort }); softRender(); }
+  else if ('rmore' in d) { const box = t.previousElementSibling; const all = box.classList.toggle('all'); t.setAttribute('aria-expanded', all); t.textContent = all ? 'Show fewer' : `Show all ${box.children.length}`; }
+  else if (d.rhours) { setResearchPrefs({ hours: Number(d.rhours) }); softRender(); }
+  else if (d.shours) { setResearchPrefs({ shortHours: Number(d.shours) }); softRender(); }
   else if ('qvClose' in d) closeQv();
   else if ('displayToggle' in d) { const p = document.getElementById('display-panel'); const open = !p.classList.contains('open'); p.innerHTML = displayPanel(); p.classList.toggle('open', open); t.setAttribute('aria-expanded', open); }
   else if (d.display) { display.set({ [d.display]: d.value }); document.getElementById('display-panel').innerHTML = displayPanel(); }
@@ -431,12 +434,13 @@ document.addEventListener('click', (e) => {
   e.preventDefault();
   openQv(row.dataset.qv, row);
 });
+// Capture phase: decided before any handler redraws the page (which would detach the tapped element).
 document.addEventListener('click', (e) => {
   // Quick view: a tap anywhere outside it (other than another row) closes it, like any sheet.
-  if (qv?.classList.contains('open') && e.target.isConnected && !e.target.closest('#qv, [data-qv], .ai-root, #slip, .slip-btn')) closeQv();
+  if (qv?.classList.contains('open') && !e.target.closest('#qv, [data-qv], .ai-root, #slip, .slip-btn')) closeQv();
   const p = document.getElementById('display-panel');
-  if (p?.classList.contains('open') && e.target.isConnected && !e.target.closest('#display-panel, [data-display-toggle]')) p.classList.remove('open'); // a chip that just redrew the panel is detached: not an outside tap
-});
+  if (p?.classList.contains('open') && !e.target.closest('#display-panel, [data-display-toggle]')) p.classList.remove('open'); // a chip that just redrew the panel is detached: not an outside tap
+}, true);
 function toast(text, href) {
   let box = document.querySelector('.toasts');
   if (!box) { box = document.createElement('div'); box.className = 'toasts'; box.setAttribute('aria-live', 'polite'); document.body.append(box); }
