@@ -1,6 +1,9 @@
 // Interface motion: preloader, cursor, page wipe, magnetic elements, count-ups, scroll reveals, ticker.
 const gsap = () => window.gsap;
-const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+import { motion } from './display.js';
+// Read on every call: the display settings can change the motion level without a reload.
+const isReduced = () => motion() === 'reduced';
+const cinematic = () => motion() === 'cinematic';
 const fine = matchMedia('(pointer: fine)').matches;
 
 export function preloader(promise) {
@@ -22,7 +25,7 @@ export function preloader(promise) {
     return new Promise((res) => setTimeout(() => {
       clearInterval(steps);
       const g = gsap();
-      if (g && !reduced) {
+      if (g && !isReduced()) {
         g.timeline()
           .to('#preloader .pl-word span', { yPercent: -110, stagger: 0.02, duration: 0.25, ease: 'expo.in' })
           .to('#preloader', { clipPath: 'inset(0 0 100% 0)', duration: 0.4, ease: 'expo.inOut' }, '-=0.1')
@@ -33,7 +36,7 @@ export function preloader(promise) {
 }
 
 export function cursor() {
-  if (!fine || reduced) return;
+  if (!fine || !cinematic()) return; // custom cursor only in the cinematic motion setting
   const dot = document.createElement('div'); dot.className = 'cur-dot';
   const ring = document.createElement('div'); ring.className = 'cur-ring'; ring.innerHTML = '<span></span>';
   document.body.append(dot, ring);
@@ -59,7 +62,14 @@ export function cursor() {
 export function wipe(swap, label = '') {
   const el = document.getElementById('wipe');
   const g = gsap();
-  if (!el || !g || reduced) { swap(); return Promise.resolve(); }
+  if (!el || !g || isReduced()) { swap(); return Promise.resolve(); }
+  // Standard motion: a quick 200 ms cross-fade of the page, no full-screen wipe.
+  if (!cinematic()) {
+    const app = document.getElementById('app');
+    return new Promise((res) => {
+      g.to(app, { opacity: 0, duration: 0.09, ease: 'power1.in', onComplete: () => { swap(); g.fromTo(app, { opacity: 0, y: 6 }, { opacity: 1, y: 0, duration: 0.16, ease: 'power2.out', clearProps: 'transform', onComplete: res }); } });
+    });
+  }
   el.querySelector('b').textContent = label;
   return new Promise((res) => {
     g.timeline()
@@ -74,7 +84,7 @@ export function wipe(swap, label = '') {
 }
 
 export function magnetic(root = document) {
-  if (!fine || reduced) return;
+  if (!fine || !cinematic()) return;
   root.querySelectorAll('[data-magnetic]').forEach((el) => {
     el.addEventListener('pointermove', (e) => {
       const r = el.getBoundingClientRect();
@@ -86,7 +96,7 @@ export function magnetic(root = document) {
 
 // 3D tilt + spotlight on .tilt cards
 export function tilt() {
-  if (!fine || reduced) return;
+  if (!fine || !cinematic()) return;
   document.addEventListener('pointermove', (e) => {
     const card = e.target.closest?.('.tilt');
     document.querySelectorAll('.tilt.on').forEach((c) => { if (c !== card) { c.classList.remove('on'); c.style.transform = ''; } });
@@ -103,7 +113,7 @@ export function tilt() {
 export function countUp(root = document) {
   root.querySelectorAll('[data-count-to]').forEach((el) => {
     const end = Number(el.dataset.countTo), dec = Number(el.dataset.dec || 0), suffix = el.dataset.suffix || '';
-    if (reduced || !gsap()) { el.textContent = end.toFixed(dec) + suffix; return; }
+    if (!cinematic() || !gsap()) { el.textContent = end.toFixed(dec) + suffix; return; }
     const o = { v: 0 };
     gsap().to(o, { v: end, duration: 1.6, ease: 'expo.out', delay: 0.2, onUpdate: () => { el.textContent = o.v.toFixed(dec) + suffix; } });
   });
@@ -113,7 +123,7 @@ export function countUp(root = document) {
 let io;
 export function reveal(root = document, animateTitle = true) {
   const g = gsap();
-  if (animateTitle && g && !reduced) {
+  if (animateTitle && g && cinematic()) {
     g.fromTo(root.querySelectorAll('.hero .ch'), { yPercent: 115, rotateX: -80, opacity: 0 },
       { yPercent: 0, rotateX: 0, opacity: 1, duration: 1.1, stagger: 0.022, ease: 'expo.out', delay: 0.05 });
   } else root.querySelectorAll('.ch').forEach((c) => { c.style.opacity = 1; });
@@ -123,7 +133,7 @@ export function reveal(root = document, animateTitle = true) {
   }), { rootMargin: '0px 0px -8% 0px' });
   root.querySelectorAll('.reveal, .grow, .grow-y, .draw').forEach((el, i) => {
     el.style.setProperty('--d', `${Math.min(i % 12, 11) * 45}ms`);
-    if (reduced) el.classList.add('in'); else io.observe(el);
+    if (!cinematic()) el.classList.add('in'); else io.observe(el); // scroll reveals are cinematic-only: content is never hidden waiting for a scroll
   });
 }
 

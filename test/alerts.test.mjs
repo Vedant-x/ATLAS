@@ -15,7 +15,7 @@ test('alerts fire for starter changes, new absences, big price moves, kick-off a
   assert.deepEqual(kinds(ev({ absences: { home: [{ name: 'Judge' }], away: [] } })), ['injury']);
   assert.deepEqual(kinds(ev({ markets: [{ name: 'Winner', outcomes: [{ name: 'Yankees', odds: 1.6 }, { name: 'Rays', odds: 2.05 }] }] })), ['price']);
   assert.deepEqual(kinds(ev({ markets: [{ name: 'Winner', outcomes: [{ name: 'Yankees', odds: 1.85 }, { name: 'Rays', odds: 2.0 }] }] })), []); // small moves ignored
-  assert.deepEqual(kinds(ev({ start: at + 10 * 6e4 })), ['soon']);
+  assert.deepEqual(kinds(ev({ start: at + 10 * 6e4 })), ['time', 'soon']); // moved forward 170 min, and now starting soon
   const liveBefore = { ...snapshot(ev({ live: true, score: '0 – 0' })), checkedAt: at };
   assert.deepEqual(changes(ev({ live: true, score: '1 – 0' }), liveBefore, snapshot(ev({ live: true, score: '1 – 0' })), at).map((m) => m.kind), ['score']);
   assert.deepEqual(changes(ev(), null, snapshot(ev()), at), []); // first sighting: no alert

@@ -99,8 +99,21 @@ export function createBrain(K) {
     if (!list.length) return { text: `I couldn't find priced matches for ${scopeLabel(scope)} in the next few days. Try another sport, or ask for **"best bets"** across everything.` };
     const head = { safe: 'Safest picks', value: 'Best value (model above the price)', balanced: 'Best bets' }[mode];
     const combo = list.reduce((a, x) => a * x.odds, 1), comboP = list.reduce((a, x) => a * x.p, 1);
+    // Every candidate carries its reason, the strongest concern, what is still unknown and what would
+    // change the call; the answer opens with its scope and closes with how fresh the facts are.
+    const f = K.freshness?.() || {}, mins = (t) => (t ? Math.max(0, Math.round((Date.now() - t) / 6e4)) : null);
+    const why = (x) => {
+      const c = K.caseOf?.(x.e) || { pro: [], con: [], invalid: [] }, r = K.readinessOf?.(x.e) || { label: 'not checked', missing: [], uncovered: [] };
+      return [
+        `   Why: ${x.priced ? `price ${od(x.odds)} needs ${pc(1 / x.odds)}, ATLAS ${pc(x.p)}` : 'ATLAS model only (no price)'}${c.pro.find((t) => !/^Bookmaker price/.test(t)) ? `; ${c.pro.find((t) => !/^Bookmaker price/.test(t)).replace(/\.$/, '')}` : ''}.`,
+        c.con[0] ? `   Against: ${c.con[0]}` : '',
+        `   Evidence: ${r.label}${r.missing.length || r.uncovered.length ? ` (unknown: ${[...r.missing, ...r.uncovered].join(', ').toLowerCase()})` : ''}.`,
+        c.invalid[0] ? `   Would change the call: ${c.invalid[0]}` : '',
+      ].filter(Boolean).join('\n');
+    };
+    const scopeLine = `Scope: ${today ? 'matches starting in the next 12 hours' : 'the next few days'} · ${scopeLabel(scope)} · minimum odds ${od(K.minOdds?.() ?? 1.3)}`;
     return {
-      text: `**${head}: ${scopeLabel(scope)}${today ? ' today' : ''}**${note}\n\n${list.map((x, i) => `${i + 1}. **${x.pick}** · ${x.market} · ${x.e.home} vs ${x.e.away}: odds ${od(x.odds)}, est. ${pc(x.p)}${x.priced ? '' : ' (model, no bookmaker price)'}`).join('\n')}\n\nAs singles each stands alone. All ${list.length} together: about **${od(combo)}x**, an estimated ${pc(comboP)} chance if the legs are independent. Tap **+** to add to your slip.`,
+      text: `**${head}: ${scopeLabel(scope)}${today ? ' (next 12 hours)' : ''}**${note}\n${scopeLine}\n\n${list.map((x, i) => `${i + 1}. **${x.pick}** · ${x.market} · ${x.e.home} vs ${x.e.away}: odds ${od(x.odds)}, est. ${pc(x.p)}${x.priced ? '' : ' (model, no bookmaker price)'}\n${why(x)}`).join('\n')}\n\nAs singles each stands alone. All ${list.length} together: about **${od(combo)}x**, an estimated ${pc(comboP)} chance if the legs are independent.\nFreshness: prices checked ${mins(f.pricesAt) ?? '?'} min ago${f.changesAt ? `, team news / changes ${mins(f.changesAt)} min ago` : ''}. Tap **+** to add to your slip.`,
       cards: list.map(pickCard),
     };
   }
@@ -126,14 +139,42 @@ export function createBrain(K) {
     return { text: `**Live now** (${list.length})\n\n${list.map((e) => `- ${e.home} vs ${e.away} · ${e.league} · ${e.score || ''} ${e.clock || ''}`).join('\n')}`, cards: list.slice(0, 4).map((e) => ({ type: 'match', e })) };
   }
 
+  // What changed (since your last visit), and which saved matches need another look.
+  function changed(q) {
+    const watchedOnly = /\b(my|saved|watch|watched|watchlist)\b/.test(q);
+    const list = K.changes({ since: /\b(yesterday|24)\b/.test(q) ? Date.now() - 864e5 : K.lastVisit(), watchedOnly }).slice(0, 10);
+    if (!list.length) return { text: watchedOnly ? 'Nothing material has changed for your saved matches since you last looked.' : 'No material changes (starters, lineups, absences, price moves) since your last visit.' };
+    return { text: `**What changed${watchedOnly ? ' for your saved matches' : ''}**\n\n${list.map((c) => `- **${c.home} v ${c.away}**: ${c.text}${c.forecast === 'not-modelled' ? ' (forecast impact not quantified)' : c.forecast === 'updated' ? ' (forecast updated)' : ''}`).join('\n')}`, cards: [] };
+  }
+  function review() {
+    const list = K.reviewList();
+    if (!list.length) return { text: 'None of your saved matches need review: nothing material changed after you last opened them.' };
+    return { text: `**Saved matches that need another look**\n\n${list.map((x) => `- **${x.e.home} v ${x.e.away}**: ${x.changes[0].text}${x.changes.length > 1 ? ` (+${x.changes.length - 1} more)` : ''}`).join('\n')}`, cards: list.slice(0, 4).map((x) => ({ type: 'match', e: x.e })) };
+  }
+  function confirmedLineups() {
+    const list = K.filterEvents({ upcoming: true }).filter((e) => !e.live && e.start > Date.now() && e.absences?.lineup && !['lastStarting11', 'predicted'].includes(e.absences.lineup.type)).slice(0, 10);
+    if (!list.length) return { text: 'No confirmed lineups yet for upcoming matches. Soccer XIs are usually confirmed about an hour before kick-off.' };
+    return { text: `**Matches with confirmed lineups**\n\n${list.map((e) => `- ${e.home} v ${e.away} · ${e.league}`).join('\n')}`, cards: list.slice(0, 4).map((e) => ({ type: 'match', e })) };
+  }
+  function coverage() {
+    const up = K.filterEvents({ upcoming: true }).filter((e) => !e.live && e.start > Date.now() && e.start < Date.now() + 48 * 36e5);
+    const by = {};
+    for (const e of up) { const r = K.readinessOf(e); const b = (by[e.sport] ||= { n: 0, priced: 0, ready: 0, gaps: new Set() }); b.n++; if (e.markets?.length) b.priced++; if (r.state === 'ready') b.ready++; [...r.uncovered].forEach((g) => b.gaps.add(g)); }
+    return { text: `**Coverage, next 48 hours**\n\n${Object.entries(by).sort((a, b) => b[1].n - a[1].n).map(([s, b]) => `- **${s}**: ${b.n} matches, ${b.priced} priced, ${b.ready} ready${b.gaps.size ? ` · not covered: ${[...b.gaps].join(', ').toLowerCase()}` : ''}`).join('\n')}` };
+  }
+
   const help = () => ({
-    text: `I know everything on ATLAS: every match, the model's win chances, odds, edge, injuries, starting pitchers and slips. Try:\n- **"best bets today"** or **"3 safe NBA bets"**\n- **"value bets in the Premier League"**\n- **"injuries in this match"** (on a match page)\n- **"who wins Yankees vs Rays"**\n- **"starters"** for MLB/NPB/KBO games\n- **"give me a 3x slip"** or **"mega 100x"**\n- **"what's live"**\n\nProbabilities are model estimates, not guarantees. Picks follow your saved filters (minimum odds, sports).`,
+    text: `I know everything on ATLAS: every match, the model's win chances, odds, edge, injuries, starting pitchers and slips. Try:\n- **"best bets today"** or **"3 safe NBA bets"**\n- **"value bets in the Premier League"**\n- **"injuries in this match"** (on a match page)\n- **"who wins Yankees vs Rays"**\n- **"starters"** for MLB/NPB/KBO games\n- **"give me a 3x slip"** or **"mega 100x"**\n- **"what's live"**\n- **"what changed?"** · **"which saved matches need review?"**\n- **"confirmed lineups"** · **"which sports have incomplete data?"**\n\nProbabilities are model estimates, not guarantees. Picks follow your saved filters (minimum odds, sports).`,
   });
 
   async function answer(raw) {
     const q = K.norm(raw).trim();
     if (!q) return help();
     if (/^(hi|hey|hello|yo|sup|help|what can you|who are you|how do you)/.test(q)) return help();
+    if (/what.?s? changed|what changed|changes|anything new|since (yesterday|last)/.test(q)) return changed(q);
+    if (/need(s)? review|review my|my saved|my watch/.test(q)) return review();
+    if (/confirmed (line ?ups?|xi)|line ?ups? (are )?confirmed/.test(q)) return confirmedLineups();
+    if (/incomplete|coverage|missing data|which sports.*(data|covered)/.test(q)) return coverage();
     if (/injur|absen|\bout\b|suspend|missing|ruled out|fitness|doubtful/.test(q)) return injuries(q);
     if (/starter|pitcher|pitching|probable|\bsp\b|who.?s throwing/.test(q)) return starters(q);
     if (/\b\d{1,4}\s*x\b|\b\d{1,4}\s*times\b|\bmega\b|long ?shot|accumulator|acca|parlay/.test(q)) {
@@ -164,7 +205,7 @@ export function createBrain(K) {
     if (e) return [e.sport === 'baseball' ? 'Starters' : 'Injuries in this match', 'Best bet in this match', 'Who wins?', 'Best bets today'];
     const s = K.currentScope();
     const sp = s.sport ? ({ football: 'soccer', americanfootball: 'NFL', basketball: 'NBA', hockey: 'NHL', baseball: 'baseball' })[s.sport] || s.sport : null;
-    return sp ? [`3 safe ${sp} bets`, `Value ${sp} bets`, 'Give me a 3x slip', "What's live?"] : ['Best bets today', '3 safe bets', 'Give me a 2x slip', "What's live?"];
+    return sp ? [`3 safe ${sp} bets`, `Value ${sp} bets`, 'Give me a 3x slip', "What's live?"] : ['Best bets today', 'What changed?', 'Give me a 2x slip', "What's live?"];
   }
 
   return { answer, suggestions };

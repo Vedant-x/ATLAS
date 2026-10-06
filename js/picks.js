@@ -38,13 +38,13 @@ const isResult = (m) => /winner|match result|result|double chance|handicap|sprea
 
 // One coherent view of a match: the side the model leans to, and (separately) the goals direction,
 // then at most one result pick, one goals pick and one value pick that agree with both.
-export function coherentBets(e, a, { cal = null, max = 3 } = {}) {
+export function coherentBets(e, a, { cal = null, max = 3, preferBook = false } = {}) {
   const cands = [];
   for (const m of e.markets || []) {
     const d = devig(m);
     d.outcomes.forEach((o, i) => {
       const p = m.outcomes[i].model ?? o.fair;
-      cands.push({ market: m.name, pick: o.name, p, q: calibrated(p, m.name, cal), odds: o.odds, book: true, ev: p * o.odds - 1 });
+      { const q = calibrated(p, m.name, cal); cands.push({ market: m.name, pick: o.name, p, q, fair: o.fair, odds: o.odds, book: true, ev: q * o.odds - 1 }); }
     });
   }
   for (const g of a.groups || []) for (const m of g.markets) for (const o of m.outcomes) {
@@ -63,7 +63,7 @@ export function coherentBets(e, a, { cal = null, max = 3 } = {}) {
   const playable = (c) => c.odds >= 1.2 && c.q >= 0.5 && c.q <= 0.93 && okSide(c);
   const out = [];
   // 1. Result pick for the lean side (the strongest by estimated chance; bookmaker prices first on ties).
-  const result = cands.filter((c) => playable(c) && isResult(c.market) && sideOf(e, c.market, c.pick)).sort((x, y) => y.q - x.q || y.book - x.book)[0];
+  const result = cands.filter((c) => playable(c) && isResult(c.market) && sideOf(e, c.market, c.pick)).sort((x, y) => (preferBook ? y.book - x.book : 0) || y.q - x.q || y.book - x.book)[0];
   if (result) out.push({ label: 'Main pick', ...result, why: result.book ? 'bookmaker price, margin removed' : 'ATLAS model' });
   // 2. One goals/points pick in a single direction (never an over next to an under).
   const goals = cands.filter((c) => playable(c) && directionOf(c.market, c.pick) && !sideOf(e, c.market, c.pick) && c.q >= 0.58).sort((x, y) => y.q - x.q || y.book - x.book)[0];
@@ -72,7 +72,7 @@ export function coherentBets(e, a, { cal = null, max = 3 } = {}) {
   const dir = goals ? directionOf(goals.market, goals.pick) : null;
   const value = cands.filter((c) => c.book && c.ev >= 0.03 && c.odds <= 4 && okSide(c) && (!directionOf(c.market, c.pick) || directionOf(c.market, c.pick) === dir) && !out.some((x) => x.market === c.market))
     .sort((x, y) => y.ev - x.ev)[0];
-  if (value) out.push({ label: 'Value', ...value, why: `model ${(value.p * 100).toFixed(0)}% vs price ${(100 / value.odds).toFixed(0)}%: +${(value.ev * 100).toFixed(1)}% edge` });
+  if (value) out.push({ label: 'Value', ...value, why: `ATLAS ${(value.q * 100).toFixed(0)}% vs break-even ${(100 / value.odds).toFixed(0)}%: +${(value.ev * 100).toFixed(1)}% edge` });
   return { lean, picks: out.slice(0, max) };
 }
 

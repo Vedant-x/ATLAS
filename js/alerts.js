@@ -29,35 +29,11 @@ function askPermission() {
   Notification.requestPermission().catch(() => {});
 }
 
-// What we compare between refreshes.
-export function snapshot(e) {
-  const m = e.markets?.[0];
-  return {
-    starters: (e.probables || []).map((p) => `${p.side}:${p.report?.name || p.name || ''}`).filter((x) => !x.endsWith(':')).sort(),
-    out: ['home', 'away'].flatMap((s) => (e.absences?.[s] || []).map((i) => i.name)).sort(),
-    odds: m ? Object.fromEntries(m.outcomes.map((o) => [o.name, o.odds])) : {},
-    score: e.score || null, live: Boolean(e.live), start: e.start,
-  };
-}
-
-// Messages for what changed between two snapshots of one match.
-export function changes(e, before, now, at = Date.now()) {
-  const msgs = [];
-  const name = `${e.home} v ${e.away}`;
-  if (!before) return msgs;
-  const newSp = now.starters.filter((s) => !before.starters.includes(s));
-  if (before.starters.length && newSp.length) msgs.push({ kind: 'starter', text: `${name}: starter change, now ${newSp.map((s) => s.split(':')[1]).join(' & ')}` });
-  const newOut = now.out.filter((n) => !before.out.includes(n));
-  if (newOut.length) msgs.push({ kind: 'injury', text: `${name}: newly listed out: ${newOut.slice(0, 3).join(', ')}${newOut.length > 3 ? ` +${newOut.length - 3}` : ''}` });
-  for (const [k, o] of Object.entries(now.odds)) {
-    const b = before.odds[k];
-    if (b && o && Math.abs(o / b - 1) >= 0.08) msgs.push({ kind: 'price', text: `${name}: ${k} ${o < b ? 'shortened' : 'drifted'} ${b.toFixed(2)} → ${o.toFixed(2)}` });
-  }
-  if (!before.live && now.live) msgs.push({ kind: 'start', text: `${name} has started` });
-  else if (!now.live && now.start - at < 15 * 6e4 && now.start - at > 0 && !(before.start - (before.checkedAt || at) < 15 * 6e4)) msgs.push({ kind: 'soon', text: `${name} starts in ${Math.max(1, Math.round((now.start - at) / 6e4))} min` });
-  if (before.score && now.score && before.score !== now.score) msgs.push({ kind: 'score', text: `${name}: ${now.score}` });
-  return msgs;
-}
+// What we compare between refreshes, and the messages for what changed: shared with the server-side
+// change timeline (changelog.js).
+export { snapshot } from './changelog.js';
+import { snapshot, diff, KIND_ICON } from './changelog.js';
+export const changes = (e, before, now, at) => diff(e, before, now, at).map((c) => ({ kind: c.kind, text: c.liveOnly ? c.text : `${c.name}: ${c.text}` }));
 
 // Called after every data refresh.
 export function checkAlerts(events) {
@@ -77,7 +53,7 @@ export function checkAlerts(events) {
   return out;
 }
 
-const ICON = { starter: '⚾', injury: '🩹', price: '📈', start: '▶', soon: '⏱', score: '⚽' };
+const ICON = KIND_ICON;
 function notify(m) {
   let box = document.querySelector('.toasts');
   if (!box) { box = document.createElement('div'); box.className = 'toasts'; box.setAttribute('aria-live', 'polite'); document.body.append(box); }

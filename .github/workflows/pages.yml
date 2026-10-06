@@ -43,6 +43,10 @@ jobs:
         continue-on-error: true
       - name: Update track record
         run: node scripts/record.mjs track/picks.json dist/pages/data/index.json dist/pages/data/track.json
+      # Evidence timeline: what changed since the previous build (kept on the track-record branch).
+      - name: Update change timeline
+        continue-on-error: true
+        run: node scripts/changes.mjs track dist/pages/data/index.json dist/pages/data/changes.json
       # Data alert: a GitHub issue assigned to the owner (GitHub emails them), closed when data recovers.
       - name: Data alert
         id: alert
@@ -83,7 +87,7 @@ jobs:
             git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           fi
           git config user.name "atlas-bot" && git config user.email "atlas-bot@users.noreply.github.com"
-          git add picks.json
+          git add picks.json snapshot.json changes.json 2>/dev/null || git add picks.json
           git commit -qm "Track record $(date -u +%FT%TZ)" || exit 0
           git push -q origin HEAD:track-record
       # Self-refreshing: GitHub runs the cron above only every few hours, so each run queues the
