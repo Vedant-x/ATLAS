@@ -87,7 +87,7 @@ export function legPool(events, { minP = 0.55, minOdds = 1.04, maxOdds = 1.6, ca
     const p = calibrated(l.p, l.market, cal);
     // A banker is a clear favourite at a fair-ish price: short odds and an estimate close to the price.
     if (l.odds < minOdds || l.odds > maxOdds || p < minP || p * l.odds < 0.93) continue;
-    const leg = { ...l, p };
+    const leg = { ...l, pRaw: l.p, p };
     const cur = best.get(l.eventId);
     if (!cur || ratio(leg) < ratio(cur)) best.set(l.eventId, leg);
   }
@@ -101,7 +101,9 @@ export function bankerSlips(events, target, { count = 5, tolerance = 0.1, cal = 
   // priced favourites.
   const short = target <= 2.5 ? 1.7 : target <= 10 ? 1.6 : 1.5;
   for (const [minP, maxOdds, tol] of [[0.7, short, tolerance], [0.62, short, tolerance], [0.6, target <= 10 ? 1.9 : 1.7, Math.max(tolerance, 0.15)], [0.55, 2.2, 0.2]]) {
-    const out = buildFrom(legPool(events, { minP, maxOdds, cal, minOdds: Math.max(1.04, Math.min(minOdds, maxOdds - 0.15)) }), target, count, tol);
+    // The user's minimum odds per leg is a hard rule: never relaxed by the fallbacks.
+    const lo = Math.max(1.04, minOdds);
+    const out = buildFrom(legPool(events, { minP, maxOdds: Math.max(maxOdds, lo + 0.15), cal, minOdds: lo }), target, count, tol);
     if (out.length) return out;
   }
   return [];
@@ -117,16 +119,23 @@ function buildFrom(pool, target, count, tolerance) {
     const src = avail.length ? avail : pool;
     const legs = [];
     let odds = 1;
+    // Legs are treated as independent, so two legs may not involve the same team (e.g. a team playing
+    // twice in the window, or a tournament path): their results would be linked.
+    const teams = new Set();
+    const teamsOf = (l) => String(l.match || '').split(' vs ').map((t) => t.trim().toLowerCase()).filter(Boolean);
+    const clash = (l) => teamsOf(l).some((t) => teams.has(t));
+    const take = (l) => { legs.push(l); odds *= l.odds; teamsOf(l).forEach((t) => teams.add(t)); };
     for (const l of src) {
       if (odds >= lo) break;
+      if (clash(l)) continue;
       const need = target / odds;
       if (l.odds > need * (1 + tolerance)) {
         // This leg overshoots: finish with the best-ratio leg that lands inside the band, if any.
-        const fit = src.filter((x) => !legs.includes(x) && odds * x.odds >= lo && odds * x.odds <= hi).sort((x, y) => ratio(x) - ratio(y))[0];
-        if (fit) { legs.push(fit); odds *= fit.odds; break; }
+        const fit = src.filter((x) => !legs.includes(x) && !clash(x) && odds * x.odds >= lo && odds * x.odds <= hi).sort((x, y) => ratio(x) - ratio(y))[0];
+        if (fit) { take(fit); break; }
         continue;
       }
-      legs.push(l); odds *= l.odds;
+      take(l);
     }
     if (odds < lo || odds > hi || !legs.length) break;
     const p = legs.reduce((s, l) => s * l.p, 1);

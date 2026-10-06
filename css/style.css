@@ -907,3 +907,7 @@ p a:not(.btn):not(.more), .rec-line a, .lede a, .note a, .muted a { text-decorat
 
 .ist { display: inline-block; margin-left: 6px; color: var(--accent); font: 600 11px var(--mono); letter-spacing: .2px; white-space: nowrap; }
 .slipc .ist, .bb .ist, .mini .ist, .slip-legs .ist { display: block; margin: 2px 0 0; }
+/* Price check under a pick: ATLAS chance vs market vs break-even (tabular so columns line up). */
+.pcheck { display: block; font: 500 11px var(--sans); color: var(--muted, #9aa3ad); font-variant-numeric: tabular-nums; letter-spacing: 0; text-transform: none; }
+.panel.official { border-color: var(--accent); margin-bottom: 18px; }
+.tr-unresolved .tr-badge { background: #ffb547; color: #000; }

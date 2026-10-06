@@ -8,11 +8,12 @@ import { loadF1, f1Data, pollF1Live } from './f1view.js';
 import { liveSession } from './f1.js';
 import { overlayLive } from './merge.js';
 import { enrichMlb } from './mlbstats.js';
-import { todayEvents, localDay } from './engine.js';
+import { todayEvents } from './engine.js';
+import { slipWindow, slipPolicy, rankedBankers } from './track.js';
 import { bankerSlips } from './picks.js';
 import { trackCalibration } from './trackview.js';
 import { prefs, prefEvents } from './prefs.js';
-import { applyModel, bankers } from './intel.js';
+import { applyModel } from './intel.js';
 import { fetchLineups } from './espn.js';
 import { views, bind, legIndex, edgeTable, countdown, esc, sportOf, ist } from './views.js';
 import { slip } from './slip.js';
@@ -55,10 +56,11 @@ const state = {
   // opts.today: only matches still to start today (local time); cached per day so midnight rolls over.
   slips(target, opts = {}) {
     // Personal filters (min odds per leg, preferred sports) shape every slip.
-    const key = `${target}|${opts.today ? localDay() : 'all'}|${prefs.sig()}`;
-    const pool = prefEvents(opts.today ? todayEvents(this.events) : this.events);
+    // Same window and tolerance as the official record (track.js slipPolicy), plus the viewer's filters.
+    const key = `${target}|${prefs.sig()}`;
+    const pool = prefEvents(slipWindow(this.events, target));
     // Built from bankers: many short-priced favourites, never a few long shots (picks.js).
-    if (!this.slipCache.has(key)) this.slipCache.set(key, bankerSlips(pool, target, { count: opts.count || 5, tolerance: target <= 20 ? 0.08 : 0.12, cal: trackCalibration(), minOdds: prefs.get().minOdds }));
+    if (!this.slipCache.has(key)) this.slipCache.set(key, bankerSlips(pool, target, { count: opts.count || 5, tolerance: slipPolicy(target).tolerance, cal: trackCalibration(), minOdds: prefs.get().minOdds }));
     return this.slipCache.get(key);
   },
   async detail(e) {
@@ -293,7 +295,7 @@ function ticker() {
   const el = document.querySelector('.ticker-track');
   if (!el) return;
   const live = state.events.filter((e) => e.live).map((e) => `<span><i class="live">●</i> ${esc(e.home)} <b>${esc(e.score || '')}</b> ${esc(e.away)} <small>${esc(e.clock || '')}</small></span>`);
-  const picks = bankers(todayEvents(state.events), { limit: 10 }).map((b) => `<span>${sportOf(b.event.sport).icon} ${esc(b.pick)} <b>${odd(b.odds)}</b> <small>${pc(b.p, 0)}</small></span>`);
+  const picks = rankedBankers(todayEvents(state.events), { cal: trackCalibration(), min: 0.6, limit: 10 }).map((b) => `<span>${sportOf(b.event.sport).icon} ${esc(b.pick)} <b>${odd(b.odds)}</b> <small>${pc(b.p, 0)}</small></span>`);
   const next = [...state.events].filter((e) => !e.live).sort((a, b) => a.start - b.start).slice(0, 10).map((e) => `<span>${sportOf(e.sport).icon} ${esc(e.home)} v ${esc(e.away)}</span>`);
   const items = [...live, ...picks, ...next];
   el.innerHTML = items.length ? items.join('') + items.join('') : '<span>ATLAS · connecting feeds</span>';

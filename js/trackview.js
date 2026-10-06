@@ -1,6 +1,7 @@
 // Record page: every official ATLAS pick (locked before kick-off) and how it turned out.
 import { esc, sportOf, ist } from './views.js';
 import { summarize, MIN_ODDS, calibration } from './track.js';
+import { localDay } from './engine.js';
 
 const pct = (x, d = 1) => (x == null ? '—' : `${(x * 100).toFixed(d)}%`);
 const units = (x) => `${x > 0 ? '+' : ''}${x.toFixed(2)}u`;
@@ -16,10 +17,24 @@ async function load() {
   return cache.data;
 }
 
-// For the rest of the site: summary and per-market calibration once the record has loaded.
+// For the rest of the site: summary and per-market calibration once the record has loaded. The record
+// is re-fetched in the background every 5 minutes, so a page left open keeps up with new results.
 export const trackStats = () => (cache ? summarize(cache.data.picks || []) : null);
 export const trackCalibration = () => (cache ? calibration(cache.data.picks || []) : null);
-export function ensureTrack(refresh) { if (!cache) load().then(() => refresh?.()).catch(() => {}); }
+export const trackUpdatedAt = () => cache?.data.updatedAt || null;
+let reloading = false;
+export function ensureTrack(refresh) {
+  if (cache && Date.now() - cache.at < 5 * 6e4) return;
+  if (reloading) return;
+  reloading = true;
+  const before = cache?.data.updatedAt;
+  load().then((d) => { if (d.updatedAt !== before) refresh?.(); }).catch(() => {}).finally(() => { reloading = false; });
+}
+// Today's official (tracked) slip for a target, exactly as it was saved: or null if none yet.
+export function officialSlip(target) {
+  const day = localDay();
+  return (cache?.data.picks || []).filter((h) => h.type === 'multi' && h.target === target && h.key.split('|')[1] === day).at(-1) || null;
+}
 // One line of record for a section: "41–16 · 72% hit rate · +4.9u".
 // A multiplier's own slip history: each daily official slip with its legs and result.
 export function slipHistory(slips = []) {
@@ -30,11 +45,13 @@ export function recordLine(st) {
   return `${st.won}–${st.lost} · ${pct(st.hitRate, 0)} hit rate · <span class="${st.profit >= 0 ? 'pos' : 'neg'}">${units(st.profit)}</span>`;
 }
 
-const statCards = (s) => `<div class="tr-stats">
+const ago = (t) => { const m = Math.round((Date.now() - t) / 6e4); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
+const statCards = (s, updatedAt) => `${updatedAt ? `<p class="note reveal">Results updated ${ago(updatedAt)} · picks are graded about two hours after each match ends.</p>` : ''}<div class="tr-stats">
   <div><small>Settled picks</small><b>${s.won + s.lost}</b><span>${s.won} won · ${s.lost} lost${s.push ? ` · ${s.push} push` : ''}</span></div>
   <div><small>Hit rate</small><b>${pct(s.hitRate)}</b><span>ATLAS estimated ${pct(s.expected)}</span></div>
   <div><small>Profit, 1 unit per pick</small><b class="${s.profit >= 0 ? 'pos' : 'neg'}">${units(s.profit)}</b><span>ROI ${pct(s.roi)}</span></div>
-  <div><small>Average odds</small><b>${s.avgOdds ? s.avgOdds.toFixed(2) : '—'}</b><span>minimum ${MIN_ODDS.toFixed(2)}</span></div></div>`;
+  <div><small>Average odds</small><b>${s.avgOdds ? s.avgOdds.toFixed(2) : '—'}</b><span>minimum ${MIN_ODDS.toFixed(2)}</span></div>
+  <div><small>Forecast score (Brier)</small><b>${s.brier == null ? '—' : s.brier.toFixed(3)}</b><span>${s.brierN >= 20 ? `market alone ${s.brierMarket.toFixed(3)} on the same ${s.brierN} picks · lower is better` : 'lower is better · market comparison after 20 picks'}</span></div></div>`;
 
 const table = (rows, label) => (rows.length ? `<table class="tr-table"><thead><tr><th>${label}</th><th>Picks</th><th>Hit rate</th><th>Estimated</th><th>Profit</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${r.won + r.lost}</td><td>${pct(r.hitRate)}</td><td>${pct(r.expected)}</td><td class="${r.profit >= 0 ? 'pos' : 'neg'}">${units(r.profit)}</td></tr>`).join('')}</tbody></table>` : '');
 
@@ -42,7 +59,7 @@ const pickRow = (h) => (h.type === 'multi' ? `<li class="tr-${h.status}"><span c
   <div><b>${esc(h.target)}x slip · ${h.legs.length} legs</b><small>${h.legs.map((l) => `${l.status === 'won' ? '✅' : l.status === 'lost' ? '❌' : l.status === 'pending' ? '⏳' : '➖'} ${esc(l.pick)} (${esc(l.home)} v ${esc(l.away)}, ${esc(ist(l.start))})`).join(' · ')}</small></div>
   <em>${Number(h.odds).toFixed(2)}</em><i>${pct(h.p, 0)}</i></li>` : `<li class="tr-${h.status}"><span class="tr-badge">${h.status === 'pending' ? day(h.start) : h.status.toUpperCase()}</span>
   <div><b>${esc(h.pick)}</b><small>${sportOf(h.sport).icon} ${esc(h.home)} v ${esc(h.away)} · ${esc(ist(h.start))} · ${esc(h.market)}${h.score ? ` · final ${esc(h.score)}` : ''} · ${h.type === 'value' ? 'value spot' : 'banker'}</small></div>
-  <em>${Number(h.odds).toFixed(2)}</em><i>${pct(h.p, 0)}</i></li>`);
+  <em>${Number(h.odds).toFixed(2)}</em><i>${pct(h.shown ?? h.p, 0)}</i></li>`);
 
 function body(data) {
   const s = summarize(data.picks || []);
@@ -52,7 +69,7 @@ function body(data) {
   }
   const typeName = { banker: 'Bankers (est. 60%+)', value: 'Value spots (model above price)' };
   const famName = { winner: 'Winner / moneyline', result: '1X2 result', spread: 'Spread / handicap', total: 'Totals (over/under)' };
-  return `${statCards(s.all)}
+  return `${statCards(s.all, data.updatedAt)}${s.unresolved ? `<p class="note reveal">${s.unresolved} pick${s.unresolved > 1 ? 's' : ''} could not be graded (no final result found) and ${s.unresolved > 1 ? 'are' : 'is'} left out rather than counted as void.</p>` : ''}
     <div class="two">
       <div class="panel reveal"><h3 class="ph">By pick type</h3>${table(s.byType.map((r) => ({ ...r, name: typeName[r.key] || r.key })), 'Type')}</div>
       <div class="panel reveal"><h3 class="ph">By sport</h3>${table(s.bySport.map((r) => ({ ...r, name: `${sportOf(r.key).icon} ${sportOf(r.key).name}` })), 'Sport')}</div>
@@ -90,7 +107,8 @@ export const trackViews = {
 
 // Home dashboard card: the record so far (loads in the background, then the page redraws).
 export function trackCard(refresh) {
-  if (!cache) { load().then(() => refresh?.()).catch(() => {}); return ''; }
+  ensureTrack(refresh);
+  if (!cache) return '';
   const s = summarize(cache.data.picks || []);
   const a = s.all;
   if (!a.won && !a.lost) return `<a class="panel dash-track reveal" href="#/track"><h2 class="ph">Track record <small>tracking started</small></h2><p class="muted">${s.pending.length} picks locked before kick-off, waiting on results.</p></a>`;

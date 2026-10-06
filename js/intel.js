@@ -74,7 +74,7 @@ export function bankers(events, { min = 0.7, limit = 24, minOdds = 1 } = {}) {
       outcomes.forEach((o, i) => {
         const p = m.outcomes[i].model ?? o.fair;
         if (p < min || o.odds < minOdds) return;
-        out.push({ event: e, market: m.name, pick: o.name, odds: o.odds, p, ev: p * o.odds - 1,
+        out.push({ event: e, market: m.name, pick: o.name, odds: o.odds, p, fair: o.fair, ev: p * o.odds - 1,
           agree: m.outcomes[i].model == null ? null : m.outcomes[i].model >= o.fair });
       });
     }
@@ -87,10 +87,11 @@ export function valueSpots(events, { minEdge = 0.03, limit = 12, minOdds = 1 } =
   const out = [];
   for (const e of events) {
     for (const m of e.markets || []) {
-      m.outcomes.forEach((o) => {
+      const { outcomes } = devig(m);
+      m.outcomes.forEach((o, i) => {
         if (o.model == null || o.odds > 5 || o.odds < minOdds) return; // longshot "edges" are mostly model noise
         const ev = o.model * o.odds - 1;
-        if (ev >= minEdge) out.push({ event: e, market: m.name, pick: o.name, odds: o.odds, p: o.model, ev });
+        if (ev >= minEdge) out.push({ event: e, market: m.name, pick: o.name, odds: o.odds, p: o.model, fair: outcomes[i].fair, ev });
       });
     }
   }

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calibration, calibrated, familyOf, settleMulti, multiPicks, summarize } from '../js/track.js';
+import { calibration, calibrated, familyOf, settleMulti, multiPicks, summarize, rankedBankers } from '../js/track.js';
+import { bankerSlips } from '../js/picks.js';
 
 const pick = (market, status, p = 0.62, extra = {}) => ({ market, status, p, odds: 1.6, type: 'banker', sport: 'football', start: 1, ...extra });
 
@@ -53,4 +54,32 @@ test('daily multiplier picks lock one slip per target with gradeable legs', () =
     assert.equal(own.slips[0].key, s.key);
   }
   assert.equal(st.mega.won + st.mega.lost, m.filter((x) => x.target >= 100).length);
+});
+
+test('one chance per pick: ranked bankers carry the calibrated chance, the raw estimate and the market chance', () => {
+  const e = { id: 'x', sport: 'football', home: 'A', away: 'B', start: 1, markets: [{ name: 'Total 2.5', outcomes: [{ name: 'Over 2.5', odds: 1.3 }, { name: 'Under 2.5', odds: 3.4 }] }] };
+  const cal = { total: { factor: 0.9 } };
+  const [b] = rankedBankers([e], { cal, min: 0.6 });
+  assert.ok(Math.abs(b.p - b.pRaw * 0.9) < 1e-9, 'shown chance is the calibrated one');
+  assert.ok(Math.abs(b.ev - (b.p * b.odds - 1)) < 1e-9, 'edge uses the same chance');
+  assert.ok(b.fair > 0.7 && b.fair < 0.75);
+});
+
+test('unresolved legs keep a slip unresolved; it is never counted', () => {
+  assert.equal(settleMulti({ legs: [{ status: 'won', odds: 1.2 }, { status: 'unresolved', odds: 1.3 }] }).status, 'unresolved');
+  const st = summarize([{ type: 'banker', status: 'unresolved', p: 0.7, odds: 1.4, market: 'Winner', sport: 'x' }, { type: 'banker', status: 'won', p: 0.7, odds: 1.4, market: 'Winner', sport: 'x' }]);
+  assert.equal(st.all.won + st.all.lost, 1);
+  assert.equal(st.unresolved, 1);
+});
+
+test('slips never relax the minimum odds and never use two legs with the same team', () => {
+  const now = Date.parse('2026-10-05T08:00:00Z');
+  const ev = (i, home, away, h) => ({ id: `e${i}`, sport: 'basketball', home, away, start: now + 36e5, markets: [{ name: 'Winner', outcomes: [{ name: home, odds: h }, { name: away, odds: 1 / (1.04 - 1 / h) }] }] });
+  const events = [ev(1, 'Lakers', 'Kings', 1.25), ev(2, 'Lakers', 'Suns', 1.25), ...Array.from({ length: 20 }, (_, i) => ev(i + 3, `T${i}`, `U${i}`, [1.12, 1.25, 1.35][i % 3]))];
+  for (const s of bankerSlips(events, 3, { count: 3, minOdds: 1.2 })) {
+    assert.ok(s.legs.every((l) => l.odds >= 1.2), 'min odds kept');
+    const teams = s.legs.flatMap((l) => l.match.split(' vs '));
+    assert.equal(new Set(teams).size, teams.length, 'no shared team');
+  }
+  assert.deepEqual(bankerSlips(events, 3, { minOdds: 3 }), [], 'impossible rule gives no slip instead of a relaxed one');
 });

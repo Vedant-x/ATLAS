@@ -7,6 +7,8 @@ import { loadDetail, detailFor } from '../detail.js';
 import { CATALOG, ALL_LEAGUES, sportById } from '../catalog.js';
 import { prefs, prefEvents } from '../prefs.js';
 import { liveWin } from '../live.js';
+import { calibrated } from '../track.js';
+import { trackCalibration } from '../trackview.js';
 
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const words = (s) => norm(s).split(/[^a-z0-9]+/).filter((w) => w.length >= 3);
@@ -85,14 +87,15 @@ export function createKnowledge(S) {
   // model's favourite at fair odds.
   function candidates(list) {
     const out = [];
+    const cal = trackCalibration(); // same calibrated chance the pages and the record use
     for (const e of list) {
       if (e.live) continue; // stored prices are pre-match
       if (e.markets?.length) {
         for (const m of e.markets) {
           const { outcomes } = devig(m);
           outcomes.forEach((o, i) => {
-            const p = m.outcomes[i].model ?? o.fair;
-            out.push({ e, market: m.name, pick: o.name, odds: o.odds, p, ev: p * o.odds - 1, priced: true });
+            const p = calibrated(m.outcomes[i].model ?? o.fair, m.name, cal);
+            out.push({ e, market: m.name, pick: o.name, odds: o.odds, p, fair: o.fair, ev: p * o.odds - 1, priced: true });
           });
         }
       } else {
