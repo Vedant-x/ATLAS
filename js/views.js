@@ -20,7 +20,7 @@ import { trackCard, trackStats, trackCalibration, recordLine, ensureTrack, slipH
 import { rankedBankers, rankedValue, slipPolicy } from './track.js';
 import { coherentBets } from './picks.js';
 import { mergeEvent } from './merge.js';
-import { candidateTable, changesPanel, casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips } from './research.js';
+import { casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips } from './research.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const safeHref = (u) => (/^https?:\/\//i.test(String(u || '')) ? esc(u) : '#');
@@ -211,7 +211,6 @@ export const views = {
         </div>
       </section>
       ${notice()}
-      <section class="sec-block dash-research">${candidateTable(prefFilter(ev))}${changesPanel(ev)}</section>
       ${dashboard(ev, live)}
       ${featured ? featuredCard(featured) : ''}
       <section class="sec-block"><h2 class="sec reveal">Sports</h2>
@@ -515,7 +514,7 @@ function dashboard(ev, live) {
   const changes = ev.flatMap((e) => ['home', 'away'].flatMap((sd) => (e.absences?.[sd] || []).map((x) => ({ e, team: sd === 'home' ? e.home : e.away, ...x }))))
     .filter((x) => x.updated).sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated)).slice(0, 6);
   return `<section class="dash">
-    <div class="panel dash-short reveal"><h2 class="ph">Shortlist <small>${when2} · estimated 60%+ after the track-record check · odds ≥ ${minOdds.toFixed(2)}</small></h2>
+    <div class="panel dash-short reveal"><h2 class="ph">Shortlist <small>${when2} · 60%+ win chance</small></h2>
       ${windowChips('shours', hrs)}
       ${rec ? `<p class="rec-line">Bankers so far: ${rec} · <a href="#/track">full record</a></p>` : ''}
       <div class="minilist">${short.map((b) => miniPick(b)).join('') || `<p class="muted">No strong picks in the next ${hrs} hours right now.${hrs < 48 ? ' Try a longer window, or' : ''} lower the minimum odds / add sports.</p>`}</div>${prefsBar()}</div>
