@@ -6,6 +6,9 @@ import { bankerSlips } from './picks.js';
 import { localDay } from './engine.js';
 
 export const MIN_ODDS = 1.3;
+// Stamped on every recorded pick, so results can be split by the model that made them.
+// 2026.10.1: calibrated chance everywhere, legs feed calibration, shared slip policy.
+export const MODEL_VERSION = '2026.10.1';
 
 // Market families the track record learns from: winner, 1X2 result, spread/handicap, totals.
 export const familyOf = (market = '') => (/^Total/.test(market) ? 'total' : market === 'Spread' ? 'spread' : market === 'Match Result' ? 'result' : 'winner');
@@ -61,7 +64,7 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
     key: `${b.event.id}|${b.market}|${b.pick}`, type, eventId: b.event.id, leaguePath: b.event.leaguePath, compId: b.event.compId,
     sport: b.event.sport, league: b.event.league, home: b.event.home, away: b.event.away, start: b.event.start,
     market: b.market, pick: b.pick, odds: b.odds, p: +b.pRaw.toFixed(4), shown: +b.p.toFixed(4), fair: b.fair == null ? null : +b.fair.toFixed(4),
-    recordedAt: now, status: 'pending',
+    recordedAt: now, status: 'pending', model: MODEL_VERSION,
   });
   return [
     ...rankedBankers(soon, { cal, min: 0.6, minOdds: MIN_ODDS, limit: 40 }).map(row('banker')),
@@ -89,7 +92,7 @@ export function multiPicks(events, now = Date.now(), history = []) {
     out.push({
       key: `multi|${day}|${target}x`, type: 'multi', target, legs, eventId: legs[0].eventId, sport: 'multi', league: `${target}x multiplier`,
       home: `${legs.length}-leg ${target}x slip`, away: '', start: Math.max(...legs.map((l) => l.start)), market: `${target}x multiplier`,
-      pick: legs.map((l) => l.pick).join(' + '), odds: +best.odds.toFixed(2), p: +best.p.toFixed(4), recordedAt: now, status: 'pending',
+      pick: legs.map((l) => l.pick).join(' + '), odds: +best.odds.toFixed(2), p: +best.p.toFixed(4), recordedAt: now, status: 'pending', model: MODEL_VERSION,
     });
   }
   return out;
@@ -203,7 +206,7 @@ export function summarize(history) {
   return {
     since: Number.isFinite(firstAt) ? firstAt : null, all: stat(graded), multi: stat(multis), byTarget: MULTI_TARGETS.map((t) => ({ key: `${t}x`, target: t, ...stat(multis.filter((m) => m.target === t)), slips: slipsOf([t]).slice(0, 12) })),
     mega: { ...stat(multis.filter((m) => m.target >= 100)), slips: slipsOf([100, 1000]).slice(0, 12) },
-    byType: group((h) => h.type), bySport: group((h) => h.sport), byFamily: group((h) => familyOf(h.market)), buckets,
+    byType: group((h) => h.type), bySport: group((h) => h.sport), byFamily: group((h) => familyOf(h.market)), byModel: group((h) => h.model || 'before 2026.10.1'), buckets,
     pending: history.filter((h) => h.status === 'pending' && h.type !== 'multi').sort((a, b) => a.start - b.start),
     unresolved: history.filter((h) => h.status === 'unresolved' && h.type !== 'multi').length,
     recent: graded.slice().sort((a, b) => b.start - a.start).slice(0, 40),

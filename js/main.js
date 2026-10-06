@@ -19,6 +19,9 @@ import { views, bind, legIndex, edgeTable, countdown, esc, sportOf, ist } from '
 import { slip } from './slip.js';
 import { preloader, cursor, wipe, magnetic, tilt, countUp, reveal } from './ui.js';
 import { pc, odd } from './charts.js';
+import { bindResearch, quickView, togglePin, compareView, watchlistView, setResearchPrefs, pins } from './research.js';
+import { loadTimeline, markReviewed } from './timeline.js';
+import { display, displayPanel } from './display.js';
 import { leagueByPath, leagueKey, sportById } from './catalog.js';
 
 const app = document.getElementById('app');
@@ -68,6 +71,7 @@ const state = {
   },
 };
 bind(state);
+bindResearch(state);
 state.refresh = () => softRender();
 state.scene = scene;
 loadF1().then((d) => { if (d && ['home', 'sports'].includes(parse().name)) softRender(); });
@@ -164,7 +168,8 @@ let current = null;
 function build() {
   const { name, args } = parse();
   legIndex.clear();
-  return { name, v: (views[name] || legalViews[name] || trackViews[name] || views.notfound)(args.map(decodeURIComponent)) };
+  const research = { watchlist: watchlistView, compare: compareView };
+  return { name, v: (views[name] || research[name] || legalViews[name] || trackViews[name] || views.notfound)(args.map(decodeURIComponent)) };
 }
 
 function render(animate) {
@@ -183,7 +188,8 @@ function render(animate) {
   v.after?.();
   current = name;
   dock();
-  if (name === 'match') { lcHtml = ''; tickLiveCenter(); }
+  if (name === 'match') { lcHtml = ''; tickLiveCenter(); markReviewed(decodeURIComponent(parse().args[0] || '')); }
+  closeQv();
 }
 
 // Back / Home dock: always reachable, so no page is a dead end. "Back" goes to the previous ATLAS
@@ -213,7 +219,7 @@ function trail() {
   if (sp) parts.push([`#/sport/${sp.id}`, sp.name]);
   if (l) parts.push([`#/league/${leagueKey(l.path)}`, l.short || l.name]);
   if (e) parts.push(['', `${e.home} v ${e.away}`]);
-  const label = { edge: 'Edge board', x: 'Multipliers', target: 'Target', mega: 'Mega bets', bankers: 'Bankers' }[name];
+  const label = { edge: 'Edge board', x: 'Multipliers', target: 'Target', mega: 'Mega bets', bankers: 'Bankers', live: 'Live', watchlist: 'Watchlist', compare: 'Compare' }[name];
   if (label) parts.push(['', label]);
   return parts;
 }
@@ -229,7 +235,7 @@ function dock() {
 function route() {
   if (!location.hash.startsWith('#/')) return; // in-page anchors
   const { name } = parse();
-  const label = { home: 'DASHBOARD', sports: 'ALL SPORTS', sport: 'SPORT', league: 'LEAGUE', match: 'MATCH DOSSIER', edge: 'EDGE BOARD', x: 'MULTIPLIERS', target: 'TARGET', mega: 'MEGA BETS', bankers: 'BANKERS' }[name] || '';
+  const label = { home: 'TODAY', live: 'LIVE', watchlist: 'WATCHLIST', compare: 'COMPARE', track: 'RESULTS', sports: 'ALL SPORTS', sport: 'SPORT', league: 'LEAGUE', match: 'MATCH DOSSIER', edge: 'EDGE BOARD', x: 'MULTIPLIERS', target: 'TARGET', mega: 'MEGA BETS', bankers: 'BANKERS' }[name] || '';
   const h = location.hash || '#/';
   if (replacing) { stack[stack.length - 1] = h; replacing = false; } else if (stack.length > 1 && stack[stack.length - 2] === h) stack.pop(); else stack.push(h);
   // instant: html has scroll-behavior:smooth, and a smooth scroll still running when a live refresh
@@ -253,6 +259,7 @@ function softRender() {
   calc();
   v.after?.();
   scrollTo({ top: y, behavior: 'instant' });
+  if (qvId && qv?.classList.contains('open')) { const st = qv.scrollTop; qv.innerHTML = quickView(qvId); qv.scrollTop = st; document.querySelector(`tr[data-qv="${CSS.escape(qvId)}"]`)?.classList.add('qv-on'); }
 }
 
 // ---------- slip drawer ----------
@@ -344,7 +351,23 @@ document.addEventListener('click', (e) => {
   else if ('slipClear' in d) slip.clear();
   else if ('slipCopy' in d) navigator.clipboard?.writeText(slip.text()).then(() => { t.textContent = 'Copied'; setTimeout(() => { t.textContent = 'Copy slip'; }, 1400); }).catch(() => {});
   else if ('slipToggle' in d) openSlip(!drawer.classList.contains('open'));
-  else if (d.watch) { const on = watch.toggle(d.watch); t.classList.toggle('on', on); t.setAttribute('aria-pressed', on); t.textContent = on ? '★ Watching' : '☆ Watch match'; }
+  else if (d.watch) {
+    e.preventDefault(); e.stopPropagation();
+    const on = watch.toggle(d.watch);
+    document.querySelectorAll(`[data-watch="${CSS.escape(d.watch)}"]`).forEach((b) => { b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); b.textContent = b.classList.contains('icon-btn') ? (on ? '★' : '☆') : on ? '★ Watching' : (b.closest('#qv') ? '☆ Watch' : '☆ Watch match'); });
+    if (current === 'watchlist') softRender();
+  }
+  else if (d.pin) {
+    e.preventDefault(); e.stopPropagation();
+    const on = togglePin(d.pin);
+    document.querySelectorAll(`[data-pin="${CSS.escape(d.pin)}"]`).forEach((b) => { b.classList.toggle('on', on); if (!b.classList.contains('icon-btn')) b.textContent = on ? (b.closest('#qv') ? '⇄ Pinned' : '⇄ Pinned to compare') : '⇄ Compare'; });
+    if (on && pins().length >= 2) toast(`Pinned · ${pins().length} to compare`, '#/compare');
+    if (current === 'compare') softRender();
+  }
+  else if (d.rsort) { setResearchPrefs({ sort: d.rsort }); softRender(); }
+  else if ('qvClose' in d) closeQv();
+  else if ('displayToggle' in d) { const p = document.getElementById('display-panel'); const open = !p.classList.contains('open'); p.innerHTML = displayPanel(); p.classList.toggle('open', open); t.setAttribute('aria-expanded', open); }
+  else if (d.display) { display.set({ [d.display]: d.value }); document.getElementById('display-panel').innerHTML = displayPanel(); }
   else if (d.pref) { e.preventDefault(); const p = prefs.get(); const v = d.value;
     if (d.pref === 'minOdds') prefs.set({ minOdds: Number(v) });
     else if (d.pref === 'sport') prefs.set({ sports: v === 'all' ? [] : p.sports.includes(v) ? p.sports.filter((x) => x !== v) : [...p.sports, v] });
@@ -364,7 +387,56 @@ document.addEventListener('input', (e) => {
   }
   if (e.target.matches('[data-ef]')) refreshEdge();
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') openSlip(false); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { openSlip(false); closeQv(); document.getElementById('display-panel')?.classList.remove('open'); }
+  if (e.key === 'Enter' && e.target.matches?.('tr[data-qv]')) openQv(e.target.dataset.qv, e.target);
+});
+// Research table filters.
+document.addEventListener('change', (e) => {
+  const f = e.target.closest?.('[data-rf]');
+  if (!f) return;
+  const k = f.dataset.rf;
+  setResearchPrefs({ [k]: f.type === 'checkbox' ? f.checked : k === 'hours' ? Number(f.value) : f.value });
+  f.blur(); softRender();
+});
+
+// ---------- quick view ----------
+// Clicking a research row or a change opens the match summary in a side panel; the page, its filters
+// and its scroll position stay where they were. The full dossier is one click further.
+const qv = document.getElementById('qv');
+let qvId = null, qvReturn = null;
+function openQv(id, from) {
+  if (!qv || !id) return;
+  qvId = id; qvReturn = from || null;
+  qv.innerHTML = quickView(id);
+  qv.classList.add('open');
+  document.querySelectorAll('tr.qv-on').forEach((r) => r.classList.remove('qv-on'));
+  from?.closest?.('tr')?.classList.add('qv-on');
+  qv.focus({ preventScroll: true });
+}
+function closeQv() {
+  if (!qv?.classList.contains('open')) return;
+  qv.classList.remove('open'); qvId = null;
+  document.querySelectorAll('tr.qv-on').forEach((r) => r.classList.remove('qv-on'));
+  qvReturn?.focus?.({ preventScroll: true }); qvReturn = null;
+}
+document.addEventListener('click', (e) => {
+  const row = e.target.closest('[data-qv]');
+  if (!row || e.target.closest('button, input, select') || (e.target.closest('a') && e.target.closest('a') !== row)) return;
+  if (e.metaKey || e.ctrlKey || e.shiftKey) return; // let new-tab clicks through
+  e.preventDefault();
+  openQv(row.dataset.qv, row);
+});
+document.addEventListener('click', (e) => {
+  const p = document.getElementById('display-panel');
+  if (p?.classList.contains('open') && !e.target.closest('#display-panel, [data-display-toggle]')) p.classList.remove('open');
+});
+function toast(text, href) {
+  let box = document.querySelector('.toasts');
+  if (!box) { box = document.createElement('div'); box.className = 'toasts'; box.setAttribute('aria-live', 'polite'); document.body.append(box); }
+  const t = document.createElement('a'); t.className = 'toast'; t.href = href || '#/'; t.innerHTML = '<span>⇄</span><p></p>'; t.querySelector('p').textContent = text;
+  box.append(t); setTimeout(() => t.classList.add('out'), 4000); setTimeout(() => t.remove(), 4600);
+}
 // Target page: any multiplier from 1.2x up.
 document.addEventListener('submit', (e) => {
   const f = e.target.closest('[data-xtarget]');
@@ -420,6 +492,9 @@ preloader(Promise.race([firstData, new Promise((r) => setTimeout(() => r(null), 
   addEventListener('hashchange', route);
   scene.pulse();
   state.ai = mountAssistant(state);
+  // Evidence timeline (what changed): loaded now, refreshed every 5 minutes.
+  loadTimeline(() => softRender());
+  setInterval(() => loadTimeline(() => softRender()), 5 * 6e4);
   // Catch up on live scores straight away (the snapshot can be minutes old), then keep polling.
   poll().finally(function tick() { setTimeout(() => poll().finally(tick), refreshMs()); });
   addEventListener('visibilitychange', () => { if (!document.hidden) poll(); }); // back on the tab: catch up now

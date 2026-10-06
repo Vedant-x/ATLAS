@@ -9,6 +9,10 @@ import { prefs, prefEvents } from '../prefs.js';
 import { liveWin } from '../live.js';
 import { calibrated } from '../track.js';
 import { trackCalibration } from '../trackview.js';
+import { researchRow, caseFor } from '../research.js';
+import { changesSince, lastVisit, needsReview, timelineUpdatedAt } from '../timeline.js';
+import { watch } from '../alerts.js';
+import { readiness } from '../readiness.js';
 
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const words = (s) => norm(s).split(/[^a-z0-9]+/).filter((w) => w.length >= 3);
@@ -166,9 +170,16 @@ export function createKnowledge(S) {
     };
   }
 
+  // Research: the case for one match (supports / against / unknown / would change the call), the
+  // evidence readiness, and the change timeline. Same functions the pages use.
+  const caseOf = (e) => { const x = researchRow(e); return { row: x, ...(caseFor(x) || { pro: [], con: [], unknown: [], invalid: [] }) }; };
+  const readinessOf = (e) => readiness(e, { priceAt: e.fetchedAt || S.fetchedAt });
+  const changes = ({ since = lastVisit(), watchedOnly = false } = {}) => changesSince(since).filter((c) => !watchedOnly || watch.has(c.eventId));
+  const reviewList = () => watch.ids().map((id) => S.events.find((e) => e.id === id)).filter(Boolean).map((e) => ({ e, changes: needsReview(e.id) })).filter((x) => x.changes.length);
+  const freshness = () => ({ pricesAt: S.fetchedAt || null, changesAt: timelineUpdatedAt() });
   const slips = (target, today = true) => S.slips(target, { count: 5, today: today && target < 100 });
 
   const catalog = () => CATALOG.map((s) => ({ id: s.id, name: s.name, matches: S.events.filter((e) => e.sport === s.id).length }));
 
-  return { route, currentEvent, currentScope, eventById, sportIn, leagueIn, eventsIn, filterEvents, picks, matchSummary, injuriesOf, startersOf, slips, catalog, norm };
+  return { route, currentEvent, currentScope, eventById, sportIn, leagueIn, eventsIn, filterEvents, picks, matchSummary, injuriesOf, startersOf, slips, catalog, norm, caseOf, readinessOf, changes, reviewList, freshness, lastVisit, minOdds: () => prefs.get().minOdds };
 }

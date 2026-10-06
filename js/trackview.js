@@ -53,7 +53,10 @@ const statCards = (s, updatedAt) => `${updatedAt ? `<p class="note reveal">Resul
   <div><small>Average odds</small><b>${s.avgOdds ? s.avgOdds.toFixed(2) : '—'}</b><span>minimum ${MIN_ODDS.toFixed(2)}</span></div>
   <div><small>Forecast score (Brier)</small><b>${s.brier == null ? '—' : s.brier.toFixed(3)}</b><span>${s.brierN >= 20 ? `market alone ${s.brierMarket.toFixed(3)} on the same ${s.brierN} picks · lower is better` : 'lower is better · market comparison after 20 picks'}</span></div></div>`;
 
-const table = (rows, label) => (rows.length ? `<table class="tr-table"><thead><tr><th>${label}</th><th>Picks</th><th>Hit rate</th><th>Estimated</th><th>Profit</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${r.won + r.lost}</td><td>${pct(r.hitRate)}</td><td>${pct(r.expected)}</td><td class="${r.profit >= 0 ? 'pos' : 'neg'}">${units(r.profit)}</td></tr>`).join('')}</tbody></table>` : '');
+// Forecast score per row: Brier (lower is better) and, once 10+ picks have a saved market chance,
+// whether ATLAS beat the market's own forecast on those picks.
+const vsMarket = (r) => (r.brierN >= 10 ? `<span class="${r.brierModel <= r.brierMarket ? 'pos' : 'neg'}">${r.brierModel <= r.brierMarket ? 'beats' : 'trails'} market</span>` : '<span class="muted">—</span>');
+const table = (rows, label) => (rows.length ? `<div class="table-wrap"><table class="tr-table"><thead><tr><th>${label}</th><th>Picks</th><th>Hit rate</th><th>Estimated</th><th>Profit</th><th title="Brier score: mean squared error of the chance shown. Lower is better.">Brier</th><th title="Same score for the bookmaker's margin-free chance on the same picks">vs market</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${r.won + r.lost}</td><td>${pct(r.hitRate)}</td><td>${pct(r.expected)}</td><td class="${r.profit >= 0 ? 'pos' : 'neg'}">${units(r.profit)}</td><td>${r.brier == null ? '—' : r.brier.toFixed(3)}</td><td>${vsMarket(r)}</td></tr>`).join('')}</tbody></table></div>` : '');
 
 const pickRow = (h) => (h.type === 'multi' ? `<li class="tr-${h.status}"><span class="tr-badge">${h.status === 'pending' ? day(h.start) : h.status.toUpperCase()}</span>
   <div><b>${esc(h.target)}x slip · ${h.legs.length} legs</b><small>${h.legs.map((l) => `${l.status === 'won' ? '✅' : l.status === 'lost' ? '❌' : l.status === 'pending' ? '⏳' : '➖'} ${esc(l.pick)} (${esc(l.home)} v ${esc(l.away)}, ${esc(ist(l.start))})`).join(' · ')}</small></div>
@@ -78,6 +81,7 @@ function body(data) {
       <div class="panel reveal"><h3 class="ph">By market <small>the model needs more confidence where a market has underperformed</small></h3>${table(s.byFamily.map((r) => ({ ...r, name: famName[r.key] || r.key })), 'Market')}</div>
       <div class="panel reveal"><h3 class="ph">Multipliers and mega <small>separate records</small></h3><p class="muted">Each multiplier keeps its own record on its own page, so slips never mix with single picks here.</p><p>${[2, 3, 4, 5, 10, 20].map((x) => `<a class="chip" href="#/x/${x}">${x}x</a>`).join(' ')} <a class="chip" href="#/mega">Mega 100x / 1000x</a></p></div>
     </div>
+    ${s.byModel.length > 1 ? `<div class="panel reveal"><h3 class="ph">By model version <small>each pick is stamped with the model that made it</small></h3>${table(s.byModel.map((r) => ({ ...r, name: r.key })), 'Model')}</div>` : ''}
     <div class="panel reveal"><h3 class="ph">Are the estimates honest? <small>calibration</small></h3>
       <p class="muted">When ATLAS says 65%, it should land about 65% of the time. Small samples swing a lot.</p>
       <div class="tr-cal">${s.buckets.map((b) => `<div><small>Estimated ${b.label}</small><div class="tr-bars"><i style="--w:${((b.predicted || 0) * 100).toFixed(0)}%"></i><i class="act" style="--w:${((b.actual || 0) * 100).toFixed(0)}%"></i></div><span>${b.n ? `${pct(b.predicted, 0)} estimated · ${pct(b.actual, 0)} actual · ${b.n} picks` : 'no picks yet'}</span></div>`).join('')}</div></div>

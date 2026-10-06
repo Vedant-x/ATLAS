@@ -19,6 +19,7 @@ import { trackCard, trackStats, trackCalibration, recordLine, ensureTrack, slipH
 import { rankedBankers, rankedValue } from './track.js';
 import { coherentBets } from './picks.js';
 import { mergeEvent } from './merge.js';
+import { candidateTable, changesPanel, casePanel, historyPanel, researchRow, pins } from './research.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const safeHref = (u) => (/^https?:\/\//i.test(String(u || '')) ? esc(u) : '#');
@@ -37,7 +38,7 @@ const analysisCache = new Map();
 export function analysisFor(e) {
   // Every input the models read (prices, records, form, predictor, starters, rankings, team news), so
   // a starter or lineup update always produces a fresh analysis instead of a cached one.
-  const sig = JSON.stringify([e.markets, e.stats, e.predictor, e.starters, e.tennis, e.ranks, e.absences, e.form, e.neutral, e.esports, e.esoccer]);
+  const sig = JSON.stringify([e.markets, e.stats, e.records, e.predictor, e.probables, e.tennis, e.ranks, e.absences, e.lineups, e.neutral, e.bestOf]);
   const hit = analysisCache.get(e.id);
   if (hit && hit.sig === sig) return hit.a;
   const a = analyse(e);
@@ -170,6 +171,9 @@ function slipCard(s, i, target) {
     </footer></article>`;
 }
 
+// Builder pages share one sub-navigation so multipliers, target, mega and bankers feel like one tool.
+const builderNav = (on) => `<nav class="builder-nav reveal" aria-label="Builder">${[['x', '#/x/2', 'Multipliers'], ['target', '#/target', 'Target'], ['mega', '#/mega', 'Mega'], ['bankers', '#/bankers', 'Bankers']].map(([k, h, l]) => `<a class="chip ${k === on ? 'on' : ''}" href="${h}">${l}</a>`).join('')}</nav>`;
+
 // ---------- views ----------
 export const views = {
   home() {
@@ -187,16 +191,17 @@ export const views = {
     return {
       mode: 'home', accent: '#d2ff00', title: 'Dashboard',
       html: `
-      <section class="hero compact">
-        <p class="kicker reveal">ATLAS · SPORTS INTELLIGENCE SYSTEM</p>
+      <section class="hero compact today">
+        <p class="kicker reveal">TODAY · ${esc(new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase())} · IST</p>
         <h1>${split('EVERY SPORT. EVERY EDGE.')}</h1>
         <div class="stats reveal">
           <div><b data-count-to="${ev.length}">0</b><span>events tracked</span></div>
-          <div><b data-count-to="${modelled}">0</b><span>bookmaker-priced</span></div>
+          <div><b data-count-to="${modelled}">0</b><span>with bookmaker prices (${ev.length ? Math.round((modelled / ev.length) * 100) : 0}%)</span></div>
           <div><b class="hot" data-count-to="${live.length}">0</b><span>in play</span></div>
         </div>
       </section>
       ${notice()}
+      <section class="sec-block dash-research">${candidateTable(prefFilter(ev))}${changesPanel(ev)}</section>
       ${dashboard(ev, live)}
       ${featured ? featuredCard(featured) : ''}
       <section class="sec-block"><h2 class="sec reveal"><span>◆</span>Sports</h2>
@@ -217,6 +222,21 @@ export const views = {
         <a class="xcard mega tilt reveal" href="#/mega" data-cursor="DARE"><b>100x+</b><small>Mega accumulators from bankers</small></a>
         <a class="xcard tilt reveal" href="#/target" data-cursor="BUILD"><b>Target</b><small>Pick any multiplier</small></a></div></section>
       <section class="sec-block"><h2 class="sec reveal"><span>◆</span>Up next</h2><div class="list">${upcoming.slice(0, 14).map(eventRow).join('')}</div></section>`,
+    };
+  },
+
+  // Everything in play, grouped by sport, plus what starts in the next hour.
+  live() {
+    const live = S.events.filter((e) => e.live);
+    const soon = S.events.filter((e) => !e.live && e.start > Date.now() && e.start < Date.now() + 36e5 && e.sport !== 'efootball').sort((a, b) => a.start - b.start);
+    const groups = SPORTS.map((sp) => [sp, live.filter((e) => e.sport === sp.id)]).filter(([, l]) => l.length);
+    return {
+      mode: 'other', accent: '#ff3d6e', title: 'Live',
+      html: `<section class="hero small"><p class="kicker reveal">IN PLAY · UPDATES EVERY FEW SECONDS</p><h1>${split('LIVE')}</h1>
+        <p class="lede reveal">${live.length} match${live.length === 1 ? '' : 'es'} in play. Open one for the live scoreboard; star it to get alerts.</p></section>
+        ${notice()}
+        ${groups.map(([sp, l]) => `<section class="sec-block"><h2 class="sec reveal"><span>${sp.icon}</span>${esc(sp.name)} <small>${l.length} live</small></h2><div class="list">${l.map((e) => eventRow(e)).join('')}</div></section>`).join('') || '<p class="muted reveal">Nothing in play right now.</p>'}
+        ${soon.length ? `<section class="sec-block"><h2 class="sec reveal"><span>◆</span>Starting within the hour</h2><div class="list">${soon.slice(0, 20).map((e) => eventRow(e)).join('')}</div></section>` : ''}`,
     };
   },
 
@@ -312,7 +332,8 @@ export const views = {
     const paramChips = Object.entries(a.params || {}).filter(([, v]) => typeof v === 'number').map(([k, v]) => `<div><small>${esc(paramLabel(k, a.params.unit))}</small><b>${k === 'setWin' ? pc(v) : Number.isInteger(v) ? v : v.toFixed(2)}</b></div>`).join('');
     const d = detailFor(e.id);
     const dos = dossierSections(e, d, hc, ac);
-    const sections = [['overview', 'Overview'], ['best', 'Best bets'], ...dos.map((x) => [x.id, x.label]), ['model', a.kind === 'normal' ? 'Margin model' : a.kind === 'tennis' ? (e.sport === 'esports' ? 'Map model' : 'Set model') : 'Score model'], ['markets', `All markets (${a.marketCount})`], ['book', 'Bookmaker prices'], ['form', 'Records'], ['calc', 'Calculator'], ['notes', 'Model notes']];
+    const rr = researchRow(e);
+    const sections = [['overview', 'Overview'], ['case', 'The case'], ['best', 'Best bets'], ['history', 'Timeline'], ...dos.map((x) => [x.id, x.label]), ['model', a.kind === 'normal' ? 'Margin model' : a.kind === 'tennis' ? (e.sport === 'esports' ? 'Map model' : 'Set model') : 'Score model'], ['markets', `All markets (${a.marketCount})`], ['book', 'Bookmaker prices'], ['form', 'Records'], ['calc', 'Calculator'], ['notes', 'Model notes']];
     if (a.kind === 'binary') sections.splice(sections.findIndex((x) => x[0] === 'model'), 1);
     return {
       mode: 'match', accent: hc, title: `${e.home} v ${e.away}`,
@@ -332,7 +353,8 @@ export const views = {
         <h1 class="vs"><span style="--tc:${hc}">${split(e.home.toUpperCase())}</span><small>VS</small><span style="--tc:${ac}">${split(e.away.toUpperCase())}</span></h1>
         ${e.tennis ? `<div class="tennis-facts reveal">${[['Tournament', e.tennis.tournament + (e.tennis.major ? ' (Grand Slam)' : '')], ['Location', e.tennis.location], ['Draw', e.tennis.drawName], ['Round', e.tennis.round], ['Court', e.tennis.court], ['Format', e.tennis.bestOf ? `Best of ${e.tennis.bestOf} sets` : ''], [e.home, [e.tennis.home.seed ? `Seed ${e.tennis.home.seed}` : '', e.tennis.home.country].filter(Boolean).join(' · ')], [e.away, [e.tennis.away.seed ? `Seed ${e.tennis.away.seed}` : '', e.tennis.away.country].filter(Boolean).join(' · ')]].filter(([, v]) => v).map(([k, v]) => `<div><small>${esc(k)}</small><b>${esc(v)}</b></div>`).join('')}</div>` : ''}
         ${e.live ? `<div class="scoreline reveal ${String(e.score || '').length > 12 ? 'long' : ''}"><b>${esc(e.score || '')}</b><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></div>${liveCenterHtml(e)}${liveBlock(e)}` : ''}
-        <button class="watch-btn reveal ${watch.has(e.id) ? 'on' : ''}" data-watch="${esc(e.id)}" aria-pressed="${watch.has(e.id)}">${watch.has(e.id) ? '★ Watching' : '☆ Watch match'}</button>
+        <div class="match-actions reveal"><button class="watch-btn ${watch.has(e.id) ? 'on' : ''}" data-watch="${esc(e.id)}" aria-pressed="${watch.has(e.id)}">${watch.has(e.id) ? '★ Watching' : '☆ Watch match'}</button>
+          <button class="watch-btn ${pins().includes(e.id) ? 'on' : ''}" data-pin="${esc(e.id)}">${pins().includes(e.id) ? '⇄ Pinned to compare' : '⇄ Compare'}</button></div>
         ${sourcesLine(e)}
       </section>
       <nav class="subnav reveal">${sections.map(([k, l]) => `<a href="#sec-${k}" data-jump="sec-${k}">${l}</a>`).join('')}</nav>
@@ -343,7 +365,9 @@ export const views = {
         <div class="sides ${twoWay ? 'two' : 'three'}">${side(e.home, w.home, hc, book(e.home))}${twoWay ? '' : side('Draw', w.draw, DRAW_COLOR, book('Draw'))}${side(e.away, w.away, ac, book(e.away))}</div>
         ${paramChips ? `<div class="params">${paramChips}<div><small>Markets priced</small><b>${a.marketCount}</b></div></div>` : ''}
       </section>
+      ${casePanel(rr)}
       ${bestBetsPanel(e, a)}
+      ${historyPanel(e)}
       ${dos.map((x) => `<section id="sec-${x.id}"><h2 class="sec reveal"><span>◆</span>${esc(x.label)}</h2>${x.html}</section>`).join('')}
       ${a.kind === 'binary' ? '' : `<section class="panel reveal" id="sec-model">${modelPanel(e, a, hc, ac)}</section>`}
       <section id="sec-markets"><h2 class="sec reveal"><span>◆</span>Every market <small>ATLAS fair prices · tap to add</small></h2>
@@ -388,7 +412,7 @@ export const views = {
     const r = trackStats()?.byTarget?.find((t) => t.target === target);
     return {
       mode: 'x', accent: ['#d2ff00', '#00ffc3', '#4fd1ff', '#b08cff'][[2, 3, 4, 5].indexOf(target)] || '#ff9f43', title: `${target}x slips`,
-      html: `<section class="hero small"><p class="kicker reveal">MULTIPLIER · BREAK-EVEN ${pc(1 / target, target >= 100 ? 2 : 1)}${target < 100 ? ' · NEXT 12 HOURS' : ''}</p><h1>${split(`${target}X SLIPS`)}</h1>
+      html: `<section class="hero small"><p class="kicker reveal">MULTIPLIER · BREAK-EVEN ${pc(1 / target, target >= 100 ? 2 : 1)}${target < 100 ? ' · NEXT 12 HOURS' : ''}</p><h1>${split(`${target}X SLIPS`)}</h1>${builderNav('x')}
         <nav class="tabs reveal">${[2, 3, 4, 5, 10, 20].map((x) => `<a href="#/x/${x}" class="${x === target ? 'on' : ''}">${x}x</a>`).join('')}</nav></section>
         ${notice()}
         <p class="rec-line reveal">${target}x track record · ${r && r.won + r.lost ? recordLine(r) : 'the top slip here is saved each day and graded leg by leg: results appear below as matches finish'}</p>
@@ -409,7 +433,7 @@ export const views = {
     const presets = [1.5, 2.5, 7.5, 15, 50, 250];
     return {
       mode: 'x', accent: '#ff9f43', title: has ? `Target ${t}x` : 'Target',
-      html: `<section class="hero small"><p class="kicker reveal">YOUR TARGET · BUILT FROM BANKERS</p><h1>${split(has ? `TARGET ${t}X` : 'TARGET')}</h1>
+      html: `<section class="hero small"><p class="kicker reveal">YOUR TARGET · BUILT FROM BANKERS</p><h1>${split(has ? `TARGET ${t}X` : 'TARGET')}</h1>${builderNav('target')}
         <p class="lede reveal">Type any multiplier. ATLAS stacks short-priced favourites the model rates highly (about 1.05 to 1.6 each) until the total reaches it, picking the legs that give the most win chance per unit of odds.</p>
         <form class="xtarget reveal" data-xtarget><label>Target multiplier<input type="number" name="t" min="1.2" max="100000" step="0.1" value="${has ? t : ''}" placeholder="e.g. 7.5" inputmode="decimal" aria-label="Target multiplier"></label><button class="btn">Build slips</button></form>
         <nav class="tabs reveal">${presets.map((x) => `<a href="#/target/${x}" class="${x === t ? 'on' : ''}">${x}x</a>`).join('')}</nav></section>
@@ -424,7 +448,7 @@ export const views = {
     const ts = trackStats();
     return {
       mode: 'mega', accent: '#ff3d6e', title: 'Mega bets',
-      html: `<section class="hero small"><p class="kicker reveal">BIG PAYOUTS · BUILT FROM BANKERS</p><h1>${split('MEGA BETS')}</h1>
+      html: `<section class="hero small"><p class="kicker reveal">BIG PAYOUTS · BUILT FROM BANKERS</p><h1>${split('MEGA BETS')}</h1>${builderNav('mega')}
         <p class="lede reveal">Huge targets reached the sensible way: dozens of short-priced favourites rather than a handful of long shots. Still long odds overall, so stake small.</p>
         <p class="rec-line reveal">Mega track record · ${ts?.mega && ts.mega.won + ts.mega.lost ? recordLine(ts.mega) : 'one 100x and one 1000x slip saved each day, graded leg by leg'}</p></section>
         ${notice()}
@@ -444,7 +468,7 @@ export const views = {
     const ts = trackStats();
     return {
       mode: 'bankers', accent: '#00ffc3', title: 'Bankers',
-      html: `<section class="hero small"><p class="kicker reveal">NEXT 12 HOURS · ODDS ≥ ${minOdds.toFixed(2)}</p><h1>${split('BANKERS')}</h1>
+      html: `<section class="hero small"><p class="kicker reveal">NEXT 12 HOURS · ODDS ≥ ${minOdds.toFixed(2)}</p><h1>${split('BANKERS')}</h1>${builderNav('bankers')}
         <p class="lede reveal">Picks the model estimates at 70%+ (from margin-free bookmaker prices, adjusted by record and form, then checked against how each market type has actually done in the track record). These are estimates, not certainties: favourites at this level still lose roughly one time in four to one time in ten.</p>
         ${recordLine(ts?.byType.find((r) => r.key === 'banker')) ? `<p class="rec-line reveal">Track record · bankers ${recordLine(ts.byType.find((r) => r.key === 'banker'))}${recordLine(ts.byType.find((r) => r.key === 'value')) ? ` · value ${recordLine(ts.byType.find((r) => r.key === 'value'))}` : ''} · <a href="#/track">see every pick</a></p>` : ''}</section>
         ${notice()}${prefsBar()}
