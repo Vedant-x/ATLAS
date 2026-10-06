@@ -3,7 +3,7 @@ import { SPORTS } from './data.js';
 import { devig, buildSlips, todayEvents } from './engine.js';
 import { liveCenterHtml } from './livecenter.js';
 import { f1View, f1Teaser } from './f1view.js';
-import { bankers, valueSpots, applyModel } from './intel.js';
+import { applyModel } from './intel.js';
 import { analyse, winProbs, kelly } from './models.js';
 import { probBar, gauge, heatmap, distBars, formStrip, outcomeBars, valueTrack, pc, odd } from './charts.js';
 import { split } from './ui.js';
@@ -15,8 +15,8 @@ import { fetchAll, LEAGUES, leagueStatus } from './espn.js';
 import { prefs, prefEvents } from './prefs.js';
 import { liveWin } from './live.js';
 import { watch } from './alerts.js';
-import { trackCard, trackStats, trackCalibration, recordLine, ensureTrack, slipHistory } from './trackview.js';
-import { calibrated } from './track.js';
+import { trackCard, trackStats, trackCalibration, recordLine, ensureTrack, slipHistory, officialSlip } from './trackview.js';
+import { rankedBankers, rankedValue } from './track.js';
 import { coherentBets } from './picks.js';
 import { mergeEvent } from './merge.js';
 
@@ -35,7 +35,9 @@ export function bind(state) { S = state; }
 
 const analysisCache = new Map();
 export function analysisFor(e) {
-  const sig = JSON.stringify(e.markets) + JSON.stringify(e.stats) + JSON.stringify(e.predictor || null);
+  // Every input the models read (prices, records, form, predictor, starters, rankings, team news), so
+  // a starter or lineup update always produces a fresh analysis instead of a cached one.
+  const sig = JSON.stringify([e.markets, e.stats, e.predictor, e.starters, e.tennis, e.ranks, e.absences, e.form, e.neutral, e.esports, e.esoccer]);
   const hit = analysisCache.get(e.id);
   if (hit && hit.sig === sig) return hit.a;
   const a = analyse(e);
@@ -163,7 +165,7 @@ function slipCard(s, i, target) {
     <footer>
       <div class="meter"><i class="grow" style="--w:${Math.min(100, s.p * 100 * (target >= 100 ? 40 : 1)).toFixed(1)}%"></i></div>
       <span>Estimated chance <b>${pc(s.p, s.p < 0.01 ? 2 : 1)}</b></span><span>Edge <b class="${s.p * s.odds - 1 >= 0 ? 'pos' : 'neg'}">${((s.p * s.odds - 1) * 100).toFixed(1)}%</b></span>
-      <p class="slip-note">${s.p * s.odds - 1 >= 0 ? 'The model rates this combination above its price.' : `Meets the ${target}x payout target, but it is not a value bet: the ${((1 - s.p * s.odds) * 100).toFixed(1)}% shortfall is mostly bookmaker margin, so on average it loses money.`}</p>
+      <p class="slip-note">${s.p * s.odds - 1 >= 0 ? 'The model rates this combination above its price.' : `Meets the ${target}x payout target, but it is not a value bet: the ${((1 - s.p * s.odds) * 100).toFixed(1)}% shortfall is mostly bookmaker margin, so on average it loses money.`} Chance of at least one leg failing: ${pc(1 - s.p, 0)}. The combined chance assumes the legs are independent (no two legs share a team).</p>
       <button class="btn-ghost" data-addall="${esc(keys.join('~'))}" data-cursor="ADD ALL">Add all to slip</button>
     </footer></article>`;
 }
@@ -176,10 +178,10 @@ export const views = {
     const upcoming = [...ev].filter((e) => !e.live && e.sport !== 'efootball').sort((a, b) => a.start - b.start); // eSoccer runs round the clock: it has its own page
     const day = todayEvents(prefFilter(ev)); // next 12 hours
     const bk = smartBankers(day, { limit: 10, minOdds: prefs.get().minOdds });
-    const val = valueSpots(day, { limit: 8, minOdds: prefs.get().minOdds });
+    const val = rankedValue(day, { cal: trackCalibration(), limit: 8, minOdds: prefs.get().minOdds });
     const ts = trackStats();
     const perSport = SPORTS.map((sp) => smartBankers(day.filter((e) => e.sport === sp.id), { min: 0.58, limit: 1, minOdds: prefs.get().minOdds })[0]).filter(Boolean);
-    const featured = bk[0]?.event || upcoming[0];
+    const featured = bk[0]?.event || upcoming.find((e) => e.start < Date.now() + 24 * 36e5); // never days away
     const modelled = ev.reduce((n, e) => n + (e.markets?.length ? 1 : 0), 0);
     const counts = Object.fromEntries(SPORTS.map((s) => [s.id, ev.filter((e) => e.sport === s.id)]));
     return {
@@ -392,7 +394,9 @@ export const views = {
         <p class="rec-line reveal">${target}x track record · ${r && r.won + r.lost ? recordLine(r) : 'the top slip here is saved each day and graded leg by leg: results appear below as matches finish'}</p>
         <p class="lede reveal">Built from <b>bankers</b>: short-priced favourites the model rates highly (about 1.05 to 1.6 each), stacked until the total reaches ${target}x. Many safe legs beat a few long shots: each leg is chosen for the most win chance per unit of odds.</p>
         <p class="note reveal">${target < 100 ? `⏱ Only matches starting in the next 12 hours: ${left.length} in range, ${priced} with prices.` : 'Big targets use every priced match in the next few days.'} Every leg is a real bookmaker price.</p>
-        <section class="grid slips">${list.map((s, i) => slipCard(s, i, target)).join('') || `<p class="muted">Not enough strong favourites ${target < 100 ? 'in the next 12 hours' : 'on the board'} to reach about ${target}x. Try a smaller target.</p>`}</section>
+        ${officialBlock(target)}
+        <h2 class="sec reveal"><span>◆</span>${officialSlip(target) ? 'More options' : 'Options'} <small>built now with your filters (minimum odds ${prefs.get().minOdds.toFixed(2)} per leg${prefs.get().sports?.length ? ', your sports' : ''})</small></h2>
+        <section class="grid slips">${list.map((s, i) => slipCard(s, i, target)).join('') || emptySlips(target)}</section>
         ${r?.slips?.length ? `<h2 class="sec reveal"><span>◆</span>${target}x record <small>one official slip a day, locked before the first leg starts</small></h2><div class="panel reveal">${slipHistory(r.slips)}</div>` : ''}`,
     };
   },
@@ -411,7 +415,7 @@ export const views = {
         <nav class="tabs reveal">${presets.map((x) => `<a href="#/target/${x}" class="${x === t ? 'on' : ''}">${x}x</a>`).join('')}</nav></section>
         ${notice()}
         ${has ? `<p class="note reveal">${t < 100 ? 'Only matches starting in the next 12 hours.' : 'Big targets use every priced match in the next few days.'} Break-even ${pc(1 / t, t >= 100 ? 2 : 1)}. Every leg is a real bookmaker price.</p>
-        <section class="grid slips">${list.map((s, i) => slipCard(s, i, t)).join('') || `<p class="muted">Not enough strong favourites on the board to reach about ${t}x right now. Try a smaller target.</p>`}</section>` : '<p class="muted reveal">Pick a target above to see the best slips for it.</p>'}`,
+        <section class="grid slips">${list.map((s, i) => slipCard(s, i, t)).join('') || emptySlips(t)}</section>` : '<p class="muted reveal">Pick a target above to see the best slips for it.</p>'}`,
     };
   },
 
@@ -425,7 +429,8 @@ export const views = {
         <p class="rec-line reveal">Mega track record · ${ts?.mega && ts.mega.won + ts.mega.lost ? recordLine(ts.mega) : 'one 100x and one 1000x slip saved each day, graded leg by leg'}</p></section>
         ${notice()}
         ${[100, 1000].map((t) => { const r = ts?.byTarget?.find((x) => x.target === t); return `<h2 class="sec reveal"><span>${t}x</span>${t === 100 ? 'Century' : 'Thousand'} <small>${r && r.won + r.lost ? `track record ${recordLine(r)}` : 'tracked daily, results below'}</small></h2>
-          <section class="grid slips">${S.slips(t, { count: 3 }).map((s, i) => slipCard(s, i, t)).join('') || '<p class="muted">Not enough strong favourites on the board to reach this yet.</p>'}</section>`; }).join('')}
+          ${officialBlock(t)}
+          <section class="grid slips">${S.slips(t, { count: 3 }).map((s, i) => slipCard(s, i, t)).join('') || emptySlips(t)}</section>`; }).join('')}
         ${ts?.mega?.slips?.length ? `<h2 class="sec reveal"><span>◆</span>Mega record <small>official daily slips, locked before the first leg starts</small></h2><div class="panel reveal">${slipHistory(ts.mega.slips)}</div>` : ''}`,
     };
   },
@@ -435,7 +440,7 @@ export const views = {
     ensureTrack(() => S.refresh?.());
     const day = todayEvents(ev); // next 12 hours
     const list = smartBankers(day, { limit: 40, minOdds });
-    const val = valueSpots(day, { limit: 20, minOdds });
+    const val = rankedValue(day, { cal: trackCalibration(), limit: 20, minOdds });
     const ts = trackStats();
     return {
       mode: 'bankers', accent: '#00ffc3', title: 'Bankers',
@@ -455,6 +460,17 @@ export const views = {
 };
 
 // ---------- pieces ----------
+// Today's official slip for a tracked target, exactly as saved to the record (legs, odds, chance).
+function officialBlock(target) {
+  const o = officialSlip(target);
+  if (!o) return '';
+  return `<div class="panel official reveal"><h3 class="ph">Today's official ${target}x slip <small>saved to the ${target}x track record · ${o.legs.length} legs · ${Number(o.odds).toFixed(2)}x · chance ${pc(o.shown ?? o.p, o.p < 0.01 ? 2 : 1)}</small></h3>${slipHistory([o])}</div>`;
+}
+// Why no slip could be built: name the rule that blocked it instead of quietly loosening it.
+function emptySlips(target) {
+  const mo = prefs.get().minOdds;
+  return `<p class="muted">No slip reaches about ${target}x within the rules: legs rated 55%+ after the track-record check, minimum odds ${mo.toFixed(2)} per leg${prefs.get().sports?.length ? ', your selected sports only' : ''}, no two legs sharing a team${target < 100 ? ', matches starting in the next 12 hours' : ', matches in the next 36 hours'}. ${mo > 1.2 ? 'Lowering your minimum odds or ' : ''}A smaller target will usually work.</p>`;
+}
 // Home dashboard: today's shortlist → live → absence changes → source health.
 function dashboard(ev, live) {
   const minOdds = prefs.get().minOdds;
@@ -532,12 +548,13 @@ function featuredCard(e) {
 
 // Bankers filtered through the track record: market types that have underperformed their estimates
 // need a stronger estimate to make the list (see calibration in track.js).
+// Same function the official record uses, so a pick shows the same chance here and on the Record page.
 function smartBankers(events, { min = 0.7, limit = 10, minOdds = 1 } = {}) {
-  const cal = trackCalibration();
-  return bankers(events, { min: min * 0.95, minOdds, limit: limit * 4 })
-    .map((b) => ({ ...b, pc: calibrated(b.p, b.market, cal) })).filter((b) => b.pc >= min)
-    .sort((x, y) => y.pc - x.pc).slice(0, limit);
+  return rankedBankers(events, { cal: trackCalibration(), min, minOdds, limit });
 }
+// Likely is not the same as good value: the chance a pick needs just to break even at its price, and
+// the market's own margin-free chance, next to ATLAS's estimate.
+const priceCheck = (b) => `ATLAS ${pc(b.p, 0)}${b.fair != null ? ` · market ${pc(b.fair, 0)}` : ''} · break-even ${pc(1 / b.odds, 0)}`;
 
 // Best bets for one match: 1-3 picks that agree with each other (see coherentBets in picks.js).
 export function matchBestBets(e, a) { return coherentBets(e, a, { cal: trackCalibration() }).picks; }
@@ -547,8 +564,8 @@ function bestBetsPanel(e, a) {
   if (!list.length) return '';
   return `<section class="sec-block" id="sec-best"><h2 class="sec reveal"><span>◆</span>Best bets for this match <small>${e.live ? 'pre-match estimates · ' : ''}one consistent view: same side, one goals direction · tap to add</small></h2>
     <div class="best-bets">${list.map((b) => {
-      const leg = b.book ? { key: `${e.id}|${b.market}|${b.pick}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p }
-        : { key: `${e.id}|fair|${b.market}|${b.pick}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: b.market, pick: b.pick, odds: +b.odds.toFixed(2), p: b.p, derived: true };
+      const leg = b.book ? { key: `${e.id}|${b.market}|${b.pick}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.q }
+        : { key: `${e.id}|fair|${b.market}|${b.pick}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: b.market, pick: b.pick, odds: +b.odds.toFixed(2), p: b.q, derived: true };
       const yn = /^(Yes|No|Over|Under)$/.test(b.pick);
       return `<div class="bb panel reveal"><small>${esc(b.label)}</small><b>${esc(yn ? `${b.market}: ${b.pick}` : b.pick)}</b><p class="muted bb-m">${yn ? '' : `${esc(b.market)} · `}${b.book ? 'bookmaker odds' : 'ATLAS fair odds'}</p>${e.live ? '' : istTag(e.start)}<div class="bb-row"><span>${pc(b.q, 0)}</span><em>${esc(b.why || '')}</em>${legButton(leg, odd(b.odds))}</div></div>`;
     }).join('')}</div></section>`;
@@ -557,7 +574,7 @@ function bestBetsPanel(e, a) {
 function miniPick(b, value) {
   const s = sportOf(b.event.sport);
   const leg = { key: `${b.event.id}|${b.market}|${b.pick}`, eventId: b.event.id, sport: b.event.sport, match: `${b.event.home} vs ${b.event.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p };
-  return `<div class="mini reveal"><span>${s.icon}</span><a href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(b.event.home)} v ${esc(b.event.away)}</small>${b.event.live ? '<small class="live">LIVE</small>' : istTag(b.event.start)}</a>
+  return `<div class="mini reveal"><span>${s.icon}</span><a href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(b.event.home)} v ${esc(b.event.away)}</small>${b.event.live ? '<small class="live">LIVE</small>' : istTag(b.event.start)}<small class="pcheck">${priceCheck(b)}</small></a>
     <em>${pc(b.p, 0)}</em>${value ? `<em class="pos">+${(b.ev * 100).toFixed(1)}%</em>` : ''}${legButton(leg, odd(b.odds))}</div>`;
 }
 
@@ -567,7 +584,7 @@ function bigPick(b, value) {
   return `<article class="row tilt reveal" style="--c:${s.color}">
     <a class="row-link" href="#/match/${esc(e.id)}" data-cursor="OPEN" aria-label="${esc(b.pick)}"></a>
     <span class="ico">${s.icon}</span>
-    <div class="teams"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(e.home)} v ${esc(e.away)} · ${esc(e.league)} · ${when(e)}</small></div>
+    <div class="teams"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(e.home)} v ${esc(e.away)} · ${esc(e.league)} · ${when(e)}</small><small class="pcheck">${priceCheck(b)}</small></div>
     <div class="row-prob">${gaugeMini(b.p)}</div>
     <div class="odds"><span class="stat"><small>chance</small>${pc(b.p, 1)}</span><span class="stat ${b.ev >= 0 ? 'pos' : ''}"><small>edge</small>${(b.ev * 100).toFixed(1)}%</span>${legButton(leg, `<small>odds</small>${odd(b.odds)}`)}</div>
     ${value ? '<span class="conf conf-high">VALUE</span>' : '<span class="conf conf-medium">BANKER</span>'}

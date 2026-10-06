@@ -3,6 +3,7 @@
 // the browser.
 import { applyModel, bankers, valueSpots } from './intel.js';
 import { bankerSlips } from './picks.js';
+import { localDay } from './engine.js';
 
 export const MIN_ODDS = 1.3;
 
@@ -23,7 +24,8 @@ export function calibration(history = []) {
     r.n++; r.won += status === 'won' ? 1 : 0; r.exp += p;
   };
   for (const h of history) {
-    if (h.type === 'multi') for (const l of h.legs || []) add(l.market, l.p, l.status);
+    // Always the model's own (uncalibrated) estimate, so the correction never feeds on itself.
+    if (h.type === 'multi') for (const l of h.legs || []) add(l.market, l.pRaw ?? l.p, l.status);
     else add(h.market, h.p, h.status);
   }
   for (const r of Object.values(out)) {
@@ -35,39 +37,55 @@ export function calibration(history = []) {
 }
 export const calibrated = (p, market, cal) => Math.min(0.99, p * (cal?.[familyOf(market)]?.factor ?? 1));
 
-// Official picks for matches starting in the next `hours`: bankers (estimated 60%+) and value spots
-// (model 3%+ above the price), all at odds of at least MIN_ODDS. Locked at the first price seen.
+// One probability per selection, everywhere: the model estimate after the track-record check
+// (calibrated). Cards, slips, the assistant and the official record all use these two functions, so a
+// pick shows the same chance wherever it appears. Each row keeps the market's margin-free chance
+// (fair) and the uncalibrated model estimate (pRaw) alongside, for transparency.
+const withCal = (b, cal) => { const p = calibrated(b.p, b.market, cal); return { ...b, pRaw: b.p, p, ev: p * b.odds - 1 }; };
+export function rankedBankers(events, { cal = null, min = 0.6, minOdds = 1, limit = 10 } = {}) {
+  return bankers(events, { min: min * 0.9, minOdds, limit: limit * 6 }).map((b) => withCal(b, cal))
+    .filter((b) => b.p >= min).sort((x, y) => y.p - x.p).slice(0, limit);
+}
+export function rankedValue(events, { cal = null, minEdge = 0.03, minOdds = 1, limit = 12 } = {}) {
+  return valueSpots(events, { minEdge: 0, minOdds, limit: limit * 6 }).map((b) => withCal(b, cal))
+    .filter((b) => b.ev >= minEdge).sort((x, y) => y.ev - x.ev).slice(0, limit);
+}
+
+// Official picks for matches starting in the next `hours`: bankers (60%+) and value spots (3%+ above
+// the price), all at odds of at least MIN_ODDS. Locked at the first price seen. `p` is the model's
+// own estimate (what calibration learns from); `shown` is the calibrated chance the site displayed.
 export function selectPicks(events, now = Date.now(), hours = 12, history = []) {
   const soon = applyModel(events.filter((e) => !e.live && e.compId && e.start > now && e.start < now + hours * 36e5));
   const cal = calibration(history);
-  const keep = (b) => calibrated(b.p, b.market, cal) >= 0.6;
   const row = (type) => (b) => ({
     key: `${b.event.id}|${b.market}|${b.pick}`, type, eventId: b.event.id, leaguePath: b.event.leaguePath, compId: b.event.compId,
     sport: b.event.sport, league: b.event.league, home: b.event.home, away: b.event.away, start: b.event.start,
-    market: b.market, pick: b.pick, odds: b.odds, p: +b.p.toFixed(4), recordedAt: now, status: 'pending',
+    market: b.market, pick: b.pick, odds: b.odds, p: +b.pRaw.toFixed(4), shown: +b.p.toFixed(4), fair: b.fair == null ? null : +b.fair.toFixed(4),
+    recordedAt: now, status: 'pending',
   });
   return [
-    ...bankers(soon, { min: 0.6, minOdds: MIN_ODDS, limit: 40 }).filter(keep).map(row('banker')),
-    ...valueSpots(soon, { minEdge: 0.03, minOdds: MIN_ODDS, limit: 40 }).map(row('value')),
+    ...rankedBankers(soon, { cal, min: 0.6, minOdds: MIN_ODDS, limit: 40 }).map(row('banker')),
+    ...rankedValue(soon, { cal, minEdge: 0.03, minOdds: MIN_ODDS, limit: 40 }).map(row('value')),
     ...multiPicks(events, now, history),
   ];
 }
 
-// The day's official multiplier and mega slips (2x up to 1000x), built from bankers exactly as the site
-// shows them (picks.js), from bookmaker-priced matches in the next 18 hours (36 for 100x+), locked
-// once per UTC day and graded leg by leg.
+// One slip policy for the pages and the official record: which matches a target may use and how
+// close the total must land. The record saves the top slip under exactly this policy, and the pages
+// show that saved slip as "today's official slip" (alternatives below it follow the viewer's filters).
 export const MULTI_TARGETS = [2, 3, 4, 5, 10, 20, 100, 1000];
+export const slipPolicy = (target) => ({ hours: target >= 100 ? 36 : 12, tolerance: target <= 20 ? 0.08 : 0.12 });
+export const slipWindow = (events, target, now = Date.now()) => events.filter((e) => !e.live && e.start > now && e.start <= now + slipPolicy(target).hours * 36e5);
 export function multiPicks(events, now = Date.now(), history = []) {
-  const pool = applyModel(events.filter((e) => !e.live && e.compId && e.markets?.length && e.start > now + 30 * 6e4 && e.start < now + 36 * 36e5));
+  const pool = applyModel(events.filter((e) => e.compId && e.markets?.length && e.start > now + 30 * 6e4));
   const byId = new Map(pool.map((e) => [e.id, e]));
   const cal = calibration(history);
-  const day = new Date(now).toISOString().slice(0, 10);
+  const day = localDay(now); // IST calendar day: one official slip per target per day
   const out = [];
   for (const target of MULTI_TARGETS) {
-    const near = target >= 100 ? pool : pool.filter((e) => e.start < now + 18 * 36e5);
-    const best = bankerSlips(near, target, { count: 1, tolerance: target >= 100 ? 0.15 : 0.1, cal })[0];
+    const best = bankerSlips(slipWindow(pool, target, now), target, { count: 1, tolerance: slipPolicy(target).tolerance, cal })[0];
     if (!best) continue;
-    const legs = best.legs.map((l) => { const e = byId.get(l.eventId); return { eventId: e.id, leaguePath: e.leaguePath, compId: e.compId, sport: e.sport, league: e.league, home: e.home, away: e.away, start: e.start, market: l.market, pick: l.pick, odds: l.odds, p: +l.p.toFixed(4), status: 'pending' }; });
+    const legs = best.legs.map((l) => { const e = byId.get(l.eventId); return { eventId: e.id, leaguePath: e.leaguePath, compId: e.compId, sport: e.sport, league: e.league, home: e.home, away: e.away, start: e.start, market: l.market, pick: l.pick, odds: l.odds, p: +l.p.toFixed(4), pRaw: +(l.pRaw ?? l.p).toFixed(4), status: 'pending' }; });
     out.push({
       key: `multi|${day}|${target}x`, type: 'multi', target, legs, eventId: legs[0].eventId, sport: 'multi', league: `${target}x multiplier`,
       home: `${legs.length}-leg ${target}x slip`, away: '', start: Math.max(...legs.map((l) => l.start)), market: `${target}x multiplier`,
@@ -78,10 +96,12 @@ export function multiPicks(events, now = Date.now(), history = []) {
 }
 
 // A multiplier is lost as soon as one leg loses; won once every leg is settled with no loss (pushed or
-// void legs drop out and the odds shrink accordingly); void if every leg is void.
+// void legs drop out and the odds shrink accordingly); void if every leg is void. A leg whose result
+// could not be found stays "unresolved" and so does the slip: it is never counted as void or won.
 export function settleMulti(m) {
   if (m.legs.some((l) => l.status === 'lost')) return { status: 'lost' };
   if (m.legs.some((l) => l.status === 'pending')) return { status: 'pending' };
+  if (m.legs.some((l) => l.status === 'unresolved')) return { status: 'unresolved' };
   const won = m.legs.filter((l) => l.status === 'won');
   if (!won.length) return { status: 'void' };
   return { status: 'won', odds: +won.reduce((x, l) => x * l.odds, 1).toFixed(2) };
@@ -137,6 +157,20 @@ export function resultFromSummary(sm) {
   return { done: true, homeScore: h.score, awayScore: a.score, winner: winner || (h.score != null && h.score === a.score ? 'draw' : null) };
 }
 
+// Forecast quality beyond hit rate: Brier score (mean squared error of the chance shown; lower is
+// better) and, on picks where the margin-free market chance was saved, the same score for the market
+// as a baseline. ATLAS only adds something if its score beats the market's.
+function brier(list) {
+  const y = (h) => (h.status === 'won' ? 1 : 0);
+  const withMkt = list.filter((h) => h.fair != null);
+  return {
+    brier: list.length ? list.reduce((s, h) => s + ((h.shown ?? h.p) - y(h)) ** 2, 0) / list.length : null,
+    brierN: withMkt.length,
+    brierModel: withMkt.length ? withMkt.reduce((s, h) => s + ((h.shown ?? h.p) - y(h)) ** 2, 0) / withMkt.length : null,
+    brierMarket: withMkt.length ? withMkt.reduce((s, h) => s + (h.fair - y(h)) ** 2, 0) / withMkt.length : null,
+  };
+}
+
 // Summary statistics for the Record page. Profit is in units at a flat 1-unit stake. The main record
 // covers single picks only (bankers and value spots); every multiplier target and the mega slips keep
 // a separate record of their own (byTarget), shown on their own pages.
@@ -152,16 +186,18 @@ export function summarize(history) {
     return {
       picks: list.length, won: won.length, lost: lost.length, push: list.length - settled,
       hitRate: settled ? won.length / settled : null,
-      expected: settled ? [...won, ...lost].reduce((s, h) => s + h.p, 0) / settled : null,
+      expected: settled ? [...won, ...lost].reduce((s, h) => s + (h.shown ?? h.p), 0) / settled : null,
       profit: +profit.toFixed(2), roi: settled ? profit / settled : null,
       avgOdds: settled ? [...won, ...lost].reduce((s, h) => s + h.odds, 0) / settled : null,
+      ...brier([...won, ...lost]),
     };
   };
   const group = (f) => Object.entries(graded.reduce((m, h) => ((m[f(h)] ||= []).push(h), m), {})).map(([k, l]) => ({ key: k, ...stat(l) })).sort((a, b) => b.picks - a.picks);
   // Calibration: do picks we called 60-70% land 60-70% of the time?
   const buckets = [[0.5, 0.6], [0.6, 0.7], [0.7, 0.8], [0.8, 1.01]].map(([lo, hi]) => {
-    const l = graded.filter((h) => h.status !== 'push' && h.p >= lo && h.p < hi);
-    return { label: `${Math.round(lo * 100)}–${hi > 1 ? 100 : Math.round(hi * 100)}%`, n: l.length, predicted: l.length ? l.reduce((s, h) => s + h.p, 0) / l.length : null, actual: l.length ? l.filter((h) => h.status === 'won').length / l.length : null };
+    const P = (h) => h.shown ?? h.p;
+    const l = graded.filter((h) => h.status !== 'push' && P(h) >= lo && P(h) < hi);
+    return { label: `${Math.round(lo * 100)}–${hi > 1 ? 100 : Math.round(hi * 100)}%`, n: l.length, predicted: l.length ? l.reduce((s, h) => s + P(h), 0) / l.length : null, actual: l.length ? l.filter((h) => h.status === 'won').length / l.length : null };
   });
   const firstAt = history.reduce((t, h) => Math.min(t, h.recordedAt || Infinity), Infinity);
   return {
@@ -169,6 +205,7 @@ export function summarize(history) {
     mega: { ...stat(multis.filter((m) => m.target >= 100)), slips: slipsOf([100, 1000]).slice(0, 12) },
     byType: group((h) => h.type), bySport: group((h) => h.sport), byFamily: group((h) => familyOf(h.market)), buckets,
     pending: history.filter((h) => h.status === 'pending' && h.type !== 'multi').sort((a, b) => a.start - b.start),
+    unresolved: history.filter((h) => h.status === 'unresolved' && h.type !== 'multi').length,
     recent: graded.slice().sort((a, b) => b.start - a.start).slice(0, 40),
   };
 }
