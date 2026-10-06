@@ -19,7 +19,7 @@ test('every page emblem builds, animates, tints and fits the same footprint', ()
 });
 
 test('the multiplier emblem draws exactly the number asked for', () => {
-  const chars = (v) => buildEmblem(THREE, 'digits', v).children[0].children[0].children.length;
+  const chars = (v) => buildEmblem(THREE, 'digits', v).children[0].children[2].children.length;
   assert.equal(chars('2×'), 2);
   assert.equal(chars('7.5×'), 4);
   assert.equal(chars('1000×'), 5);

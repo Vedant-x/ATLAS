@@ -204,7 +204,7 @@ export const views = {
       <section class="sec-block dash-research">${candidateTable(prefFilter(ev))}${changesPanel(ev)}</section>
       ${dashboard(ev, live)}
       ${featured ? featuredCard(featured) : ''}
-      <section class="sec-block"><h2 class="sec reveal"><span>◆</span>Sports</h2>
+      <section class="sec-block"><h2 class="sec reveal">Sports</h2>
         <div class="grid sports">${SPORTS.map((s) => {
           const list = counts[s.id] || [];
           const next = list.filter((e) => !e.live).sort((a, b) => a.start - b.start)[0];
@@ -213,15 +213,15 @@ export const views = {
             ${next ? `<small class="next">Next: ${esc(next.home)} v ${esc(next.away)}</small>` : ''}</a>`;
         }).join('')}</div></section>
       <section class="sec-block split2">
-        <div><h2 class="sec reveal"><span>◆</span>Bankers <small>${recordLine(ts?.byType.find((r) => r.key === 'banker')) || 'tracked from today'}</small></h2><div class="minilist">${bk.map((b) => miniPick(b)).join('') || '<p class="muted">No 70%+ favourites right now.</p>'}</div><a class="more reveal" href="#/bankers">All bankers →</a></div>
-        <div><h2 class="sec reveal"><span>◆</span>Value <small>${recordLine(ts?.byType.find((r) => r.key === 'value')) || 'tracked from today'}</small></h2><div class="minilist">${val.map((b) => miniPick(b, true)).join('') || '<p class="muted">No value spots right now.</p>'}</div><a class="more reveal" href="#/edge">Full edge board →</a></div>
+        <div><h2 class="sec reveal">Bankers <small>${recordLine(ts?.byType.find((r) => r.key === 'banker')) || 'tracked from today'}</small></h2><div class="minilist">${bk.map((b) => miniPick(b)).join('') || '<p class="muted">No 70%+ favourites right now.</p>'}</div><a class="more reveal" href="#/bankers">All bankers →</a></div>
+        <div><h2 class="sec reveal">Value <small>${recordLine(ts?.byType.find((r) => r.key === 'value')) || 'tracked from today'}</small></h2><div class="minilist">${val.map((b) => miniPick(b, true)).join('') || '<p class="muted">No value spots right now.</p>'}</div><a class="more reveal" href="#/edge">Full edge board →</a></div>
       </section>
-      ${perSport.length ? `<section class="sec-block"><h2 class="sec reveal"><span>◆</span>Top pick in every sport <small>the strongest priced favourite per sport</small></h2><div class="minilist cols">${perSport.map((b) => miniPick(b)).join('')}</div></section>` : ''}
-      <section class="sec-block"><h2 class="sec reveal"><span>◆</span>Multipliers</h2>
+      ${perSport.length ? `<section class="sec-block"><h2 class="sec reveal">Top pick in every sport <small>the strongest priced favourite per sport</small></h2><div class="minilist cols">${perSport.map((b) => miniPick(b)).join('')}</div></section>` : ''}
+      <section class="sec-block"><h2 class="sec reveal">Multipliers</h2>
         <div class="grid xs">${[2, 3, 4, 5].map((x) => { const r = ts?.byTarget?.find((t) => t.target === x); return `<a class="xcard tilt reveal" href="#/x/${x}" data-cursor="BUILD"><b>${x}x</b><small>5 slips · ${pc(1 / x, 0)} break-even</small>${r && r.won + r.lost ? `<small class="xrec">record ${r.won}–${r.lost} · ${pc(r.hitRate, 0)}</small>` : ''}</a>`; }).join('')}
         <a class="xcard mega tilt reveal" href="#/mega" data-cursor="DARE"><b>100x+</b><small>Mega accumulators from bankers</small></a>
         <a class="xcard tilt reveal" href="#/target" data-cursor="BUILD"><b>Target</b><small>Pick any multiplier</small></a></div></section>
-      <section class="sec-block"><h2 class="sec reveal"><span>◆</span>Up next</h2><div class="list">${upcoming.slice(0, 14).map(eventRow).join('')}</div></section>`,
+      <section class="sec-block"><h2 class="sec reveal">Up next</h2><div class="list">${upcoming.slice(0, 14).map(eventRow).join('')}</div></section>`,
     };
   },
 
@@ -236,7 +236,7 @@ export const views = {
         <p class="lede reveal">${live.length} match${live.length === 1 ? '' : 'es'} in play. Open one for the live scoreboard; star it to get alerts.</p></section>
         ${notice()}
         ${groups.map(([sp, l]) => `<section class="sec-block"><h2 class="sec reveal"><span>${sp.icon}</span>${esc(sp.name)} <small>${l.length} live</small></h2><div class="list">${l.map((e) => eventRow(e)).join('')}</div></section>`).join('') || '<p class="muted reveal">Nothing in play right now.</p>'}
-        ${soon.length ? `<section class="sec-block"><h2 class="sec reveal"><span>◆</span>Starting within the hour</h2><div class="list">${soon.slice(0, 20).map((e) => eventRow(e)).join('')}</div></section>` : ''}`,
+        ${soon.length ? `<section class="sec-block"><h2 class="sec reveal">Starting within the hour</h2><div class="list">${soon.slice(0, 20).map((e) => eventRow(e)).join('')}</div></section>` : ''}`,
     };
   },
 
@@ -288,7 +288,7 @@ export const views = {
             <small>📍 ${esc(t.location || 'TBA')} · ${esc(t.tour)}${t.major ? ' · Grand Slam' : ''}</small>
             <em>${n('Singles')} singles · ${n('Doubles') + n('Mixed doubles')} doubles${t.events.some((e) => e.live) ? ` · <span class="live">${t.events.filter((e) => e.live).length} live</span>` : ''}</em></a>`;
         }).join('') || '<p class="muted">No tournaments in the next 4 days.</p>'}</div>` : ''}
-        <h2 class="sec reveal"><span>◆</span>Every ${esc(sp.name)} match</h2>
+        <h2 class="sec reveal">Every ${esc(sp.name)} match</h2>
         <section class="list cv">${list.slice(0, 20).map(eventRow).join('') || `<p class="muted">${emptyText(sp.groups.flatMap((g) => g.leagues.map((x) => x.path)))}.</p>`}</section>
         ${list.length > 20 ? `<details class="more-leagues"><summary>Show ${Math.min(list.length, 80) - 20} more matches</summary><section class="list">${list.slice(20, 80).map(eventRow).join('')}</section></details>` : ''}`,
     };
@@ -368,9 +368,9 @@ export const views = {
       ${casePanel(rr)}
       ${bestBetsPanel(e, a)}
       ${historyPanel(e)}
-      ${dos.map((x) => `<section id="sec-${x.id}"><h2 class="sec reveal"><span>◆</span>${esc(x.label)}</h2>${x.html}</section>`).join('')}
+      ${dos.map((x) => `<section id="sec-${x.id}"><h2 class="sec reveal">${esc(x.label)}</h2>${x.html}</section>`).join('')}
       ${a.kind === 'binary' ? '' : `<section class="panel reveal" id="sec-model">${modelPanel(e, a, hc, ac)}</section>`}
-      <section id="sec-markets"><h2 class="sec reveal"><span>◆</span>Every market <small>ATLAS fair prices · tap to add</small></h2>
+      <section id="sec-markets"><h2 class="sec reveal">Every market <small>ATLAS fair prices · tap to add</small></h2>
         <div class="mgroups">${a.groups.map((g) => `<div class="mgroup panel reveal"><h3>${esc(g.group)}</h3>${g.markets.map((m) => `
           <div class="mk"><h4>${esc(m.name)}</h4>${m.outcomes.map((o) => `<div class="mo">
             <span class="mo-n">${esc(o.name)}</span><div class="meter"><i class="grow" style="--w:${(o.p * 100).toFixed(1)}%"></i></div>
@@ -419,9 +419,9 @@ export const views = {
         <p class="lede reveal">Built from <b>bankers</b>: short-priced favourites the model rates highly (about 1.05 to 1.6 each), stacked until the total reaches ${target}x. Many safe legs beat a few long shots: each leg is chosen for the most win chance per unit of odds.</p>
         <p class="note reveal">${target < 100 ? `⏱ Only matches starting in the next 12 hours: ${left.length} in range, ${priced} with prices.` : 'Big targets use every priced match in the next few days.'} Every leg is a real bookmaker price.</p>
         ${officialBlock(target)}
-        <h2 class="sec reveal"><span>◆</span>${officialSlip(target) ? 'More options' : 'Options'} <small>built now with your filters (minimum odds ${prefs.get().minOdds.toFixed(2)} per leg${prefs.get().sports?.length ? ', your sports' : ''})</small></h2>
+        <h2 class="sec reveal">${officialSlip(target) ? 'More options' : 'Options'} <small>built now with your filters (minimum odds ${prefs.get().minOdds.toFixed(2)} per leg${prefs.get().sports?.length ? ', your sports' : ''})</small></h2>
         <section class="grid slips">${list.map((s, i) => slipCard(s, i, target)).join('') || emptySlips(target)}</section>
-        ${r?.slips?.length ? `<h2 class="sec reveal"><span>◆</span>${target}x record <small>one official slip a day, locked before the first leg starts</small></h2><div class="panel reveal">${slipHistory(r.slips)}</div>` : ''}`,
+        ${r?.slips?.length ? `<h2 class="sec reveal">${target}x record <small>one official slip a day, locked before the first leg starts</small></h2><div class="panel reveal">${slipHistory(r.slips)}</div>` : ''}`,
     };
   },
 
@@ -457,7 +457,7 @@ export const views = {
         ${[100, 1000].map((t) => { const r = ts?.byTarget?.find((x) => x.target === t); return `<h2 class="sec reveal"><span>${t}x</span>${t === 100 ? 'Century' : 'Thousand'} <small>${r && r.won + r.lost ? `track record ${recordLine(r)}` : 'tracked daily, results below'}</small></h2>
           ${officialBlock(t)}
           <section class="grid slips">${S.slips(t, { count: 3 }).map((s, i) => slipCard(s, i, t)).join('') || emptySlips(t)}</section>`; }).join('')}
-        ${ts?.mega?.slips?.length ? `<h2 class="sec reveal"><span>◆</span>Mega record <small>official daily slips, locked before the first leg starts</small></h2><div class="panel reveal">${slipHistory(ts.mega.slips)}</div>` : ''}`,
+        ${ts?.mega?.slips?.length ? `<h2 class="sec reveal">Mega record <small>official daily slips, locked before the first leg starts</small></h2><div class="panel reveal">${slipHistory(ts.mega.slips)}</div>` : ''}`,
     };
   },
 
@@ -475,7 +475,7 @@ export const views = {
         ${recordLine(ts?.byType.find((r) => r.key === 'banker')) ? `<p class="rec-line reveal">Track record · bankers ${recordLine(ts.byType.find((r) => r.key === 'banker'))}${recordLine(ts.byType.find((r) => r.key === 'value')) ? ` · value ${recordLine(ts.byType.find((r) => r.key === 'value'))}` : ''} · <a href="#/track">see every pick</a></p>` : ''}</section>
         ${notice()}${prefsBar()}
         <div class="list">${list.map((b) => bigPick(b)).join('') || '<p class="muted">No 70%+ favourites in the next 12 hours right now. The board refreshes as new matches come into range.</p>'}</div>
-        <h2 class="sec reveal"><span>◆</span>Value spots <small>model above the price, odds ≤ 5</small></h2>
+        <h2 class="sec reveal">Value spots <small>model above the price, odds ≤ 5</small></h2>
         <div class="list">${val.map((b) => bigPick(b, true)).join('') || '<p class="muted">No value spots right now.</p>'}</div>`,
     };
   },
@@ -565,7 +565,7 @@ function featuredCard(e) {
   const w = winProbs(e), s = sportOf(e.sport);
   const hc = safeColor(e.colors?.home, s.color), ac = safeColor(e.colors?.away, AWAY_COLOR);
   const fav = w.home >= w.away ? e.home : e.away;
-  return `<section class="sec-block"><h2 class="sec reveal"><span>◆</span>Match of the day</h2>
+  return `<section class="sec-block"><h2 class="sec reveal">Match of the day</h2>
     <a class="featured tilt reveal" href="#/match/${esc(e.id)}" style="--c:${s.color}" data-cursor="DOSSIER">
       <div class="f-meta">${s.icon} ${esc(e.league)} · ${when(e)} ${confBadge(w.confidence)}</div>
       <div class="f-teams"><b style="color:${hc}">${esc(e.home)}</b><span>VS</span><b style="color:${ac}">${esc(e.away)}</b></div>
@@ -590,7 +590,7 @@ export function matchBestBets(e, a) { return coherentBets(e, a, { cal: trackCali
 function bestBetsPanel(e, a) {
   const list = matchBestBets(e, a);
   if (!list.length) return '';
-  return `<section class="sec-block" id="sec-best"><h2 class="sec reveal"><span>◆</span>Best bets for this match <small>${e.live ? 'pre-match estimates · ' : ''}one consistent view: same side, one goals direction · tap to add</small></h2>
+  return `<section class="sec-block" id="sec-best"><h2 class="sec reveal">Best bets for this match <small>${e.live ? 'pre-match estimates · ' : ''}one consistent view: same side, one goals direction · tap to add</small></h2>
     <div class="best-bets">${list.map((b) => {
       const leg = b.book ? { key: `${e.id}|${b.market}|${b.pick}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.q }
         : { key: `${e.id}|fair|${b.market}|${b.pick}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: b.market, pick: b.pick, odds: +b.odds.toFixed(2), p: b.q, derived: true };
@@ -755,7 +755,7 @@ async function loadStandings(l) {
     const groups = (j.children?.length ? j.children : [j]).map((c) => ({ name: c.name || c.abbreviation || l.name, entries: c.standings?.entries || [] })).filter((g) => g.entries.length);
     if (!groups.length) return;
     const cols = ['GP', 'W', 'D', 'T', 'L', 'OTL', 'PTS', 'GD', 'PF', 'PA', 'PCT', 'GB', 'STRK', 'L10'];
-    box.innerHTML = `<h2 class="sec"><span>◆</span>Standings</h2>${groups.map((g) => {
+    box.innerHTML = `<h2 class="sec">Standings</h2>${groups.map((g) => {
       const stat = (en, k) => en.stats?.find((x) => x.abbreviation === k || x.shortDisplayName === k)?.displayValue;
       const used = cols.filter((k) => g.entries.some((en) => stat(en, k) != null));
       return `<div class="panel"><h3 class="ph">${esc(g.name)}</h3><div class="table-wrap"><table class="tbl tight"><thead><tr><th>#</th><th>Team</th>${used.map((k) => `<th>${k}</th>`).join('')}</tr></thead><tbody>${g.entries.map((en, i) => `<tr><td class="num">${i + 1}</td><td><b>${esc(en.team?.displayName || en.team?.name || '')}</b></td>${used.map((k) => `<td class="num">${esc(stat(en, k) ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`;
