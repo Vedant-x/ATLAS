@@ -1251,3 +1251,8 @@ time.ist .ico, .note > .ico { margin-right: 2px; opacity: .85; }
    the two never overlap whatever buttons the header holds. */
 .bar { height: 64px; padding-block: 0; }
 body.scrolled .bar { height: 52px; padding-block: 0; }
+/* Hero titles use a tight line height, so the letters reach below the line box: keep what follows a
+   proportional distance away, however large the title is fitted. */
+.hero h1 { margin-bottom: .18em; }
+.hero .builder-nav { margin: 6px 0 10px; }
+.hero .builder-nav + .tabs { margin-top: 6px; }

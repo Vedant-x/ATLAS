@@ -77,7 +77,9 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
 // close the total must land. The record saves the top slip under exactly this policy, and the pages
 // show that saved slip as "today's official slip" (alternatives below it follow the viewer's filters).
 export const MULTI_TARGETS = [2, 3, 4, 5, 10, 20, 100, 1000];
-export const slipPolicy = (target) => ({ hours: target >= 100 ? 36 : 12, tolerance: target <= 20 ? 0.08 : 0.12 });
+// Below 10x every leg starts in the next 12 hours; 10x and bigger may use any match in the next 7 days.
+export const BIG_TARGET = 10;
+export const slipPolicy = (target) => ({ hours: target >= BIG_TARGET ? 168 : 12, tolerance: target <= 20 ? 0.08 : 0.12 });
 export const slipWindow = (events, target, now = Date.now()) => events.filter((e) => !e.live && e.start > now && e.start <= now + slipPolicy(target).hours * 36e5);
 export function multiPicks(events, now = Date.now(), history = []) {
   const pool = applyModel(events.filter((e) => e.compId && e.markets?.length && e.start > now + 30 * 6e4));

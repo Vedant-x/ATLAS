@@ -585,6 +585,15 @@ const [espn, npbEvents, kboEvents, cricketEvents, esportsEvents, esoccerEvents] 
   esports().catch((e) => { log('Esports failed', e.message); problems.push(`Esports feed (bo3.gg) failed: ${e.message}`); return []; }),
   esoccer().catch((e) => { log('eSoccer failed', e.message); problems.push(`eSoccer feed (EsportsBattle) failed: ${e.message}`); return []; }),
 ]);
+// Days 5 to 7 for the most-followed leagues, best effort, so 10x and bigger slips (which may use any
+// match in the next 7 days, track.js slipPolicy) have a full week to choose from.
+{
+  const near = new Set(espn.map((e) => e.id));
+  const ahead = await fetchAll(AbortSignal.timeout(150000), ordered.filter((l) => PRIORITY.includes(l.path)), { from: 5, days: 7, extra: true, concurrency: 3 }).catch(() => []);
+  const added = ahead.filter((e) => !near.has(e.id) && (near.add(e.id), true));
+  espn.push(...added);
+  log(`ESPN days 5-7: ${added.length} more events`);
+}
 // Known leagues only, and no stale fixtures: a game that started 12+ hours ago and isn't live is over.
 const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents, ...esportsEvents, ...esoccerEvents].filter((e) => leagueByPath(e.leaguePath) && (e.live || !(e.start < Date.now() - 12 * 36e5)));
 

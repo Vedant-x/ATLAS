@@ -136,11 +136,14 @@ export const fetchErrors = [];
 // actually answered; a failed or throttled league is retried instead.
 export const leagueStatus = new Map();
 
-export async function fetchLeague(league, { days = 3, signal, live = false } = {}) {
+export async function fetchLeague(league, { days = 3, from = -1, extra = false, signal, live = false } = {}) {
   // ESPN rejects multi-day ranges (HTTP 400 since Oct 2026; tennis aside), so ask one day at a time,
-  // yesterday through `days` ahead. The live loop only needs the current scoreboard (games in play).
-  const dayList = Array.from({ length: days + 2 }, (_, i) => ymd(new Date(Date.now() + (i - 1) * 864e5)));
-  const urls = live ? [`${BASE}/${league.path}/scoreboard`] : [`${BASE}/${league.path}/scoreboard`, ...dayList.map((d) => `${BASE}/${league.path}/scoreboard?dates=${d}`)];
+  // from `from` days (default: yesterday) through `days` ahead. The live loop only needs the current
+  // scoreboard (games in play). `extra` is a best-effort look further ahead: it neither marks the
+  // league as failed nor reports errors, and skips the current scoreboard.
+  const dayList = Array.from({ length: days - from + 1 }, (_, i) => ymd(new Date(Date.now() + (i + from) * 864e5)));
+  const dayUrls = dayList.map((d) => `${BASE}/${league.path}/scoreboard?dates=${d}`);
+  const urls = live ? [`${BASE}/${league.path}/scoreboard`] : extra ? dayUrls : [`${BASE}/${league.path}/scoreboard`, ...dayUrls];
   const headers = typeof window === 'undefined' ? { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', Accept: 'application/json' } : undefined;
   const one = async (u) => {
     let err;
@@ -157,6 +160,7 @@ export async function fetchLeague(league, { days = 3, signal, live = false } = {
   };
   const results = await Promise.allSettled(urls.map(one));
   const ok = results.filter((r) => r.status === 'fulfilled');
+  if (extra) return ok.flatMap((r) => r.value);
   // A league counts as loaded only if every day answered; otherwise games could be missing.
   if (ok.length < results.length) {
     leagueStatus.set(league.path, { ok: false, at: Date.now() });

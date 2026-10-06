@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calibration, calibrated, familyOf, settleMulti, multiPicks, summarize, rankedBankers } from '../js/track.js';
+import { calibration, calibrated, familyOf, settleMulti, multiPicks, summarize, rankedBankers, slipWindow } from '../js/track.js';
 import { bankerSlips } from '../js/picks.js';
 
 const pick = (market, status, p = 0.62, extra = {}) => ({ market, status, p, odds: 1.6, type: 'banker', sport: 'football', start: 1, ...extra });
@@ -82,4 +82,13 @@ test('slips never relax the minimum odds and never use two legs with the same te
     assert.equal(new Set(teams).size, teams.length, 'no shared team');
   }
   assert.deepEqual(bankerSlips(events, 3, { minOdds: 3 }), [], 'impossible rule gives no slip instead of a relaxed one');
+});
+
+test('slip window: under 10x the next 12 hours, 10x and bigger the next 7 days', () => {
+  const now = Date.parse('2026-10-06T08:00:00Z');
+  const at = (h) => ({ id: `e${h}`, start: now + h * 36e5 });
+  const evs = [at(-1), at(2), at(20), at(100), at(170)];
+  assert.deepEqual(slipWindow(evs, 5, now).map((e) => e.id), ['e2']);
+  assert.deepEqual(slipWindow(evs, 10, now).map((e) => e.id), ['e2', 'e20', 'e100']);
+  assert.deepEqual(slipWindow(evs, 1000, now).map((e) => e.id), ['e2', 'e20', 'e100']);
 });
