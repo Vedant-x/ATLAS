@@ -17,7 +17,7 @@ import { prefs, prefEvents } from './prefs.js';
 import { liveWin } from './live.js';
 import { watch } from './alerts.js';
 import { trackCard, trackStats, trackCalibration, recordLine, ensureTrack, slipHistory, officialSlip } from './trackview.js';
-import { rankedBankers, rankedValue } from './track.js';
+import { rankedBankers, rankedValue, slipPolicy } from './track.js';
 import { coherentBets } from './picks.js';
 import { mergeEvent } from './merge.js';
 import { candidateTable, changesPanel, casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips } from './research.js';
@@ -232,7 +232,7 @@ export const views = {
     const soon = S.events.filter((e) => !e.live && e.start > Date.now() && e.start < Date.now() + 36e5 && e.sport !== 'efootball').sort((a, b) => a.start - b.start);
     const groups = SPORTS.map((sp) => [sp, live.filter((e) => e.sport === sp.id)]).filter(([, l]) => l.length);
     return {
-      mode: 'other', accent: '#ff3d6e', title: 'Live', sceneOpts: { emblem: 'radar' },
+      mode: 'other', accent: '#ff3d6e', title: 'Live',
       html: `<section class="hero small"><p class="kicker reveal">IN PLAY · UPDATES EVERY FEW SECONDS</p><h1>${split('LIVE')}</h1>
         <p class="lede reveal">${live.length} match${live.length === 1 ? '' : 'es'} in play. Open one for the live scoreboard; star it to get alerts.</p></section>
         ${notice()}
@@ -405,24 +405,18 @@ export const views = {
   x([n]) {
     const target = Math.round(Number(n) * 100) / 100;
     if (![2, 3, 4, 5, 10, 20].includes(target)) return views.notfound();
-    // Every leg kicks off in the next 12 hours.
-    const left = todayEvents(S.events);
-    const priced = left.filter((e) => e.markets?.length).length;
-    const list = S.slips(target, { count: 5, today: target < 100 });
+    const list = S.slips(target, { count: 5 });
     ensureTrack(() => S.refresh?.());
     const r = trackStats()?.byTarget?.find((t) => t.target === target);
     return {
-      mode: 'x', accent: ['#d2ff00', '#00ffc3', '#4fd1ff', '#b08cff'][[2, 3, 4, 5].indexOf(target)] || '#ff9f43', title: `${target}x slips`, sceneOpts: { value: `${target}×` },
-      html: `<section class="hero small"><p class="kicker reveal">MULTIPLIER · BREAK-EVEN ${pc(1 / target, target >= 100 ? 2 : 1)}${target < 100 ? ' · NEXT 12 HOURS' : ''}</p><h1>${split(`${target}X SLIPS`)}</h1>${builderNav('x')}
+      mode: 'x', accent: ['#d2ff00', '#00ffc3', '#4fd1ff', '#b08cff'][[2, 3, 4, 5].indexOf(target)] || '#ff9f43', title: `${target}x slips`,
+      html: `<section class="hero small"><p class="kicker reveal">MULTIPLIER · BREAK-EVEN ${pc(1 / target, target >= 100 ? 2 : 1)} · ${windowLabel(target)}</p><h1>${split(`${target}X SLIPS`)}</h1>${builderNav('x')}
         <nav class="tabs reveal">${[2, 3, 4, 5, 10, 20].map((x) => `<a href="#/x/${x}" class="${x === target ? 'on' : ''}">${x}x</a>`).join('')}</nav></section>
         ${notice()}
-        <p class="rec-line reveal">${target}x track record · ${r && r.won + r.lost ? recordLine(r) : 'the top slip here is saved each day and graded leg by leg: results appear below as matches finish'}</p>
-        <p class="lede reveal">Built from <b>bankers</b>: short-priced favourites the model rates highly (about 1.05 to 1.6 each), stacked until the total reaches ${target}x. Many safe legs beat a few long shots: each leg is chosen for the most win chance per unit of odds.</p>
-        <p class="note reveal">${target < 100 ? `${ico('timer')} Only matches starting in the next 12 hours: ${left.length} in range, ${priced} with prices.` : 'Big targets use every priced match in the next few days.'} Every leg is a real bookmaker price.</p>
         ${officialBlock(target)}
-        <h2 class="sec reveal">${officialSlip(target) ? 'More options' : 'Options'} <small>built now with your filters (minimum odds ${prefs.get().minOdds.toFixed(2)} per leg${prefs.get().sports?.length ? ', your sports' : ''})</small></h2>
+        <h2 class="sec reveal">${officialSlip(target) ? 'More options' : 'Options'}</h2>
         <section class="grid slips">${list.map((s, i) => slipCard(s, i, target)).join('') || emptySlips(target)}</section>
-        ${r?.slips?.length ? `<h2 class="sec reveal">${target}x record <small>one official slip a day, locked before the first leg starts</small></h2><div class="panel reveal">${slipHistory(r.slips)}</div>` : ''}`,
+        ${recordBlock(`${target}x track record`, r)}`,
     };
   },
 
@@ -430,19 +424,15 @@ export const views = {
   target([n]) {
     const t = Math.round(Number(n) * 100) / 100;
     const has = t >= 1.2 && t <= 100000;
-    const list = has ? S.slips(t, { count: 5, today: t < 100 }) : [];
+    const list = has ? S.slips(t, { count: 5 }) : [];
     const presets = [1.5, 2.5, 7.5, 15, 50, 250];
     return {
       mode: 'x', accent: '#ff9f43', title: has ? `Target ${t}x` : 'Target',
-      // Before a number is entered: a bullseye; after: the target itself as a 3D number.
-      sceneOpts: has ? { emblem: 'digits', value: `${t}×` } : { emblem: 'target' },
-      html: `<section class="hero small"><p class="kicker reveal">YOUR TARGET · BUILT FROM BANKERS</p><h1>${split(has ? `TARGET ${t}X` : 'TARGET')}</h1>${builderNav('target')}
-        <p class="lede reveal">Type any multiplier. ATLAS stacks short-priced favourites the model rates highly (about 1.05 to 1.6 each) until the total reaches it, picking the legs that give the most win chance per unit of odds.</p>
+      html: `<section class="hero small"><p class="kicker reveal">${has ? `BREAK-EVEN ${pc(1 / t, t >= 100 ? 2 : 1)} · ${windowLabel(t)}` : 'ANY MULTIPLIER'}</p><h1>${split(has ? `TARGET ${t}X` : 'TARGET')}</h1>${builderNav('target')}
         <form class="xtarget reveal" data-xtarget><label>Target multiplier<input type="number" name="t" min="1.2" max="100000" step="0.1" value="${has ? t : ''}" placeholder="e.g. 7.5" inputmode="decimal" aria-label="Target multiplier"></label><button class="btn">Build slips</button></form>
         <nav class="tabs reveal">${presets.map((x) => `<a href="#/target/${x}" class="${x === t ? 'on' : ''}">${x}x</a>`).join('')}</nav></section>
         ${notice()}
-        ${has ? `<p class="note reveal">${t < 100 ? 'Only matches starting in the next 12 hours.' : 'Big targets use every priced match in the next few days.'} Break-even ${pc(1 / t, t >= 100 ? 2 : 1)}. Every leg is a real bookmaker price.</p>
-        <section class="grid slips">${list.map((s, i) => slipCard(s, i, t)).join('') || emptySlips(t)}</section>` : '<p class="muted reveal">Pick a target above to see the best slips for it.</p>'}`,
+        ${has ? `<section class="grid slips">${list.map((s, i) => slipCard(s, i, t)).join('') || emptySlips(t)}</section>` : ''}`,
     };
   },
 
@@ -451,14 +441,13 @@ export const views = {
     const ts = trackStats();
     return {
       mode: 'mega', accent: '#ff3d6e', title: 'Mega bets',
-      html: `<section class="hero small"><p class="kicker reveal">BIG PAYOUTS · BUILT FROM BANKERS</p><h1>${split('MEGA BETS')}</h1>${builderNav('mega')}
-        <p class="lede reveal">Huge targets reached the sensible way: dozens of short-priced favourites rather than a handful of long shots. Still long odds overall, so stake small.</p>
-        <p class="rec-line reveal">Mega track record · ${ts?.mega && ts.mega.won + ts.mega.lost ? recordLine(ts.mega) : 'one 100x and one 1000x slip saved each day, graded leg by leg'}</p></section>
+      html: `<section class="hero small"><p class="kicker reveal">100X AND 1000X · ${windowLabel(100)}</p><h1>${split('MEGA BETS')}</h1>${builderNav('mega')}
+</section>
         ${notice()}
-        ${[100, 1000].map((t) => { const r = ts?.byTarget?.find((x) => x.target === t); return `<h2 class="sec reveal"><span>${t}x</span>${t === 100 ? 'Century' : 'Thousand'} <small>${r && r.won + r.lost ? `track record ${recordLine(r)}` : 'tracked daily, results below'}</small></h2>
+        ${[100, 1000].map((t) => { return `<h2 class="sec reveal">${t}x</h2>
           ${officialBlock(t)}
           <section class="grid slips">${S.slips(t, { count: 3 }).map((s, i) => slipCard(s, i, t)).join('') || emptySlips(t)}</section>`; }).join('')}
-        ${ts?.mega?.slips?.length ? `<h2 class="sec reveal">Mega record <small>official daily slips, locked before the first leg starts</small></h2><div class="panel reveal">${slipHistory(ts.mega.slips)}</div>` : ''}`,
+        ${recordBlock('Mega track record', ts?.mega)}`,
     };
   },
 
@@ -472,12 +461,12 @@ export const views = {
     return {
       mode: 'bankers', accent: '#00ffc3', title: 'Bankers',
       html: `<section class="hero small"><p class="kicker reveal">NEXT 12 HOURS · ODDS ≥ ${minOdds.toFixed(2)}</p><h1>${split('BANKERS')}</h1>${builderNav('bankers')}
-        <p class="lede reveal">Picks the model estimates at 70%+ (from margin-free bookmaker prices, adjusted by record and form, then checked against how each market type has actually done in the track record). These are estimates, not certainties: favourites at this level still lose roughly one time in four to one time in ten.</p>
-        ${recordLine(ts?.byType.find((r) => r.key === 'banker')) ? `<p class="rec-line reveal">Track record · bankers ${recordLine(ts.byType.find((r) => r.key === 'banker'))}${recordLine(ts.byType.find((r) => r.key === 'value')) ? ` · value ${recordLine(ts.byType.find((r) => r.key === 'value'))}` : ''} · <a href="#/track">see every pick</a></p>` : ''}</section>
+</section>
         ${notice()}${prefsBar()}
         <div class="list">${list.map((b) => bigPick(b)).join('') || '<p class="muted">No 70%+ favourites in the next 12 hours right now. The board refreshes as new matches come into range.</p>'}</div>
         <h2 class="sec reveal">Value spots <small>model above the price, odds ≤ 5</small></h2>
-        <div class="list">${val.map((b) => bigPick(b, true)).join('') || '<p class="muted">No value spots right now.</p>'}</div>`,
+        <div class="list">${val.map((b) => bigPick(b, true)).join('') || '<p class="muted">No value spots right now.</p>'}</div>
+        ${recordLine(ts?.byType.find((r) => r.key === 'banker')) ? `<p class="rec-line reveal">Track record · bankers ${recordLine(ts.byType.find((r) => r.key === 'banker'))}${recordLine(ts.byType.find((r) => r.key === 'value')) ? ` · value ${recordLine(ts.byType.find((r) => r.key === 'value'))}` : ''} · <a href="#/track">see every pick</a></p>` : ''}`,
     };
   },
 
@@ -488,6 +477,13 @@ export const views = {
 
 // ---------- pieces ----------
 // Today's official slip for a tracked target, exactly as saved to the record (legs, odds, chance).
+// Where a builder's legs come from, for the page kicker (track.js slipPolicy).
+const windowLabel = (target) => (slipPolicy(target).hours >= 48 ? `NEXT ${Math.round(slipPolicy(target).hours / 24)} DAYS` : `NEXT ${slipPolicy(target).hours} HOURS`);
+// A builder's own record, shown after its bets: the summary line plus every graded official slip.
+function recordBlock(title, r) {
+  if (!r?.slips?.length) return '';
+  return `<h2 class="sec reveal">${title}${r.won + r.lost ? ` <small>${recordLine(r)}</small>` : ''}</h2><div class="panel reveal">${slipHistory(r.slips)}</div>`;
+}
 function officialBlock(target) {
   const o = officialSlip(target);
   if (!o) return '';
@@ -496,7 +492,7 @@ function officialBlock(target) {
 // Why no slip could be built: name the rule that blocked it instead of quietly loosening it.
 function emptySlips(target) {
   const mo = prefs.get().minOdds;
-  return `<p class="muted">No slip reaches about ${target}x within the rules: legs rated 55%+ after the track-record check, minimum odds ${mo.toFixed(2)} per leg${prefs.get().sports?.length ? ', your selected sports only' : ''}, no two legs sharing a team${target < 100 ? ', matches starting in the next 12 hours' : ', matches in the next 36 hours'}. ${mo > 1.2 ? 'Lowering your minimum odds or ' : ''}A smaller target will usually work.</p>`;
+  return `<p class="muted">No slip reaches about ${target}x within the rules: legs rated 55%+ after the track-record check, minimum odds ${mo.toFixed(2)} per leg${prefs.get().sports?.length ? ', your selected sports only' : ''}, no two legs sharing a team, matches ${windowLabel(target).toLowerCase().replace('next', 'in the next')}. ${mo > 1.2 ? 'Lowering your minimum odds or ' : ''}A smaller target will usually work.</p>`;
 }
 // Home dashboard: today's shortlist → live → absence changes → source health.
 function dashboard(ev, live) {

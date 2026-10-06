@@ -236,7 +236,7 @@ export function compareView() {
   const rows = pins().map((id) => S.events.find((e) => e.id === id)).filter(Boolean).map(researchRow);
   const line = (label, f) => `<tr><th>${label}</th>${rows.map((x) => `<td>${f(x)}</td>`).join('')}</tr>`;
   return {
-    mode: 'other', accent: '#4fd1ff', title: 'Compare', sceneOpts: { emblem: 'scale' },
+    mode: 'other', accent: '#4fd1ff', title: 'Compare',
     html: `<section class="hero small"><p class="kicker reveal">SIDE BY SIDE · UP TO 4 MATCHES</p><h1>COMPARE</h1>
       <p class="lede reveal">Pin matches with Compare from the research table, the quick view or a match page.</p></section>
       ${rows.length ? `<div class="panel table-wrap reveal"><table class="cmp"><thead><tr><th></th>${rows.map((x) => `<th><a href="#/match/${esc(x.e.id)}">${sportOf(x.e.sport).icon} ${esc(x.e.home)} v ${esc(x.e.away)}</a><button class="icon-btn" data-pin="${esc(x.e.id)}" title="Unpin">×</button></th>`).join('')}</tr></thead><tbody>
@@ -259,7 +259,7 @@ export function watchlistView() {
   const list = watch.ids().map((id) => S.events.find((e) => e.id === id)).filter(Boolean).sort((a, b) => a.start - b.start);
   const rows = list.map(researchRow);
   return {
-    mode: 'other', accent: '#ffb547', title: 'Watchlist', sceneOpts: { emblem: 'star' },
+    mode: 'other', accent: '#ffb547', title: 'Watchlist',
     html: `<section class="hero small"><p class="kicker reveal">SAVED MATCHES · ALERTS ON CHANGES</p><h1>WATCHLIST</h1>
       <p class="lede reveal">Matches you starred. A match is flagged <b>needs review</b> when a starter, lineup, absence or price changes after you last opened it.</p></section>
       ${rows.length ? `<div class="list">${rows.map((x) => `<a class="row wl reveal ${x.review.length ? 'needs-review' : ''}" href="#/match/${esc(x.e.id)}" data-qv="${esc(x.e.id)}">

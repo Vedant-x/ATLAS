@@ -92,7 +92,7 @@ function body(data) {
 export const trackViews = {
   track() {
     return {
-      mode: 'other', accent: '#3dff9a', title: 'Track record', sceneOpts: { emblem: 'trophy' },
+      mode: 'other', accent: '#3dff9a', title: 'Track record',
       html: `<section class="hero small"><p class="kicker reveal">EVERY PICK · LOCKED BEFORE KICK-OFF · GRADED FROM FINAL SCORES</p><h1>TRACK RECORD</h1>
         <p class="lede reveal">The real results of ATLAS's bankers and value spots, published before each match and never edited afterwards.</p></section>
         <div id="track-body">${cache ? body(cache.data) : '<p class="muted">Loading results…</p>'}</div>`,
