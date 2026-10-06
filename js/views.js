@@ -19,7 +19,7 @@ import { trackCard, trackStats, trackCalibration, recordLine, ensureTrack, slipH
 import { rankedBankers, rankedValue } from './track.js';
 import { coherentBets } from './picks.js';
 import { mergeEvent } from './merge.js';
-import { candidateTable, changesPanel, casePanel, historyPanel, researchRow, pins } from './research.js';
+import { candidateTable, changesPanel, casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips } from './research.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const safeHref = (u) => (/^https?:\/\//i.test(String(u || '')) ? esc(u) : '#');
@@ -500,15 +500,17 @@ function dashboard(ev, live) {
   const minOdds = prefs.get().minOdds;
   const pool = prefFilter(ev);
   ensureTrack(() => S.refresh?.());
-  // Matches starting in the next 12 hours: never fixtures days away, never empty at midnight.
-  const short = smartBankers(todayEvents(pool), { min: 0.6, minOdds, limit: 10 }), when2 = 'next 12 hours';
+  // Matches starting within the chosen window (3 to 48 hours; 12 by default).
+  const hrs = researchPrefs().shortHours;
+  const short = smartBankers(todayEvents(pool, Date.now(), hrs), { min: 0.6, minOdds, limit: 10 }), when2 = `next ${hrs} hours`;
   const rec = recordLine(trackStats()?.byType.find((r) => r.key === 'banker'));
   const changes = ev.flatMap((e) => ['home', 'away'].flatMap((sd) => (e.absences?.[sd] || []).map((x) => ({ e, team: sd === 'home' ? e.home : e.away, ...x }))))
     .filter((x) => x.updated).sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated)).slice(0, 6);
   return `<section class="dash">
     <div class="panel dash-short reveal"><h2 class="ph">Shortlist <small>${when2} · estimated 60%+ after the track-record check · odds ≥ ${minOdds.toFixed(2)}</small></h2>
+      ${windowChips('shours', hrs)}
       ${rec ? `<p class="rec-line">Bankers so far: ${rec} · <a href="#/track">full record</a></p>` : ''}
-      <div class="minilist">${short.map((b) => miniPick(b)).join('') || '<p class="muted">No strong picks in the next 12 hours right now. New matches join as they come into range (or lower the minimum odds / add sports).</p>'}</div>${prefsBar()}</div>
+      <div class="minilist">${short.map((b) => miniPick(b)).join('') || `<p class="muted">No strong picks in the next ${hrs} hours right now.${hrs < 48 ? ' Try a longer window, or' : ''} lower the minimum odds / add sports.</p>`}</div>${prefsBar()}</div>
     <div class="panel dash-live reveal"><h2 class="ph">Live now <small>${live.length}</small></h2>
       ${live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${esc(e.score || '')}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>
     <div class="panel dash-changes reveal"><h2 class="ph">Latest absences <small>soccer · FotMob</small></h2>
@@ -595,11 +597,14 @@ function bestBetsPanel(e, a) {
     }).join('')}</div></section>`;
 }
 
-function miniPick(b, value) {
+function miniPick(b) {
   const s = sportOf(b.event.sport);
   const leg = { key: `${b.event.id}|${b.market}|${b.pick}`, eventId: b.event.id, sport: b.event.sport, match: `${b.event.home} vs ${b.event.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p };
-  return `<div class="mini reveal"><span>${s.icon}</span><a href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(b.event.home)} v ${esc(b.event.away)}</small>${b.event.live ? '<small class="live">LIVE</small>' : istTag(b.event.start)}<small class="pcheck">${priceCheck(b)}</small></a>
-    <em>${pc(b.p, 0)}</em>${value ? `<em class="pos">+${(b.ev * 100).toFixed(1)}%</em>` : ''}${legButton(leg, odd(b.odds))}</div>`;
+  const edge = `${b.ev >= 0 ? '+' : ''}${(b.ev * 100).toFixed(1)}%`;
+  return `<div class="mini reveal"><span class="mini-ico">${s.icon}</span>
+    <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(b.event.home)} v ${esc(b.event.away)}</small>${b.event.live ? '<small class="live">LIVE</small>' : istTag(b.event.start)}</a>
+    <div class="mini-nums"><span><small>ATLAS</small><b>${pc(b.p, 0)}</b></span>${b.fair != null ? `<span><small>Market</small><b>${pc(b.fair, 0)}</b></span>` : ''}<span><small>Break-even</small><b>${pc(1 / b.odds, 0)}</b></span><span><small>Edge</small><b class="${b.ev >= 0 ? 'pos' : 'neg'}">${edge}</b></span></div>
+    ${legButton(leg, odd(b.odds))}</div>`;
 }
 
 function bigPick(b, value) {

@@ -33,7 +33,7 @@ export function researchRow(e) {
 
 // ---------- candidate table ----------
 const RKEY = 'atlas-research-v1';
-export const researchPrefs = () => ({ sort: 'likely', hours: 24, sport: '', readyOnly: false, pricedOnly: true, ...read(RKEY, {}) });
+export const researchPrefs = () => ({ sort: 'likely', hours: 24, shortHours: 12, sport: '', readyOnly: false, pricedOnly: true, ...read(RKEY, {}) });
 export const setResearchPrefs = (patch) => write(RKEY, { ...researchPrefs(), ...patch });
 
 export function candidateRows(events, f = researchPrefs()) {
@@ -51,6 +51,25 @@ export function candidateRows(events, f = researchPrefs()) {
   return rows.sort(by);
 }
 
+// Time-window chips shared by the research table and the shortlist.
+export const WINDOWS = [3, 6, 12, 24, 48];
+export const windowChips = (key, cur) => `<div class="win-chips" role="group" aria-label="Time window"><span>Starting in</span>${WINDOWS.map((h) => `<button class="chip ${cur === h ? 'on' : ''}" data-${key}="${h}" aria-pressed="${cur === h}">${h}h</button>`).join('')}</div>`;
+const EMPTY = 'No matches fit these filters. Widen the window, include unpriced matches or pick another sport.';
+
+// Phone layout of one research row: a card with the same facts as the table row.
+function card(x) {
+  const m = x.main, e = x.e;
+  const edge = m.book ? `${m.ev >= 0 ? '+' : ''}${(m.ev * 100).toFixed(1)}%` : '—';
+  return `<article class="rs-card ${x.review.length ? 'needs-review' : ''}" data-qv="${esc(e.id)}" tabindex="0">
+    <header><span>${sportOf(e.sport).icon} ${esc(e.league)}</span><time>${esc(timeShort(e.start))} IST</time></header>
+    <h3>${esc(e.home)} <i>v</i> ${esc(e.away)}</h3>
+    <div class="rs-pick"><div><b>${esc(m.pick)}</b><small>${esc(m.market)}${m.book ? '' : ' · ATLAS fair price'}</small></div><span class="rs-odds">${odd(m.odds)}</span></div>
+    <div class="rs-nums"><div><small>Market</small><b>${m.fair != null ? pc(m.fair, 0) : '—'}</b></div><div><small>ATLAS</small><b>${pc(m.q, 0)}</b></div><div><small>Edge</small><b class="${m.book ? (m.ev >= 0 ? 'pos' : 'neg') : ''}">${edge}</b></div></div>
+    ${x.change ? `<p class="rs-cchange">${KIND_ICON[x.change.kind] || '•'} ${esc(x.change.text)} <small>· ${ago(x.change.at)} ago</small></p>` : ''}
+    <footer>${readyBadge(x.r)}<span class="rs-cact"><button class="icon-btn ${watch.has(e.id) ? 'on' : ''}" data-watch="${esc(e.id)}" aria-pressed="${watch.has(e.id)}" aria-label="Save to watchlist">${watch.has(e.id) ? '★' : '☆'}</button><button class="icon-btn ${pins().includes(e.id) ? 'on' : ''}" data-pin="${esc(e.id)}" aria-label="Pin to compare">⇄</button></span></footer>
+  </article>`;
+}
+
 export function candidateTable(events, { limit = 25 } = {}) {
   const f = researchPrefs();
   const rows = candidateRows(events, f).slice(0, limit);
@@ -59,11 +78,12 @@ export function candidateTable(events, { limit = 25 } = {}) {
   return `<div class="research panel reveal">
     <div class="rs-head"><h2 class="ph">Research candidates <small>one row per match · its main pick · click a row for the quick view</small></h2>
       <div class="rs-filters">
-        <label>Window<select data-rf="hours">${[12, 24, 48].map((h) => `<option value="${h}" ${f.hours === h ? 'selected' : ''}>Next ${h}h</option>`).join('')}</select></label>
         <label>Sport<select data-rf="sport"><option value="">All</option>${sports.map((s) => `<option value="${s}" ${f.sport === s ? 'selected' : ''}>${esc(sportOf(s).name)}</option>`).join('')}</select></label>
         <label class="chk"><input type="checkbox" data-rf="readyOnly" ${f.readyOnly ? 'checked' : ''}> Ready only</label>
         <label class="chk"><input type="checkbox" data-rf="pricedOnly" ${f.pricedOnly ? 'checked' : ''}> Priced only</label>
       </div></div>
+    ${windowChips('rhours', f.hours)}
+    <div class="rs-sorts" role="group" aria-label="Sort">${[['likely', 'Most likely'], ['value', 'Best value'], ['ready', 'Evidence'], ['start', 'Starting soon'], ['changed', 'Latest change']].map(([k, l]) => `<button class="chip ${f.sort === k ? 'on' : ''}" data-rsort="${k}" aria-pressed="${f.sort === k}">${l}</button>`).join('')}</div>
     <div class="table-wrap"><table class="rs-table"><thead><tr>
       ${th('start', 'Match', 'Sort by start time')}<th>Main pick</th><th class="num">Odds</th>
       <th class="num" title="Bookmaker chance with the margin removed">Market</th>
@@ -85,7 +105,9 @@ export function candidateTable(events, { limit = 25 } = {}) {
         <td class="num"><small>${m.book ? ago(e.fetchedAt || S?.fetchedAt) : '—'}</small></td>
         <td class="rs-act"><button class="icon-btn ${watch.has(e.id) ? 'on' : ''}" data-watch="${esc(e.id)}" aria-pressed="${watch.has(e.id)}" title="${watch.has(e.id) ? 'Watching' : 'Save to watchlist'}">${watch.has(e.id) ? '★' : '☆'}</button>
           <button class="icon-btn ${pins().includes(e.id) ? 'on' : ''}" data-pin="${esc(e.id)}" title="Pin to compare">⇄</button></td></tr>`;
-    }).join('') || `<tr><td colspan="10"><p class="muted">No matches fit these filters. Widen the window, include unpriced matches or pick another sport.</p></td></tr>`}</tbody></table></div>
+    }).join('') || `<tr><td colspan="10"><p class="muted">${EMPTY}</p></td></tr>`}</tbody></table></div>
+    <div class="rs-cards">${rows.map(card).join('') || `<p class="muted">${EMPTY}</p>`}</div>
+    ${rows.length > 8 ? `<button class="btn-ghost rs-more" data-rmore aria-expanded="false">Show all ${rows.length}</button>` : ''}
     <p class="cap">Edge = ATLAS chance × odds − 1. A pick can be likely and still poor value at a short price. Evidence readiness shows whether the information this sport needs is in; it is not a win chance.</p>
   </div>`;
 }

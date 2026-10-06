@@ -1127,3 +1127,72 @@ main, .foot { overflow-x: clip; }
 @media (max-width: 820px) { [id^="sec-"] { scroll-margin-top: 160px; } }
 #sec-calc { overflow-x: auto; }
 #sec-calc table { min-width: 460px; }
+
+/* ======================= Shortlist rows + research cards (desktop and phone) ======================= */
+.win-chips, .rs-sorts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 12px; }
+.win-chips > span { font: 600 11px var(--sans); color: var(--muted, #9aa3ad); margin-right: 4px; }
+.win-chips .chip, .rs-sorts .chip { padding: 6px 12px; min-height: 32px; cursor: pointer; color: #e8e8ec; }
+.rs-sorts { display: none; }
+
+/* Pick rows: name and match get the full width, the numbers sit in their own labelled row. */
+.mini { grid-template-columns: 26px minmax(0, 1fr) auto; grid-template-areas: "ico main odds" "ico nums odds"; column-gap: 12px; row-gap: 8px; align-items: center; }
+.mini .mini-ico { grid-area: ico; align-self: start; padding-top: 2px; font-size: 18px; }
+.mini .mini-main { grid-area: main; }
+.mini .mini-main b { font-size: 15px; line-height: 1.25; }
+.mini .mini-main small { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.35; }
+.mini .mini-nums { grid-area: nums; display: flex; flex-wrap: wrap; gap: 6px; }
+.mini .mini-nums span { display: inline-flex; flex-direction: column; min-width: 58px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.02); }
+.mini .mini-nums small { font: 600 9.5px var(--sans); letter-spacing: .3px; text-transform: uppercase; color: var(--muted, #9aa3ad); white-space: nowrap; }
+.mini .mini-nums b { font: 700 13px var(--mono); font-variant-numeric: tabular-nums; }
+.mini > .leg, .mini > button { grid-area: odds; align-self: center; min-width: 64px; min-height: 44px; font-size: 15px; }
+
+/* Research: table on wide screens, cards on phones. */
+.rs-cards { display: none; }
+@media (max-width: 760px) {
+  .research .table-wrap { display: none; }
+  .rs-cards { display: grid; gap: 10px; }
+  .rs-sorts { display: flex; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; margin-inline: -2px; }
+  .rs-sorts .chip { flex: none; }
+  .research .ph small { display: block; margin-top: 2px; }
+}
+.rs-card { border: 1px solid var(--line2); border-radius: 14px; padding: 12px 14px; background: rgba(255,255,255,.025); display: grid; gap: 8px; cursor: pointer; }
+.rs-card.needs-review { box-shadow: inset 3px 0 0 #ffb547; }
+.rs-card:active { background: rgba(255,255,255,.05); }
+.rs-card header { display: flex; justify-content: space-between; gap: 8px; font: 500 11.5px var(--sans); color: var(--muted, #9aa3ad); }
+.rs-card header span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rs-card header time { flex: none; color: var(--accent); font-weight: 600; }
+.rs-card h3 { margin: 0; font: 700 16px/1.25 var(--sans); }
+.rs-card h3 i { font-style: normal; color: var(--muted, #9aa3ad); font-weight: 400; }
+.rs-pick { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.rs-pick b { display: block; font-size: 14.5px; }
+.rs-pick small { color: var(--muted, #9aa3ad); font-size: 11.5px; }
+.rs-odds { flex: none; font: 700 18px var(--mono); color: var(--accent); }
+.rs-nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.rs-nums div { border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; }
+.rs-nums small { display: block; font: 600 9.5px var(--sans); text-transform: uppercase; letter-spacing: .3px; color: var(--muted, #9aa3ad); }
+.rs-nums b { font: 700 15px var(--mono); font-variant-numeric: tabular-nums; }
+.rs-cchange { margin: 0; font-size: 12.5px; line-height: 1.4; }
+.rs-cchange small { color: var(--muted, #9aa3ad); }
+.rs-card footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.rs-cact { display: flex; gap: 6px; }
+.rs-cact .icon-btn { width: 40px; height: 40px; font-size: 16px; }
+
+@media (max-width: 600px) {
+  .mini { padding: 12px; column-gap: 10px; }
+  .mini .mini-nums span { min-width: 0; flex: 1 1 calc(50% - 6px); }
+  .dash-short .ph { font-size: 22px; }
+  .dash-short .ph small { display: block; margin-top: 4px; font: 500 12px var(--sans); text-transform: none; letter-spacing: 0; }
+}
+.rs-more { display: none; }
+@media (max-width: 760px) {
+  .rs-cards:not(.all) > .rs-card:nth-child(n+9) { display: none; }
+  .rs-more { display: block; width: 100%; margin-top: 10px; min-height: 44px; }
+  .rs-card { gap: 6px; padding: 10px 12px; }
+  .rs-pick { padding: 6px 10px; }
+  .rs-card footer .icon-btn { width: 38px; height: 38px; }
+}
+@media (max-width: 420px) {
+  .win-chips { flex-wrap: nowrap; gap: 4px; }
+  .win-chips > span { font-size: 10.5px; margin-right: 2px; white-space: nowrap; }
+  .win-chips .chip { padding: 6px 9px; font-size: 11.5px; }
+}
