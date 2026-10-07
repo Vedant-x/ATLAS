@@ -4,7 +4,7 @@ import { esc, sportOf, ist } from './views.js';
 import { ico } from './icons.js';
 
 const PAGES = [
-  ['Today', '#/'], ['Live', '#/live'], ['Watchlist', '#/watchlist'], ['Explore all sports', '#/sports'],
+  ['Today', '#/'], ['Live', '#/live'], ['Watchlist', '#/watchlist'], ['All sports', '#/sports'],
   ['Edge board', '#/edge'], ['Bankers', '#/bankers'], ['Multipliers', '#/x/2'], ['Target', '#/target'],
   ['Mega bets', '#/mega'], ['Compare', '#/compare'], ['Results / track record', '#/track'],
 ];
