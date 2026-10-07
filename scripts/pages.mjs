@@ -18,6 +18,7 @@ import { validateReport } from '../js/validate.js';
 import { mkdir, copyFile, cp, writeFile, rm, readFile } from 'node:fs/promises';
 import { fetchAll, LEAGUES, fetchErrors, leagueStatus } from '../js/espn.js';
 import { leagueByPath } from '../js/catalog.js';
+import { CORE, PROVIDER, PROP_STATS, parseProps } from '../js/props.js';
 
 const out = 'dist/pages';
 const UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', 'Accept-Language': 'en-US,en;q=0.9' };
@@ -537,6 +538,57 @@ async function f1(prevF1) {
   return out;
 }
 
+// ---------- player props ----------
+// DraftKings player milestones and anytime scorers from ESPN's core odds feed, for matches in the
+// next 36 hours. Names come from the two teams' rosters (one request per team), with the athlete
+// record as a fallback for anyone a roster misses (a recent trade or call-up).
+async function playerProps(events) {
+  const now = Date.now();
+  const getJson = async (u) => JSON.parse(await get(u.replace(/^http:/, 'https:')));
+  const due = events.filter((e) => !e.live && e.compId && e.teamIds?.home && e.teamIds?.away && e.start > now && e.start < now + 36 * 36e5 && PROP_STATS[e.leaguePath?.split('/')[0]]);
+  const rosters = new Map(), athletes = new Map();
+  const roster = (lp, team) => {
+    const k = `${lp}|${team}`;
+    if (!rosters.has(k)) {
+      rosters.set(k, getJson(`https://site.api.espn.com/apis/site/v2/sports/${lp}/teams/${team}/roster`).then((j) => {
+        const m = new Map(), add = (a) => { if (a?.id) m.set(String(a.id), a.displayName || a.fullName); };
+        for (const a of j.athletes || []) { if (Array.isArray(a.items)) a.items.forEach(add); else add(a); }
+        return m;
+      }).catch(() => new Map()));
+    }
+    return rosters.get(k);
+  };
+  const athlete = (ref) => {
+    if (!athletes.has(ref)) athletes.set(ref, getJson(ref).then((a) => ({ name: a.displayName, team: /\/teams\/(\d+)/.exec(a.team?.$ref || '')?.[1] || null })).catch(() => null));
+    return athletes.get(ref);
+  };
+  let lines = 0, matched = 0, failed = 0;
+  const queue = [...due];
+  await Promise.all(Array.from({ length: 6 }, async () => {
+    while (queue.length) {
+      const e = queue.shift();
+      const [sport, league] = e.leaguePath.split('/');
+      const url = `${CORE}/${sport}/leagues/${league}/events/${e.compId}/competitions/${e.compId}/odds/${PROVIDER}/propBets?limit=1000`;
+      let items = [];
+      try {
+        const j = await getJson(url);
+        items = j.items || [];
+        for (let pg = 2; pg <= Math.min(j.pageCount || 1, 3); pg++) items.push(...((await getJson(`${url}&page=${pg}`)).items || []));
+      } catch (err) { if (!/404/.test(err.message)) failed++; continue; }
+      if (!items.length) continue;
+      const [h, a] = await Promise.all([roster(e.leaguePath, e.teamIds.home), roster(e.leaguePath, e.teamIds.away)]);
+      const extra = new Map();
+      const refs = [...new Set(items.map((x) => x.athlete?.$ref).filter((r) => r && !h.has(/athletes\/(\d+)/.exec(r)?.[1]) && !a.has(/athletes\/(\d+)/.exec(r)?.[1])))].slice(0, 25);
+      for (const r of refs) { const x = await athlete(r); if (x?.name) extra.set(/athletes\/(\d+)/.exec(r)[1], { name: x.name, side: x.team === String(e.teamIds.home) ? 'home' : x.team === String(e.teamIds.away) ? 'away' : null }); }
+      const who = (id) => (h.has(id) ? { name: h.get(id), side: 'home' } : a.has(id) ? { name: a.get(id), side: 'away' } : extra.get(id) || null);
+      e.props = parseProps(items, sport, who);
+      if (e.props.length) { matched++; lines += e.props.length; }
+    }
+  }));
+  log(`Player props (DraftKings via ESPN): ${lines} lines on ${matched} of ${due.length} matches in the next 36h${failed ? `, ${failed} lookup(s) failed` : ''}`);
+  for (const e of due.filter((x) => x.props?.length).slice(0, 3)) log(`  PROPS ${e.away} @ ${e.home}: ${e.props.slice(0, 4).map((x) => `${x.player} ${x.target}+ ${x.label} @${x.odds}`).join(' · ')}`);
+}
+
 // ---------- build ----------
 await rm(out, { recursive: true, force: true });
 await mkdir(`${out}/data`, { recursive: true });
@@ -690,6 +742,7 @@ for (const e of events) for (const p of (e.probables || []).filter((x) => x.repo
   const r = p.report;
   log(`  SP ${r.league} ${r.name || '?'} (${e.away} @ ${e.home}) · ${r.throws || '?'}HP age ${r.age ?? '?'} · season ERA ${r.season?.era ?? '-'} WHIP ${r.season?.whip ?? '-'} K/9 ${r.season?.k9 ?? '-'} · career ERA ${r.career?.era ?? '-'} in ${r.career?.ip ?? '-'} IP · recent ${r.recent?.length || 0}${r.recent?.[0] ? ` (last: ${r.recent[0].date} ${r.recent[0].ip} IP ${r.recent[0].er} ER)` : ''} · form3 ${r.form3?.era ?? '-'} · splits ${r.splits?.length || 0} · years ${r.years?.length || 0} · vsOpp ${r.vsOpp ? r.vsOpp.avg ?? r.vsOpp.era : '-'} · inj ${r.injuries?.length || 0} · rest ${r.rest ?? '-'}${r.error ? ` · ERROR ${r.error}` : ''}`);
 }
+await playerProps(events).catch((e) => log('Player props failed', e.message));
 // Formula 1 weekend (its own file: a race is a field of 20+ drivers, not a two-sided match).
 {
   let prevF1 = null;

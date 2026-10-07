@@ -6,6 +6,7 @@
 //    of odds (maximise the product of probabilities for the product of odds), so 1000x might be
 //    forty 1.2s, and 2x two or three short favourites.
 import { devig, allLegs } from './engine.js';
+import { propLabel, propMarket } from './props.js';
 import { calibrated } from './track.js';
 
 const norm = (s) => String(s || '').toLowerCase();
@@ -81,9 +82,14 @@ export function coherentBets(e, a, { cal = null, max = 3, preferBook = false } =
 // scores 1.0; legs the model rates above their price score below 1.
 const ratio = (l) => -Math.log(Math.max(1e-9, l.p)) / Math.log(l.odds);
 
+// Player props as slip legs (one-way prices; chance net of the margin).
+const propLegs = (events) => events.filter((e) => !e.live).flatMap((e) => (e.props || []).map((pr) => ({
+  eventId: e.id, sport: e.sport, start: e.start, match: `${e.home} vs ${e.away}`, market: propMarket(pr), pick: propLabel(pr),
+  odds: pr.odds, p: pr.p, margin: 0.05, ev: pr.p * pr.odds - 1, prop: { id: pr.id, type: pr.type, target: pr.target },
+})));
 export function legPool(events, { minP = 0.55, minOdds = 1.04, maxOdds = 1.6, cal = null } = {}) {
   const best = new Map();
-  for (const l of allLegs(events.filter((e) => e.markets?.length && !e.live))) {
+  for (const l of [...allLegs(events.filter((e) => e.markets?.length && !e.live)), ...propLegs(events)]) {
     const p = calibrated(l.p, l.market, cal, l.sport);
     // A banker is a clear favourite at a fair-ish price: short odds and an estimate close to the price.
     if (l.cushion || l.odds < minOdds || l.odds > maxOdds || p < minP || p * l.odds < 0.93) continue;
@@ -114,7 +120,7 @@ export function bankerSlips(events, target, { count = 5, tolerance = 0.1, cal = 
   return [];
 }
 
-const familyOfMarket = (m = '') => (/^Total/.test(m) ? 'total' : m === 'Spread' ? 'spread' : m === 'Match Result' ? 'result' : 'winner');
+const familyOfMarket = (m = '') => (/^Player /.test(m) ? 'prop' : /^Total/.test(m) ? 'total' : m === 'Spread' ? 'spread' : m === 'Match Result' ? 'result' : 'winner');
 function buildFrom(pool, target, count, tolerance, mix = false) {
   // Land on the target, not well short of it: the band below is half as wide as the band above.
   const lo = target * (1 - tolerance / 2), hi = target * (1 + tolerance);

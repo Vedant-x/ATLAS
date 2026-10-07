@@ -18,6 +18,7 @@ import { liveWin } from './live.js';
 import { watch } from './alerts.js';
 import { trackCard, trackStats, trackCalibration, recordLine, ensureTrack, slipHistory, officialSlip } from './trackview.js';
 import { rankedBankers, slipPolicy, MAX_ODDS } from './track.js';
+import { propLabel, propMarket } from './props.js';
 import { coherentBets } from './picks.js';
 import { mergeEvent } from './merge.js';
 import { casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips } from './research.js';
@@ -340,7 +341,7 @@ export const views = {
     const d = detailFor(e.id);
     const dos = dossierSections(e, d, hc, ac);
     const rr = researchRow(e);
-    const sections = [['overview', 'Overview'], ['case', 'The case'], ['best', 'Best bets'], ['history', 'Timeline'], ...dos.map((x) => [x.id, x.label]), ['model', a.kind === 'normal' ? 'Margin model' : a.kind === 'tennis' ? (e.sport === 'esports' ? 'Map model' : 'Set model') : 'Score model'], ['markets', `All markets (${a.marketCount})`], ['book', 'Bookmaker prices'], ['form', 'Records'], ['calc', 'Calculator'], ['notes', 'Model notes']];
+    const sections = [['overview', 'Overview'], ['case', 'The case'], ['best', 'Best bets'], ...(e.props?.length ? [['props', 'Player props']] : []), ['history', 'Timeline'], ...dos.map((x) => [x.id, x.label]), ['model', a.kind === 'normal' ? 'Margin model' : a.kind === 'tennis' ? (e.sport === 'esports' ? 'Map model' : 'Set model') : 'Score model'], ['markets', `All markets (${a.marketCount})`], ['book', 'Bookmaker prices'], ['form', 'Records'], ['calc', 'Calculator'], ['notes', 'Model notes']];
     if (a.kind === 'binary') sections.splice(sections.findIndex((x) => x[0] === 'model'), 1);
     return {
       mode: 'match', accent: hc, title: `${e.home} v ${e.away}`,
@@ -374,6 +375,7 @@ export const views = {
       </section>
       ${casePanel(rr)}
       ${bestBetsPanel(e, a)}
+      ${propsPanel(e)}
       ${historyPanel(e)}
       ${dos.map((x) => `<section id="sec-${x.id}"><h2 class="sec reveal">${esc(x.label)}</h2>${x.html}</section>`).join('')}
       ${a.kind === 'binary' ? '' : `<section class="panel reveal" id="sec-model">${modelPanel(e, a, hc, ac)}</section>`}
@@ -585,6 +587,19 @@ const priceCheck = (b) => `ATLAS ${pc(b.p, 0)}${b.fair != null ? ` · market ${p
 
 // Best bets for one match: 1-3 picks that agree with each other (see coherentBets in picks.js).
 export function matchBestBets(e, a) { return coherentBets(e, a, { cal: trackCalibration() }).picks; }
+
+// Player props for this match (DraftKings milestones and anytime scorers), likeliest first.
+function propsPanel(e) {
+  if (!e.props?.length) return '';
+  const rows = [...e.props].filter((x) => x.odds >= 1.2).sort((a, b) => b.p - a.p).slice(0, 16);
+  if (!rows.length) return '';
+  return `<section class="sec-block" id="sec-props"><h2 class="sec reveal">Player props <small>${e.live ? 'pre-match prices · ' : ''}DraftKings lines · tap to add</small></h2>
+    <div class="panel reveal props-list">${rows.map((x) => {
+      const leg = { key: `${e.id}|${propMarket(x)}|${propLabel(x)}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: propMarket(x), pick: propLabel(x), odds: x.odds, p: x.p };
+      const team = x.side === 'home' ? e.home : x.side === 'away' ? e.away : '';
+      return `<div class="pp"><div><b>${esc(propLabel(x))}</b><small>${esc(team)}</small></div><span class="pp-p">${pc(x.p, 0)}</span>${legButton(leg, odd(x.odds))}</div>`;
+    }).join('')}</div></section>`;
+}
 
 function bestBetsPanel(e, a) {
   const list = matchBestBets(e, a);

@@ -2,6 +2,7 @@
 // statistics shown on the Record page. Pure functions, shared by the build (scripts/record.mjs) and
 // the browser.
 import { applyModel, bankers } from './intel.js';
+import { boxStats, gradeProp } from './props.js';
 import { bankerSlips } from './picks.js';
 import { localDay } from './engine.js';
 
@@ -19,10 +20,12 @@ export const inRecord = (h) => h.type === 'banker' && h.odds >= MIN_ODDS && h.od
 //   with the modelled win chance; track-record correction per sport and market; varied pick lists.
 // 2026.10.3: no plus handicaps on the side less likely to win ("Rays +1.5"); handicaps capped at a
 //   quarter of the shortlist.
-export const MODEL_VERSION = '2026.10.3';
+// 2026.10.4: player props (DraftKings milestones and anytime scorers via ESPN) as their own bet type,
+//   graded from the box score.
+export const MODEL_VERSION = '2026.10.4';
 
 // Market families the track record learns from: winner, 1X2 result, spread/handicap, totals.
-export const familyOf = (market = '') => (/^Total/.test(market) ? 'total' : market === 'Spread' ? 'spread' : market === 'Match Result' ? 'result' : 'winner');
+export const familyOf = (market = '') => (/^Player /.test(market) ? 'prop' : /^Total/.test(market) ? 'total' : market === 'Spread' ? 'spread' : market === 'Match Result' ? 'result' : 'winner');
 
 // Self-correcting accuracy: per market family, how the settled picks did against their estimates.
 // A family that lands less often than estimated gets its probabilities scaled down (so it needs a
@@ -103,7 +106,7 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
     key: `${b.event.id}|${b.market}|${b.pick}`, type, eventId: b.event.id, leaguePath: b.event.leaguePath, compId: b.event.compId,
     sport: b.event.sport, league: b.event.league, home: b.event.home, away: b.event.away, start: b.event.start,
     market: b.market, pick: b.pick, odds: b.odds, p: +b.pRaw.toFixed(4), shown: +b.p.toFixed(4), fair: b.fair == null ? null : +b.fair.toFixed(4),
-    recordedAt: now, status: 'pending', model: MODEL_VERSION,
+    recordedAt: now, status: 'pending', model: MODEL_VERSION, ...(b.prop ? { prop: b.prop } : {}),
   });
   return [
     ...rankedBankers(soon, { cal, min: 0.6, minOdds: MIN_ODDS, maxOdds: MAX_ODDS, limit: 40 }).map(row('banker')),
@@ -128,7 +131,7 @@ export function multiPicks(events, now = Date.now(), history = []) {
   for (const target of MULTI_TARGETS) {
     const best = bankerSlips(slipWindow(pool, target, now), target, { count: 1, tolerance: slipPolicy(target).tolerance, cal })[0];
     if (!best) continue;
-    const legs = best.legs.map((l) => { const e = byId.get(l.eventId); return { eventId: e.id, leaguePath: e.leaguePath, compId: e.compId, sport: e.sport, league: e.league, home: e.home, away: e.away, start: e.start, market: l.market, pick: l.pick, odds: l.odds, p: +l.p.toFixed(4), pRaw: +(l.pRaw ?? l.p).toFixed(4), status: 'pending' }; });
+    const legs = best.legs.map((l) => { const e = byId.get(l.eventId); return { eventId: e.id, leaguePath: e.leaguePath, compId: e.compId, sport: e.sport, league: e.league, home: e.home, away: e.away, start: e.start, market: l.market, pick: l.pick, odds: l.odds, p: +l.p.toFixed(4), pRaw: +(l.pRaw ?? l.p).toFixed(4), status: 'pending', ...(l.prop ? { prop: l.prop } : {}) }; });
     out.push({
       key: `multi|${day}|${target}x`, type: 'multi', target, legs, eventId: legs[0].eventId, sport: 'multi', league: `${target}x multiplier`,
       home: `${legs.length}-leg ${target}x slip`, away: '', start: Math.max(...legs.map((l) => l.start)), market: `${target}x multiplier`,
@@ -159,6 +162,7 @@ export function addPicks(history, picks) {
 
 // Result of one pick from the final score: 'won' | 'lost' | 'push' | null (can't grade this market).
 export function gradePick(p, r) {
+  if (p.prop) return gradeProp(p.prop, String(p.leaguePath || '').split('/')[0], r.box);
   const hs = Number(r.homeScore), as = Number(r.awayScore);
   const scored = Number.isFinite(hs) && Number.isFinite(as);
   if (p.market === 'Winner' || p.market === 'Match Result') {
@@ -197,7 +201,8 @@ export function resultFromSummary(sm) {
   const side = (k) => c.competitors?.find((x) => x.homeAway === k) || {};
   const h = side('home'), a = side('away');
   const winner = h.winner ? 'home' : a.winner ? 'away' : null;
-  return { done: true, homeScore: h.score, awayScore: a.score, winner: winner || (h.score != null && h.score === a.score ? 'draw' : null) };
+  const b = boxStats(sm), box = b.played.size ? { box: b } : {}; // player stats, for props
+  return { done: true, homeScore: h.score, awayScore: a.score, winner: winner || (h.score != null && h.score === a.score ? 'draw' : null), ...box };
 }
 
 // Forecast quality beyond hit rate: Brier score (mean squared error of the chance shown; lower is
@@ -208,7 +213,12 @@ export function resultFromSummary(sm) {
 // benchmark for whether ATLAS's saved price was better or worse than where the market finished.
 export function updateClosing(history, events, now = Date.now()) {
   const byId = new Map(events.map((e) => [e.id, e]));
-  const price = (r) => { const e = byId.get(r.eventId); return e && !e.live ? e.markets?.find((m) => m.name === r.market)?.outcomes?.find((o) => o.name === r.pick)?.odds : null; };
+  const price = (r) => {
+    const e = byId.get(r.eventId);
+    if (!e || e.live) return null;
+    if (r.prop) return e.props?.find((x) => x.id === r.prop.id && x.type === r.prop.type && x.target === r.prop.target)?.odds;
+    return e.markets?.find((m) => m.name === r.market)?.outcomes?.find((o) => o.name === r.pick)?.odds;
+  };
   let n = 0;
   for (const h of history) {
     if (h.status !== 'pending') continue;

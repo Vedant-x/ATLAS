@@ -2,6 +2,7 @@
 // The market is the strongest single predictor, so the model starts from the de-vigged price and nudges it
 // toward each side's season record and recent form. Disagreement between the two shows up as value (EV).
 import { devig, underdogCushion } from './engine.js';
+import { propLabel, propMarket } from './props.js';
 import { normCdf } from './models.js';
 
 const MARKET_WEIGHT = 0.8;
@@ -132,8 +133,7 @@ function propagate(e, base, model, inputs) {
 export function bankers(events, { min = 0.7, limit = 24, minOdds = 1, cushions = false } = {}) {
   const out = [];
   for (const e of events) {
-    if (!e.markets?.length) continue;
-    for (const m of e.markets) {
+    for (const m of e.markets || []) {
       const { outcomes } = devig(m);
       outcomes.forEach((o, i) => {
         const p = m.outcomes[i].model ?? o.fair;
@@ -142,6 +142,12 @@ export function bankers(events, { min = 0.7, limit = 24, minOdds = 1, cushions =
         out.push({ event: e, market: m.name, pick: o.name, odds: o.odds, p, fair: o.fair, ev: p * o.odds - 1,
           agree: m.outcomes[i].model == null ? null : m.outcomes[i].model >= o.fair });
       });
+    }
+    // Player props (milestones, anytime scorers): one-way prices, chance net of the margin.
+    for (const pr of e.props || []) {
+      if (pr.p < min || pr.odds < minOdds) continue;
+      out.push({ event: e, market: propMarket(pr), pick: propLabel(pr), odds: pr.odds, p: pr.p, fair: pr.p, ev: pr.p * pr.odds - 1, agree: null,
+        prop: { id: pr.id, type: pr.type, target: pr.target } });
     }
   }
   return out.sort((a, b) => b.p - a.p).slice(0, limit);
