@@ -12,7 +12,8 @@ import { trackCalibration } from './trackview.js';
 import { readiness, readyBadge, READY_ORDER } from './readiness.js';
 import { changesFor, latestChange, needsReview, changesSince, lastVisit, timelineUpdatedAt } from './timeline.js';
 import { FORECAST_NOTE } from './changelog.js';
-import { watch } from './alerts.js';
+import { watch, notifyPermission } from './alerts.js';
+import { alertPrefs, ALERT_TYPES } from './livealerts.js';
 import { pc, odd } from './charts.js';
 
 let S;
@@ -255,13 +256,25 @@ export function compareView() {
 }
 
 // ---------- watchlist ----------
+// Live alert settings: notification permission and which moments to announce.
+export function alertPanel() {
+  const perm = notifyPermission(), prefs = alertPrefs.get();
+  const state = perm === 'granted' ? '<span class="al-on">Notifications on</span>'
+    : perm === 'denied' ? '<span class="al-off">Notifications are blocked for this site: allow them in your browser\'s site settings</span>'
+      : perm === 'unsupported' ? '<span class="al-off">This browser can\'t show notifications here (on iPhone, add ATLAS to your Home Screen first)</span>'
+        : '<button class="btn-ghost" data-notify-on>Turn on notifications</button>';
+  return `<div class="panel alerts-panel reveal"><h3 class="ph">Live alerts <small>for matches you watch or have in your slip</small></h3>
+    <div class="al-row">${state}</div>
+    <div class="chip-row">${ALERT_TYPES.map(([k, label]) => `<button class="chip ${prefs[k] ? 'on' : ''}" data-alert-pref="${k}" aria-pressed="${prefs[k]}">${label}</button>`).join('')}</div>
+    <p class="cap">Sent while ATLAS is open in a tab or installed app, including in the background.</p></div>`;
+}
 export function watchlistView() {
   const list = watch.ids().map((id) => S.events.find((e) => e.id === id)).filter(Boolean).sort((a, b) => a.start - b.start);
   const rows = list.map(researchRow);
   return {
     mode: 'other', accent: '#ffb547', title: 'Watchlist',
-    html: `<section class="hero small"><p class="kicker reveal">SAVED MATCHES · ALERTS ON CHANGES</p><h1>WATCHLIST</h1>
-      <p class="lede reveal">Matches you starred. A match is flagged <b>needs review</b> when a starter, lineup, absence or price changes after you last opened it.</p></section>
+    html: `<section class="hero small"><p class="kicker reveal">SAVED MATCHES · LIVE ALERTS</p><h1>WATCHLIST</h1></section>
+      ${alertPanel()}
       ${rows.length ? `<div class="list">${rows.map((x) => `<a class="row wl reveal ${x.review.length ? 'needs-review' : ''}" href="#/match/${esc(x.e.id)}" data-qv="${esc(x.e.id)}">
         <span class="ico">${sportOf(x.e.sport).icon}</span>
         <div class="teams"><b>${esc(x.e.home)} v ${esc(x.e.away)}</b><small>${esc(x.e.league)} · ${x.e.live ? `<span class="live">LIVE ${esc(x.e.score || '')}</span>` : esc(ist(x.e.start))}</small>

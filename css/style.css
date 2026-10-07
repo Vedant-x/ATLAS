@@ -1287,3 +1287,8 @@ body.scrolled .bar { height: 52px; padding-block: 0; }
 /* Selected and hovered chips are lime with black text everywhere, including the groups above that
    set a light text colour for their resting state. */
 .dp-row .chip.on, .dp-row .chip:hover, .win-chips .chip.on, .win-chips .chip:hover, .rs-sorts .chip.on, .rs-sorts .chip:hover { color: #000; }
+/* Watchlist: live alert settings. */
+.alerts-panel .al-row { margin: 6px 0 2px; font-size: 14px; }
+.alerts-panel .al-on { color: var(--pos); font-weight: 600; }
+.alerts-panel .al-off { color: var(--muted); }
+.alerts-panel .cap { margin: 10px 0 0; }
