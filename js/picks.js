@@ -86,7 +86,7 @@ export function legPool(events, { minP = 0.55, minOdds = 1.04, maxOdds = 1.6, ca
   for (const l of allLegs(events.filter((e) => e.markets?.length && !e.live))) {
     const p = calibrated(l.p, l.market, cal, l.sport);
     // A banker is a clear favourite at a fair-ish price: short odds and an estimate close to the price.
-    if (l.odds < minOdds || l.odds > maxOdds || p < minP || p * l.odds < 0.93) continue;
+    if (l.cushion || l.odds < minOdds || l.odds > maxOdds || p < minP || p * l.odds < 0.93) continue;
     const leg = { ...l, pRaw: l.p, p };
     const cur = best.get(l.eventId);
     if (!cur || ratio(leg) < ratio(cur)) best.set(l.eventId, leg);

@@ -17,7 +17,9 @@ export const inRecord = (h) => h.type === 'banker' && h.odds >= MIN_ODDS && h.od
 // 2026.10.1: calibrated chance everywhere, legs feed calibration, shared slip policy.
 // 2026.10.2: venue records, starting pitchers and soccer absences in the model; spread lines move
 //   with the modelled win chance; track-record correction per sport and market; varied pick lists.
-export const MODEL_VERSION = '2026.10.2';
+// 2026.10.3: no plus handicaps on the side less likely to win ("Rays +1.5"); handicaps capped at a
+//   quarter of the shortlist.
+export const MODEL_VERSION = '2026.10.3';
 
 // Market families the track record learns from: winner, 1X2 result, spread/handicap, totals.
 export const familyOf = (market = '') => (/^Total/.test(market) ? 'total' : market === 'Spread' ? 'spread' : market === 'Match Result' ? 'result' : 'winner');
@@ -65,19 +67,21 @@ export const calibrated = (p, market, cal, sport) => {
 const withCal = (b, cal) => { const p = calibrated(b.p, b.market, cal, b.event?.sport); return { ...b, pRaw: b.p, p, ev: p * b.odds - 1 }; };
 
 // A varied list instead of the same bet type again and again: one pick per match, and no market
-// family (winner, result, spread, total) may take more than 40% of the list, nor one sport more than
+// family (winner, result, total) may take more than 40% of the list (handicaps: under a quarter), nor one sport more than
 // half, while other qualifying picks exist. On a thin board the caps loosen to half and two thirds;
 // past that the list is simply shorter: fewer picks rather than the same bet type over and over.
 export function diversify(list, limit, { familyShare = 0.4, sportShare = 0.5 } = {}) {
   const out = [], seen = new Set(), fam = {}, sp = {};
   for (const [fs, ss] of [[familyShare, sportShare], [0.5, 0.67]]) {
-    const capF = Math.max(2, Math.ceil(limit * fs)), capS = Math.max(2, Math.ceil(limit * ss));
+    const capS = Math.max(2, Math.ceil(limit * ss));
+    // Handicaps are the smallest share: winners and totals carry the list.
+    const capOf = (f) => Math.max(f === 'spread' ? 1 : 2, Math.ceil(limit * (f === 'spread' ? fs * 0.6 : fs)));
     for (const b of list) {
       if (out.length >= limit) break;
       const id = b.event?.id ?? b.eventId;
       if (seen.has(id)) continue;
       const f = familyOf(b.market), s = b.event?.sport ?? b.sport;
-      if ((fam[f] || 0) >= capF || (sp[s] || 0) >= capS) continue;
+      if ((fam[f] || 0) >= capOf(f) || (sp[s] || 0) >= capS) continue;
       out.push(b); seen.add(id); fam[f] = (fam[f] || 0) + 1; sp[s] = (sp[s] || 0) + 1;
     }
   }
