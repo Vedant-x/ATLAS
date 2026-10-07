@@ -120,6 +120,7 @@ export function parseScoreboard(json, league) {
         records: { home: recs(homeC), away: recs(awayC) },
         probables: [...probs(homeC, 'home'), ...probs(awayC, 'away')],
         logos: { home: homeC.team?.logo || null, away: awayC.team?.logo || null },
+        teamIds: { home: homeC.team?.id || null, away: awayC.team?.id || null },
         ...(league.sport === 'tennis' ? { tennis: tennisInfo(ev, comp, grouping, homeC, awayC) } : {}),
       });
     }

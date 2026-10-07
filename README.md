@@ -27,7 +27,7 @@ public track record. Static site on GitHub Pages; free to run, no keys.
 
 | Source | Used for |
 |---|---|
-| ESPN public APIs | Fixtures, scores, odds and match summaries for 150+ competitions, cricket, F1 schedule |
+| ESPN public APIs | Fixtures, scores, odds and match summaries for 150+ competitions, cricket, F1 schedule; DraftKings player props (NBA, WNBA, MLB, NHL, soccer) |
 | MLB Stats API | Probable starters, pitcher reports, injured list |
 | npb.jp, koreabaseball.com | NPB and KBO schedules, starters and pitcher lines |
 | FotMob | Soccer injuries, suspensions and line-ups |
