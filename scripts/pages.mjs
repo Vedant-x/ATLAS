@@ -543,7 +543,10 @@ await mkdir(`${out}/data`, { recursive: true });
 for (const f of ['index.html', 'favicon.svg', 'manifest.webmanifest']) await copyFile(f, `${out}/${f}`);
 for (const d of ['js', 'css', 'vendor', 'icons']) await cp(d, `${out}/${d}`, { recursive: true });
 // Service worker, stamped with this build so visitors pick up new code on the next visit.
-await writeFile(`${out}/sw.js`, (await readFile('sw.js', 'utf8')).replace('__BUILD__', String(Date.now())));
+// The worker's version is the code version (commit), not the build time: data refreshes every few
+// minutes must not count as a new version, or open tabs would reload each time (main.js reloads
+// once when a new version takes over).
+await writeFile(`${out}/sw.js`, (await readFile('sw.js', 'utf8')).replace('__BUILD__', (process.env.GITHUB_SHA || String(Date.now())).slice(0, 12)));
 await writeFile(`${out}/.nojekyll`, '');
 // Speed: bundle + minify the JavaScript (three.js and the AI model load as separate lazy chunks, unused
 // code is dropped) and inline the minified CSS so nothing blocks the first paint. If esbuild isn't
