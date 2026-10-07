@@ -6,6 +6,13 @@ import { bankerSlips } from './picks.js';
 import { localDay } from './engine.js';
 
 export const MIN_ODDS = 1.3;
+// The shortlist's price range: short-priced favourites only. The record, the shortlist and the
+// Bankers page all use it, so every recorded pick is one the shortlist showed.
+export const MAX_ODDS = 1.8;
+// What the public record counts: shortlist picks (rated 60%+, odds MIN_ODDS to MAX_ODDS). Value spots
+// and longer prices saved before this rule stay in the history file (and still teach the track-record
+// correction) but are counted separately, whatever their result.
+export const inRecord = (h) => h.type === 'banker' && h.odds >= MIN_ODDS && h.odds <= MAX_ODDS;
 // Stamped on every recorded pick, so results can be split by the model that made them.
 // 2026.10.1: calibrated chance everywhere, legs feed calibration, shared slip policy.
 // 2026.10.2: venue records, starting pitchers and soccer absences in the model; spread lines move
@@ -76,8 +83,8 @@ export function diversify(list, limit, { familyShare = 0.4, sportShare = 0.5 } =
   }
   return out;
 }
-export function rankedBankers(events, { cal = null, min = 0.6, minOdds = 1, limit = 10, mix = true } = {}) {
-  const all = bankers(events, { min: min * 0.9, minOdds, limit: Math.max(200, limit * 12) }).map((b) => withCal(b, cal))
+export function rankedBankers(events, { cal = null, min = 0.6, minOdds = 1, maxOdds = MAX_ODDS, limit = 10, mix = true } = {}) {
+  const all = bankers(events, { min: min * 0.9, minOdds, limit: Math.max(200, limit * 12) }).filter((b) => b.odds <= maxOdds).map((b) => withCal(b, cal))
     .filter((b) => b.p >= min).sort((x, y) => y.p - x.p);
   return (mix ? diversify(all, limit) : all.slice(0, limit)).sort((x, y) => y.p - x.p);
 }
@@ -87,8 +94,8 @@ export function rankedValue(events, { cal = null, minEdge = 0.03, minOdds = 1, l
   return (mix ? diversify(all, limit) : all.slice(0, limit)).sort((x, y) => y.ev - x.ev);
 }
 
-// Official picks for matches starting in the next `hours`: bankers (60%+) and value spots (3%+ above
-// the price), all at odds of at least MIN_ODDS. Locked at the first price seen. `p` is the model's
+// Official picks for matches starting in the next `hours`: the shortlist's bankers (rated 60%+ at
+// odds MIN_ODDS to MAX_ODDS), plus the multiplier slips, which keep their own records. Locked at the first price seen. `p` is the model's
 // own estimate (what calibration learns from); `shown` is the calibrated chance the site displayed.
 export function selectPicks(events, now = Date.now(), hours = 12, history = []) {
   const soon = applyModel(events.filter((e) => !e.live && e.compId && e.start > now && e.start < now + hours * 36e5));
@@ -100,8 +107,7 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
     recordedAt: now, status: 'pending', model: MODEL_VERSION,
   });
   return [
-    ...rankedBankers(soon, { cal, min: 0.6, minOdds: MIN_ODDS, limit: 40 }).map(row('banker')),
-    ...rankedValue(soon, { cal, minEdge: 0.03, minOdds: MIN_ODDS, limit: 40 }).map(row('value')),
+    ...rankedBankers(soon, { cal, min: 0.6, minOdds: MIN_ODDS, maxOdds: MAX_ODDS, limit: 40 }).map(row('banker')),
     ...multiPicks(events, now, history),
   ];
 }
@@ -237,7 +243,8 @@ function brier(list) {
 // a separate record of their own (byTarget), shown on their own pages.
 export function summarize(history) {
   const settledAll = history.filter((h) => h.status === 'won' || h.status === 'lost' || h.status === 'push');
-  const graded = settledAll.filter((h) => h.type !== 'multi');
+  const graded = settledAll.filter(inRecord);
+  const outside = settledAll.filter((h) => h.type !== 'multi' && !inRecord(h));
   const multis = settledAll.filter((h) => h.type === 'multi');
   const slipsOf = (ts) => history.filter((h) => h.type === 'multi' && ts.includes(h.target)).sort((a, b) => b.start - a.start);
   const stat = (list) => {
@@ -266,8 +273,9 @@ export function summarize(history) {
     since: Number.isFinite(firstAt) ? firstAt : null, all: stat(graded), multi: stat(multis), byTarget: MULTI_TARGETS.map((t) => ({ key: `${t}x`, target: t, ...stat(multis.filter((m) => m.target === t)), slips: slipsOf([t]).slice(0, 12) })),
     mega: { ...stat(multis.filter((m) => m.target >= 100)), slips: slipsOf([100, 1000]).slice(0, 12) },
     byType: group((h) => h.type), bySport: group((h) => h.sport), byFamily: group((h) => familyOf(h.market)), byModel: group((h) => h.model || 'before 2026.10.1'), buckets,
-    pending: history.filter((h) => h.status === 'pending' && h.type !== 'multi').sort((a, b) => a.start - b.start),
-    unresolved: history.filter((h) => h.status === 'unresolved' && h.type !== 'multi').length,
+    pending: history.filter((h) => h.status === 'pending' && inRecord(h)).sort((a, b) => a.start - b.start),
+    unresolved: history.filter((h) => h.status === 'unresolved' && inRecord(h)).length,
+    outside: stat(outside),
     recent: graded.slice().sort((a, b) => b.start - a.start).slice(0, 40),
   };
 }

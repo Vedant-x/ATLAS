@@ -1,6 +1,6 @@
 // Record page: every official ATLAS pick (locked before kick-off) and how it turned out.
 import { esc, sportOf, ist } from './views.js';
-import { summarize, MIN_ODDS, calibration } from './track.js';
+import { summarize, MIN_ODDS, MAX_ODDS, calibration } from './track.js';
 import { localDay } from './engine.js';
 
 const pct = (x, d = 1) => (x == null ? '—' : `${(x * 100).toFixed(d)}%`);
@@ -50,7 +50,7 @@ const statCards = (s, updatedAt) => `${updatedAt ? `<p class="note reveal">Resul
   <div><small>Settled picks</small><b>${s.won + s.lost}</b><span>${s.won} won · ${s.lost} lost${s.push ? ` · ${s.push} push` : ''}</span></div>
   <div><small>Hit rate</small><b>${pct(s.hitRate)}</b><span>ATLAS estimated ${pct(s.expected)}</span></div>
   <div><small>Profit, 1 unit per pick</small><b class="${s.profit >= 0 ? 'pos' : 'neg'}">${units(s.profit)}</b><span>ROI ${pct(s.roi)}</span></div>
-  <div><small>Average odds</small><b>${s.avgOdds ? s.avgOdds.toFixed(2) : '—'}</b><span>minimum ${MIN_ODDS.toFixed(2)}</span></div>
+  <div><small>Average odds</small><b>${s.avgOdds ? s.avgOdds.toFixed(2) : '—'}</b><span>range ${MIN_ODDS.toFixed(2)} to ${MAX_ODDS.toFixed(2)}</span></div>
   <div><small>Price vs closing line</small><b class="${s.clvN >= 10 ? (s.clv >= 0 ? 'pos' : 'neg') : ''}">${s.clvN >= 10 ? `${s.clv >= 0 ? '+' : ''}${(s.clv * 100).toFixed(1)}%` : '—'}</b><span>${s.clvN >= 10 ? `saved price beat the close on ${pct(s.beatClose, 0)} of ${s.clvN} picks` : 'closing prices are now saved for every pick; shown after 10 settle'}</span></div>
   <div><small>Forecast score (Brier)</small><b>${s.brier == null ? '—' : s.brier.toFixed(3)}</b><span>${s.brierN >= 20 ? `market alone ${s.brierMarket.toFixed(3)} on the same ${s.brierN} picks · lower is better` : 'lower is better · market comparison after 20 picks'}</span></div></div>`;
 
@@ -68,20 +68,17 @@ const pickRow = (h) => (h.type === 'multi' ? `<li class="tr-${h.status}"><span c
 function body(data) {
   const s = summarize(data.picks || []);
   if (!s.all.won && !s.all.lost) {
-    return `<div class="panel reveal"><h3 class="ph">Tracking has started</h3><p class="muted">Every banker and value spot (odds ${MIN_ODDS.toFixed(2)}+) is now saved before kick-off and graded from the final score. Results appear here as matches finish.</p></div>
+    return `<div class="panel reveal"><h3 class="ph">Tracking has started</h3><p class="muted">Every shortlist pick (rated 60%+, odds ${MIN_ODDS.toFixed(2)} to ${MAX_ODDS.toFixed(2)}) is saved before kick-off and graded from the final score. Results appear here as matches finish.</p></div>
       ${s.pending.length ? `<div class="panel reveal"><h3 class="ph">Waiting on results <small>${s.pending.length}</small></h3><ul class="tr-list">${s.pending.slice(0, 30).map(pickRow).join('')}</ul></div>` : ''}`;
   }
-  const typeName = { banker: 'Bankers (est. 60%+)', value: 'Value spots (model above price)' };
   const famName = { winner: 'Winner / moneyline', result: '1X2 result', spread: 'Spread / handicap', total: 'Totals (over/under)' };
-  return `${statCards(s.all, data.updatedAt)}${s.unresolved ? `<p class="note reveal">${s.unresolved} pick${s.unresolved > 1 ? 's' : ''} could not be graded (no final result found) and ${s.unresolved > 1 ? 'are' : 'is'} left out rather than counted as void.</p>` : ''}
+  return `${statCards(s.all, data.updatedAt)}${s.outside.won + s.outside.lost ? `<p class="note reveal">Shortlist picks only (rated 60%+, odds ${MIN_ODDS.toFixed(2)} to ${MAX_ODDS.toFixed(2)}). ${s.outside.won + s.outside.lost} earlier picks outside these rules (value spots and longer prices, ${s.outside.won} won, ${s.outside.lost} lost) are not counted.</p>` : ''}${s.unresolved ? `<p class="note reveal">${s.unresolved} pick${s.unresolved > 1 ? 's' : ''} could not be graded (no final result found) and ${s.unresolved > 1 ? 'are' : 'is'} left out rather than counted as void.</p>` : ''}
     <div class="grid two">
-      <div class="panel reveal"><h3 class="ph">By pick type</h3>${table(s.byType.map((r) => ({ ...r, name: typeName[r.key] || r.key })), 'Type')}</div>
       <div class="panel reveal"><h3 class="ph">By sport</h3>${table(s.bySport.map((r) => ({ ...r, name: `${sportOf(r.key).icon} ${sportOf(r.key).name}` })), 'Sport')}</div>
-    </div>
-    <div class="grid two">
       <div class="panel reveal"><h3 class="ph">By market <small>the model needs more confidence where a market has underperformed</small></h3>${table(s.byFamily.map((r) => ({ ...r, name: famName[r.key] || r.key })), 'Market')}</div>
-      <div class="panel reveal"><h3 class="ph">Multipliers and mega <small>separate records</small></h3><p class="muted">Each multiplier keeps its own record on its own page, so slips never mix with single picks here.</p><div class="chip-row">${[2, 3, 4, 5, 10, 20].map((x) => `<a class="chip" href="#/x/${x}">${x}×</a>`).join('')}<a class="chip" href="#/mega">Mega 100× / 1000×</a></div></div>
+      
     </div>
+    <div class="panel reveal"><h3 class="ph">Multipliers and mega <small>separate records</small></h3><p class="muted">Each multiplier keeps its own record on its own page, so slips never mix with single picks here.</p><div class="chip-row">${[2, 3, 4, 5, 10, 20].map((x) => `<a class="chip" href="#/x/${x}">${x}×</a>`).join('')}<a class="chip" href="#/mega">Mega 100× / 1000×</a></div></div>
     ${s.byModel.length > 1 ? `<div class="panel reveal"><h3 class="ph">By model version <small>each pick is stamped with the model that made it</small></h3>${table(s.byModel.map((r) => ({ ...r, name: r.key })), 'Model')}</div>` : ''}
     <div class="panel reveal"><h3 class="ph">Are the estimates honest? <small>calibration</small></h3>
       <p class="muted">When ATLAS says 65%, it should land about 65% of the time. Small samples swing a lot.</p>
@@ -95,7 +92,7 @@ export const trackViews = {
     return {
       mode: 'other', accent: '#3dff9a', title: 'Track record',
       html: `<section class="hero small"><p class="kicker reveal">EVERY PICK · LOCKED BEFORE KICK-OFF · GRADED FROM FINAL SCORES</p><h1>TRACK RECORD</h1>
-        <p class="lede reveal">The real results of ATLAS's bankers and value spots, published before each match and never edited afterwards.</p></section>
+        <p class="lede reveal">Every shortlist pick, saved before kick-off and graded from the final score.</p></section>
         <div id="track-body">${cache ? body(cache.data) : '<p class="muted">Loading results…</p>'}</div>`,
       after: () => {
         load().then((d) => {
@@ -120,6 +117,6 @@ export function trackCard(refresh) {
   const last = s.recent.slice(0, 10).map((h) => `<i class="tr-dot ${h.status}" title="${esc(h.pick)}: ${h.status}"></i>`).join('');
   return `<a class="panel dash-track reveal" href="#/track"><h2 class="ph">Track record <small>every pick, locked before kick-off</small></h2>
     <div class="dt-row"><div><b>${a.won}–${a.lost}</b><small>won–lost</small></div><div><b>${pct(a.hitRate, 0)}</b><small>hit rate (est. ${pct(a.expected, 0)})</small></div><div><b class="${a.profit >= 0 ? 'pos' : 'neg'}">${units(a.profit)}</b><small>1 unit per pick</small></div></div>
-    <ul class="dt-types">${s.byType.filter((r) => r.won + r.lost).map((r) => `<li><span>${{ banker: 'Bankers', value: 'Value' }[r.key] || esc(r.key)}</span><b>${pct(r.hitRate, 0)}</b><small>${r.won}–${r.lost}</small></li>`).join('')}${s.bySport.slice(0, 4).map((r) => `<li><span>${sportOf(r.key).icon} ${esc(sportOf(r.key).name)}</span><b>${pct(r.hitRate, 0)}</b><small>${r.won}–${r.lost}</small></li>`).join('')}</ul>
+    <ul class="dt-types">${s.bySport.slice(0, 4).map((r) => `<li><span>${sportOf(r.key).icon} ${esc(sportOf(r.key).name)}</span><b>${pct(r.hitRate, 0)}</b><small>${r.won}–${r.lost}</small></li>`).join('')}</ul>
     <div class="dt-last">${last}<span>latest results →</span></div></a>`;
 }
