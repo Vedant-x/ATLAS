@@ -1291,4 +1291,11 @@ body.scrolled .bar { height: 52px; padding-block: 0; }
 .alerts-panel .al-row { margin: 6px 0 2px; font-size: 14px; }
 .alerts-panel .al-on { color: var(--pos); font-weight: 600; }
 .alerts-panel .al-off { color: var(--muted); }
-.alerts-panel .cap { margin: 10px 0 0; }
+.wl-done-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 22px 0 8px; }
+.wl-done-head .ph { margin: 0; }
+.row.wl.done { opacity: .78; }
+.row.wl.done .odds { display: flex; align-items: center; gap: 10px; }
+.row.wl.done .fin { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.row.wl.done .fin-score { font-size: 13px; white-space: nowrap; }
+.row.wl.done .icon-btn { flex: 0 0 auto; width: 34px; justify-self: end; }
+@media (max-width: 560px) { .row.wl.done .fin { display: none; } .row.wl.done .odds { justify-content: space-between; } }

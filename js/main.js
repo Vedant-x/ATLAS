@@ -17,7 +17,7 @@ import { trackCalibration } from './trackview.js';
 import { prefs, prefEvents } from './prefs.js';
 import { applyModel } from './intel.js';
 import { fetchLineups, fetchSummary } from './espn.js';
-import { startLiveAlerts, alertPrefs } from './livealerts.js';
+import { startLiveAlerts } from './livealerts.js';
 import { views, bind, legIndex, edgeTable, countdown, esc, sportOf, ist } from './views.js';
 import { slip } from './slip.js';
 import { preloader, cursor, wipe, magnetic, tilt, countUp, reveal, fitTitles } from './ui.js';
@@ -156,7 +156,7 @@ async function tickLiveCenter() {
 }
 setInterval(tickLiveCenter, 8000);
 // Goals, cards, half-time and full time for followed matches (watchlist + slip), while ATLAS is open.
-startLiveAlerts({ events: () => state.events, follow: followed, fetchSummary, show: showMoment });
+startLiveAlerts({ events: () => state.events, follow: followed, fetchSummary, show: showMoment, final: (id, line) => watch.finish(id, line) });
 
 // Formula 1: the weekend file every few minutes (so the next Grand Prix and new results appear on
 // their own), live timing every 5 seconds while a session runs and the F1 page is open.
@@ -388,7 +388,7 @@ document.addEventListener('click', (e) => {
     else if (d.pref === 'sport') prefs.set({ sports: v === 'all' ? [] : p.sports.includes(v) ? p.sports.filter((x) => x !== v) : [...p.sports, v] });
     else if (d.pref === 'priced') prefs.set({ pricedOnly: !p.pricedOnly });
     state.slipCache.clear(); softRender(); }
-  else if (d.alertPref) { const k = d.alertPref; alertPrefs.set({ [k]: !alertPrefs.get()[k] }); softRender(); }
+  else if ('clearFinished' in d) { watch.removeMany(watch.finished(state.events)); softRender(); }
   else if ('notifyOn' in d) { requestNotify().then(() => softRender()); }
   else if ('fxToggle' in d) { try { localStorage.setItem('atlas-fx', fxOff ? 'on' : 'off'); } catch { /* storage blocked */ } if (/[?&]lite\b/.test(location.search)) location.search = ''; else location.reload(); }
   else if ('navBack' in d) { if (stack.length > 1) history.back(); else { replacing = true; location.replace(parentOf()); } }

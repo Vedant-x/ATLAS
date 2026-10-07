@@ -65,7 +65,7 @@ export function liveMoments(sm, e) {
 const espn = (e) => e.leaguePath && !e.leaguePath.startsWith('atlas/') && e.compId;
 export const covers = (e) => Boolean(espn(e));
 
-export function startLiveAlerts({ events, follow, fetchSummary, show }) {
+export function startLiveAlerts({ events, follow, fetchSummary, show, final = () => {} }) {
   let seen = load(SEEN_KEY, {});
   const primed = new Set(); // matches read once this session: their older moments are not announced
   let busy = false;
@@ -81,6 +81,8 @@ export function startLiveAlerts({ events, follow, fetchSummary, show }) {
         let sm;
         try { sm = await fetchSummary(e); } catch { continue; }
         const ms = liveMoments(sm, e);
+        const ft = ms.find((m) => m.kind === 'final');
+        if (ft) final(e.id, ft.title);
         const known = new Set(seen[e.id]?.keys || []);
         // First look at a match this session, or after more than 10 minutes away: remember what has
         // happened and announce from now on, rather than a burst of old goals.

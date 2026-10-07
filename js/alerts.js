@@ -5,22 +5,54 @@
 import { slip } from './slip.js';
 import { covers } from './livealerts.js';
 
-const WKEY = 'atlas-watch', SKEY = 'atlas-watch-state';
+const WKEY = 'atlas-watch', SKEY = 'atlas-watch-state', MKEY = 'atlas-watch-meta';
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage blocked */ } };
 
 let watched = new Set(load(WKEY, []));
 let seen = load(SKEY, {});
+// What we last knew about each watched match, so it stays listed (with its result) after it ends
+// and drops out of the feeds, until it is cleared.
+let meta = load(MKEY, {});
 const subs = new Set();
 
 export const watch = {
   has: (id) => watched.has(id),
   ids: () => [...watched],
   toggle(id) {
-    if (watched.has(id)) watched.delete(id); else { watched.add(id); askPermission(); }
+    if (watched.has(id)) { watched.delete(id); delete meta[id]; save(MKEY, meta); } else { watched.add(id); askPermission(); }
     save(WKEY, [...watched]);
     subs.forEach((f) => f());
     return watched.has(id);
+  },
+  meta: (id) => meta[id],
+  // Keep the details of watched matches current.
+  remember(events) {
+    let dirty = false;
+    for (const e of events) {
+      if (!watched.has(e.id)) continue;
+      const m = meta[e.id] || {};
+      const next = { ...m, home: e.home, away: e.away, league: e.league, sport: e.sport, start: e.start, score: e.score || m.score || null };
+      if (JSON.stringify(next) !== JSON.stringify(m)) { meta[e.id] = next; dirty = true; }
+    }
+    if (dirty) save(MKEY, meta);
+  },
+  // Full time seen by the live alerts: `line` is the final scoreline.
+  finish(id, line) {
+    if (!watched.has(id) || meta[id]?.result === line) return;
+    meta[id] = { ...meta[id], final: true, result: line };
+    save(MKEY, meta);
+  },
+  // Watched matches that have ended: marked final, or gone from the feeds after their start time.
+  finished(events) {
+    if (!events.length) return []; // feeds not loaded yet
+    const live = new Set(events.map((e) => e.id)), now = Date.now();
+    return [...watched].filter((id) => !live.has(id) && (meta[id]?.final || !meta[id] || meta[id].start < now));
+  },
+  removeMany(ids) {
+    ids.forEach((id) => { watched.delete(id); delete meta[id]; });
+    save(WKEY, [...watched]); save(MKEY, meta);
+    subs.forEach((f) => f());
   },
   subscribe: (f) => { subs.add(f); return () => subs.delete(f); },
 };
@@ -38,6 +70,7 @@ export const changes = (e, before, now, at) => diff(e, before, now, at).map((c) 
 
 // Called after every data refresh.
 export function checkAlerts(events) {
+  watch.remember(events);
   const follow = new Set([...watched, ...slip.legs.map((l) => l.eventId)]);
   if (!follow.size) return [];
   const at = Date.now(), out = [];
