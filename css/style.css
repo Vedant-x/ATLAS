@@ -507,21 +507,27 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 
 /* ---------- AI assistant: floating character + chat ---------- */
 .ai-root { --ai: #d2ff00; --ax: calc(100vw - 112px); --ay: calc(100vh - 128px); }
-.ai-launch { position: fixed; left: var(--ax); top: var(--ay); z-index: 70; width: 88px; height: 88px; padding: 0; border: 0; background: none; touch-action: none; cursor: grab; }
+.ai-launch { position: fixed; left: var(--ax); top: var(--ay); z-index: 70; width: 88px; height: 88px; padding: 0; border: 0; background: none; touch-action: none; cursor: grab; contain: layout style; will-change: transform; }
 .ai-root.dragging .ai-launch { cursor: grabbing; }
 .ai-root.open .ai-launch { opacity: 0; pointer-events: none; transform: scale(.6); transition: opacity .3s, transform .3s; }
-.ai-avatar { position: absolute; inset: 0; display: block; filter: drop-shadow(0 8px 22px color-mix(in srgb, var(--ai) 45%, transparent)); }
-.ai-shadow { position: absolute; left: 22%; right: 22%; bottom: -6px; height: 10px; border-radius: 50%; background: rgba(0,0,0,.55); filter: blur(4px); animation: ai-shadow 3.2s ease-in-out infinite; }
+/* The character floats as one composited layer (the SVG is drawn once, then only moved); the glow
+   and shadow are plain gradients. No filters: a filtered, animated SVG is redrawn every frame. */
+.ai-launch::before { content: ''; position: absolute; inset: 4% 4% -8%; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--ai) 30%, transparent), transparent); pointer-events: none; }
+.ai-avatar { position: absolute; inset: 0; display: block; will-change: transform; animation: ai-float 3.2s ease-in-out infinite; }
+.ai-shadow { position: absolute; left: 22%; right: 22%; bottom: -6px; height: 10px; border-radius: 50%; background: radial-gradient(closest-side, rgba(0,0,0,.6), transparent); will-change: transform; animation: ai-shadow 3.2s ease-in-out infinite; }
 .ai-char { width: 100%; height: 100%; overflow: visible; }
-.ai-char .ai-body { transform-box: fill-box; transform-origin: 50% 60%; animation: ai-float 3.2s ease-in-out infinite; }
-.ai-char .ai-eyes { transform-box: fill-box; transform-origin: center; animation: ai-blink 4.6s infinite; }
+.ai-char .ai-body { transform-box: fill-box; transform-origin: 50% 60%; }
+.ai-char .ai-eyes { transform-box: fill-box; transform-origin: center; }
+/* Blinking, the spinning ring and the glowing antenna redraw the SVG, so only in Cinematic motion. */
+:root[data-motion="cinematic"] .ai-char .ai-eyes { animation: ai-blink 4.6s infinite; }
 .ai-char .ai-pupils { transition: transform .12s linear; }
 .ai-char .ai-mouth { transform-box: fill-box; transform-origin: center; }
-.ai-char .ai-ring { transform-box: fill-box; transform-origin: center; animation: ai-spin 6s linear infinite; }
-.ai-char .ai-antenna { animation: ai-glow 1.6s ease-in-out infinite; }
+.ai-char .ai-ring { transform-box: fill-box; transform-origin: center; }
+:root[data-motion="cinematic"] .ai-char .ai-ring { animation: ai-spin 6s linear infinite; }
+:root[data-motion="cinematic"] .ai-char .ai-antenna { animation: ai-glow 1.6s ease-in-out infinite; }
 .ai-root.talking .ai-mouth { animation: ai-talk .22s ease-in-out infinite alternate; }
 .ai-root.wave .ai-c-big .ai-body, .ai-root.wave .ai-c-mini .ai-body { animation: ai-hop .8s var(--ease); }
-.ai-launch:hover .ai-body { animation-duration: 1.4s; }
+.ai-launch:hover .ai-avatar { animation-duration: 1.4s; }
 .ai-bubble { position: absolute; right: 78%; bottom: 82%; white-space: nowrap; background: var(--ai); color: #000; font: 700 12px var(--sans); padding: 8px 12px; border-radius: 14px 14px 2px 14px; box-shadow: 0 8px 30px rgba(0,0,0,.5); animation: ai-pop .5s var(--ease); }
 @keyframes ai-float { 0%,100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-7px) rotate(2deg); } }
 @keyframes ai-shadow { 0%,100% { transform: scaleX(1); opacity: .55; } 50% { transform: scaleX(.75); opacity: .3; } }
@@ -575,7 +581,7 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .ai-input { flex: 1; min-width: 0; background: rgba(255,255,255,.05); border: 1px solid var(--line2); border-radius: 14px; padding: 12px 14px; font-size: 14px; }
 .ai-input:focus { outline: none; border-color: var(--ai); }
 .ai-send { width: 46px; border-radius: 14px; background: var(--ai); color: #000; font-size: 16px; }
-@media (prefers-reduced-motion: reduce) { .ai-char *, .ai-shadow { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .ai-char *, .ai-avatar, .ai-shadow { animation: none !important; } }
 
 /* ---------- phones (kept last so it wins over the base rules above) ---------- */
 @media (max-width: 820px) {
@@ -1301,4 +1307,4 @@ body.scrolled .bar { height: 52px; padding-block: 0; }
 /* Performance: with motion off, no full-screen grain layer and no idle mascot animation (both
    repaint every frame); live dots keep blinking. */
 :root[data-motion="reduced"] .grain { display: none; }
-:root[data-motion="reduced"] .ai-char *, :root[data-motion="reduced"] .ai-shadow { animation: none; }
+:root[data-motion="reduced"] .ai-char *, :root[data-motion="reduced"] .ai-avatar, :root[data-motion="reduced"] .ai-shadow { animation: none; }

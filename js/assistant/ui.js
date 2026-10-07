@@ -135,14 +135,20 @@ export function mountAssistant(S) {
   });
   addEventListener('resize', () => { const p = store.get('atlas-ai-pos', null); if (p) place(p[0], p[1]); });
 
-  // Eyes follow the cursor.
+  // Eyes follow a mouse cursor (not touch), at most once a frame, and only for the visible character.
+  let eyeAt = null;
   addEventListener('pointermove', (e) => {
-    root.querySelectorAll('.ai-pupils').forEach((g) => {
+    if (e.pointerType !== 'mouse' || drag) return;
+    if (!eyeAt) requestAnimationFrame(() => {
+      const { x, y } = eyeAt; eyeAt = null;
+      const g = root.querySelector(root.classList.contains('open') ? '.ai-mini .ai-pupils' : '.ai-avatar .ai-pupils');
+      if (!g) return;
       const r = g.ownerSVGElement.getBoundingClientRect();
-      const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+      const dx = x - (r.left + r.width / 2), dy = y - (r.top + r.height / 2);
       const d = Math.hypot(dx, dy) || 1, k = Math.min(1, d / 300) * 3;
-      g.style.transform = `translate(${(dx / d) * k}px, ${(dy / d) * k}px)`;
+      g.style.transform = `translate(${((dx / d) * k).toFixed(1)}px, ${((dy / d) * k).toFixed(1)}px)`;
     });
+    eyeAt = { x: e.clientX, y: e.clientY };
   }, { passive: true });
 
   // ---------- chat ----------
