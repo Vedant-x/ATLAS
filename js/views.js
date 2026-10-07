@@ -17,7 +17,7 @@ import { prefs, prefEvents } from './prefs.js';
 import { liveWin } from './live.js';
 import { watch } from './alerts.js';
 import { trackCard, trackStats, trackCalibration, recordLine, ensureTrack, slipHistory, officialSlip } from './trackview.js';
-import { rankedBankers, rankedValue, slipPolicy } from './track.js';
+import { rankedBankers, slipPolicy, MAX_ODDS } from './track.js';
 import { coherentBets } from './picks.js';
 import { mergeEvent } from './merge.js';
 import { casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips } from './research.js';
@@ -192,7 +192,6 @@ export const views = {
     const upcoming = [...ev].filter((e) => !e.live && e.sport !== 'efootball').sort((a, b) => a.start - b.start); // eSoccer runs round the clock: it has its own page
     const day = todayEvents(prefFilter(ev)); // next 12 hours
     const bk = smartBankers(day, { limit: 10, minOdds: prefs.get().minOdds });
-    const val = rankedValue(day, { cal: trackCalibration(), limit: 8, minOdds: prefs.get().minOdds });
     const ts = trackStats();
     const perSport = SPORTS.map((sp) => smartBankers(day.filter((e) => e.sport === sp.id), { min: 0.58, limit: 1, minOdds: prefs.get().minOdds })[0]).filter(Boolean);
     const featured = bk[0]?.event || upcoming.find((e) => e.start < Date.now() + 24 * 36e5); // never days away
@@ -221,9 +220,8 @@ export const views = {
             <small>${s.id === 'f1' ? f1Teaser() : `${list.length} events${list.filter((e) => e.live).length ? ` · <span class="live">${list.filter((e) => e.live).length} live</span>` : ''}`}</small>
             ${next ? `<small class="next">Next: ${esc(next.home)} v ${esc(next.away)}</small>` : ''}</a>`;
         }).join('')}</div></section>
-      <section class="sec-block split2">
+      <section class="sec-block">
         <div><h2 class="sec reveal">Bankers <small>${recordLine(ts?.byType.find((r) => r.key === 'banker')) || 'tracked from today'}</small></h2><div class="minilist">${bk.map((b) => miniPick(b)).join('') || '<p class="muted">No 70%+ favourites right now.</p>'}</div><a class="more reveal" href="#/bankers">All bankers →</a></div>
-        <div><h2 class="sec reveal">Value <small>${recordLine(ts?.byType.find((r) => r.key === 'value')) || 'tracked from today'}</small></h2><div class="minilist">${val.map((b) => miniPick(b, true)).join('') || '<p class="muted">No value spots right now.</p>'}</div><a class="more reveal" href="#/edge">Full edge board →</a></div>
       </section>
       ${perSport.length ? `<section class="sec-block"><h2 class="sec reveal">Top pick in every sport <small>the strongest priced favourite per sport</small></h2><div class="minilist cols">${perSport.map((b) => miniPick(b)).join('')}</div></section>` : ''}
       <section class="sec-block"><h2 class="sec reveal">Multipliers</h2>
@@ -464,17 +462,13 @@ export const views = {
     ensureTrack(() => S.refresh?.());
     const day = todayEvents(ev); // next 12 hours
     const list = smartBankers(day, { limit: 40, minOdds });
-    const val = rankedValue(day, { cal: trackCalibration(), limit: 20, minOdds });
     const ts = trackStats();
     return {
       mode: 'bankers', accent: '#00ffc3', title: 'Bankers',
-      html: `<section class="hero small"><p class="kicker reveal">NEXT 12 HOURS · ODDS ≥ ${minOdds.toFixed(2)}</p><h1>${split('BANKERS')}</h1>${builderNav('bankers')}
-</section>
+      html: `<section class="hero small"><p class="kicker reveal">NEXT 12 HOURS · ODDS ${minOdds.toFixed(2)}–${MAX_ODDS.toFixed(2)}</p><h1>${split('BANKERS')}</h1>${builderNav('bankers')}</section>
         ${notice()}${prefsBar()}
         <div class="list">${list.map((b) => bigPick(b)).join('') || '<p class="muted">No 70%+ favourites in the next 12 hours right now. The board refreshes as new matches come into range.</p>'}</div>
-        <h2 class="sec reveal">Value spots <small>model above the price, odds ≤ 5</small></h2>
-        <div class="list">${val.map((b) => bigPick(b, true)).join('') || '<p class="muted">No value spots right now.</p>'}</div>
-        ${recordLine(ts?.byType.find((r) => r.key === 'banker')) ? `<p class="rec-line reveal">Track record · bankers ${recordLine(ts.byType.find((r) => r.key === 'banker'))}${recordLine(ts.byType.find((r) => r.key === 'value')) ? ` · value ${recordLine(ts.byType.find((r) => r.key === 'value'))}` : ''} · <a href="#/track">see every pick</a></p>` : ''}`,
+        ${recordLine(ts?.all) ? `<p class="rec-line reveal">Track record · ${recordLine(ts.all)} · <a href="#/track">see every pick</a></p>` : ''}`,
     };
   },
 
