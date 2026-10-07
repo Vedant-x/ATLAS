@@ -13,6 +13,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
+      - name: Probe ESPN prop bets (temporary)
+        run: node scripts/probe-props.mjs
       - run: npm test
       - name: Build Pages site against live sources
         run: node scripts/pages.mjs
