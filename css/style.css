@@ -1284,3 +1284,6 @@ body.scrolled .bar { height: 52px; padding-block: 0; }
 .pal-open-btn:hover { border-color: var(--accent); color: var(--fg); }
 .slipc .overlap { display: block; margin: -4px 0 8px; font: 600 11.5px var(--sans); color: var(--draw, #f5b84a); }
 .slipc .overlap.fresh { color: var(--muted); font-weight: 500; }
+/* Selected and hovered chips are lime with black text everywhere, including the groups above that
+   set a light text colour for their resting state. */
+.dp-row .chip.on, .dp-row .chip:hover, .win-chips .chip.on, .win-chips .chip:hover, .rs-sorts .chip.on, .rs-sorts .chip:hover { color: #000; }
