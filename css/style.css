@@ -924,7 +924,7 @@ p a:not(.btn):not(.more), .rec-line a, .lede a, .note a, .muted a { text-decorat
 :root[data-motion="standard"] .grow, :root[data-motion="standard"] .grow-y { transition-duration: .35s; transition-delay: 0ms; }
 :root[data-motion="reduced"] .reveal { opacity: 1; transform: none; transition: none; }
 :root[data-motion="reduced"] .grow, :root[data-motion="reduced"] .grow-y { transition: none; }
-:root[data-motion="reduced"] .ticker-track, :root[data-motion="reduced"] .grain { animation: none; }
+:root[data-motion="reduced"] .grain { animation: none; } /* the ticker follows its own setting; the system "reduce motion" rule stops it too */
 :root:not([data-motion="cinematic"]) .tilt { transform: none !important; }
 /* Ticker controls. */
 :root[data-ticker="paused"] .ticker-track { animation-play-state: paused; }

@@ -29,8 +29,10 @@ import { leagueByPath, leagueKey, sportById } from './catalog.js';
 const app = document.getElementById('app');
 // Web fonts were loaded with media=print so they don't block the first paint: switch them on now.
 document.querySelectorAll('link[data-fonts]').forEach((l) => { l.media = 'all'; });
-// Effects switch: the 3D background can be turned off (remembered per device, or ?lite in the URL).
-const fxOff = (() => { try { return /[?&]lite\b/.test(location.search) || localStorage.getItem('atlas-fx') === 'off'; } catch { return false; } })();
+// Effects switch: the 3D background is off unless the visitor turns it on (remembered per device;
+// ?lite in the URL forces it off). Off by default because it makes slower computers lag on start-up,
+// and while off the 3D engine is never even downloaded.
+const fxOff = (() => { try { return /[?&]lite\b/.test(location.search) || localStorage.getItem('atlas-fx') !== 'on'; } catch { return true; } })();
 const bg = document.getElementById('bg');
 // The 3D scene (three.js) loads after the first paint; calls made before it's ready are replayed.
 const scene = (() => {
