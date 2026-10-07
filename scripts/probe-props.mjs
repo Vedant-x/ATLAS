@@ -1,35 +1,42 @@
-// Temporary probe: what ESPN's prop-bet feed returns (printed to the CI log).
+// Temporary probe: prop-bet shapes and box-score stats (printed to the CI log).
 const get = async (u) => { const r = await fetch(u, { signal: AbortSignal.timeout(20000) }); if (!r.ok) throw new Error(`${r.status} ${u}`); return r.json(); };
-const short = (o, n = 2500) => JSON.stringify(o).slice(0, n);
-for (const [sport, league] of [['football', 'nfl'], ['basketball', 'nba'], ['baseball', 'mlb'], ['hockey', 'nhl'], ['soccer', 'eng.1'], ['football', 'college-football']]) {
+const J = (o, n = 1800) => JSON.stringify(o).slice(0, n);
+const ymd = (t) => new Date(t).toISOString().slice(0, 10).replaceAll('-', '');
+for (const [sport, league] of [['basketball', 'nba'], ['baseball', 'mlb'], ['hockey', 'nhl'], ['soccer', 'eng.1'], ['football', 'nfl'], ['soccer', 'esp.1'], ['soccer', 'uefa.champions'], ['basketball', 'wnba']]) {
   try {
     const sb = await get(`https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/scoreboard`);
     const ev = (sb.events || []).find((e) => e.status?.type?.state === 'pre') || sb.events?.[0];
-    if (!ev) { console.log(`## ${league}: no events`); continue; }
-    const comp = ev.competitions[0];
-    console.log(`## ${league} ${ev.id} ${ev.name} ${ev.date}`);
-    console.log('SITE ODDS', short(comp.odds?.[0], 1500));
-    const base = `https://sports.core.api.espn.com/v2/sports/${sport}/leagues/${league}/events/${ev.id}/competitions/${comp.id}`;
-    const odds = await get(`${base}/odds?limit=50`);
-    console.log('PROVIDERS', (odds.items || []).map((i) => `${i.provider?.id}:${i.provider?.name}`).join(', '));
-    console.log('CORE ODDS ITEM', short(odds.items?.[0], 3000));
-    for (const it of odds.items || []) {
-      const id = it.provider?.id;
-      try {
-        const pb = await get(`${base}/odds/${id}/propBets?limit=1000`);
-        console.log(`PROPBETS provider ${id} count=${pb.count} pageCount=${pb.pageCount}`);
-        console.log('PROPBETS SAMPLE', short((pb.items || []).slice(0, 4), 4000));
-        const types = {}; for (const x of pb.items || []) { const k = x.type?.name || x.type?.id || JSON.stringify(x.type); types[k] = (types[k] || 0) + 1; }
-        console.log('PROPBET TYPES', short(types, 3000));
-        const ath = pb.items?.find((x) => x.athlete)?.athlete;
-        if (ath?.$ref) console.log('ATHLETE REF', ath.$ref);
-      } catch (e) { console.log(`PROPBETS provider ${id} ERR ${e.message}`); }
+    if (ev) {
+      const comp = ev.competitions[0];
+      const base = `https://sports.core.api.espn.com/v2/sports/${sport}/leagues/${league}/events/${ev.id}/competitions/${comp.id}`;
+      const pb = await get(`${base}/odds/100/propBets?limit=1000`).catch((e) => ({ err: e.message }));
+      console.log(`## ${league} ${ev.name} props=${pb.count ?? pb.err}`);
+      const seen = new Set();
+      for (const x of pb.items || []) {
+        const t = x.type?.name;
+        if (seen.has(t) || !/Milestones|Anytime|To Receive a Card|Both Teams To Score$|Team Total|Clean Sheet|Total Hits$|Total Points$/.test(t)) continue;
+        seen.add(t);
+        const same = pb.items.filter((y) => y.type?.name === t && (y.athlete?.$ref || y.team?.$ref) === (x.athlete?.$ref || x.team?.$ref));
+        console.log(`TYPE ${t} n_same_subject=${same.length}`);
+        console.log('  ', same.slice(0, 3).map((y) => J({ ...y, competition: undefined, provider: undefined }, 700)).join('\n   '));
+      }
+      const keys = new Set(); for (const x of pb.items || []) { for (const k of Object.keys(x)) keys.add(k); for (const k of Object.keys(x.current || {})) keys.add('current.' + k); for (const k of Object.keys(x.odds || {})) keys.add('odds.' + k); }
+      console.log('KEYS', [...keys].join(','));
+      const aref = pb.items?.find((x) => x.athlete)?.athlete?.$ref;
+      if (aref) { const a = await get(aref.replace('http:', 'https:')); console.log('ATHLETE', J({ id: a.id, displayName: a.displayName, shortName: a.shortName, team: a.team, position: a.position?.abbreviation }, 600)); }
+    }
+    // A finished game from the last days: box score layout.
+    for (let d = 1; d <= 4; d++) {
+      const old = await get(`https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/scoreboard?dates=${ymd(Date.now() - d * 864e5)}`).catch(() => null);
+      const done = old?.events?.find((e) => e.status?.type?.state === 'post');
+      if (!done) continue;
+      const sm = await get(`https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/summary?event=${done.id}`);
+      console.log(`BOX ${league} ${done.name}`);
+      for (const team of (sm.boxscore?.players || []).slice(0, 1)) {
+        for (const g of team.statistics || []) console.log('  GROUP', J({ name: g.name, type: g.type, keys: g.keys, labels: g.labels, names: g.names, first: g.athletes?.[0] && { id: g.athletes[0].athlete?.id, name: g.athletes[0].athlete?.displayName, stats: g.athletes[0].stats } }, 1200));
+      }
+      if (!sm.boxscore?.players) console.log('  NO PLAYERS; rosters?', J(Object.keys(sm)), J(sm.rosters?.[0]?.roster?.[0], 1500));
+      break;
     }
   } catch (e) { console.log(`## ${league} ERR ${e.message}`); }
-}
-// Scoreboard date ranges (reported to return 400 for MLB/NFL).
-for (const [s, l] of [['baseball', 'mlb'], ['football', 'nfl'], ['basketball', 'nba'], ['hockey', 'nhl'], ['soccer', 'eng.1']]) {
-  const d = new Date(), a = d.toISOString().slice(0, 10).replaceAll('-', ''), b = new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10).replaceAll('-', '');
-  const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${s}/${l}/scoreboard?dates=${a}-${b}`).catch((e) => ({ status: e.message }));
-  console.log(`RANGE ${l} ${a}-${b}: ${r.status}`);
 }
