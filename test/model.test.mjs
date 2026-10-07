@@ -54,3 +54,25 @@ test('pick lists and slips are varied: no single bet type fills them', () => {
   const spreads = slip.legs.filter((l) => l.market === 'Spread').length;
   assert.ok(spreads <= Math.max(2, Math.ceil(slip.legs.length / 2)), `slip legs ${slip.legs.map((l) => l.market).join(',')}`);
 });
+
+test('no underdog-plus-handicap picks: shortlist and slips back the favourite, the total or the winner', async () => {
+  const { underdogCushion } = await import('../js/engine.js');
+  const { bankers } = await import('../js/intel.js');
+  const { legPool } = await import('../js/picks.js');
+  const e = { id: 'u1', sport: 'baseball', home: 'Yankees', away: 'Rays', start: Date.now() + 36e5, compId: '1',
+    markets: [{ name: 'Winner', outcomes: [{ name: 'Yankees', odds: 1.55 }, { name: 'Rays', odds: 2.5 }] },
+      { name: 'Spread', line: -1.5, outcomes: [{ name: 'Yankees -1.5', odds: 2.3 }, { name: 'Rays +1.5', odds: 1.62 }] },
+      { name: 'Total 8.5', outcomes: [{ name: 'Over 8.5', odds: 1.9 }, { name: 'Under 8.5', odds: 1.9 }] }] };
+  assert.equal(underdogCushion(e, 'Spread', 'Rays +1.5'), true);
+  assert.equal(underdogCushion(e, 'Spread', 'Yankees -1.5'), false);
+  assert.equal(underdogCushion(e, 'Winner', 'Yankees'), false);
+  // The favourite +1.5 (the side more likely to win) is still allowed.
+  const f = { ...e, markets: [e.markets[0], { name: 'Spread', line: 1.5, outcomes: [{ name: 'Yankees +1.5', odds: 1.3 }, { name: 'Rays -1.5', odds: 3.4 }] }] };
+  assert.equal(underdogCushion(f, 'Spread', 'Yankees +1.5'), false);
+  // Soccer: Getafe +0.5 against a 3-way favourite is out.
+  const s = { id: 'u2', sport: 'football', home: 'Real Madrid', away: 'Getafe', markets: [{ name: 'Match Result', outcomes: [{ name: 'Real Madrid', odds: 1.4 }, { name: 'Draw', odds: 4.8 }, { name: 'Getafe', odds: 8 }] }] };
+  assert.equal(underdogCushion(s, 'Spread', 'Getafe +0.5'), true);
+  const picks = bankers([e], { min: 0.55 });
+  assert.ok(picks.length && picks.every((b) => b.pick !== 'Rays +1.5'));
+  assert.ok(legPool([e], { minP: 0.5, maxOdds: 2 }).every((l) => l.pick !== 'Rays +1.5'));
+});

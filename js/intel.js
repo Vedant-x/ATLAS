@@ -1,7 +1,7 @@
 // "Self intelligence": a light model layered on the market price.
 // The market is the strongest single predictor, so the model starts from the de-vigged price and nudges it
 // toward each side's season record and recent form. Disagreement between the two shows up as value (EV).
-import { devig } from './engine.js';
+import { devig, underdogCushion } from './engine.js';
 import { normCdf } from './models.js';
 
 const MARKET_WEIGHT = 0.8;
@@ -129,7 +129,7 @@ function propagate(e, base, model, inputs) {
 }
 
 // Strongest favourites across every sport: what the dashboard calls bankers.
-export function bankers(events, { min = 0.7, limit = 24, minOdds = 1 } = {}) {
+export function bankers(events, { min = 0.7, limit = 24, minOdds = 1, cushions = false } = {}) {
   const out = [];
   for (const e of events) {
     if (!e.markets?.length) continue;
@@ -138,6 +138,7 @@ export function bankers(events, { min = 0.7, limit = 24, minOdds = 1 } = {}) {
       outcomes.forEach((o, i) => {
         const p = m.outcomes[i].model ?? o.fair;
         if (p < min || o.odds < minOdds) return;
+        if (!cushions && underdogCushion(e, m.name, o.name)) return; // never "the losing side +1.5"
         out.push({ event: e, market: m.name, pick: o.name, odds: o.odds, p, fair: o.fair, ev: p * o.odds - 1,
           agree: m.outcomes[i].model == null ? null : m.outcomes[i].model >= o.fair });
       });
