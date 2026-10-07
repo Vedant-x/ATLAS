@@ -3,6 +3,7 @@
 // starting pitcher, a player newly listed out, a big price move, kick-off soon, a goal or score
 // change. Shown in the page, and as system notifications (if allowed) when ATLAS is in the background.
 import { slip } from './slip.js';
+import { covers } from './livealerts.js';
 
 const WKEY = 'atlas-watch', SKEY = 'atlas-watch-state';
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
@@ -43,7 +44,8 @@ export function checkAlerts(events) {
   for (const e of events) {
     if (!follow.has(e.id)) continue;
     const now = { ...snapshot(e), checkedAt: at };
-    out.push(...changes(e, seen[e.id], now, at).map((m) => ({ ...m, id: e.id })));
+    // Live scores of ESPN matches come from the live alerts (with scorer and minute), not from here.
+    out.push(...changes(e, seen[e.id], now, at).filter((m) => !(m.kind === 'score' && covers(e))).map((m) => ({ ...m, id: e.id })));
     seen[e.id] = now;
   }
   // Forget matches long gone.
@@ -54,6 +56,33 @@ export function checkAlerts(events) {
 }
 
 const ICON = KIND_ICON;
+// Matches followed for alerts: starred plus every match in the slip.
+export const followed = () => new Set([...watched, ...slip.legs.map((l) => l.eventId)]);
+// A live moment (goal, card, half-time, full time): a system notification titled with the scoreline,
+// or a toast while ATLAS is in view.
+const MOMENT_ICON = { card: '🟨', period: '⏸', final: '🏁' };
+const SCORE_ICON = { football: '⚽', hockey: '🏒', baseball: '⚾', basketball: '🏀', americanfootball: '🏈', rugby: '🏉', cricket: '🏏' };
+export function showMoment(m) {
+  const icon = m.kind === 'card' && /^Red/.test(m.body) ? '🟥' : m.kind === 'score' ? SCORE_ICON[m.sport] || '⚽' : MOMENT_ICON[m.kind] || '•';
+  toast({ id: m.id, kind: m.kind, text: `${m.title} · ${m.body}` }, icon);
+  if (document.visibilityState === 'visible' && document.hasFocus()) return;
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  const opts = { body: `${icon} ${m.body}`, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: m.key, renotify: true, data: { url: `#/match/${m.id}` } };
+  navigator.serviceWorker?.getRegistration().then((r) => (r ? r.showNotification(m.title, opts) : new Notification(m.title, opts))).catch(() => {});
+}
+export const notifyPermission = () => ('Notification' in window ? Notification.permission : 'unsupported');
+export const requestNotify = () => ('Notification' in window ? Notification.requestPermission().catch(() => 'denied') : Promise.resolve('unsupported'));
+function toast(m, icon) {
+  let box = document.querySelector('.toasts');
+  if (!box) { box = document.createElement('div'); box.className = 'toasts'; box.setAttribute('aria-live', 'polite'); document.body.append(box); }
+  const t = document.createElement('a');
+  t.className = 'toast'; t.href = `#/match/${encodeURIComponent(m.id)}`;
+  t.innerHTML = `<span>${icon}</span><p></p>`;
+  t.querySelector('p').textContent = m.text;
+  box.append(t);
+  setTimeout(() => t.classList.add('out'), 7000);
+  setTimeout(() => t.remove(), 7600);
+}
 function notify(m) {
   let box = document.querySelector('.toasts');
   if (!box) { box = document.createElement('div'); box.className = 'toasts'; box.setAttribute('aria-live', 'polite'); document.body.append(box); }
