@@ -477,7 +477,17 @@ addEventListener('scroll', () => {
 }, { passive: true });
 
 // Installable app: service worker (deployed site only) and an "Install app" button where supported.
-if ('serviceWorker' in navigator && location.protocol === 'https:') addEventListener('load', () => setTimeout(() => navigator.serviceWorker.register('sw.js').catch(() => {}), 3000));
+// Offline cache. When a new build's worker takes over a page that an older build served, reload once
+// so visitors get the update straight away instead of on their next visit (never on a first visit,
+// which has no previous worker). The worker is also re-checked whenever the tab comes back into view.
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  const hadWorker = Boolean(navigator.serviceWorker.controller);
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadWorker && !reloaded) { reloaded = true; location.reload(); } });
+  addEventListener('load', () => setTimeout(() => navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+  }).catch(() => {}), 3000));
+}
 let installEvt = null;
 addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; document.querySelectorAll('[data-install]').forEach((b) => { b.hidden = false; }); });
 document.addEventListener('click', (e) => {
