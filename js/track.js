@@ -1,7 +1,7 @@
 // Track record: which picks ATLAS publishes, how they are graded from final scores, and the summary
 // statistics shown on the Record page. Pure functions, shared by the build (scripts/record.mjs) and
 // the browser.
-import { applyModel, bankers, valueSpots } from './intel.js';
+import { applyModel, bankers } from './intel.js';
 import { bankerSlips } from './picks.js';
 import { localDay } from './engine.js';
 
@@ -87,11 +87,6 @@ export function rankedBankers(events, { cal = null, min = 0.6, minOdds = 1, maxO
   const all = bankers(events, { min: min * 0.9, minOdds, limit: Math.max(200, limit * 12) }).filter((b) => b.odds <= maxOdds).map((b) => withCal(b, cal))
     .filter((b) => b.p >= min).sort((x, y) => y.p - x.p);
   return (mix ? diversify(all, limit) : all.slice(0, limit)).sort((x, y) => y.p - x.p);
-}
-export function rankedValue(events, { cal = null, minEdge = 0.03, minOdds = 1, limit = 12, mix = true } = {}) {
-  const all = valueSpots(events, { minEdge: 0, minOdds, limit: Math.max(200, limit * 12) }).map((b) => withCal(b, cal))
-    .filter((b) => b.ev >= minEdge).sort((x, y) => y.ev - x.ev);
-  return (mix ? diversify(all, limit) : all.slice(0, limit)).sort((x, y) => y.ev - x.ev);
 }
 
 // Official picks for matches starting in the next `hours`: the shortlist's bankers (rated 60%+ at
@@ -239,7 +234,7 @@ function brier(list) {
 }
 
 // Summary statistics for the Record page. Profit is in units at a flat 1-unit stake. The main record
-// covers single picks only (bankers and value spots); every multiplier target and the mega slips keep
+// covers single picks only; every multiplier target and the mega slips keep
 // a separate record of their own (byTarget), shown on their own pages.
 export function summarize(history) {
   const settledAll = history.filter((h) => h.status === 'won' || h.status === 'lost' || h.status === 'push');

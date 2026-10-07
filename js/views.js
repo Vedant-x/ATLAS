@@ -9,7 +9,7 @@ import { analyse, winProbs, kelly } from './models.js';
 import { probBar, gauge, heatmap, distBars, formStrip, outcomeBars, valueTrack, pc, odd } from './charts.js';
 import { split } from './ui.js';
 import { slip } from './slip.js';
-import { CATALOG, sportById, leagueByPath, leagueKey, leagueFromKey } from './catalog.js';
+import { CATALOG, sportById, leagueKey, leagueFromKey } from './catalog.js';
 import { detailFor, loadDetail as fetchDetail } from './detail.js';
 import { dossierSections } from './dossier.js';
 import { fetchAll, LEAGUES, leagueStatus } from './espn.js';
