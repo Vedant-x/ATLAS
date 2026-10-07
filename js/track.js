@@ -8,7 +8,9 @@ import { localDay } from './engine.js';
 export const MIN_ODDS = 1.3;
 // Stamped on every recorded pick, so results can be split by the model that made them.
 // 2026.10.1: calibrated chance everywhere, legs feed calibration, shared slip policy.
-export const MODEL_VERSION = '2026.10.1';
+// 2026.10.2: venue records, starting pitchers and soccer absences in the model; spread lines move
+//   with the modelled win chance; track-record correction per sport and market; varied pick lists.
+export const MODEL_VERSION = '2026.10.2';
 
 // Market families the track record learns from: winner, 1X2 result, spread/handicap, totals.
 export const familyOf = (market = '') => (/^Total/.test(market) ? 'total' : market === 'Spread' ? 'spread' : market === 'Match Result' ? 'result' : 'winner');
@@ -19,17 +21,22 @@ export const familyOf = (market = '') => (/^Total/.test(market) ? 'total' : mark
 // with the number of settled picks, so a few results can't swing it. Every graded multiplier leg
 // counts too (each is a single prediction with its own result), so the model learns from more data.
 // Penalties bite harder than rewards: an overconfident market costs more than a modest one gains.
+// Each family is also tracked per sport ("hockey:spread"): a hockey +1.5 puck line and a soccer
+// handicap behave differently, so once a sport has enough settled picks in a family, its own record
+// is used instead of the all-sports one.
 export function calibration(history = []) {
   const out = {};
-  const add = (market, p, status) => {
+  const add = (market, p, status, sport) => {
     if (status !== 'won' && status !== 'lost') return;
-    const r = (out[familyOf(market)] ||= { n: 0, won: 0, exp: 0 });
-    r.n++; r.won += status === 'won' ? 1 : 0; r.exp += p;
+    for (const key of [familyOf(market), sport ? `${sport}:${familyOf(market)}` : null].filter(Boolean)) {
+      const r = (out[key] ||= { n: 0, won: 0, exp: 0 });
+      r.n++; r.won += status === 'won' ? 1 : 0; r.exp += p;
+    }
   };
   for (const h of history) {
     // Always the model's own (uncalibrated) estimate, so the correction never feeds on itself.
-    if (h.type === 'multi') for (const l of h.legs || []) add(l.market, l.pRaw ?? l.p, l.status);
-    else add(h.market, h.p, h.status);
+    if (h.type === 'multi') for (const l of h.legs || []) add(l.market, l.pRaw ?? l.p, l.status, l.sport);
+    else add(h.market, h.p, h.status, h.sport);
   }
   for (const r of Object.values(out)) {
     r.hit = r.won / r.n; r.expected = r.exp / r.n;
@@ -38,20 +45,46 @@ export function calibration(history = []) {
   }
   return out;
 }
-export const calibrated = (p, market, cal) => Math.min(0.99, p * (cal?.[familyOf(market)]?.factor ?? 1));
+const SPORT_MIN = 8; // settled picks before a sport's own record replaces the all-sports one
+export const calibrated = (p, market, cal, sport) => {
+  const own = sport ? cal?.[`${sport}:${familyOf(market)}`] : null;
+  return Math.min(0.99, p * ((own?.n >= SPORT_MIN ? own : cal?.[familyOf(market)])?.factor ?? 1));
+};
 
 // One probability per selection, everywhere: the model estimate after the track-record check
 // (calibrated). Cards, slips, the assistant and the official record all use these two functions, so a
 // pick shows the same chance wherever it appears. Each row keeps the market's margin-free chance
 // (fair) and the uncalibrated model estimate (pRaw) alongside, for transparency.
-const withCal = (b, cal) => { const p = calibrated(b.p, b.market, cal); return { ...b, pRaw: b.p, p, ev: p * b.odds - 1 }; };
-export function rankedBankers(events, { cal = null, min = 0.6, minOdds = 1, limit = 10 } = {}) {
-  return bankers(events, { min: min * 0.9, minOdds, limit: limit * 6 }).map((b) => withCal(b, cal))
-    .filter((b) => b.p >= min).sort((x, y) => y.p - x.p).slice(0, limit);
+const withCal = (b, cal) => { const p = calibrated(b.p, b.market, cal, b.event?.sport); return { ...b, pRaw: b.p, p, ev: p * b.odds - 1 }; };
+
+// A varied list instead of the same bet type again and again: one pick per match, and no market
+// family (winner, result, spread, total) may take more than 40% of the list, nor one sport more than
+// half, while other qualifying picks exist. On a thin board the caps loosen to half and two thirds;
+// past that the list is simply shorter: fewer picks rather than the same bet type over and over.
+export function diversify(list, limit, { familyShare = 0.4, sportShare = 0.5 } = {}) {
+  const out = [], seen = new Set(), fam = {}, sp = {};
+  for (const [fs, ss] of [[familyShare, sportShare], [0.5, 0.67]]) {
+    const capF = Math.max(2, Math.ceil(limit * fs)), capS = Math.max(2, Math.ceil(limit * ss));
+    for (const b of list) {
+      if (out.length >= limit) break;
+      const id = b.event?.id ?? b.eventId;
+      if (seen.has(id)) continue;
+      const f = familyOf(b.market), s = b.event?.sport ?? b.sport;
+      if ((fam[f] || 0) >= capF || (sp[s] || 0) >= capS) continue;
+      out.push(b); seen.add(id); fam[f] = (fam[f] || 0) + 1; sp[s] = (sp[s] || 0) + 1;
+    }
+  }
+  return out;
 }
-export function rankedValue(events, { cal = null, minEdge = 0.03, minOdds = 1, limit = 12 } = {}) {
-  return valueSpots(events, { minEdge: 0, minOdds, limit: limit * 6 }).map((b) => withCal(b, cal))
-    .filter((b) => b.ev >= minEdge).sort((x, y) => y.ev - x.ev).slice(0, limit);
+export function rankedBankers(events, { cal = null, min = 0.6, minOdds = 1, limit = 10, mix = true } = {}) {
+  const all = bankers(events, { min: min * 0.9, minOdds, limit: Math.max(200, limit * 12) }).map((b) => withCal(b, cal))
+    .filter((b) => b.p >= min).sort((x, y) => y.p - x.p);
+  return (mix ? diversify(all, limit) : all.slice(0, limit)).sort((x, y) => y.p - x.p);
+}
+export function rankedValue(events, { cal = null, minEdge = 0.03, minOdds = 1, limit = 12, mix = true } = {}) {
+  const all = valueSpots(events, { minEdge: 0, minOdds, limit: Math.max(200, limit * 12) }).map((b) => withCal(b, cal))
+    .filter((b) => b.ev >= minEdge).sort((x, y) => y.ev - x.ev);
+  return (mix ? diversify(all, limit) : all.slice(0, limit)).sort((x, y) => y.ev - x.ev);
 }
 
 // Official picks for matches starting in the next `hours`: bankers (60%+) and value spots (3%+ above
