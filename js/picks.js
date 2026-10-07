@@ -44,7 +44,7 @@ export function coherentBets(e, a, { cal = null, max = 3, preferBook = false } =
     const d = devig(m);
     d.outcomes.forEach((o, i) => {
       const p = m.outcomes[i].model ?? o.fair;
-      { const q = calibrated(p, m.name, cal); cands.push({ market: m.name, pick: o.name, p, q, fair: o.fair, odds: o.odds, book: true, ev: q * o.odds - 1 }); }
+      { const q = calibrated(p, m.name, cal, e.sport); cands.push({ market: m.name, pick: o.name, p, q, fair: o.fair, odds: o.odds, book: true, ev: q * o.odds - 1 }); }
     });
   }
   for (const g of a.groups || []) for (const m of g.markets) for (const o of m.outcomes) {
@@ -84,7 +84,7 @@ const ratio = (l) => -Math.log(Math.max(1e-9, l.p)) / Math.log(l.odds);
 export function legPool(events, { minP = 0.55, minOdds = 1.04, maxOdds = 1.6, cal = null } = {}) {
   const best = new Map();
   for (const l of allLegs(events.filter((e) => e.markets?.length && !e.live))) {
-    const p = calibrated(l.p, l.market, cal);
+    const p = calibrated(l.p, l.market, cal, l.sport);
     // A banker is a clear favourite at a fair-ish price: short odds and an estimate close to the price.
     if (l.odds < minOdds || l.odds > maxOdds || p < minP || p * l.odds < 0.93) continue;
     const leg = { ...l, pRaw: l.p, p };
@@ -103,13 +103,19 @@ export function bankerSlips(events, target, { count = 5, tolerance = 0.1, cal = 
   for (const [minP, maxOdds, tol] of [[0.7, short, tolerance], [0.62, short, tolerance], [0.6, target <= 10 ? 1.9 : 1.7, Math.max(tolerance, 0.15)], [0.55, 2.2, 0.2]]) {
     // The user's minimum odds per leg is a hard rule: never relaxed by the fallbacks.
     const lo = Math.max(1.04, minOdds);
-    const out = buildFrom(legPool(events, { minP, maxOdds: Math.max(maxOdds, lo + 0.15), cal, minOdds: lo }), target, count, tol);
+    const pool = legPool(events, { minP, maxOdds: Math.max(maxOdds, lo + 0.15), cal, minOdds: lo });
+    // Mixed bet types first (no market family over half the legs); one type only if that is all
+    // the board allows.
+    const out = buildFrom(pool, target, count, tol, true);
     if (out.length) return out;
+    const any = buildFrom(pool, target, count, tol, false);
+    if (any.length) return any;
   }
   return [];
 }
 
-function buildFrom(pool, target, count, tolerance) {
+const familyOfMarket = (m = '') => (/^Total/.test(m) ? 'total' : m === 'Spread' ? 'spread' : m === 'Match Result' ? 'result' : 'winner');
+function buildFrom(pool, target, count, tolerance, mix = false) {
   // Land on the target, not well short of it: the band below is half as wide as the band above.
   const lo = target * (1 - tolerance / 2), hi = target * (1 + tolerance);
   const slips = [];
@@ -123,8 +129,11 @@ function buildFrom(pool, target, count, tolerance) {
     // twice in the window, or a tournament path): their results would be linked.
     const teams = new Set();
     const teamsOf = (l) => String(l.match || '').split(' vs ').map((t) => t.trim().toLowerCase()).filter(Boolean);
-    const clash = (l) => teamsOf(l).some((t) => teams.has(t));
-    const take = (l) => { legs.push(l); odds *= l.odds; teamsOf(l).forEach((t) => teams.add(t)); };
+    const fam = {};
+    // With mix on, a family may hold at most half the legs (two is always allowed).
+    const crowded = (l) => mix && (fam[familyOfMarket(l.market)] || 0) >= 2 && (fam[familyOfMarket(l.market)] || 0) + 1 > (legs.length + 1) / 2;
+    const clash = (l) => teamsOf(l).some((t) => teams.has(t)) || crowded(l);
+    const take = (l) => { legs.push(l); odds *= l.odds; teamsOf(l).forEach((t) => teams.add(t)); fam[familyOfMarket(l.market)] = (fam[familyOfMarket(l.market)] || 0) + 1; };
     for (const l of src) {
       if (odds >= lo) break;
       if (clash(l)) continue;
