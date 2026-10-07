@@ -21,7 +21,6 @@ async function load() {
 // is re-fetched in the background every 5 minutes, so a page left open keeps up with new results.
 export const trackStats = () => (cache ? summarize(cache.data.picks || []) : null);
 export const trackCalibration = () => (cache ? calibration(cache.data.picks || []) : null);
-export const trackUpdatedAt = () => cache?.data.updatedAt || null;
 let reloading = false;
 export function ensureTrack(refresh) {
   if (cache && Date.now() - cache.at < 5 * 6e4) return;

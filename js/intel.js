@@ -146,18 +146,3 @@ export function bankers(events, { min = 0.7, limit = 24, minOdds = 1 } = {}) {
   return out.sort((a, b) => b.p - a.p).slice(0, limit);
 }
 
-// Where the model rates a side clearly higher than the price does.
-export function valueSpots(events, { minEdge = 0.03, limit = 12, minOdds = 1 } = {}) {
-  const out = [];
-  for (const e of events) {
-    for (const m of e.markets || []) {
-      const { outcomes } = devig(m);
-      m.outcomes.forEach((o, i) => {
-        if (o.model == null || o.odds > 5 || o.odds < minOdds) return; // longshot "edges" are mostly model noise
-        const ev = o.model * o.odds - 1;
-        if (ev >= minEdge) out.push({ event: e, market: m.name, pick: o.name, odds: o.odds, p: o.model, fair: outcomes[i].fair, ev });
-      });
-    }
-  }
-  return out.sort((a, b) => b.ev - a.ev).slice(0, limit);
-}

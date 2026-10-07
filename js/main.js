@@ -396,9 +396,6 @@ document.addEventListener('click', (e) => {
     if (on && pins().length >= 2) toast(`Pinned · ${pins().length} to compare`, '#/compare');
     if (current === 'compare') softRender();
   }
-  else if (d.rsort) { setResearchPrefs({ sort: d.rsort }); softRender(); }
-  else if ('rmore' in d) { const box = t.previousElementSibling; const all = box.classList.toggle('all'); t.setAttribute('aria-expanded', all); t.textContent = all ? 'Show fewer' : `Show all ${box.children.length}`; }
-  else if (d.rhours) { setResearchPrefs({ hours: Number(d.rhours) }); softRender(); }
   else if (d.shours) { setResearchPrefs({ shortHours: Number(d.shours) }); softRender(); }
   else if ('qvClose' in d) closeQv();
   else if ('displayToggle' in d) { const p = document.getElementById('display-panel'); const open = !p.classList.contains('open'); p.innerHTML = displayPanel(); p.classList.toggle('open', open); t.setAttribute('aria-expanded', open); }
@@ -428,15 +425,6 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { openSlip(false); closeQv(); document.getElementById('display-panel')?.classList.remove('open'); }
   if (e.key === 'Enter' && e.target.matches?.('tr[data-qv]')) openQv(e.target.dataset.qv, e.target);
 });
-// Research table filters.
-document.addEventListener('change', (e) => {
-  const f = e.target.closest?.('[data-rf]');
-  if (!f) return;
-  const k = f.dataset.rf;
-  setResearchPrefs({ [k]: f.type === 'checkbox' ? f.checked : k === 'hours' ? Number(f.value) : f.value });
-  f.blur(); softRender();
-});
-
 // ---------- quick view ----------
 // Clicking a research row or a change opens the match summary in a side panel; the page, its filters
 // and its scroll position stay where they were. The full dossier is one click further.

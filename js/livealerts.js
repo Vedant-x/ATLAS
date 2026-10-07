@@ -4,7 +4,6 @@
 // notification, or a toast when the page is in view. `liveMoments` is pure so it can be tested.
 
 const PREF_KEY = 'atlas-alert-prefs', SEEN_KEY = 'atlas-live-seen';
-export const ALERT_TYPES = [['scores', 'Goals & scores'], ['cards', 'Cards'], ['periods', 'Half-time & periods'], ['final', 'Full time']];
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage blocked */ } };
 
