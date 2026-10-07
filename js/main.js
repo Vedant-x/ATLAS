@@ -18,6 +18,7 @@ import { prefs, prefEvents } from './prefs.js';
 import { applyModel } from './intel.js';
 import { fetchLineups, fetchSummary } from './espn.js';
 import { startLiveAlerts } from './livealerts.js';
+import { morph } from './morph.js';
 import { views, bind, legIndex, edgeTable, countdown, esc, sportOf, ist } from './views.js';
 import { slip } from './slip.js';
 import { preloader, cursor, wipe, magnetic, tilt, countUp, reveal, fitTitles } from './ui.js';
@@ -114,7 +115,16 @@ function apply(events) {
   fillStarters(state.events);
   if (sig === lastSig) { patchClocks(); return; }
   lastSig = sig;
-  softRender(); refreshSlip();
+  liveRender();
+}
+// Live redraws wait until the page has stopped scrolling, so a score change never stalls a swipe.
+let lastScroll = 0, liveDue = false;
+function liveRender() {
+  if (performance.now() - lastScroll > 400) { softRender(); refreshSlip(); return; }
+  if (liveDue) return;
+  liveDue = true;
+  const wait = () => { if (performance.now() - lastScroll < 400) { setTimeout(wait, 200); return; } liveDue = false; softRender(); refreshSlip(); };
+  setTimeout(wait, 200);
 }
 function patchClocks() {
   const byId = new Map(state.events.map((e) => [e.id, e]));
@@ -138,7 +148,7 @@ async function poll() {
     } else {
       let d = await loadEvents();
       lastIndex = Date.now();
-      if (!d.demo) { d = { ...d, events: overlayLive(d.events, state.events) }; lastSig = ''; setData(d); lastSig = sigOf(state.events); softRender(); refreshSlip(); }
+      if (!d.demo) { d = { ...d, events: overlayLive(d.events, state.events) }; lastSig = ''; setData(d); lastSig = sigOf(state.events); liveRender(); }
     }
   } finally { polling = false; }
 }
@@ -262,12 +272,20 @@ function softRender() {
   const y = scrollY;
   const open = [...app.querySelectorAll('details[open] > summary')].map((s) => s.textContent);
   const { v } = build();
-  app.innerHTML = v.html;
-  app.querySelectorAll('details > summary').forEach((s) => { if (open.includes(s.textContent)) s.parentElement.open = true; });
-  app.querySelectorAll('.reveal, .grow, .grow-y, .draw').forEach((el) => el.classList.add('in'));
-  app.querySelectorAll('.ch').forEach((el) => { el.style.opacity = 1; });
-  app.querySelectorAll('[data-count-to]').forEach((el) => { el.textContent = el.dataset.countTo; });
-  fitTitles(app);
+  // Prepare the new page exactly as the shown one was prepared, then patch only what differs.
+  const t = document.createElement('template');
+  t.innerHTML = v.html;
+  const f = t.content;
+  f.querySelectorAll('details > summary').forEach((s) => { if (open.includes(s.textContent)) s.parentElement.open = true; });
+  f.querySelectorAll('.reveal, .grow, .grow-y, .draw').forEach((el, i) => { el.style.setProperty('--d', `${Math.min(i % 12, 11) * 45}ms`); el.classList.add('in'); });
+  f.querySelectorAll('.ch').forEach((el) => { el.style.opacity = 1; });
+  f.querySelectorAll('[data-count-to]').forEach((el) => { el.textContent = Number(el.dataset.countTo).toFixed(Number(el.dataset.dec || 0)) + (el.dataset.suffix || ''); });
+  // Headings keep the size fitTitles gave them unless their text changed.
+  const was = [...app.querySelectorAll('h1')], now = [...f.querySelectorAll('h1')];
+  let refit = was.length !== now.length;
+  now.forEach((h, i) => { if (was[i]?.textContent === h.textContent) { const st = was[i].getAttribute('style'); if (st) h.setAttribute('style', st); } else refit = true; });
+  morph(app, f);
+  if (refit) fitTitles(app);
   calc();
   v.after?.();
   scrollTo({ top: y, behavior: 'instant' });
@@ -310,6 +328,7 @@ slip.subscribe(() => {
 });
 
 // ---------- ticker ----------
+let tickerHtml = '';
 function ticker() {
   const el = document.querySelector('.ticker-track');
   if (!el) return;
@@ -317,7 +336,8 @@ function ticker() {
   const picks = rankedBankers(todayEvents(state.events), { cal: trackCalibration(), min: 0.6, limit: 10 }).map((b) => `<span>${sportOf(b.event.sport).icon} ${esc(b.pick)} <b>${odd(b.odds)}</b> <small>${pc(b.p, 0)}</small></span>`);
   const next = [...state.events].filter((e) => !e.live).sort((a, b) => a.start - b.start).slice(0, 10).map((e) => `<span>${sportOf(e.sport).icon} ${esc(e.home)} v ${esc(e.away)}</span>`);
   const items = [...live, ...picks, ...next];
-  el.innerHTML = items.length ? items.join('') + items.join('') : '<span>ATLAS · connecting feeds</span>';
+  const html = items.length ? items.join('') + items.join('') : '<span>ATLAS · connecting feeds</span>';
+  if (html !== tickerHtml) { tickerHtml = html; el.innerHTML = html; }
 }
 
 // ---------- calculator ----------
@@ -468,14 +488,16 @@ document.addEventListener('submit', (e) => {
 
 // Clocks: countdowns + "updated Xs ago".
 setInterval(() => {
-  document.querySelectorAll('[data-start]').forEach((el) => { el.textContent = countdown(Number(el.dataset.start)); });
+  const put = (el, t) => { if (el.textContent !== t) el.textContent = t; };
+  document.querySelectorAll('[data-start]').forEach((el) => put(el, countdown(Number(el.dataset.start))));
   const s = Math.max(0, Math.round((Date.now() - (state.fetchedAt || Date.now())) / 1000));
-  document.querySelectorAll('[data-ago]').forEach((el) => { el.textContent = s < 60 ? `${s}s ago` : `${Math.round(s / 60)}m ago`; });
+  document.querySelectorAll('[data-ago]').forEach((el) => put(el, s < 60 ? `${s}s ago` : `${Math.round(s / 60)}m ago`));
 }, 1000);
 
 // Header compacts on scroll, hides while scrolling down.
 let lastY = 0;
 addEventListener('scroll', () => {
+  lastScroll = performance.now();
   document.body.classList.toggle('scrolled', scrollY > 40);
   document.body.classList.toggle('hide-bar', scrollY > lastY && scrollY > 400);
   lastY = scrollY;

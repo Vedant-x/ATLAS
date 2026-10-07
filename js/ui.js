@@ -143,13 +143,17 @@ export function split(text) {
 
 // Big titles never run off a small screen: shrink a title until its longest word fits its box
 // (long names like "AUGER-ALIASSIME" or "SINGAPORE" on a 360 px phone).
+// Text width scales with font size, so one measurement gives the size that fits: all headings are
+// read in one layout pass and then written, instead of shrinking step by step with a layout each step.
 export function fitTitles(root = document) {
-  root.querySelectorAll('h1').forEach((h) => {
-    h.style.fontSize = '';
+  const hs = [...root.querySelectorAll('h1')];
+  hs.forEach((h) => { h.style.fontSize = ''; });
+  const sizes = hs.map((h) => {
     const box = h.clientWidth;
-    if (!box) return;
-    let size = parseFloat(getComputedStyle(h).fontSize);
-    const widest = () => Math.max(0, ...[...h.querySelectorAll('.word')].map((w) => w.scrollWidth));
-    for (let i = 0; i < 14 && widest() > box && size > 16; i++) { size *= 0.9; h.style.fontSize = `${size}px`; }
+    if (!box) return 0;
+    const size = parseFloat(getComputedStyle(h).fontSize);
+    const widest = Math.max(0, ...[...h.querySelectorAll('.word')].map((w) => w.scrollWidth));
+    return widest > box && size > 16 ? Math.max(16, (size * box) / widest * 0.98) : 0;
   });
+  hs.forEach((h, i) => { if (sizes[i]) h.style.fontSize = `${sizes[i].toFixed(1)}px`; });
 }
