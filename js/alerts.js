@@ -93,6 +93,8 @@ const ICON = KIND_ICON;
 export const followed = () => new Set([...watched, ...slip.legs.map((l) => l.eventId)]);
 // A live moment (goal, card, half-time, full time): a system notification titled with the scoreline,
 // or a toast while ATLAS is in view.
+// Android shows the badge in the status bar as a white silhouette, so it must be white on transparent.
+const BADGE = 'icons/badge-96.png';
 const MOMENT_ICON = { card: '🟨', period: '⏸', final: '🏁' };
 const SCORE_ICON = { football: '⚽', hockey: '🏒', baseball: '⚾', basketball: '🏀', americanfootball: '🏈', rugby: '🏉', cricket: '🏏' };
 export function showMoment(m) {
@@ -100,7 +102,7 @@ export function showMoment(m) {
   toast({ id: m.id, kind: m.kind, text: `${m.title} · ${m.body}` }, icon);
   if (document.visibilityState === 'visible' && document.hasFocus()) return;
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
-  const opts = { body: `${icon} ${m.body}`, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: m.key, renotify: true, data: { url: `#/match/${m.id}` } };
+  const opts = { body: `${icon} ${m.body}`, icon: 'icons/icon-192.png', badge: BADGE, vibrate: [90, 50, 90], tag: m.key, renotify: true, data: { url: `#/match/${m.id}` } };
   navigator.serviceWorker?.getRegistration().then((r) => (r ? r.showNotification(m.title, opts) : new Notification(m.title, opts))).catch(() => {});
 }
 export const notifyPermission = () => ('Notification' in window ? Notification.permission : 'unsupported');
@@ -127,7 +129,7 @@ function notify(m) {
   setTimeout(() => t.classList.add('out'), 7000);
   setTimeout(() => t.remove(), 7600);
   if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-    const opts = { body: m.text, icon: 'icons/icon-192.png', tag: `${m.id}:${m.kind}`, data: { url: `#/match/${m.id}` } };
+    const opts = { body: m.text, icon: 'icons/icon-192.png', badge: BADGE, tag: `${m.id}:${m.kind}`, data: { url: `#/match/${m.id}` } };
     navigator.serviceWorker?.getRegistration().then((r) => (r ? r.showNotification('ATLAS', opts) : new Notification('ATLAS', opts))).catch(() => {});
   }
 }

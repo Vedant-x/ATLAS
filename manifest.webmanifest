@@ -1,21 +1,85 @@
 {
+  "id": "./",
   "name": "ATLAS Sports Intelligence",
   "short_name": "ATLAS",
-  "description": "Live fixtures, margin-free probabilities, injuries, starters, slips and an AI analyst for every sport.",
+  "description": "Live fixtures, win chances, player props, slips and live alerts for every sport.",
+  "lang": "en",
   "start_url": "./#/",
   "scope": "./",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#040406",
   "theme_color": "#040406",
-  "categories": ["sports"],
+  "categories": [
+    "sports"
+  ],
+  "prefer_related_applications": false,
   "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/badge-96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "monochrome"
+    }
   ],
   "shortcuts": [
-    { "name": "Bankers", "url": "./#/bankers" },
-    { "name": "Edge board", "url": "./#/edge" },
-    { "name": "Multipliers", "url": "./#/x/2" }
+    {
+      "name": "Live",
+      "url": "./#/live",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Watchlist",
+      "url": "./#/watchlist",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Bankers",
+      "url": "./#/bankers",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Results",
+      "url": "./#/track",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
   ]
 }

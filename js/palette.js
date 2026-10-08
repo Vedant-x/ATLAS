@@ -60,6 +60,7 @@ export function mountPalette(state) {
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
     if ((e.key === 'k' || e.key === 'K') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); el.hidden ? open() : close(); }
     else if (e.key === '/' && !typing && el.hidden) { e.preventDefault(); open(); }
+    else if (e.key === 'Escape' && !el.hidden) close();
   });
   document.addEventListener('click', (e) => { if (e.target.closest('[data-palette]')) { e.preventDefault(); open(); } });
   return { open, close };

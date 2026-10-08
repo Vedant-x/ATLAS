@@ -1,5 +1,6 @@
 import { ico, watchLabel, pinLabel } from './icons.js';
 import { mountPalette } from './palette.js';
+import { backClosesPanels } from './back.js';
 import { mountAssistant } from './assistant/ui.js';
 import { legalViews, ageGate } from './legal.js';
 import { trackViews } from './trackview.js';
@@ -79,6 +80,7 @@ const state = {
 bind(state);
 bindResearch(state);
 mountPalette(state);
+backClosesPanels();
 state.refresh = () => softRender();
 state.scene = scene;
 loadF1().then((d) => { if (d && ['home', 'sports'].includes(parse().name)) softRender(); });
@@ -504,11 +506,30 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
   }).catch(() => {}), 3000));
 }
 let installEvt = null;
-addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; document.querySelectorAll('[data-install]').forEach((b) => { b.hidden = false; }); });
+// Phones and tablets (Android Chrome, Samsung Internet, Edge): a small card offers to install ATLAS
+// as an app once the visitor has had a look around; "Not now" hides it for two weeks.
+const LATER = 'atlas-install-later';
+const installCard = () => {
+  let later = 0;
+  try { later = Number(localStorage.getItem(LATER)) || 0; } catch { /* storage blocked */ }
+  if (!installEvt || !matchMedia('(pointer: coarse)').matches || Date.now() - later < 14 * 864e5 || document.querySelector('.install-card')) return;
+  const card = document.createElement('div');
+  card.className = 'install-card';
+  card.innerHTML = '<img src="icons/icon-192.png" alt="" width="40" height="40"><p><b>Install ATLAS</b><small>Opens like an app, with live alerts</small></p><button class="install-go" data-install>Install</button><button class="install-x" data-install-later aria-label="Not now">Not now</button>';
+  document.body.append(card);
+};
+const hideInstall = () => { document.querySelectorAll('[data-install]').forEach((b) => { b.hidden = true; }); document.querySelector('.install-card')?.remove(); };
+addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault(); installEvt = e;
+  document.querySelectorAll('[data-install]').forEach((b) => { b.hidden = false; });
+  setTimeout(installCard, 20000);
+});
+addEventListener('appinstalled', () => { installEvt = null; hideInstall(); });
 document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-install-later]')) { try { localStorage.setItem(LATER, String(Date.now())); } catch { /* storage blocked */ } hideInstall(); return; }
   if (!e.target.closest('[data-install]') || !installEvt) return;
   installEvt.prompt();
-  installEvt.userChoice.finally(() => { installEvt = null; document.querySelectorAll('[data-install]').forEach((b) => { b.hidden = true; }); });
+  installEvt.userChoice.finally(() => { installEvt = null; hideInstall(); });
 });
 
 // ---------- boot ----------
