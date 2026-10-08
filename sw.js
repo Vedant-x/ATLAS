@@ -29,5 +29,10 @@ self.addEventListener('fetch', (e) => {
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
   const url = new URL(`./${e.notification.data?.url || ''}`, self.registration.scope).href;
-  e.waitUntil(self.clients.matchAll({ type: 'window' }).then((cs) => { const c = cs[0]; return c ? c.navigate(url).then((w) => w?.focus()) : self.clients.openWindow(url); }));
+  // Bring the open app forward on that match (Android: the installed app or a Chrome tab), or open it.
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
+    const c = cs.find((x) => x.focused) || cs.find((x) => x.visibilityState === 'visible') || cs[0];
+    if (!c) return self.clients.openWindow(url);
+    return c.focus().then((w) => (w || c).navigate(url)).catch(() => self.clients.openWindow(url));
+  }));
 });

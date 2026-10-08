@@ -1032,6 +1032,20 @@ p a:not(.btn):not(.more), .rec-line a, .lede a, .note a, .muted a { text-decorat
   nav.top a:not([data-mobile]), nav.top .nav-sep { display: none; }
 }
 @media (min-width: 821px) and (max-width: 1279px) { nav.top a[data-rail] { display: none; } nav.top { gap: clamp(8px, 1.4vw, 22px); } }
+/* Tablets, phones held sideways and small laptops (821–1279 px): the header row always fits. The
+   menu takes the room left and scrolls sideways if it must; Search, Display and Slip stay on screen
+   (the 3D switch is in Display settings). */
+@media (min-width: 821px) and (max-width: 1279px) {
+  .bar { gap: 14px; }
+  nav.top { flex: 0 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; font-size: 11.5px; letter-spacing: .8px; padding-bottom: 4px; }
+  nav.top::-webkit-scrollbar { display: none; }
+  @media (max-width: 999px) { nav.top { mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); } }
+  nav.top a { flex: none; white-space: nowrap; }
+  .bar > button { flex: none; }
+  .bar .fx-btn { display: none; }
+  .bar .set-btn span, .bar .search-btn kbd { display: none; }
+  .bar .set-btn { width: 38px; height: 38px; padding: 0; }
+}
 @media (max-width: 600px) { .set-btn span { display: none; } }
 /* Today: the research workspace starts above the fold; the title is a header, not a poster. */
 .hero.compact.today { min-height: 0; padding: 96px 0 6px; }
@@ -1241,3 +1255,13 @@ body.scrolled .bar { height: 52px; padding-block: 0; }
 .props-list .pp b { display: block; font-size: 14.5px; }
 .props-list .pp small { color: var(--muted, #9aa3ad); font-size: 11.5px; }
 .props-list .pp-p { font: 700 14px var(--mono); font-variant-numeric: tabular-nums; }
+
+/* Install card (phones and tablets): sits above the bottom bar. */
+.install-card { position: fixed; left: 12px; right: 12px; bottom: calc(92px + env(safe-area-inset-bottom)); z-index: 75; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line2); border-radius: 16px; background: #0e0e14; box-shadow: 0 12px 40px rgba(0,0,0,.6); max-width: 480px; margin-inline: auto; animation: toast-in .35s var(--ease); }
+.install-card img { border-radius: 10px; flex: none; }
+.install-card p { margin: 0; flex: 1; min-width: 0; }
+.install-card b { display: block; font-size: 14px; }
+.install-card small { color: var(--muted); font-size: 12px; }
+.install-card .install-go { flex: none; padding: 9px 14px; border-radius: 999px; background: var(--accent); color: #000; font: 700 13px var(--sans); }
+.install-card .install-x { flex: none; padding: 9px 6px; color: var(--muted); font: 600 12px var(--sans); }
+@media (min-width: 821px) { .install-card { bottom: 20px; } }
