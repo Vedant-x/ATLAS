@@ -17,11 +17,11 @@ import { prefs, prefEvents } from './prefs.js';
 import { liveWin } from './live.js';
 import { watch } from './alerts.js';
 import { trackCard, trackStats, trackCalibration, recordLine, ensureTrack, slipHistory, officialSlip } from './trackview.js';
-import { rankedBankers, slipPolicy, MAX_ODDS } from './track.js';
+import { rankedBankers, slipPolicy, MAX_ODDS, calibrated } from './track.js';
 import { propLabel, propMarket } from './props.js';
 import { coherentBets } from './picks.js';
 import { mergeEvent } from './merge.js';
-import { casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips } from './research.js';
+import { casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips, changesPanel } from './research.js';
 import { readiness } from './readiness.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -507,8 +507,6 @@ function dashboard(ev, live) {
     value: `No qualifying selection: every price in the next ${hrs} hours is at or below ATLAS's estimate.`,
     evidence: `No qualifying selection: no 60%+ pick in the next ${hrs} hours has all its inputs confirmed yet (starters, lineups, a fresh price).` }[mode];
   const rec = recordLine(trackStats()?.byType.find((r) => r.key === 'banker'));
-  const changes = ev.flatMap((e) => ['home', 'away'].flatMap((sd) => (e.absences?.[sd] || []).map((x) => ({ e, team: sd === 'home' ? e.home : e.away, ...x }))))
-    .filter((x) => x.updated).sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated)).slice(0, 6);
   return `<section class="dash">
     <div class="panel dash-short reveal"><h2 class="ph">Shortlist <small>${when2} · ${MODES.find((m) => m[0] === mode)[2]}</small></h2>
       <div class="win-chips" role="group" aria-label="Rank by">${MODES.map(([k, l]) => `<button class="chip ${mode === k ? 'on' : ''}" data-smode="${k}" aria-pressed="${mode === k}">${l}</button>`).join('')}</div>
@@ -517,8 +515,7 @@ function dashboard(ev, live) {
       <div class="minilist">${short.map((b) => miniPick(b)).join('') || `<p class="muted">${empty}</p>`}</div>${prefsBar()}</div>
     <div class="panel dash-live reveal"><h2 class="ph">Live now <small>${live.length}</small></h2>
       ${live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${esc(e.score || '')}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>
-    <div class="panel dash-changes reveal"><h2 class="ph">Latest absences <small>soccer · FotMob</small></h2>
-      ${changes.length ? `<ul class="dash-list">${changes.map((x) => `<li><a href="#/match/${esc(x.e.id)}"><b>${esc(x.name)}</b> (${esc(x.team)}) · ${esc(x.injury || x.type)}</a><small>${[x.expectedReturn && `back ${esc(x.expectedReturn)}`, `updated ${ago(Date.parse(x.updated))}`].filter(Boolean).join(' · ')}</small></li>`).join('')}</ul>` : '<p class="muted">No recent absence updates.</p>'}</div>
+    ${changesPanel(ev, { title: 'Since your last visit', limit: 6 })}
     ${trackCard(() => S.refresh?.())}
     <div class="panel dash-health reveal"><h2 class="ph">Source health</h2>${sourceHealth(ev)}</div>
   </section>`;
@@ -580,13 +577,15 @@ export function matchBestBets(e, a) { return coherentBets(e, a, { cal: trackCali
 // Player props for this match (DraftKings milestones and anytime scorers), likeliest first.
 function propsPanel(e) {
   if (!e.props?.length) return '';
-  const rows = [...e.props].filter((x) => x.odds >= 1.2).sort((a, b) => b.p - a.p).slice(0, 16);
+  const cal = trackCalibration();
+  const rows = e.props.map((x) => ({ ...x, p: calibrated(x.p, propMarket(x), cal, e.sport) })).filter((x) => x.odds >= 1.2).sort((a, b) => b.p - a.p).slice(0, 16);
   if (!rows.length) return '';
   return `<section class="sec-block" id="sec-props"><h2 class="sec reveal">Player props <small>${e.live ? 'pre-match prices · ' : ''}DraftKings lines · tap to add</small></h2>
     <div class="panel reveal props-list">${rows.map((x) => {
       const leg = { key: `${e.id}|${propMarket(x)}|${propLabel(x)}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: propMarket(x), pick: propLabel(x), odds: x.odds, p: x.p };
       const team = x.side === 'home' ? e.home : x.side === 'away' ? e.away : '';
-      return `<div class="pp"><div><b>${esc(propLabel(x))}</b><small>${esc(team)}</small></div><span class="pp-p">${pc(x.p, 0)}</span>${legButton(leg, odd(x.odds))}</div>`;
+      const form = x.form ? ` · last ${x.form.n}: ${x.form.hits}/${x.form.n} (avg ${x.form.avg})` : '';
+      return `<div class="pp"><div><b>${esc(propLabel(x))}</b><small>${esc(team)}${form}</small></div><span class="pp-p">${pc(x.p, 0)}</span>${legButton(leg, odd(x.odds))}</div>`;
     }).join('')}</div></section>`;
 }
 
@@ -602,12 +601,22 @@ function bestBetsPanel(e, a) {
     }).join('')}</div></section>`;
 }
 
+// What a pick is still waiting for (starters, lineups, a fresh price), shown beside it; nothing when
+// every input its sport needs is in.
+function pendingInputs(e) {
+  if (e.live) return '';
+  const r = readiness(e, { priceAt: e.fetchedAt || S.fetchedAt });
+  if (r.state === 'ready' || (r.state === 'limited' && !e.stale)) return ''; // limited = the sport's coverage, not a missing input
+  const missing = r.checks.filter((c) => c.ok === false).slice(0, 2).map((c) => (c.key === 'price' ? `price ${c.note}` : c.label.toLowerCase()));
+  return `<small class="mini-wait ready-${r.state}">${e.stale ? 'Feed down · ' : ''}${missing.length ? `Check: ${esc(missing.join(', '))}` : esc(r.label)}</small>`;
+}
+
 function miniPick(b) {
   const s = sportOf(b.event.sport);
   const leg = { key: `${b.event.id}|${b.market}|${b.pick}`, eventId: b.event.id, sport: b.event.sport, match: `${b.event.home} vs ${b.event.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p };
   const edge = `${b.ev >= 0 ? '+' : ''}${(b.ev * 100).toFixed(1)}%`;
   return `<div class="mini reveal"><span class="mini-ico">${s.icon}</span>
-    <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(b.event.home)} v ${esc(b.event.away)}</small>${b.event.live ? '<small class="live">LIVE</small>' : istTag(b.event.start)}</a>
+    <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(b.event.home)} v ${esc(b.event.away)}</small>${b.event.live ? '<small class="live">LIVE</small>' : istTag(b.event.start)}${pendingInputs(b.event)}</a>
     <div class="mini-nums"><span><small>ATLAS</small><b>${pc(b.p, 0)}</b></span>${b.fair != null ? `<span><small>Market</small><b>${pc(b.fair, 0)}</b></span>` : ''}<span><small>Break-even</small><b>${pc(1 / b.odds, 0)}</b></span><span><small>Edge</small><b class="${b.ev >= 0 ? 'pos' : 'neg'}">${edge}</b></span></div>
     ${legButton(leg, odd(b.odds))}</div>`;
 }

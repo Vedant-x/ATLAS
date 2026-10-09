@@ -113,7 +113,7 @@ export function parseScoreboard(json, league) {
         },
         lineups: null,
         colors: { home: homeC.team?.color ? `#${homeC.team.color}` : null, away: awayC.team?.color ? `#${awayC.team.color}` : null },
-        leaguePath: league.path, compId: String(comp.id || ev.id), group: league.group,
+        leaguePath: league.path, compId: String(comp.id || ev.id), eventId: String(ev.id), group: league.group,
         venue: comp.venue?.fullName || null,
         broadcast: comp.broadcast || (comp.broadcasts || []).flatMap((b) => b.names || []).join(', ') || null,
         note: comp.notes?.[0]?.headline || ev.season?.slug || null,
