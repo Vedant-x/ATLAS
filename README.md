@@ -30,6 +30,7 @@ public track record. Static site on GitHub Pages; free to run, no keys.
 | ESPN public APIs | Fixtures, scores, odds and match summaries for 150+ competitions, cricket, F1 schedule; DraftKings player props (NBA, WNBA, MLB, NHL, soccer) |
 | MLB Stats API | Probable starters, pitcher reports, injured list |
 | npb.jp, koreabaseball.com | NPB and KBO schedules, starters and pitcher lines |
+| KHL app feed (khl.api.webcaster.pro) | KHL schedule, live scores, results and records |
 | FotMob | Soccer injuries, suspensions and line-ups |
 | bo3.gg, EsportsBattle | Esports (CS2, Valorant, LoL, Dota 2) and eFootball |
 | Jolpica, OpenF1 | F1 results, standings and live timing |

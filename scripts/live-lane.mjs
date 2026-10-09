@@ -5,6 +5,7 @@
 import { writeFile } from 'node:fs/promises';
 import { parseNpbScoreboard, kboLive } from '../js/asia-live.js';
 import { BO3, ESB, bo3Live, esbLive } from '../js/esports.js';
+import { KHL_API, khlLive } from '../js/khl.js';
 
 const out = process.argv[2] || 'live.json';
 const UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36' };
@@ -23,6 +24,11 @@ const lanes = [
     headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest', Referer: 'https://www.koreabaseball.com/Schedule/GameCenter/Main.aspx', Origin: 'https://www.koreabaseball.com' },
     body: `leId=1&srId=0%2C1%2C3%2C4%2C5%2C6%2C7%2C8%2C9&date=${ymd}`,
   })).game || [])],
+  // KHL: games from 6 hours ago to the next hour (live ones and those just finished).
+  ['KHL', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    return JSON.parse(await get(`${KHL_API}events_v2?q[start_at_gt_time_from_unixtime]=${now - 6 * 3600}&q[start_at_lt_time_from_unixtime]=${now + 3600}&order_direction=asc`)).map(khlLive);
+  }],
   // Every live series plus the ones that finished in the last hours (so they leave the board).
   ['bo3.gg', async () => {
     const [cur, fin] = await Promise.all([

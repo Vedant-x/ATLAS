@@ -530,6 +530,7 @@ function sourceHealth(ev) {
     ['ESPN scoreboards', espn.length, newest(espn, (e) => e.fetchedAt), 'fixtures, scores, reference odds'],
     ['NPB official', ev.filter((e) => e.leaguePath === 'atlas/npb').length, newest(ev.filter((e) => e.leaguePath === 'atlas/npb'), (e) => e.fetchedAt), 'schedule, starters'],
     ['KBO official', ev.filter((e) => e.leaguePath === 'atlas/kbo').length, newest(ev.filter((e) => e.leaguePath === 'atlas/kbo'), (e) => e.fetchedAt), 'schedule, starters'],
+    ['KHL official', ev.filter((e) => e.leaguePath === 'atlas/khl').length, newest(ev.filter((e) => e.leaguePath === 'atlas/khl'), (e) => e.fetchedAt), 'schedule, live scores, records'],
     ['MLB Stats API', reports.length, newest(reports, (r) => r.fetchedAt), 'starter reports'],
     ['FotMob', ev.filter((e) => e.absences).length, newest(ev, (e) => e.absences?.fetchedAt), 'soccer absences'],
   ];

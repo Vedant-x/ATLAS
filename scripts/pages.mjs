@@ -19,6 +19,7 @@ import { mkdir, copyFile, cp, writeFile, rm, readFile } from 'node:fs/promises';
 import { fetchAll, LEAGUES, fetchErrors, leagueStatus } from '../js/espn.js';
 import { leagueByPath } from '../js/catalog.js';
 import { CORE, PROVIDER, PROP_STATS, parseProps, gamelogRows, formFor, blendForm, hasForm } from '../js/props.js';
+import { KHL_API, khlEvent, khlRecords } from '../js/khl.js';
 import { toDecimal } from '../js/espn.js';
 
 const out = 'dist/pages';
@@ -615,6 +616,32 @@ async function playerProps(events) {
   for (const e of due.filter((x) => x.props?.length).slice(0, 3)) log(`  PROPS ${e.away} @ ${e.home}: ${e.props.slice(0, 4).map((x) => `${x.player} ${x.target}+ ${x.label} @${x.odds}`).join(' · ')}`);
 }
 
+// ---------- KHL ----------
+// The KHL's app feed (khl.api.webcaster.pro): the next 7 days in one-day windows (the feed returns at
+// most 16 games per request), plus the season's results so far for each club's record and form.
+async function khl() {
+  const getJson = async (u) => JSON.parse(await get(u));
+  const now = Math.floor(Date.now() / 1000), day = 86400;
+  const seen = new Map();
+  for (let d = -0.5; d < 7; d += 1) {
+    const list = await getJson(`${KHL_API}events_v2?q[start_at_gt_time_from_unixtime]=${Math.floor(now + d * day)}&q[start_at_lt_time_from_unixtime]=${Math.floor(now + (d + 1) * day)}&order_direction=asc`);
+    for (const x of list) seen.set(x.event.id, x);
+  }
+  const finished = [];
+  for (let page = 1; page <= 30; page++) {
+    const list = await getJson(`${KHL_API}events_v2?q[start_at_lt_time_from_unixtime]=${now}&order_direction=desc&page=${page}`);
+    if (!list.length) break;
+    finished.push(...list);
+    if (list.some((x) => x.event.stage_name && !/2026\/2027|2026-2027/.test(x.event.stage_name))) break; // previous season reached
+  }
+  const season = finished.filter((x) => /2026\/2027|2026-2027/.test(x.event.stage_name || ''));
+  const records = khlRecords(season);
+  const events = [...seen.values()].filter((x) => x.event.game_state_key !== 'finished').map((x) => khlEvent(x, records));
+  log(`KHL: ${events.length} games in the next 7 days (${events.filter((e) => e.live).length} live), records from ${season.length} results`);
+  if (!events.length) throw new Error('no fixtures returned');
+  return events;
+}
+
 // ---------- MMA odds ----------
 // ESPN's MMA scoreboard carries no prices, but its core odds feed has DraftKings moneylines for each
 // bout. That feed's "home"/"away" doesn't follow the scoreboard's fighter order, so the favourite is
@@ -694,13 +721,14 @@ const cricket = async () => {
 // Sources that failed this build: their fixtures are carried over from the last good snapshot below.
 const failedSources = new Set();
 const fail = (src, msg) => (e) => { failedSources.add(src); log(`${msg} failed`, e.message); problems.push(`${msg} failed: ${e.message}`); return []; };
-const [espn, npbEvents, kboEvents, cricketEvents, esportsEvents, esoccerEvents] = await Promise.all([
+const [espn, npbEvents, kboEvents, cricketEvents, esportsEvents, esoccerEvents, khlEvents] = await Promise.all([
   fetchAll(AbortSignal.timeout(720000), ordered, { days: 4, concurrency: 3 }).catch((e) => { log('ESPN failed', e.message); problems.push(`ESPN scoreboards failed entirely: ${e.message}`); return []; }),
   npb().catch(fail('atlas/npb', 'NPB (Japan) schedule')),
   kbo().catch(fail('atlas/kbo', 'KBO (Korea) schedule')),
   cricket().catch(fail('atlas/cricket', 'Cricket feed')),
   esports().catch((e) => { log('Esports failed', e.message); problems.push(`Esports feed (bo3.gg) failed: ${e.message}`); return []; }),
   esoccer().catch((e) => { log('eSoccer failed', e.message); problems.push(`eSoccer feed (EsportsBattle) failed: ${e.message}`); return []; }),
+  khl().catch(fail('atlas/khl', 'KHL feed')),
 ]);
 // Days 5 to 7 for the most-followed leagues, best effort, so 10x and bigger slips (which may use any
 // match in the next 7 days, track.js slipPolicy) have a full week to choose from.
@@ -712,7 +740,7 @@ const [espn, npbEvents, kboEvents, cricketEvents, esportsEvents, esoccerEvents] 
   log(`ESPN days 5-7: ${added.length} more events`);
 }
 // Known leagues only, and no stale fixtures: a game that started 12+ hours ago and isn't live is over.
-const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents, ...esportsEvents, ...esoccerEvents].filter((e) => leagueByPath(e.leaguePath) && (e.live || !(e.start < Date.now() - 12 * 36e5)));
+const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents, ...esportsEvents, ...esoccerEvents, ...khlEvents].filter((e) => leagueByPath(e.leaguePath) && (e.live || !(e.start < Date.now() - 12 * 36e5)));
 
 // Carry-forward: start from the previously published snapshot and restore anything a source has
 // since dropped for a match that hasn't finished: announced starters (the NPB page shows only one

@@ -57,7 +57,8 @@ export function applyAsiaLive(events, live, now = Date.now()) {
     if (g.status === 'final' || g.status === 'cancelled') { changed = true; continue; }
     const next = { ...e, live: g.status === 'live', score: g.score ?? e.score, clock: g.clock || e.clock, period: g.period ?? e.period, fetchedAt: live.at || now };
     if (g.maps && e.esports) next.esports = { ...e.esports, maps: g.maps };
-    if (next.live !== e.live || next.score !== e.score || next.clock !== e.clock || JSON.stringify(g.maps || null) !== JSON.stringify(g.maps ? e.esports?.maps : null)) changed = true;
+    if (g.lines !== undefined) next.lines = next.live ? g.lines : null;
+    if (next.live !== e.live || next.score !== e.score || next.clock !== e.clock || JSON.stringify(next.lines || null) !== JSON.stringify(e.lines || null) || JSON.stringify(g.maps || null) !== JSON.stringify(g.maps ? e.esports?.maps : null)) changed = true;
     out.push(next);
   }
   return changed ? out : null;
