@@ -146,7 +146,7 @@ export function bankers(events, { min = 0.7, limit = 24, minOdds = 1, cushions =
     // Player props (milestones, anytime scorers): one-way prices, chance net of the margin.
     for (const pr of e.props || []) {
       if (pr.p < min || pr.odds < minOdds) continue;
-      out.push({ event: e, market: propMarket(pr), pick: propLabel(pr), odds: pr.odds, p: pr.p, fair: pr.p, ev: pr.p * pr.odds - 1, agree: null,
+      out.push({ event: e, market: propMarket(pr), pick: propLabel(pr), odds: pr.odds, p: pr.p, fair: pr.pm ?? pr.p, ev: pr.p * pr.odds - 1, agree: pr.form ? pr.p >= (pr.pm ?? pr.p) : null,
         prop: { id: pr.id, type: pr.type, target: pr.target } });
     }
   }

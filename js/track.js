@@ -22,7 +22,9 @@ export const inRecord = (h) => h.type === 'banker' && h.odds >= MIN_ODDS && h.od
 //   quarter of the shortlist.
 // 2026.10.4: player props (DraftKings milestones and anytime scorers via ESPN) as their own bet type,
 //   graded from the box score.
-export const MODEL_VERSION = '2026.10.4';
+// 2026.10.5: player props use each player's last 10 games (blended with the price), not the price
+//   alone; UFC bouts priced from ESPN's core odds feed.
+export const MODEL_VERSION = '2026.10.5';
 
 // Market families the track record learns from: winner, 1X2 result, spread/handicap, totals.
 export const familyOf = (market = '') => (/^Player /.test(market) ? 'prop' : /^Total/.test(market) ? 'total' : market === 'Spread' ? 'spread' : market === 'Match Result' ? 'result' : 'winner');

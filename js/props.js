@@ -59,7 +59,7 @@ export function parseProps(items, sport, who, { minOdds = 1.15, maxOdds = 3, per
     const key = `${id}|${def.label}|${target}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ id, player: p.name, side: p.side || null, type: String(x.type.name).replace(/ Milestones$/, ''), label: def.label, target, yes: def.target != null, odds: +odds.toFixed(2), p: +Math.min(0.97, (1 / odds) * (1 - MARGIN)).toFixed(4) });
+    out.push({ id, player: p.name, side: p.side || null, type: String(x.type.name).replace(/ Milestones$/, ''), label: def.label, target, yes: def.target != null, odds: +odds.toFixed(2), p: +Math.min(0.97, (1 / odds) * (1 - MARGIN)).toFixed(4), pm: +Math.min(0.97, (1 / odds) * (1 - MARGIN)).toFixed(4) });
   }
   return out.sort((a, b) => b.p - a.p).slice(0, perEvent);
 }
@@ -125,3 +125,46 @@ export function gradeProp(prop, sport, box) {
   }
   return v >= prop.target ? 'won' : 'lost';
 }
+
+// ---------- player form ----------
+// Each prop type as columns of ESPN's player game log (…/athletes/{id}/gamelog), which names its
+// columns differently from the box score. Types missing here (goalie saves, soccer) use the price.
+const G = {
+  basketball: { Points: ['points'], Rebounds: ['totalRebounds'], Assists: ['assists'], '3-Point Field Goals': ['threePointFieldGoalsMade-threePointFieldGoalsAttempted'],
+    'Points + Assists + Rebounds': ['points', 'totalRebounds', 'assists'], 'Points + Assists': ['points', 'assists'], 'Points + Rebounds': ['points', 'totalRebounds'],
+    'Rebounds + Assists': ['totalRebounds', 'assists'], Steals: ['steals'], Blocks: ['blocks'] },
+  baseball: { Hits: ['hits'], Runs: ['runs'], RBIs: ['RBIs'], 'Home Runs': ['homeRuns'], 'Hits + Runs + RBIs': ['hits', 'runs', 'RBIs'], 'Runs + RBIs': ['runs', 'RBIs'], 'Walks (Batter)': ['walks'] },
+  hockey: { Points: ['goals', 'assists'], Goals: ['goals'], Assists: ['assists'], 'Shots on Goal': ['shotsTotal'], 'Anytime Goalscorer': ['goals'] },
+  football: { 'Passing Yards': ['passingYards'], 'Rushing Yards': ['rushingYards'], 'Receiving Yards': ['receivingYards'], Receptions: ['receptions'],
+    'Rushing + Receiving Yards': ['rushingYards', 'receivingYards'], 'Passing Touchdown': ['passingTouchdowns'], 'Anytime Touchdown Scorer': ['rushingTouchdowns', 'receivingTouchdowns'] },
+};
+// The player's last `n` games (regular season and playoffs, newest first) as { name: value } rows.
+export function gamelogRows(g, n = 10) {
+  const names = g?.names || [];
+  const rows = [];
+  for (const st of g?.seasonTypes || []) {
+    if (/preseason/i.test(st.displayName || '')) continue;
+    for (const c of st.categories || []) {
+      for (const ev of c.events || []) {
+        const at = Date.parse(g.events?.[ev.eventId]?.gameDate || '') || null;
+        const row = {};
+        names.forEach((k, i) => { const v = parseFloat(String(ev.stats?.[i] ?? '').split(/[-/]/)[0]); if (Number.isFinite(v)) row[k] = v; });
+        rows.push({ at, row });
+      }
+    }
+  }
+  if (rows.every((r) => r.at)) rows.sort((a, b) => b.at - a.at);
+  return rows.slice(0, n).map((r) => r.row);
+}
+// How often the player reached this line in those games: { n, hits, avg } (null if the log can't say).
+export function formFor(sport, type, target, rows) {
+  const keys = G[sport]?.[type];
+  if (!keys || !rows?.length || !rows.every((r) => keys.every((k) => Number.isFinite(r[k])))) return null;
+  const vals = rows.map((r) => keys.reduce((s, k) => s + r[k], 0));
+  return { n: vals.length, hits: vals.filter((v) => v >= target).length, avg: +(vals.reduce((s, v) => s + v, 0) / vals.length).toFixed(1) };
+}
+// The chance: the price's chance as a prior worth K games, updated by the player's own recent games.
+// A player who cleared the line in 9 of his last 10 moves well above the price; 3 of 10 well below.
+const K = 8;
+export const blendForm = (market, form) => (form?.n ? +((form.hits + K * market) / (form.n + K)).toFixed(4) : market);
+export const hasForm = (sport, type) => Boolean(G[sport]?.[type]);

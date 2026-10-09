@@ -660,7 +660,7 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .dash { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; margin-top: 24px; }
 .dash > .panel { margin-top: 0; min-width: 0; }
 .dash-short { grid-column: span 4; grid-row: span 2; }
-.dash-live, .dash-changes { grid-column: span 2; }
+.dash-live, .dash-changes, .dash > .changes { grid-column: span 2; }
 .dash-health { grid-column: span 6; }
 .pchip { border: 1px solid var(--line2); border-radius: 999px; padding: 7px 13px; font: 700 12px var(--sans); background: var(--glass); color: var(--fg); transition: background .25s, color .25s, border-color .25s; }
 .pchip:hover { border-color: var(--accent); }
@@ -692,7 +692,7 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .inj-what small { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
 @media (max-width: 1000px) {
   .dash-short { grid-column: span 6; grid-row: auto; }
-  .dash-live, .dash-changes { grid-column: span 3; }
+  .dash-live, .dash-changes, .dash > .changes { grid-column: span 3; }
 }
 @media (max-width: 680px) {
   .dash { grid-template-columns: 1fr; gap: 12px; }
@@ -1266,3 +1266,12 @@ body.scrolled .bar { height: 52px; padding-block: 0; }
 .install-card .install-go { flex: none; padding: 9px 14px; border-radius: 999px; background: var(--accent); color: #000; font: 700 13px var(--sans); }
 .install-card .install-x { flex: none; padding: 9px 6px; color: var(--muted); font: 600 12px var(--sans); }
 @media (min-width: 821px) { .install-card { bottom: 20px; } }
+
+/* What a pick is still waiting for (beside it on the shortlist) */
+.mini-main .mini-wait { display: block; margin-top: 3px; font: 600 11px var(--sans); color: #ffb547; }
+.mini-main .mini-wait.ready-stale, .mini-main .mini-wait.ready-conflict { color: var(--loss); }
+
+/* A value that just changed on a live update */
+.flash { animation: val-flash 1.2s ease-out; }
+@keyframes val-flash { 0% { background-color: color-mix(in srgb, var(--accent) 35%, transparent); } 100% { background-color: transparent; } }
+@media (prefers-reduced-motion: reduce) { .flash { animation: none; } }

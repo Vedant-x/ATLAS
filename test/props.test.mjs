@@ -58,3 +58,20 @@ test('props join the shortlist as their own bet type', () => {
   assert.ok(b.some((x) => x.pick === 'Ivica Zubac 8+ points' && x.market === 'Player points' && x.prop?.target === 8));
   assert.equal(familyOf('Player points'), 'prop');
 });
+
+test('player form: the last 10 games (no preseason) move a prop away from its price', async () => {
+  const { gamelogRows, formFor, blendForm } = await import('../js/props.js');
+  // ESPN game log shape: names, seasonTypes[].categories[].events[] { eventId, stats }, events{id:{gameDate}}.
+  const names = ['minutes', 'points', 'totalRebounds', 'assists'];
+  const games = Array.from({ length: 12 }, (_, i) => ({ eventId: `g${i}`, stats: ['30', String(i < 9 ? 12 : 4), '8', '2'] }));
+  const g = { names, events: Object.fromEntries(games.map((x, i) => [x.eventId, { gameDate: new Date(Date.UTC(2026, 3, 30 - i)).toISOString() }])),
+    seasonTypes: [{ displayName: '2026-27 Preseason', categories: [{ events: [{ eventId: 'pre', stats: ['10', '0', '0', '0'] }] }] }, { displayName: '2025-26 Regular Season', categories: [{ events: games }] }] };
+  const rows = gamelogRows(g);
+  assert.equal(rows.length, 10, 'last 10, preseason left out');
+  const form = formFor('basketball', 'Points', 8, rows);
+  assert.deepEqual(form, { n: 10, hits: 9, avg: 11.2 });
+  const p = blendForm(0.6, form);
+  assert.ok(p > 0.7 && p < 0.9, `a player clearing the line 9 of 10 rates above the price (${p})`);
+  assert.ok(blendForm(0.6, formFor('basketball', 'Points', 13, rows)) < 0.35, 'one who never reached it rates well below');
+  assert.equal(formFor('hockey', 'Goalkeeper Saves', 20, rows), null, 'no game-log column: the price alone');
+});

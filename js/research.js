@@ -20,7 +20,7 @@ export function bindResearch(state) { S = state; }
 
 const read = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const write = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage blocked */ } };
-const ago = (t) => { if (!t) return '—'; const m = Math.round((Date.now() - t) / 6e4); return m < 1 ? 'now' : m < 60 ? `${m}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`; };
+const ago = (t) => { if (!t) return '—'; const m = Math.round((Date.now() - t) / 6e4); return m < 1 ? '<1 min' : m < 60 ? `${m}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`; };
 
 // ---------- one research row per match ----------
 export function researchRow(e) {

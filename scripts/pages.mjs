@@ -18,7 +18,8 @@ import { validateReport } from '../js/validate.js';
 import { mkdir, copyFile, cp, writeFile, rm, readFile } from 'node:fs/promises';
 import { fetchAll, LEAGUES, fetchErrors, leagueStatus } from '../js/espn.js';
 import { leagueByPath } from '../js/catalog.js';
-import { CORE, PROVIDER, PROP_STATS, parseProps } from '../js/props.js';
+import { CORE, PROVIDER, PROP_STATS, parseProps, gamelogRows, formFor, blendForm, hasForm } from '../js/props.js';
+import { toDecimal } from '../js/espn.js';
 
 const out = 'dist/pages';
 const UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', 'Accept-Language': 'en-US,en;q=0.9' };
@@ -586,7 +587,65 @@ async function playerProps(events) {
     }
   }));
   log(`Player props (DraftKings via ESPN): ${lines} lines on ${matched} of ${due.length} matches in the next 36h${failed ? `, ${failed} lookup(s) failed` : ''}`);
+  // Player form: each player's last 10 games from his ESPN game log. The chance blends the price's
+  // chance (worth 8 games) with how often he reached the line, so a prop is no longer just its price.
+  const logs = new Map();
+  const want = [];
+  for (const e of due) for (const pr of e.props || []) {
+    const [sport, league] = e.leaguePath.split('/');
+    if (hasForm(sport, pr.type) && !logs.has(`${league}|${pr.id}`) && want.length < 160) { logs.set(`${league}|${pr.id}`, null); want.push([sport, league, pr.id]); }
+  }
+  const q = [...want];
+  await Promise.all(Array.from({ length: 6 }, async () => {
+    while (q.length) {
+      const [sport, league, id] = q.shift();
+      try { logs.set(`${league}|${id}`, gamelogRows(await getJson(`https://site.web.api.espn.com/apis/common/v3/sports/${sport}/${league}/athletes/${id}/gamelog`))); } catch { /* price only */ }
+    }
+  }));
+  let formed = 0;
+  for (const e of due) {
+    const [sport, league] = e.leaguePath.split('/');
+    for (const pr of e.props || []) {
+      const form = formFor(sport, pr.type, pr.target, logs.get(`${league}|${pr.id}`));
+      if (form) { pr.form = form; pr.p = blendForm(pr.pm ?? pr.p, form); formed++; }
+    }
+    e.props?.sort((a, b) => b.p - a.p);
+  }
+  log(`Player form: ${[...logs.values()].filter(Boolean).length} of ${want.length} game logs, ${formed} props modelled from recent games`);
   for (const e of due.filter((x) => x.props?.length).slice(0, 3)) log(`  PROPS ${e.away} @ ${e.home}: ${e.props.slice(0, 4).map((x) => `${x.player} ${x.target}+ ${x.label} @${x.odds}`).join(' · ')}`);
+}
+
+// ---------- MMA odds ----------
+// ESPN's MMA scoreboard carries no prices, but its core odds feed has DraftKings moneylines for each
+// bout. That feed's "home"/"away" doesn't follow the scoreboard's fighter order, so the favourite is
+// identified by name from its "details" line ("M. Gatto -115") and the prices matched to our fighters.
+async function mmaOdds(events) {
+  const getJson = async (u) => JSON.parse(await get(u.replace(/^http:/, 'https:')));
+  const due = events.filter((e) => e.leaguePath?.startsWith('mma/') && !e.markets?.length && !e.live && e.eventId && e.start > Date.now() && e.start < Date.now() + 8 * 864e5);
+  const last = (s) => String(s || '').trim().split(/\s+/).pop().toLowerCase();
+  let priced = 0;
+  const q = [...due];
+  await Promise.all(Array.from({ length: 6 }, async () => {
+    while (q.length) {
+      const e = q.shift();
+      const [sport, league] = e.leaguePath.split('/');
+      try {
+        const it = (await getJson(`${CORE}/${sport}/leagues/${league}/events/${e.eventId}/competitions/${e.compId}/odds`)).items?.find((x) => x.homeAthleteOdds && x.awayAthleteOdds);
+        if (!it) continue;
+        const fav = [it.homeAthleteOdds, it.awayAthleteOdds].find((x) => x.favorite) ? (it.homeAthleteOdds.favorite ? it.homeAthleteOdds : it.awayAthleteOdds) : null;
+        const dog = fav === it.homeAthleteOdds ? it.awayAthleteOdds : it.homeAthleteOdds;
+        const favName = last(String(it.details || '').replace(/\s*[-+]?\d+\s*$/, ''));
+        const favSide = last(e.home) === favName ? 'home' : last(e.away) === favName ? 'away' : null;
+        const f = toDecimal(fav?.moneyLine), d = toDecimal(dog?.moneyLine);
+        if (!fav || !favSide || !f || !d) continue;
+        const odds = favSide === 'home' ? { home: f, away: d } : { home: d, away: f };
+        e.markets = [{ name: 'Winner', outcomes: [{ name: e.home, odds: odds.home }, { name: e.away, odds: odds.away }] }];
+        e.bookmaker = it.provider?.name || 'DraftKings';
+        priced++;
+      } catch { /* unpriced bout */ }
+    }
+  }));
+  log(`MMA odds (DraftKings via ESPN core): ${priced} of ${due.length} upcoming bouts priced`);
 }
 
 // ---------- build ----------
@@ -753,6 +812,7 @@ for (const e of events) for (const p of (e.probables || []).filter((x) => x.repo
   const r = p.report;
   log(`  SP ${r.league} ${r.name || '?'} (${e.away} @ ${e.home}) · ${r.throws || '?'}HP age ${r.age ?? '?'} · season ERA ${r.season?.era ?? '-'} WHIP ${r.season?.whip ?? '-'} K/9 ${r.season?.k9 ?? '-'} · career ERA ${r.career?.era ?? '-'} in ${r.career?.ip ?? '-'} IP · recent ${r.recent?.length || 0}${r.recent?.[0] ? ` (last: ${r.recent[0].date} ${r.recent[0].ip} IP ${r.recent[0].er} ER)` : ''} · form3 ${r.form3?.era ?? '-'} · splits ${r.splits?.length || 0} · years ${r.years?.length || 0} · vsOpp ${r.vsOpp ? r.vsOpp.avg ?? r.vsOpp.era : '-'} · inj ${r.injuries?.length || 0} · rest ${r.rest ?? '-'}${r.error ? ` · ERROR ${r.error}` : ''}`);
 }
+await mmaOdds(events).catch((e) => log('MMA odds failed', e.message));
 await playerProps(events).catch((e) => log('Player props failed', e.message));
 // Formula 1 weekend (its own file: a race is a field of 20+ drivers, not a two-sided match).
 {
