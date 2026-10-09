@@ -18,8 +18,14 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET' || url.origin !== location.origin) return;
   if (url.pathname.endsWith('/vendor/web-llm.mjs')) return; // large, versioned by the browser cache
   if (url.pathname.includes('/data/')) {
-    // Network first: always the newest snapshot; the last one if offline.
-    e.respondWith(fetch(req).then((res) => { const copy = res.clone(); caches.open(DATA).then((c) => c.put(req, copy)); return res; }).catch(() => caches.match(req)));
+    // Network first: always the newest snapshot. Only a good response is kept, under the file's
+    // name without the ?t= cache-buster, so the last good copy is served when the network or the
+    // server fails (an error page is never cached in its place).
+    const key = new Request(url.origin + url.pathname);
+    e.respondWith(fetch(req).then((res) => {
+      if (res.ok) { const copy = res.clone(); caches.open(DATA).then((c) => c.put(key, copy)); return res; }
+      return caches.open(DATA).then((c) => c.match(key)).then((hit) => hit || res);
+    }).catch(() => caches.open(DATA).then((c) => c.match(key)).then((hit) => hit || Response.error())));
     return;
   }
   // App shell: cache first for this build, filled as files are used.

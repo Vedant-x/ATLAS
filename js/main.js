@@ -61,7 +61,7 @@ const scene = (() => {
 document.querySelectorAll('[data-fx-toggle]').forEach((b) => { b.setAttribute('aria-pressed', String(!fxOff)); b.querySelector('b').textContent = fxOff ? 'OFF' : 'ON'; });
 
 const state = {
-  events: [], source: 'demo', demo: true, news: [], odds: null, fetchedAt: 0,
+  events: [], source: 'loading', demo: false, loading: true, news: [], odds: null, fetchedAt: 0,
   slipCache: new Map(), slipsAt: 0,
   // opts.today: only matches still to start today (local time); cached per day so midnight rolls over.
   slips(target, opts = {}) {
@@ -87,6 +87,7 @@ loadF1().then((d) => { if (d && ['home', 'sports'].includes(parse().name)) softR
 
 // ---------- data ----------
 function setData(d) {
+  state.loading = false;
   Object.assign(state, d, { events: applyModel(d.events) });
   checkAlerts(state.events);
   if (Date.now() - state.slipsAt > 60000) { state.slipCache.clear(); state.slipsAt = Date.now(); }
@@ -133,7 +134,7 @@ function patchClocks() {
   document.querySelectorAll('[data-clock]').forEach((el) => { const e = byId.get(el.dataset.clock); if (e && el.textContent !== (e.clock || '')) el.textContent = e.clock || ''; });
 }
 async function poll() {
-  if (polling || state.demo || (document.hidden && !following())) return; // background: only for alerts
+  if (polling || state.demo || state.loading || (document.hidden && !following())) return; // background: only for alerts
   polling = true;
   try {
     if (state.snapshot && Date.now() - lastIndex < 300000) {
@@ -399,6 +400,7 @@ document.addEventListener('click', (e) => {
     if (current === 'compare') softRender();
   }
   else if (d.shours) { setResearchPrefs({ shortHours: Number(d.shours) }); softRender(); }
+  else if (d.smode) { setResearchPrefs({ shortMode: d.smode }); softRender(); }
   else if ('qvClose' in d) closeQv();
   else if ('displayToggle' in d) { const p = document.getElementById('display-panel'); const open = !p.classList.contains('open'); p.innerHTML = displayPanel(); p.classList.toggle('open', open); t.setAttribute('aria-expanded', open); }
   else if (d.display) { display.set({ [d.display]: d.value }); document.getElementById('display-panel').innerHTML = displayPanel(); }

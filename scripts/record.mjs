@@ -11,8 +11,18 @@ const [historyPath = 'track/picks.json', eventsPath = 'dist/pages/data/index.jso
 const now = Date.now();
 const log = (...a) => console.log(...a);
 
+// The history is the record of every published pick: a history that exists but cannot be read must
+// stop the build (nothing is published, the next run tries again), never start over from empty.
+// TRACK_REQUIRED=1 (set by the workflow when the track-record branch exists) makes a missing file
+// an error too.
 let history = [];
-try { history = JSON.parse(await readFile(historyPath, 'utf8')); } catch { log('Track record: starting a new history'); }
+try {
+  history = JSON.parse(await readFile(historyPath, 'utf8'));
+  if (!Array.isArray(history)) throw new Error('not a list of picks');
+} catch (err) {
+  if (err.code === 'ENOENT' && process.env.TRACK_REQUIRED !== '1') log('Track record: starting a new history');
+  else { console.error(`Track record: the saved history could not be loaded (${err.message}). Stopping so no published pick is lost.`); process.exit(1); }
+}
 const { events = [] } = JSON.parse(await readFile(eventsPath, 'utf8'));
 
 const before = history.length;
@@ -27,7 +37,7 @@ const due = [
   ...history.filter((h) => h.status === 'pending' && h.type === 'multi').flatMap((m) => m.legs.filter((l) => l.status === 'pending' && l.start < now - 2 * 36e5)),
 ];
 const byMatch = Object.groupBy ? Object.groupBy(due, (h) => `${h.leaguePath}|${h.compId}`) : due.reduce((m, h) => ((m[`${h.leaguePath}|${h.compId}`] ||= []).push(h), m), {});
-let graded = 0, voided = 0, failed = 0, unresolved = 0;
+let graded = 0, voided = 0, failed = 0, unresolved = 0, retrying = 0;
 // Esports series are graded from bo3.gg in one request for all of them.
 const bo3 = new Map();
 const bo3Ids = Object.keys(byMatch).filter((k) => /^atlas\/(cs2|valorant|lol|dota2)\|/.test(k)).map((k) => k.split('|')[1]);
@@ -49,12 +59,16 @@ for (const [key, picks] of Object.entries(byMatch)) {
     // Void only when the event itself was voided (cancelled/abandoned). A result we could not find
     // after 4 days, or a market we cannot grade, is "unresolved": kept visible, never counted.
     if (r.void) { p.status = 'void'; voided++; continue; }
-    if (!r.done) { if (p.start < now - 4 * 864e5) { p.status = 'unresolved'; unresolved++; } continue; }
+    const tooLate = p.start < now - 4 * 864e5;
+    if (!r.done) { if (tooLate) { p.status = 'unresolved'; unresolved++; } continue; }
+    // A result the feed can't settle yet (an incomplete box score, a missing stat) is retried on the
+    // next runs; only after 4 days does it become "unresolved" (kept visible, never counted).
     const g = gradePick(p, r);
-    p.status = g || 'unresolved';
+    if (!g) { if (tooLate) { p.status = 'unresolved'; p.gradedAt = now; unresolved++; } else retrying++; continue; }
+    p.status = g;
     p.score = `${r.homeScore ?? '?'}-${r.awayScore ?? '?'}`;
     p.gradedAt = now;
-    if (g) graded++; else unresolved++;
+    graded++;
   }
 }
 // Settle multiplier slips whose legs are all in (or one has lost).
@@ -67,7 +81,7 @@ for (const m of history.filter((h) => h.type === 'multi' && h.status === 'pendin
   m.score = m.legs.map((l) => l.status).join(' · ');
 }
 if (multis) log(`Track record: settled ${multis} multiplier slip(s)`);
-log(`Track record: graded ${graded}, voided ${voided}, unresolved ${unresolved}, lookups failed ${failed}, still pending ${history.filter((h) => h.status === 'pending').length}`);
+log(`Track record: graded ${graded}, voided ${voided}, unresolved ${unresolved}, retrying ${retrying}, lookups failed ${failed}, still pending ${history.filter((h) => h.status === 'pending').length}`);
 
 await mkdir(dirname(historyPath), { recursive: true });
 await writeFile(historyPath, JSON.stringify(history));

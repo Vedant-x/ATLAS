@@ -41,7 +41,7 @@ export function slipHistory(slips = []) {
 }
 export function recordLine(st) {
   if (!st || !(st.won + st.lost)) return '';
-  return `${st.won}–${st.lost} · ${pct(st.hitRate, 0)} hit rate · <span class="${st.profit >= 0 ? 'pos' : 'neg'}">${units(st.profit)}</span>`;
+  return `${st.won}–${st.lost} · ${pct(st.hitRate, 0)} hit rate · <span class="${st.profit >= 0 ? 'pos' : 'neg'}">${units(st.profit)} (ROI ${st.roi == null ? '—' : `${st.roi >= 0 ? '+' : ''}${(st.roi * 100).toFixed(1)}%`})</span>`;
 }
 
 const ago = (t) => { const m = Math.round((Date.now() - t) / 6e4); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
@@ -115,7 +115,7 @@ export function trackCard(refresh) {
   if (!a.won && !a.lost) return `<a class="panel dash-track reveal" href="#/track"><h2 class="ph">Track record <small>tracking started</small></h2><p class="muted">${s.pending.length} picks locked before kick-off, waiting on results.</p></a>`;
   const last = s.recent.slice(0, 10).map((h) => `<i class="tr-dot ${h.status}" title="${esc(h.pick)}: ${h.status}"></i>`).join('');
   return `<a class="panel dash-track reveal" href="#/track"><h2 class="ph">Track record <small>every pick, locked before kick-off</small></h2>
-    <div class="dt-row"><div><b>${a.won}–${a.lost}</b><small>won–lost</small></div><div><b>${pct(a.hitRate, 0)}</b><small>hit rate (est. ${pct(a.expected, 0)})</small></div><div><b class="${a.profit >= 0 ? 'pos' : 'neg'}">${units(a.profit)}</b><small>1 unit per pick</small></div></div>
+    <div class="dt-row"><div><b>${a.won}–${a.lost}</b><small>won–lost</small></div><div><b>${pct(a.hitRate, 0)}</b><small>hit rate (est. ${pct(a.expected, 0)})</small></div><div><b class="${a.profit >= 0 ? 'pos' : 'neg'}">${a.roi == null ? '—' : `${a.roi >= 0 ? '+' : ''}${(a.roi * 100).toFixed(1)}%`}</b><small>ROI · ${units(a.profit)}</small></div>${a.brierN >= 20 ? `<div><b class="${a.brierModel <= a.brierMarket ? 'pos' : 'neg'}">${a.brierModel <= a.brierMarket ? 'Beats' : 'Trails'}</b><small>the market's own forecast</small></div>` : ''}</div>
     <ul class="dt-types">${s.bySport.slice(0, 4).map((r) => `<li><span>${sportOf(r.key).icon} ${esc(sportOf(r.key).name)}</span><b>${pct(r.hitRate, 0)}</b><small>${r.won}–${r.lost}</small></li>`).join('')}</ul>
     <div class="dt-last">${last}<span>latest results →</span></div></a>`;
 }

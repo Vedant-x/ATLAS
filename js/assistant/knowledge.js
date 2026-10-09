@@ -2,12 +2,13 @@
 // probabilities, injuries, starters, slips). Used by both the built-in brain and the Claude tools,
 // so every answer comes from the same numbers the pages show.
 import { analysisFor, matchBestBets } from '../views.js';
-import { devig, todayEvents } from '../engine.js';
+import { todayEvents } from '../engine.js';
 import { loadDetail, detailFor } from '../detail.js';
 import { CATALOG, ALL_LEAGUES, sportById } from '../catalog.js';
 import { prefs, prefEvents } from '../prefs.js';
 import { liveWin } from '../live.js';
 import { calibrated } from '../track.js';
+import { bankers } from '../intel.js';
 import { trackCalibration } from '../trackview.js';
 import { researchRow, caseFor } from '../research.js';
 import { changesSince, lastVisit, needsReview, timelineUpdatedAt } from '../timeline.js';
@@ -94,13 +95,12 @@ export function createKnowledge(S) {
     const cal = trackCalibration(); // same calibrated chance the pages and the record use
     for (const e of list) {
       if (e.live) continue; // stored prices are pre-match
-      if (e.markets?.length) {
-        for (const m of e.markets) {
-          const { outcomes } = devig(m);
-          outcomes.forEach((o, i) => {
-            const p = calibrated(m.outcomes[i].model ?? o.fair, m.name, cal);
-            out.push({ e, market: m.name, pick: o.name, odds: o.odds, p, fair: o.fair, ev: p * o.odds - 1, priced: true });
-          });
+      if (e.markets?.length || e.props?.length) {
+        // The shortlist's own candidates and calibration (sport included), so the assistant and the
+        // cards always quote the same chance for the same pick.
+        for (const b of bankers([e], { min: 0, limit: 999 })) {
+          const p = calibrated(b.p, b.market, cal, e.sport);
+          out.push({ e, market: b.market, pick: b.pick, odds: b.odds, p, fair: b.fair, ev: p * b.odds - 1, priced: true });
         }
       } else {
         const a = analysisFor(e), w = a.win;

@@ -107,3 +107,13 @@ test('closing line: pending picks keep the latest pre-start price; summary compa
   assert.ok(Math.abs(s.all.clv - (1.6 / 1.5 - 1)) < 1e-9);
   assert.equal(s.all.beatClose, 1);
 });
+
+test('a forecast counts once in the calibration, however many slips repeat it', async () => {
+  const { calibration } = await import('../js/track.js');
+  const leg = (eventId, status) => ({ eventId, market: 'Winner', pick: 'A', sport: 'hockey', p: 0.7, pRaw: 0.7, status });
+  const single = { type: 'banker', eventId: 'e1', market: 'Winner', pick: 'A', sport: 'hockey', p: 0.7, status: 'lost' };
+  const slips = Array.from({ length: 5 }, () => ({ type: 'multi', legs: [leg('e1', 'lost'), leg('e2', 'won')] }));
+  const cal = calibration([single, ...slips]);
+  assert.equal(cal.winner.n, 2, 'e1 once (the single) and e2 once, not 11 observations');
+  assert.equal(cal.winner.won, 1);
+});

@@ -36,12 +36,18 @@ jobs:
       - run: npm test
       - run: npm install --no-save esbuild@0.24.2 || true # bundler for the speed step; the build works without it
       - run: node scripts/pages.mjs
-      # Track record: history lives on the track-record branch (created on the first run).
+      # Track record: history lives on the track-record branch (created on the first run). If the
+      # branch exists, its history must load: record.mjs stops the build otherwise, so a failed
+      # checkout can never restart the record from empty.
+      - name: Does the track record exist
+        id: trackbranch
+        run: echo "exists=$(git ls-remote --heads origin track-record | grep -q track-record && echo 1 || echo 0)" >> "$GITHUB_OUTPUT"
       - name: Load track record
         uses: actions/checkout@v4
         with: { ref: track-record, path: track }
         continue-on-error: true
       - name: Update track record
+        env: { TRACK_REQUIRED: '${{ steps.trackbranch.outputs.exists }}' }
         run: node scripts/record.mjs track/picks.json dist/pages/data/index.json dist/pages/data/track.json
       # Evidence timeline: what changed since the previous build (kept on the track-record branch).
       - name: Update change timeline
@@ -71,14 +77,10 @@ jobs:
             ${{ steps.alert.outputs.notify == 'recovered' && 'The latest build found no data problems.' || steps.alert.outputs.summary }}
 
             Details: ${{ github.server_url }}/${{ github.repository }}/issues?q=label%3Adata-alert
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist/pages
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      # Saved before publishing: the site never shows picks the history doesn't hold. If another run
+      # saved first (the push is rejected), this run stops without publishing; the next run starts
+      # from the newer history.
       - name: Save track record
-        continue-on-error: true # a concurrent run may have pushed first; the next run catches up
         env: { GH_TOKEN: '${{ github.token }}' }
         run: |
           cd track
@@ -90,13 +92,19 @@ jobs:
           git add picks.json snapshot.json changes.json 2>/dev/null || git add picks.json
           git commit -qm "Track record $(date -u +%FT%TZ)" || exit 0
           git push -q origin HEAD:track-record
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/pages
+      - id: deployment
+        uses: actions/deploy-pages@v4
       # Self-refreshing: GitHub runs the cron above only every few hours, so each run queues the
       # next one ~8 minutes after it finishes. Meanwhile it publishes live scores every 20 seconds for
       # sources whose sites block browsers (NPB, KBO, esports, eSoccer) to the live-data branch, which the site polls. A newer run (push,
       # cron) cancels a waiting one via the concurrency group, so there is only ever one chain; the cron
       # restarts it if it ever breaks.
       - name: Live scores, then queue the next refresh
-        if: success() && github.ref == 'refs/heads/main'
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' }} # the chain continues even after a failed build
         env: { GH_TOKEN: '${{ github.token }}' }
         run: |
           mkdir -p lane && cd lane && git init -q && git checkout -q --orphan live-data

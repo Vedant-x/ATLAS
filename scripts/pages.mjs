@@ -632,11 +632,14 @@ const cricket = async () => {
   log(`Cricket: ${list.length} matches (${list.filter((e) => e.live).length} live)`);
   return list;
 };
+// Sources that failed this build: their fixtures are carried over from the last good snapshot below.
+const failedSources = new Set();
+const fail = (src, msg) => (e) => { failedSources.add(src); log(`${msg} failed`, e.message); problems.push(`${msg} failed: ${e.message}`); return []; };
 const [espn, npbEvents, kboEvents, cricketEvents, esportsEvents, esoccerEvents] = await Promise.all([
   fetchAll(AbortSignal.timeout(720000), ordered, { days: 4, concurrency: 3 }).catch((e) => { log('ESPN failed', e.message); problems.push(`ESPN scoreboards failed entirely: ${e.message}`); return []; }),
-  npb().catch((e) => { log('NPB failed', e.message); problems.push(`NPB (Japan) schedule failed: ${e.message}`); return []; }),
-  kbo().catch((e) => { log('KBO failed', e.message); problems.push(`KBO (Korea) schedule failed: ${e.message}`); return []; }),
-  cricket().catch((e) => { log('Cricket failed', e.message); problems.push(`Cricket feed failed: ${e.message}`); return []; }),
+  npb().catch(fail('atlas/npb', 'NPB (Japan) schedule')),
+  kbo().catch(fail('atlas/kbo', 'KBO (Korea) schedule')),
+  cricket().catch(fail('atlas/cricket', 'Cricket feed')),
   esports().catch((e) => { log('Esports failed', e.message); problems.push(`Esports feed (bo3.gg) failed: ${e.message}`); return []; }),
   esoccer().catch((e) => { log('eSoccer failed', e.message); problems.push(`eSoccer feed (EsportsBattle) failed: ${e.message}`); return []; }),
 ]);
@@ -663,6 +666,14 @@ const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents, ...esport
     if (r.ok) prev = (await r.json()).events || [];
   } catch (err) { log(`Carry-forward: previous snapshot unavailable (${err.message})`); }
   const old = new Map(prev.map((e) => [e.id, e]));
+  // A source or league that failed this build keeps its unfinished fixtures from the last good
+  // snapshot, marked stale (with the time of their last good update) until fresh data arrives:
+  // a feed outage shows as "not updated since", never as fixtures quietly disappearing.
+  const have = new Set(events.map((e) => e.id));
+  const down = (e) => [...failedSources].some((src) => e.leaguePath?.startsWith(src)) || leagueStatus.get(e.leaguePath)?.ok === false;
+  const keep = prev.filter((e) => !have.has(e.id) && down(e) && leagueByPath(e.leaguePath) && (e.live || e.start > Date.now() - 3 * 36e5));
+  for (const e of keep) events.push({ ...e, stale: true, staleSince: e.staleSince || e.fetchedAt || null });
+  if (keep.length) log(`Carry-forward: kept ${keep.length} fixture(s) from feeds that failed this build (${[...new Set(keep.map((e) => e.leaguePath))].slice(0, 8).join(', ')})`);
   let starters = 0, news = 0;
   for (const e of events) {
     const o = old.get(e.id);
@@ -770,5 +781,3 @@ log(`ESPN: ${espn.length} events`);
 log(`Pages build: ${events.length} events across ${Object.keys(byLeague).length} leagues`);
 log(Object.entries(byLeague).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}:${v}`).join(' '));
 
-// Collect at the end so the long sports build does not age the odds before publication.
-// API keys remain in the process environment; only sanitized quotes go into the Pages artifact.

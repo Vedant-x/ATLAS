@@ -36,10 +36,19 @@ test('props grade from the box score: over the line wins, under loses, sat out i
   assert.equal(gradePick(pick('4396993', '3-Point Field Goals', 2), r), 'lost');
   assert.equal(gradePick(pick('77', 'Points', 5), r), 'void');
   // Soccer anytime scorer from the key events (own goals don't count).
-  const box = boxStats({ rosters: [{ roster: [{ athlete: { id: '5' }, starter: true }, { athlete: { id: '6' }, starter: true }] }], keyEvents: [{ type: { text: 'Goal' }, scoringPlay: true, participants: [{ athlete: { id: '5' } }] }, { type: { text: 'Own Goal' }, participants: [{ athlete: { id: '6' } }] }] });
+  const box = boxStats({ rosters: [{ roster: [{ athlete: { id: '5' }, starter: true }, { athlete: { id: '6' }, starter: true }, { athlete: { id: '8' }, starter: false }] }], keyEvents: [{ type: { text: 'Goal' }, scoringPlay: true, participants: [{ athlete: { id: '5' } }] }, { type: { text: 'Own Goal' }, participants: [{ athlete: { id: '6' } }] }] });
   assert.equal(gradeProp({ id: '5', type: 'Anytime Goalscorer', target: 1 }, 'soccer', box), 'won');
   assert.equal(gradeProp({ id: '6', type: 'Anytime Goalscorer', target: 1 }, 'soccer', box), 'lost');
-  assert.equal(gradeProp({ id: '9', type: 'Anytime Goalscorer', target: 1 }, 'soccer', box), 'void');
+  assert.equal(gradeProp({ id: '8', type: 'Anytime Goalscorer', target: 1 }, 'soccer', box), 'void'); // unused substitute
+  assert.equal(gradeProp({ id: '9', type: 'Anytime Goalscorer', target: 1 }, 'soccer', box), null); // not in the squad list: unknown, retried
+});
+
+test('incomplete box scores never become results: missing player or missing stat stays unknown', () => {
+  const box = boxStats({ boxscore: { players: [{ statistics: [{ name: 'skaters', keys: ['goals', 'assists'], athletes: [{ athlete: { id: '1' }, stats: ['1', '0'] }] }] }] } });
+  assert.equal(gradeProp({ id: '1', type: 'Points', target: 1 }, 'hockey', box), 'won');
+  assert.equal(gradeProp({ id: '1', type: 'Shots on Goal', target: 2 }, 'hockey', box), null); // shots missing from this box
+  assert.equal(gradeProp({ id: '2', type: 'Points', target: 1 }, 'hockey', box), null); // player absent from the box
+  assert.equal(gradeProp({ id: '1', type: 'Points', target: 1 }, 'hockey', boxStats({})), null); // no box score at all
 });
 
 test('props join the shortlist as their own bet type', () => {
