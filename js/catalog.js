@@ -43,7 +43,7 @@ export const CATALOG = [
   {
     id: 'hockey', name: 'Ice Hockey', icon: '🏒', color: '#b08cff', model: 'hockey',
     groups: [
-      { name: 'Pro', leagues: [L('hockey/nhl', 'NHL')] },
+      { name: 'Pro', leagues: [L('hockey/nhl', 'NHL'), L('atlas/khl', 'KHL (Russia)', 'KHL')] },
       { name: 'College', leagues: [L('hockey/mens-college-hockey', "NCAA Men's Hockey"), L('hockey/womens-college-hockey', "NCAA Women's Hockey")] },
     ],
   },

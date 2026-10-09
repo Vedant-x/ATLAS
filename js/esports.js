@@ -11,7 +11,7 @@ export const BO3_GAMES = {
   3: { path: 'atlas/lol', game: 'League of Legends', slug: 'lol' },
   4: { path: 'atlas/dota2', game: 'Dota 2', slug: 'dota2' },
 };
-export const LANE_PATHS = ['atlas/npb', 'atlas/kbo', 'atlas/esoccer', ...Object.values(BO3_GAMES).map((g) => g.path)];
+export const LANE_PATHS = ['atlas/npb', 'atlas/kbo', 'atlas/khl', 'atlas/esoccer', ...Object.values(BO3_GAMES).map((g) => g.path)];
 
 const MAP = (s) => String(s || '').replace(/^de_/, '').replace(/^\w/, (c) => c.toUpperCase());
 const price = (x) => (Number(x) > 1.01 ? +Number(x).toFixed(3) : null);
