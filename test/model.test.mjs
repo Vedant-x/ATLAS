@@ -36,7 +36,7 @@ test('baseball starters and soccer absences feed the model', () => {
 
 test('track-record correction is per sport once a sport has enough settled picks', () => {
   const pick = (sport, status) => ({ type: 'banker', market: 'Spread', sport, p: 0.7, status });
-  const h = [...Array.from({ length: 10 }, (_, i) => pick('hockey', i < 5 ? 'won' : 'lost')), ...Array.from({ length: 20 }, () => pick('football', 'won'))];
+  const h = [...Array.from({ length: 40 }, (_, i) => pick('hockey', i < 20 ? 'won' : 'lost')), ...Array.from({ length: 40 }, () => pick('football', 'won'))];
   const cal = calibration(h);
   assert.ok(calibrated(0.7, 'Spread', cal, 'hockey') < 0.6, 'hockey spreads that land 50% at 70% estimates are marked down');
   assert.ok(calibrated(0.7, 'Spread', cal, 'football') >= 0.7);

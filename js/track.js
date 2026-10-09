@@ -45,10 +45,14 @@ export function calibration(history = []) {
       r.n++; r.won += status === 'won' ? 1 : 0; r.exp += p;
     }
   };
+  // One observation per forecast: the same pick recorded as a single and again as a slip leg (or in
+  // several slips) is one prediction with one result, so it counts once (its first record).
+  const seen = new Set();
+  const once = (r) => { const k = `${r.eventId}|${r.market}|${r.pick}`; if (!r.eventId || !seen.has(k)) { seen.add(k); return true; } return false; };
   for (const h of history) {
     // Always the model's own (uncalibrated) estimate, so the correction never feeds on itself.
-    if (h.type === 'multi') for (const l of h.legs || []) add(l.market, l.pRaw ?? l.p, l.status, l.sport);
-    else add(h.market, h.p, h.status, h.sport);
+    if (h.type === 'multi') { for (const l of h.legs || []) if (once(l)) add(l.market, l.pRaw ?? l.p, l.status, l.sport); }
+    else if (once(h)) add(h.market, h.p, h.status, h.sport);
   }
   for (const r of Object.values(out)) {
     r.hit = r.won / r.n; r.expected = r.exp / r.n;
@@ -57,7 +61,7 @@ export function calibration(history = []) {
   }
   return out;
 }
-const SPORT_MIN = 8; // settled picks before a sport's own record replaces the all-sports one
+const SPORT_MIN = 30; // settled forecasts before a sport's own record replaces the all-sports one
 export const calibrated = (p, market, cal, sport) => {
   const own = sport ? cal?.[`${sport}:${familyOf(market)}`] : null;
   return Math.min(0.99, p * ((own?.n >= SPORT_MIN ? own : cal?.[familyOf(market)])?.factor ?? 1));
@@ -90,9 +94,18 @@ export function diversify(list, limit, { familyShare = 0.4, sportShare = 0.5 } =
   }
   return out;
 }
-export function rankedBankers(events, { cal = null, min = 0.6, minOdds = 1, maxOdds = MAX_ODDS, limit = 10, mix = true } = {}) {
+// Three ways to rank, because they disagree: 'likely' (highest chance in the odds range, what the
+// record tracks), 'value' (ATLAS's chance above the price's break-even, best edge first; nothing
+// qualifies when every price is below the estimate) and 'evidence' (60%+ picks whose match has every
+// input its sport needs confirmed, `ready(event)` true).
+export function rankedBankers(events, { cal = null, min = 0.6, minOdds = 1, maxOdds = MAX_ODDS, limit = 10, mix = true, mode = 'likely', ready = null } = {}) {
+  if (mode === 'value') {
+    const v = bankers(events, { min: 0.4, minOdds, limit: 2000 }).filter((b) => b.odds <= 3).map((b) => withCal(b, cal))
+      .filter((b) => b.ev > 0 && b.p >= 0.45).sort((x, y) => y.ev - x.ev);
+    return (mix ? diversify(v, limit) : v.slice(0, limit)).sort((x, y) => y.ev - x.ev);
+  }
   const all = bankers(events, { min: min * 0.9, minOdds, limit: Math.max(200, limit * 12) }).filter((b) => b.odds <= maxOdds).map((b) => withCal(b, cal))
-    .filter((b) => b.p >= min).sort((x, y) => y.p - x.p);
+    .filter((b) => b.p >= min && (mode !== 'evidence' || !ready || ready(b.event))).sort((x, y) => y.p - x.p);
   return (mix ? diversify(all, limit) : all.slice(0, limit)).sort((x, y) => y.p - x.p);
 }
 
@@ -201,7 +214,7 @@ export function resultFromSummary(sm) {
   const side = (k) => c.competitors?.find((x) => x.homeAway === k) || {};
   const h = side('home'), a = side('away');
   const winner = h.winner ? 'home' : a.winner ? 'away' : null;
-  const b = boxStats(sm), box = b.played.size ? { box: b } : {}; // player stats, for props
+  const b = boxStats(sm), box = b.listed.size ? { box: b } : {}; // player stats, for props
   return { done: true, homeScore: h.score, awayScore: a.score, winner: winner || (h.score != null && h.score === a.score ? 'draw' : null), ...box };
 }
 

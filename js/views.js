@@ -22,6 +22,7 @@ import { propLabel, propMarket } from './props.js';
 import { coherentBets } from './picks.js';
 import { mergeEvent } from './merge.js';
 import { casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips } from './research.js';
+import { readiness } from './readiness.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const safeHref = (u) => (/^https?:\/\//i.test(String(u || '')) ? esc(u) : '#');
@@ -86,6 +87,7 @@ const confBadge = (c) => `<span class="conf conf-${c}" title="${c === 'high' ? '
 
 // Status box removed from pages; it only appears when live feeds failed and sample data is shown.
 function notice() {
+  if (S.loading) return '<div class="notice reveal"><span class="loading-dots">Loading today\'s fixtures</span></div>';
   return S.demo ? '<div class="notice reveal"><span class="led"></span><b>DEMO DATA</b> · live feeds unreachable, prices are simulated.</div>' : '';
 }
 
@@ -192,10 +194,7 @@ export const views = {
     const live = ev.filter((e) => e.live);
     const upcoming = [...ev].filter((e) => !e.live && e.sport !== 'efootball').sort((a, b) => a.start - b.start); // eSoccer runs round the clock: it has its own page
     const day = todayEvents(prefFilter(ev)); // next 12 hours
-    const bk = smartBankers(day, { limit: 10, minOdds: prefs.get().minOdds });
     const ts = trackStats();
-    const perSport = SPORTS.map((sp) => smartBankers(day.filter((e) => e.sport === sp.id), { min: 0.58, limit: 1, minOdds: prefs.get().minOdds })[0]).filter(Boolean);
-    const featured = bk[0]?.event || upcoming.find((e) => e.start < Date.now() + 24 * 36e5); // never days away
     const modelled = ev.reduce((n, e) => n + (e.markets?.length ? 1 : 0), 0);
     const counts = Object.fromEntries(SPORTS.map((s) => [s.id, ev.filter((e) => e.sport === s.id)]));
     return {
@@ -212,7 +211,6 @@ export const views = {
       </section>
       ${notice()}
       ${dashboard(ev, live)}
-      ${featured ? featuredCard(featured) : ''}
       <section class="sec-block"><h2 class="sec reveal">Sports</h2>
         <div class="grid sports">${SPORTS.map((s) => {
           const list = counts[s.id] || [];
@@ -221,10 +219,6 @@ export const views = {
             <small>${s.id === 'f1' ? f1Teaser() : `${list.length} events${list.filter((e) => e.live).length ? ` · <span class="live">${list.filter((e) => e.live).length} live</span>` : ''}`}</small>
             ${next ? `<small class="next">Next: ${esc(next.home)} v ${esc(next.away)}</small>` : ''}</a>`;
         }).join('')}</div></section>
-      <section class="sec-block">
-        <div><h2 class="sec reveal">Bankers <small>${recordLine(ts?.byType.find((r) => r.key === 'banker')) || 'tracked from today'}</small></h2><div class="minilist">${bk.map((b) => miniPick(b)).join('') || '<p class="muted">No 70%+ favourites right now.</p>'}</div><a class="more reveal" href="#/bankers">All bankers →</a></div>
-      </section>
-      ${perSport.length ? `<section class="sec-block"><h2 class="sec reveal">Top pick in every sport <small>the strongest priced favourite per sport</small></h2><div class="minilist cols">${perSport.map((b) => miniPick(b)).join('')}</div></section>` : ''}
       <section class="sec-block"><h2 class="sec reveal">Multipliers</h2>
         <div class="grid xs">${[2, 3, 4, 5].map((x) => { const r = ts?.byTarget?.find((t) => t.target === x); return `<a class="xcard tilt reveal" href="#/x/${x}" data-cursor="BUILD"><b>${x}x</b><small>5 slips · ${pc(1 / x, 0)} break-even</small>${r && r.won + r.lost ? `<small class="xrec">record ${r.won}–${r.lost} · ${pc(r.hitRate, 0)}</small>` : ''}</a>`; }).join('')}
         <a class="xcard mega tilt reveal" href="#/mega" data-cursor="DARE"><b>100x+</b><small>Mega accumulators from bankers</small></a>
@@ -505,15 +499,22 @@ function dashboard(ev, live) {
   ensureTrack(() => S.refresh?.());
   // Matches starting within the chosen window (3 to 48 hours; 12 by default).
   const hrs = researchPrefs().shortHours;
-  const short = smartBankers(todayEvents(pool, Date.now(), hrs), { min: 0.6, minOdds, limit: 10 }), when2 = `next ${hrs} hours`;
+  const mode = researchPrefs().shortMode || 'likely';
+  const ready = (e) => readiness(e, { priceAt: e.fetchedAt || S.fetchedAt }).state === 'ready';
+  const short = rankedBankers(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration(), min: 0.6, minOdds, limit: 10, mode, ready }), when2 = `next ${hrs} hours`;
+  const MODES = [['likely', 'Most likely', '60%+ win chance'], ['value', 'Best value', 'ATLAS chance above the price'], ['evidence', 'Best evidence', '60%+ with every key input confirmed']];
+  const empty = { likely: `No strong picks in the next ${hrs} hours right now.${hrs < 48 ? ' Try a longer window, or' : ''} lower the minimum odds / add sports.`,
+    value: `No qualifying selection: every price in the next ${hrs} hours is at or below ATLAS's estimate.`,
+    evidence: `No qualifying selection: no 60%+ pick in the next ${hrs} hours has all its inputs confirmed yet (starters, lineups, a fresh price).` }[mode];
   const rec = recordLine(trackStats()?.byType.find((r) => r.key === 'banker'));
   const changes = ev.flatMap((e) => ['home', 'away'].flatMap((sd) => (e.absences?.[sd] || []).map((x) => ({ e, team: sd === 'home' ? e.home : e.away, ...x }))))
     .filter((x) => x.updated).sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated)).slice(0, 6);
   return `<section class="dash">
-    <div class="panel dash-short reveal"><h2 class="ph">Shortlist <small>${when2} · 60%+ win chance</small></h2>
+    <div class="panel dash-short reveal"><h2 class="ph">Shortlist <small>${when2} · ${MODES.find((m) => m[0] === mode)[2]}</small></h2>
+      <div class="win-chips" role="group" aria-label="Rank by">${MODES.map(([k, l]) => `<button class="chip ${mode === k ? 'on' : ''}" data-smode="${k}" aria-pressed="${mode === k}">${l}</button>`).join('')}</div>
       ${windowChips('shours', hrs)}
       ${rec ? `<p class="rec-line">Bankers so far: ${rec} · <a href="#/track">full record</a></p>` : ''}
-      <div class="minilist">${short.map((b) => miniPick(b)).join('') || `<p class="muted">No strong picks in the next ${hrs} hours right now.${hrs < 48 ? ' Try a longer window, or' : ''} lower the minimum odds / add sports.</p>`}</div>${prefsBar()}</div>
+      <div class="minilist">${short.map((b) => miniPick(b)).join('') || `<p class="muted">${empty}</p>`}</div>${prefsBar()}</div>
     <div class="panel dash-live reveal"><h2 class="ph">Live now <small>${live.length}</small></h2>
       ${live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${esc(e.score || '')}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>
     <div class="panel dash-changes reveal"><h2 class="ph">Latest absences <small>soccer · FotMob</small></h2>
@@ -559,20 +560,8 @@ function sourcesLine(e) {
     e.absences ? ['FotMob', e.absences.fetchedAt, 'absences'] : null,
     d?.ok && !d.native ? ['ESPN summary', d.fetchedAt, 'stats, injuries, form'] : null,
   ].filter(Boolean);
-  return `<p class="sources reveal">${parts.map(([n, t, what]) => `<span class="${freshClass(t)}"><i></i>${esc(what)}: ${esc(n)} · ${ago(t)}</span>`).join('')}</p>`;
-}
-
-function featuredCard(e) {
-  const w = winProbs(e), s = sportOf(e.sport);
-  const hc = safeColor(e.colors?.home, s.color), ac = safeColor(e.colors?.away, AWAY_COLOR);
-  const fav = w.home >= w.away ? e.home : e.away;
-  return `<section class="sec-block"><h2 class="sec reveal">Match of the day</h2>
-    <a class="featured tilt reveal" href="#/match/${esc(e.id)}" style="--c:${s.color}" data-cursor="DOSSIER">
-      <div class="f-meta">${s.icon} ${esc(e.league)} · ${when(e)} ${confBadge(w.confidence)}</div>
-      <div class="f-teams"><b style="color:${hc}">${esc(e.home)}</b><span>VS</span><b style="color:${ac}">${esc(e.away)}</b></div>
-      ${probBar([{ label: e.home, p: w.home, color: hc }, ...(w.draw ? [{ label: 'Draw', p: w.draw, color: DRAW_COLOR }] : []), { label: e.away, p: w.away, color: ac }])}
-      <div class="f-nums"><div><small>${esc(e.home)}</small><b>${pc(w.home, 0)}</b></div>${w.draw ? `<div><small>Draw</small><b>${pc(w.draw, 0)}</b></div>` : ''}<div><small>${esc(e.away)}</small><b>${pc(w.away, 0)}</b></div><div><small>Favourite</small><b>${esc(fav)}</b></div></div>
-      <span class="f-go">Open full dossier →</span></a></section>`;
+  const down = e.stale ? `<span class="stale"><i></i>Feed down: not updated since ${ago(e.staleSince || e.fetchedAt)}</span>` : '';
+  return `<p class="sources reveal">${down}${parts.map(([n, t, what]) => `<span class="${freshClass(t)}"><i></i>${esc(what)}: ${esc(n)} · ${ago(t)}</span>`).join('')}</p>`;
 }
 
 // Bankers filtered through the track record: market types that have underperformed their estimates

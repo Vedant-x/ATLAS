@@ -65,41 +65,63 @@ export function parseProps(items, sport, who, { minOdds = 1.15, maxOdds = 3, per
 }
 
 // Every player's stats from an ESPN summary, keyed by athlete id: { "<group>.<key>": number }, plus
-// goals from the key events (soccer). `played` lists who took part, so a player who sat out voids.
+// goals from the key events (soccer). Three different facts are kept apart:
+//   listed: the player appears in the box score or squad list at all;
+//   played: listed with stats, or a starter / used substitute;
+//   dnp:    listed but confirmed not to have played (no stats, "did not play", unused substitute).
+// A player in none of them is unknown (an incomplete box score): never a loss or a void.
 export function boxStats(sm) {
-  const stats = {}, played = new Set();
+  const stats = {}, played = new Set(), listed = new Set(), dnp = new Set();
   for (const team of sm?.boxscore?.players || []) {
     for (const g of team.statistics || []) {
       const grp = /forwards|defenses|skaters/.test(g.name || '') ? 'skaters' : g.name || g.type || 'all';
       for (const a of g.athletes || []) {
         const id = String(a.athlete?.id || '');
-        if (!id || !a.stats?.length || a.didNotPlay) continue;
+        if (!id) continue;
+        listed.add(id);
+        if (!a.stats?.length || a.didNotPlay) { dnp.add(id); continue; }
         played.add(id);
         const s = (stats[id] ||= {});
         (g.keys || []).forEach((k, i) => { const v = parseFloat(String(a.stats[i] ?? '').split(/[-/]/)[0]); if (Number.isFinite(v)) s[`${grp}.${k}`] = v; });
       }
     }
   }
-  for (const r of sm?.rosters || []) for (const a of r.roster || []) if (a.starter || a.subbedIn === true || a.subbedIn?.didSub) played.add(String(a.athlete?.id || ''));
+  for (const r of sm?.rosters || []) {
+    for (const a of r.roster || []) {
+      const id = String(a.athlete?.id || '');
+      if (!id) continue;
+      listed.add(id);
+      if (a.starter || a.subbedIn === true || a.subbedIn?.didSub) played.add(id); else dnp.add(id);
+    }
+  }
+  // Goals from the key events: complete for a finished match, so a played player without one has 0.
+  const events = Boolean(sm?.keyEvents);
   for (const k of sm?.keyEvents || []) {
     const t = k.type?.text || '';
     if (!(k.scoringPlay || /^goal|penalty - scored/i.test(t)) || /own goal/i.test(t)) continue;
     const id = String(k.participants?.[0]?.athlete?.id || '');
     if (!id) continue;
-    played.add(id);
+    played.add(id); listed.add(id);
     const s = (stats[id] ||= {});
     s['events.goals'] = (s['events.goals'] || 0) + 1;
   }
-  return { stats, played };
+  for (const id of played) dnp.delete(id);
+  return { stats, played, listed, dnp, events };
 }
 
-// 'won' | 'lost' | 'void' (didn't play) | null (can't tell).
+// 'won' | 'lost' | 'void' (confirmed did not play) | null (not known yet: retried, never guessed).
 export function gradeProp(prop, sport, box) {
   const def = PROP_STATS[sport]?.[prop.type];
-  if (!def || !box) return null;
-  if (!box.played.size) return null;
-  if (!box.played.has(String(prop.id))) return 'void';
-  const s = box.stats[String(prop.id)] || {};
-  const v = def.keys.reduce((n, k) => n + (s[k] || 0), 0);
+  if (!def || !box?.listed) return null;
+  const id = String(prop.id);
+  if (box.dnp.has(id)) return 'void';
+  if (!box.played.has(id)) return null; // not in the box score: incomplete data, not a result
+  const s = box.stats[id] || {};
+  let v = 0;
+  for (const k of def.keys) {
+    if (Number.isFinite(s[k])) v += s[k];
+    else if (k.startsWith('events.') && box.events) v += 0; // no goal in a complete event list
+    else return null; // a stat the result needs is missing
+  }
   return v >= prop.target ? 'won' : 'lost';
 }
