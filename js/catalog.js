@@ -2,7 +2,7 @@
 // `path` is the ESPN API path (sport/league). NPB and KBO come from the official league sites
 // (built by scripts/pages.mjs), so their path starts with "atlas/". So do cricket, F1 and esports.
 
-const L = (path, name, short) => ({ path, name, short: short || name });
+const L = (path, name, short, extra = {}) => ({ path, name, short: short || name, ...extra });
 
 export const CATALOG = [
   {
@@ -37,7 +37,7 @@ export const CATALOG = [
     id: 'americanfootball', name: 'American Football', icon: '🏈', color: '#ff9f43', model: 'americanfootball',
     groups: [
       { name: 'Pro', leagues: [L('football/nfl', 'NFL'), L('football/cfl', 'CFL'), L('football/ufl', 'UFL')] },
-      { name: 'College', leagues: [L('football/college-football', 'NCAA Football', 'NCAAF')] },
+      { name: 'College', leagues: [L('football/college-football', 'NCAA Football (FBS + FCS)', 'NCAAF', { also: ['groups=81'] })] },
     ],
   },
   {
@@ -97,6 +97,14 @@ export const CATALOG = [
   {
     id: 'efootball', name: 'eSoccer (FIFA)', icon: '🕹️', color: '#2bff88', model: 'football',
     groups: [{ name: 'EA FC', leagues: [L('atlas/esoccer', 'eSoccer Battle (EA FC, 2×4 min)', 'eSoccer')] }],
+  },
+  {
+    id: 'fieldhockey', name: 'Field Hockey', icon: '🏑', color: '#5cffb0', model: 'binary',
+    groups: [{ name: 'College', leagues: [L('field-hockey/womens-college-field-hockey', "NCAA Women's")] }],
+  },
+  {
+    id: 'waterpolo', name: 'Water Polo', icon: '🤽', color: '#4da6ff', model: 'binary',
+    groups: [{ name: 'College', leagues: [L('water-polo/mens-college-water-polo', "NCAA Men's"), L('water-polo/womens-college-water-polo', "NCAA Women's")] }],
   },
   {
     id: 'volleyball', name: 'Volleyball', icon: '🏐', color: '#ffe36e', model: 'binary',
