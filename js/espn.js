@@ -144,7 +144,10 @@ export async function fetchLeague(league, { days = 3, from = -1, extra = false, 
   // league as failed nor reports errors, and skips the current scoreboard.
   const dayList = Array.from({ length: days - from + 1 }, (_, i) => ymd(new Date(Date.now() + (i + from) * 864e5)));
   const dayUrls = dayList.map((d) => `${BASE}/${league.path}/scoreboard?dates=${d}`);
-  const urls = live ? [`${BASE}/${league.path}/scoreboard`] : extra ? dayUrls : [`${BASE}/${league.path}/scoreboard`, ...dayUrls];
+  const base = live ? [`${BASE}/${league.path}/scoreboard`] : extra ? dayUrls : [`${BASE}/${league.path}/scoreboard`, ...dayUrls];
+  // Some feeds split a competition into divisions (college football: FBS by default, FCS with
+  // groups=81): each extra filter is fetched too and merged into the one league.
+  const urls = base.flatMap((u) => [u, ...(league.also || []).map((q) => `${u}${u.includes('?') ? '&' : '?'}${q}`)]);
   const headers = typeof window === 'undefined' ? { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', Accept: 'application/json' } : undefined;
   const one = async (u) => {
     let err;

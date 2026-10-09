@@ -27,7 +27,7 @@ public track record. Static site on GitHub Pages; free to run, no keys.
 
 | Source | Used for |
 |---|---|
-| ESPN public APIs | Fixtures, scores, odds and match summaries for 150+ competitions, cricket, F1 schedule; DraftKings player props (NBA, WNBA, MLB, NHL, soccer) |
+| ESPN public APIs | Fixtures, scores, odds and match summaries for 150+ competitions (incl. NCAA football FBS + FCS, basketball, hockey, baseball, softball, soccer, lacrosse, volleyball, field hockey, water polo), cricket, F1 schedule; DraftKings player props (NBA, WNBA, MLB, NHL, soccer) |
 | MLB Stats API | Probable starters, pitcher reports, injured list |
 | npb.jp, koreabaseball.com | NPB and KBO schedules, starters and pitcher lines |
 | KHL app feed (khl.api.webcaster.pro) | KHL schedule, live scores, results and records |

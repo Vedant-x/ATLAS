@@ -35,3 +35,17 @@ test('a league with a failed day is not marked as loaded, so pages never claim "
     assert.equal(leagueStatus.get('soccer/x.test').ok, false);
   } finally { globalThis.fetch = real; }
 });
+
+test('a league split into divisions (college football FBS + FCS) fetches both and merges them', async () => {
+  const { fetchLeague } = await import('../js/espn.js');
+  const seen = [];
+  const game = (id, home, away) => ({ id, date: new Date(Date.now() + 864e5).toISOString(), competitions: [{ id, date: new Date(Date.now() + 864e5).toISOString(), status: { type: { state: 'pre' } },
+    competitors: [{ homeAway: 'home', team: { displayName: home } }, { homeAway: 'away', team: { displayName: away } }] }] });
+  const real = globalThis.fetch;
+  globalThis.fetch = async (u) => { seen.push(String(u)); const fcs = /groups=81/.test(u); return { ok: true, status: 200, json: async () => ({ events: fcs ? [game('2', 'Montana', 'Idaho'), game('1', 'Ohio State', 'Youngstown State')] : [game('1', 'Ohio State', 'Youngstown State')] }) }; };
+  try {
+    const list = await fetchLeague({ path: 'football/college-football', name: 'NCAA Football', sport: 'americanfootball', also: ['groups=81'] }, { days: 0, from: 0 });
+    assert.ok(seen.some((u) => /scoreboard\?dates=\d{8}&groups=81$/.test(u)) && seen.some((u) => /scoreboard\?dates=\d{8}$/.test(u)), 'both divisions requested');
+    assert.deepEqual(list.map((e) => e.home).sort(), ['Montana', 'Ohio State'], 'merged, the shared game once');
+  } finally { globalThis.fetch = real; }
+});
