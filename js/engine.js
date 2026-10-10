@@ -152,7 +152,7 @@ export const pct = (p) => `${(p * 100).toFixed(p < 0.01 ? 2 : 1)}%`;
 
 // Order for every list of bets: the list's own ranking, soonest start first, or latest first.
 // `startOf(item)` gives the start time (bets carry their event; slip legs their own start).
-export const ORDERS = [['rank', 'Best first'], ['asc', 'Soonest first'], ['desc', 'Latest first']];
+export const ORDERS = [['asc', 'Soonest first'], ['desc', 'Latest first'], ['rank', 'Best first']];
 export function orderByTime(list, order = 'rank', startOf = (b) => b.event?.start ?? b.start ?? 0) {
   if (order !== 'asc' && order !== 'desc') return list;
   const dir = order === 'asc' ? 1 : -1;

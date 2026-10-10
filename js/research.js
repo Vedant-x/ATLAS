@@ -34,8 +34,9 @@ export function researchRow(e) {
 
 // ---------- candidate table ----------
 const RKEY = 'atlas-research-v1';
-export const researchPrefs = () => ({ shortHours: 12, betOrder: 'rank', ...read(RKEY, {}) });
+export const researchPrefs = () => { const p = { shortHours: 12, ...read(RKEY, {}) }; return { ...p, betOrder: p.betOrder2 || 'asc' }; };
 export const orderBets = (list, order = researchPrefs().betOrder, startOf) => orderByTime(list, order, startOf);
+export const orderLabel = () => ({ asc: 'soonest first', desc: 'latest first', rank: 'best first' })[researchPrefs().betOrder] || 'soonest first';
 export const orderChips = (cur = researchPrefs().betOrder) => `<div class="win-chips order-chips" role="group" aria-label="Order"><span>Order</span>${ORDERS.map(([k, l]) => `<button class="chip ${cur === k ? 'on' : ''}" data-border="${k}" aria-pressed="${cur === k}">${l}</button>`).join('')}</div>`;
 export const setResearchPrefs = (patch) => write(RKEY, { ...researchPrefs(), ...patch });
 
