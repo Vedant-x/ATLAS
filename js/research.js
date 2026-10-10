@@ -12,6 +12,7 @@ import { trackCalibration } from './trackview.js';
 import { readiness, readyBadge } from './readiness.js';
 import { changesFor, latestChange, needsReview, changesSince, lastVisit, timelineUpdatedAt } from './timeline.js';
 import { FORECAST_NOTE } from './changelog.js';
+import { ORDERS, orderByTime } from './engine.js';
 import { watch, notifyPermission } from './alerts.js';
 import { pc, odd } from './charts.js';
 
@@ -33,7 +34,9 @@ export function researchRow(e) {
 
 // ---------- candidate table ----------
 const RKEY = 'atlas-research-v1';
-export const researchPrefs = () => ({ shortHours: 12, ...read(RKEY, {}) });
+export const researchPrefs = () => ({ shortHours: 12, betOrder: 'rank', ...read(RKEY, {}) });
+export const orderBets = (list, order = researchPrefs().betOrder, startOf) => orderByTime(list, order, startOf);
+export const orderChips = (cur = researchPrefs().betOrder) => `<div class="win-chips order-chips" role="group" aria-label="Order"><span>Order</span>${ORDERS.map(([k, l]) => `<button class="chip ${cur === k ? 'on' : ''}" data-border="${k}" aria-pressed="${cur === k}">${l}</button>`).join('')}</div>`;
 export const setResearchPrefs = (patch) => write(RKEY, { ...researchPrefs(), ...patch });
 
 // Time-window chips for the shortlist.

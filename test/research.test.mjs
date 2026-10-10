@@ -45,3 +45,12 @@ test('timeline: starters per side, confirmed XIs vs predicted, price moves, noth
   assert.ok(t.includes('Yankees starter change: Schlittler replaces Cole'));
   assert.ok(t.includes('Rays starter announced: Rasmussen'));
 });
+
+test('bet lists can be ordered by start time, soonest or latest first, or kept in ranked order', async () => {
+  const { orderByTime: orderBets } = await import('../js/engine.js');
+  const list = [{ id: 'a', event: { start: 30 } }, { id: 'b', event: { start: 10 } }, { id: 'c', event: { start: 20 } }];
+  assert.deepEqual(orderBets(list, 'rank').map((x) => x.id), ['a', 'b', 'c']);
+  assert.deepEqual(orderBets(list, 'asc').map((x) => x.id), ['b', 'c', 'a']);
+  assert.deepEqual(orderBets(list, 'desc').map((x) => x.id), ['a', 'c', 'b']);
+  assert.deepEqual(orderBets([{ id: 'x', start: 5 }, { id: 'y', start: 1 }], 'asc').map((x) => x.id), ['y', 'x'], 'slip legs carry their own start');
+});
