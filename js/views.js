@@ -21,7 +21,7 @@ import { rankedBankers, slipPolicy, MAX_ODDS, calibrated } from './track.js';
 import { propLabel, propMarket } from './props.js';
 import { coherentBets } from './picks.js';
 import { mergeEvent } from './merge.js';
-import { casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips, changesPanel, orderBets, orderChips } from './research.js';
+import { casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips, changesPanel, orderBets, orderChips, orderLabel } from './research.js';
 import { readiness } from './readiness.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -396,11 +396,11 @@ export const views = {
           <label>Sport<select data-ef="sport"><option value="">All</option>${SPORTS.map((s) => `<option value="${s.id}">${s.name}</option>`).join('')}</select></label>
           <label>Min odds<input data-ef="min" type="number" step="0.05" value="1.01" min="1"></label>
           <label>Max odds<input data-ef="max" type="number" step="0.5" value="20" min="1"></label>
-          <label>Sort<select data-ef="sort"><option value="ev">Edge</option><option value="p">Win chance</option><option value="odds">Odds</option><option value="start">Start: soonest first</option><option value="start-desc">Start: latest first</option></select></label>
+          <label>Sort<select data-ef="sort"><option value="ev">Edge</option><option value="p">Win chance</option><option value="odds">Odds</option><option value="start" selected>Start: soonest first</option><option value="start-desc">Start: latest first</option></select></label>
           <label class="grow1">Search<input data-ef="q" type="search" placeholder="Team, league, market…"></label>
           <label class="chk"><input data-ef="pos" type="checkbox"> Positive edge only</label>
         </div>
-        <div class="panel table-wrap reveal" id="edge-table">${edgeTable({})}</div>`,
+        <div class="panel table-wrap reveal" id="edge-table">${edgeTable({ sort: 'start' })}</div>`,
     };
   },
 
@@ -508,7 +508,7 @@ function dashboard(ev, live) {
     evidence: `No qualifying selection: no 60%+ pick in the next ${hrs} hours has all its inputs confirmed yet (starters, lineups, a fresh price).` }[mode];
   const rec = recordLine(trackStats()?.byType.find((r) => r.key === 'banker'));
   return `<section class="dash">
-    <div class="panel dash-short reveal"><h2 class="ph">Shortlist <small>${when2} · ${MODES.find((m) => m[0] === mode)[2]}</small></h2>
+    <div class="panel dash-short reveal"><h2 class="ph">Shortlist <small>${when2} · ${MODES.find((m) => m[0] === mode)[2]} · ${orderLabel()}</small></h2>
       <div class="win-chips" role="group" aria-label="Rank by">${MODES.map(([k, l]) => `<button class="chip ${mode === k ? 'on' : ''}" data-smode="${k}" aria-pressed="${mode === k}">${l}</button>`).join('')}</div>
       ${windowChips('shours', hrs)}
       ${orderChips()}
