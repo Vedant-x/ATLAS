@@ -401,6 +401,7 @@ document.addEventListener('click', (e) => {
   }
   else if (d.shours) { setResearchPrefs({ shortHours: Number(d.shours) }); softRender(); }
   else if (d.smode) { setResearchPrefs({ shortMode: d.smode }); softRender(); }
+  else if (d.border) { setResearchPrefs({ betOrder: d.border }); softRender(); }
   else if ('qvClose' in d) closeQv();
   else if ('displayToggle' in d) { const p = document.getElementById('display-panel'); const open = !p.classList.contains('open'); p.innerHTML = displayPanel(); p.classList.toggle('open', open); t.setAttribute('aria-expanded', open); }
   else if (d.display) { display.set({ [d.display]: d.value }); document.getElementById('display-panel').innerHTML = displayPanel(); }
