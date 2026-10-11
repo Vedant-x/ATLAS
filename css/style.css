@@ -90,7 +90,7 @@ nav.top a:hover::after, nav.top a.on::after { transform: scaleX(1); transform-or
 .ticker::after { right: 0; background: linear-gradient(-90deg, #040406, transparent); }
 body.scrolled .ticker { top: 52px; }
 .ticker-track { display: flex; gap: 40px; width: max-content; padding-left: 40px; animation: tick 90s linear infinite; font: 12px/30px var(--mono); color: #b8b8be; white-space: nowrap; }
-.ticker:hover .ticker-track { animation-play-state: paused; }
+.ticker:hover .ticker-track, .ticker:active .ticker-track { animation-play-state: paused; } /* hold it still to read (touch too) */
 .ticker-track b { color: var(--accent); }
 .ticker-track small { color: var(--dim); }
 .ticker-track i { font-style: normal; }

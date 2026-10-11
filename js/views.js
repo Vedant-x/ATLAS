@@ -1,6 +1,7 @@
 // Page templates. Each view returns { html, mode, accent, sceneOpts?, title, after? }.
 import { ico, watchLabel, pinLabel } from './icons.js';
 import { SPORTS } from './data.js';
+import { readable } from './color.js';
 import { devig, buildSlips, todayEvents } from './engine.js';
 import { liveCenterHtml } from './livecenter.js';
 import { f1View, f1Teaser } from './f1view.js';
@@ -26,7 +27,8 @@ import { readiness } from './readiness.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const safeHref = (u) => (/^https?:\/\//i.test(String(u || '')) ? esc(u) : '#');
-const safeColor = (c, fallback) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : fallback);
+// Team colours are shown as text on the dark page: never one too dark to read (color.js).
+const safeColor = (c, fallback) => readable(c, fallback);
 export const sportOf = (id) => SPORTS.find((s) => s.id === id) || { id, name: id, icon: '◆', color: '#d2ff00' };
 
 const AWAY_COLOR = '#ff3d6e';

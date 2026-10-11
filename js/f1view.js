@@ -2,6 +2,7 @@
 // the session timeline, live timing during sessions, the ATLAS race model (win, podium, points,
 // teammate battles, constructors), best bets and both championships. Data: data/f1.json (built every
 // few minutes), live timing straight from ESPN and OpenF1 in the browser.
+import { readable } from './color.js';
 import { ESPN_F1, OPENF1, liveSession } from './f1.js';
 import { split } from './ui.js';
 
@@ -74,7 +75,7 @@ export async function pollF1Live(d, scene) {
   if (t && scene?.setCars) {
     const cars = Object.entries(live.pos).map(([num, p]) => {
       const dr = d.drivers.find((x) => String(x.number) === String(num));
-      return { x: (p.x - t.cx) / t.scale, y: (p.y - t.cy) / t.scale, color: dr?.colour || '#ffffff' };
+      return { x: (p.x - t.cx) / t.scale, y: (p.y - t.cy) / t.scale, color: readable(dr?.colour, '#ffffff') };
     });
     if (cars.length) scene.setCars(cars);
   }
@@ -89,7 +90,7 @@ function liveTower(d, ses) {
     const dr = byName(o.name);
     const g = dr ? live.gaps[dr.number] : null;
     const gap = i === 0 ? 'Leader' : g?.gap != null ? (typeof g.gap === 'number' ? `+${g.gap.toFixed(3)}` : esc(g.gap)) : '';
-    return `<li style="--tc:${esc(dr?.colour || '#888')}"><b>${o.pos || i + 1}</b><span>${esc(dr?.code || o.name)}</span><em>${esc(dr?.team || '')}</em><i>${gap}</i></li>`;
+    return `<li style="--tc:${readable(dr?.colour, '#9a9aa2')}"><b>${o.pos || i + 1}</b><span>${esc(dr?.code || o.name)}</span><em>${esc(dr?.team || '')}</em><i>${gap}</i></li>`;
   }).join('');
   return `<section class="panel f1-live reveal in" id="f1-live"><h2 class="ph"><span class="live">LIVE</span> ${esc(ses.name)} <small>${esc(live.detail || '')}${live.flag ? ` · flag: ${esc(live.flag)}` : ''} · ${esc(live.source || 'connecting…')}</small></h2>
     ${rows ? `<ol class="f1-tower">${rows}</ol>` : '<p class="muted">Live timing loads in a moment…</p>'}
@@ -144,14 +145,14 @@ export function f1View(S, { legButton, notice }) {
     ${notice ? notice() : ''}
     ${liveS ? liveTower(d, liveS) : ''}
     <section class="panel big reveal"><h2 class="ph">Who wins? <small>ATLAS race model · ${d.sims.toLocaleString()} simulated races · ${d.gridKnown ? 'starting grid + form' : 'season form (grid not set yet)'} · no bookmaker price</small></h2>
-      <div class="f1-bars">${top.map((x) => `<div class="f1-bar" style="--tc:${esc(x.colour || '#ff2a2a')}"><span class="nm"><b>${esc(x.code)}</b> ${esc(x.name)}<small>${esc(x.team)}${x.grid ? ` · P${x.grid}` : ''}</small></span>
+      <div class="f1-bars">${top.map((x) => `<div class="f1-bar" style="--tc:${readable(x.colour, '#ff2a2a')}"><span class="nm"><b>${esc(x.code)}</b> ${esc(x.name)}<small>${esc(x.team)}${x.grid ? ` · P${x.grid}` : ''}</small></span>
         <div class="meter"><i class="grow" style="--w:${((x.win / maxWin) * 100).toFixed(1)}%"></i></div><span class="pv">${pc(x.win, 1)}</span>${leg(d, 'Race winner', x.name, x.win, legButton)}</div>`).join('')}</div>
     </section>
     <section class="sec-block"><h2 class="sec reveal">Best bets for this Grand Prix <small>highest-confidence picks from the model</small></h2>
       <div class="best-bets">${bb.map((b) => `<div class="bb panel reveal"><small>${esc(b.label)}</small><b>${esc(b.pick)}</b><div class="bb-row"><span>${pc(b.p)}</span><em>${esc(b.why)}</em>${leg(d, b.label, b.pick, b.p, legButton)}</div></div>`).join('')}</div></section>
     <section class="panel reveal"><h2 class="ph">Every driver <small>chance to win · podium · top 6 · points · average finish · fair odds</small></h2>
       <div class="table-wrap"><table class="f1-table"><thead><tr><th>Driver</th><th>Grid</th><th>Last 5</th><th>Win</th><th>Podium</th><th>Top 6</th><th>Points</th><th>Avg</th><th>Podium odds</th></tr></thead>
-      <tbody>${d.drivers.map((x) => `<tr style="--tc:${esc(x.colour || '#888')}"><td class="drv"><b>${esc(x.code)}</b> ${esc(x.name)}<small>${esc(x.team)}</small></td><td>${x.grid ? `P${x.grid}` : '—'}</td><td class="l5">${x.last5.map((r) => `<i class="${r === 'DNF' ? 'dnf' : Number(r) <= 3 ? 'pod' : Number(r) <= 10 ? 'pts' : ''}">${esc(r)}</i>`).join('')}</td>
+      <tbody>${d.drivers.map((x) => `<tr style="--tc:${readable(x.colour, '#9a9aa2')}"><td class="drv"><b>${esc(x.code)}</b> ${esc(x.name)}<small>${esc(x.team)}</small></td><td>${x.grid ? `P${x.grid}` : '—'}</td><td class="l5">${x.last5.map((r) => `<i class="${r === 'DNF' ? 'dnf' : Number(r) <= 3 ? 'pod' : Number(r) <= 10 ? 'pts' : ''}">${esc(r)}</i>`).join('')}</td>
         <td>${pc(x.win, 1)}</td><td>${pc(x.podium)}</td><td>${pc(x.top6)}</td><td>${pc(x.points)}</td><td>${x.avgPos.toFixed(1)}</td><td>${leg(d, 'Podium finish', x.name, x.podium, legButton)}</td></tr>`).join('')}</tbody></table></div></section>
     <div class="grid two">
       <section class="panel reveal"><h2 class="ph">Teammate battles <small>who finishes ahead</small></h2>
@@ -160,7 +161,7 @@ export function f1View(S, { legButton, notice }) {
         <ul class="f1-teams">${d.teams.slice(0, 8).map((t) => `<li><span>${esc(t.name)}</span><b>${pc(t.win, 1)}</b>${leg(d, 'Winning constructor', t.name, t.win, legButton)}</li>`).join('')}</ul></section>
     </div>
     <div class="grid two">
-      <section class="panel reveal"><h2 class="ph">Drivers' championship</h2><ol class="f1-stand">${d.standings.slice(0, 12).map((x) => `<li style="--tc:${esc(x.colour || '#888')}"><b>${x.pos}</b><span>${esc(x.name)}<small>${esc(x.team)}</small></span><em>${x.points} pts</em></li>`).join('')}</ol></section>
+      <section class="panel reveal"><h2 class="ph">Drivers' championship</h2><ol class="f1-stand">${d.standings.slice(0, 12).map((x) => `<li style="--tc:${readable(x.colour, '#9a9aa2')}"><b>${x.pos}</b><span>${esc(x.name)}<small>${esc(x.team)}</small></span><em>${x.points} pts</em></li>`).join('')}</ol></section>
       <section class="panel reveal"><h2 class="ph">Constructors' championship</h2><ol class="f1-stand">${d.constructors.map((x) => `<li><b>${x.pos}</b><span>${esc(x.name)}</span><em>${x.points} pts</em></li>`).join('')}</ol></section>
     </div>
     <section class="panel reveal"><h2 class="ph">Coming up</h2>
