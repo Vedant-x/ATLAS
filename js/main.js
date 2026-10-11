@@ -1,5 +1,6 @@
 import { ico, watchLabel, pinLabel } from './icons.js';
 import { mountPalette } from './palette.js';
+import { readable } from './color.js';
 import { backClosesPanels } from './back.js';
 import { mountAssistant } from './assistant/ui.js';
 import { legalViews, ageGate } from './legal.js';
@@ -198,7 +199,7 @@ function render(animate) {
   app.innerHTML = v.html;
   document.title = `${v.title} · ATLAS`;
   scene.setAccent(v.accent);
-  document.documentElement.style.setProperty('--accent', v.accent);
+  document.documentElement.style.setProperty('--accent', readable(v.accent)); // selected chips carry black text on it
   scene.setMode(v.mode, v.sceneOpts);
   const tab = ['sport', 'league', 'match'].includes(name) ? 'sports' : name; // deeper pages keep the Sports tab lit
   document.querySelectorAll('nav.top a').forEach((a) => { const h = a.getAttribute('href'); a.classList.toggle('on', h.startsWith('#/') && (h.split('/')[1] || 'home') === tab); });
@@ -340,7 +341,12 @@ function ticker() {
   const next = [...state.events].filter((e) => !e.live).sort((a, b) => a.start - b.start).slice(0, 10).map((e) => `<span>${sportOf(e.sport).icon} ${esc(e.home)} v ${esc(e.away)}</span>`);
   const items = [...live, ...picks, ...next];
   const html = items.length ? items.join('') + items.join('') : '<span>ATLAS · connecting feeds</span>';
-  if (html !== tickerHtml) { tickerHtml = html; el.innerHTML = html; }
+  if (html !== tickerHtml) {
+    tickerHtml = html; el.innerHTML = html;
+    // A steady reading speed (about 30 px a second) however long the strip is: a fixed duration made a
+    // long strip race past. The strip holds the items twice and scrolls by half its width.
+    requestAnimationFrame(() => { el.style.animationDuration = `${Math.max(60, Math.round(el.scrollWidth / 2 / 30))}s`; });
+  }
 }
 
 // ---------- calculator ----------
