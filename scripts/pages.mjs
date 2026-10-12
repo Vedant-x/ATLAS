@@ -783,11 +783,13 @@ const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents, ...esport
   const have = new Map();
   for (const e of events) have.set(e.leaguePath, (have.get(e.leaguePath) || 0) + 1);
   const missing = [];
-  let checked = 0;
+  let checked = 0, listed = 0, answered = 0;
   for (const [sport, prefix] of [['soccer', 'soccer'], ['basketball', 'basketball'], ['football', 'football'], ['hockey', 'hockey'], ['baseball', 'baseball'], ['mma', 'mma']]) {
     try {
       const j = await (await fetch(`https://site.web.api.espn.com/apis/v2/scoreboard/header?sport=${sport}`, { headers: H, signal: AbortSignal.timeout(15000) })).json();
+      answered++;
       for (const lg of j.sports?.flatMap((x) => x.leagues || []) || []) {
+        listed++;
         const slug = lg.slug || lg.abbreviation;
         const path = `${prefix}/${slug}`;
         const open = (lg.events || []).filter((ev) => (ev.status || ev.fullStatus?.type?.state) !== 'post').length;
@@ -801,8 +803,11 @@ const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents, ...esport
     const got = l ? await fetchAll(AbortSignal.timeout(60000), [l], { days: 4, concurrency: 1 }).catch(() => []) : [];
     if (got.length) { events.push(...got); recovered++; } else { log(`  COMPLETENESS: ${m.path} has ${m.open} game(s) today on ESPN but none could be loaded`); problems.push(`${m.path}: ${m.open} game(s) today on ESPN but none loaded`); }
   }
-  log(`Completeness check: ${checked} league(s) with games today on ESPN compared, ${missing.length} missing games${missing.length ? `, ${recovered} recovered` : ''}`);
-  if (!checked) { log('  COMPLETENESS: the check compared nothing - ESPN header format may have changed'); problems.push('Completeness check compared nothing (ESPN header format may have changed)'); }
+  log(`Completeness check: ${answered}/6 headers, ${listed} league(s) listed, ${checked} with games still to play compared, ${missing.length} missing games${missing.length ? `, ${recovered} recovered` : ''}`);
+  // Nothing to compare is normal in quiet hours (every game today already finished). Only headers
+  // that answer but list no leagues while many games start within hours mean the format changed.
+  const soon = events.filter((e) => /^(soccer|basketball|football|hockey|baseball|mma)\//.test(e.leaguePath || '') && e.start > Date.now() && e.start < Date.now() + 6 * 3600e3).length;
+  if (answered && !listed && soon >= 10) { log('  COMPLETENESS: ESPN headers list no leagues - the header format may have changed'); problems.push('Completeness check: ESPN headers list no leagues (the header format may have changed)'); }
 }
 
 // Soccer absences: ESPN's soccer injury feed is empty, FotMob lists who is injured or suspended.

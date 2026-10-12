@@ -53,7 +53,8 @@ jobs:
       - name: Update change timeline
         continue-on-error: true
         run: node scripts/changes.mjs track dist/pages/data/index.json dist/pages/data/changes.json
-      # Data alert: a GitHub issue assigned to the owner (GitHub emails them), closed when data recovers.
+      # Data alert: a GitHub issue mentioning the owner (GitHub emails them) for problems that last 3
+      # builds in a row, closed when data recovers. One-off feed timeouts never email.
       - name: Data alert
         id: alert
         uses: actions/github-script@v7
@@ -89,7 +90,7 @@ jobs:
             git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           fi
           git config user.name "atlas-bot" && git config user.email "atlas-bot@users.noreply.github.com"
-          git add picks.json snapshot.json changes.json 2>/dev/null || git add picks.json
+          for f in picks.json snapshot.json changes.json alert-state.json; do [ -f "$f" ] && git add "$f"; done
           git commit -qm "Track record $(date -u +%FT%TZ)" || exit 0
           git push -q origin HEAD:track-record
       - uses: actions/configure-pages@v5
