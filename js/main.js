@@ -8,6 +8,13 @@ import { trackViews } from './trackview.js';
 import { watch, checkAlerts, followed, showMoment, requestNotify } from './alerts.js';
 import { propsView, propsClick, propsSearch, propsList } from './propsview.js';
 import { playerView, playerClick, playerInput } from './playerview.js';
+import { slipCheck } from './slipcheck.js';
+import { loadPlayers, playersData } from './playerdata.js';
+// The Research area: one tab bar across its pages (props and player research, the builder, the
+// edge board, compare, and sports and leagues).
+const RESEARCH = new Set(['props', 'player', 'bankers', 'x', 'target', 'mega', 'edge', 'compare', 'sports', 'sport', 'league']);
+const R_TABS = [['props', '#/props', 'Props', ['props', 'player']], ['builder', '#/x/2', 'Builder', ['bankers', 'x', 'target', 'mega']], ['edge', '#/edge', 'Edge', ['edge']], ['compare', '#/compare', 'Compare', ['compare']], ['sports', '#/sports', 'Sports', ['sports', 'sport', 'league']]];
+const researchTabs = (name) => `<nav class="research-tabs" aria-label="Research">${R_TABS.map(([k, h, l, on]) => `<a class="${on.includes(name) ? 'on' : ''}" href="${h}"${on.includes(name) ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>`;
 import { loadEvents, refreshLive, refreshCricket, refreshTeamNews, refreshAsia } from './data.js';
 import { refreshLiveCenter, liveCenterHtml } from './livecenter.js';
 import { loadF1, f1Data, pollF1Live } from './f1view.js';
@@ -192,18 +199,18 @@ let current = null;
 function build() {
   const { name, args } = parse();
   legIndex.clear();
-  const research = { watchlist: watchlistView, compare: compareView, props: () => propsView(state.events, softRender), player: (a) => playerView(a[0], state.events, softRender) };
+  const research = { watchlist: watchlistView, compare: compareView, props: (a) => propsView(state.events, softRender, a[0] || ''), player: (a) => playerView(a[0], state.events, softRender) };
   return { name, v: (views[name] || research[name] || legalViews[name] || trackViews[name] || views.notfound)(args.map(decodeURIComponent)) };
 }
 
 function render(animate) {
   const { name, v } = build();
-  app.innerHTML = v.html;
+  app.innerHTML = (RESEARCH.has(name) ? researchTabs(name) : '') + v.html;
   document.title = `${v.title} · ATLAS`;
   scene.setAccent(v.accent);
   document.documentElement.style.setProperty('--accent', readable(v.accent)); // selected chips carry black text on it
   scene.setMode(v.mode, v.sceneOpts);
-  const tab = ['sport', 'league', 'match'].includes(name) ? 'sports' : name; // deeper pages keep the Sports tab lit
+  const tab = RESEARCH.has(name) || name === 'match' ? 'props' : name; // every research page keeps Research lit
   document.querySelectorAll('nav.top a').forEach((a) => { const h = a.getAttribute('href'); a.classList.toggle('on', h.startsWith('#/') && (h.split('/')[1] || 'home') === tab); });
   reveal(app, animate);
   fitTitles(app);
@@ -262,6 +269,16 @@ function dock() {
 function route() {
   if (!location.hash.startsWith('#/')) return; // in-page anchors
   const { name } = parse();
+  // Research: picking a player beside the props list (or going back to the list) patches the page
+  // in place, so the list keeps its scroll position; on phones the panel opens at the top.
+  if (name === 'props' && current === 'props') {
+    const h = location.hash;
+    if (stack.length > 1 && stack[stack.length - 2] === h) stack.pop(); else stack.push(h);
+    softRender();
+    if (innerWidth < 1100) scrollTo({ top: 0, behavior: 'instant' });
+    dock();
+    return;
+  }
   const label = { home: 'TODAY', live: 'LIVE', watchlist: 'WATCHLIST', compare: 'COMPARE', track: 'RESULTS', sports: 'ALL SPORTS', sport: 'SPORT', league: 'LEAGUE', match: 'MATCH DOSSIER', edge: 'EDGE BOARD', props: 'PLAYER PROPS', player: 'PLAYER RESEARCH', x: 'MULTIPLIERS', target: 'TARGET', mega: 'MEGA BETS', bankers: 'BANKERS' }[name] || '';
   const h = location.hash || '#/';
   if (replacing) { stack[stack.length - 1] = h; replacing = false; } else if (stack.length > 1 && stack[stack.length - 2] === h) stack.pop(); else stack.push(h);
@@ -277,10 +294,10 @@ function softRender() {
   if (current === 'edge') { refreshEdge(); return; }
   const y = scrollY;
   const open = [...app.querySelectorAll('details[open] > summary')].map((s) => s.textContent);
-  const { v } = build();
+  const { name, v } = build();
   // Prepare the new page exactly as the shown one was prepared, then patch only what differs.
   const t = document.createElement('template');
-  t.innerHTML = v.html;
+  t.innerHTML = (RESEARCH.has(name) ? researchTabs(name) : '') + v.html;
   const f = t.content;
   f.querySelectorAll('details > summary').forEach((s) => { if (open.includes(s.textContent)) s.parentElement.open = true; });
   f.querySelectorAll('.reveal, .grow, .grow-y, .draw').forEach((el, i) => { el.style.setProperty('--d', `${Math.min(i % 12, 11) * 45}ms`); el.classList.add('in'); });
@@ -315,7 +332,8 @@ function renderSlip() {
   document.querySelectorAll('[data-slip-count]').forEach((el) => { el.textContent = s.n; el.classList.toggle('has', s.n > 0); });
   drawer.querySelector('.slip-body').innerHTML = s.n ? `
     <ul class="slip-legs">${slip.legs.map((l) => `<li><span>${sportOf(l.sport).icon}</span><div><b>${esc(l.pick)}</b><small>${esc(l.market)} · ${esc(l.match)}</small>${(() => { const ev = state.events.find((x) => x.id === l.eventId); return ev?.live ? '<small class="live">LIVE</small>' : ev?.start ? `<time class="ist">🕒 ${ist(ev.start)}</time>` : ''; })()}${l.derived ? '<small class="warn">ATLAS fair price, not a bookmaker quote</small>' : ''}${staleNote(l)}</div><em>${odd(l.odds)}</em><button data-unleg="${esc(l.key)}" aria-label="Remove">×</button></li>`).join('')}</ul>
-    ${s.correlated ? '<p class="warn">Two legs from the same match are correlated: the true combined chance differs from the product shown, and bookmakers may refuse the combination.</p>' : ''}
+    ${s.correlated ? '<p class="warn">Two legs from the same match: bookmakers may refuse the combination, and the combined chance is not a simple product (see the slip check).</p>' : ''}
+    ${slip.legs.length > 1 ? slipCheck(slip.legs, { logs: slip.legs.some((l) => l.prop) ? playersData() || loadPlayers(refreshSlip) : null, esc }) : ''}
     <div class="slip-sum">
       <div><small>Total odds</small><b>${s.odds.toFixed(2)}x</b></div>
       <div><small>Est. chance</small><b>${pc(s.p, s.p < 0.01 ? 2 : 1)}</b></div>
@@ -434,7 +452,7 @@ document.addEventListener('input', (e) => {
     drawer.querySelector('[data-sum-exp]').textContent = (slip.stake * s.p * s.odds).toFixed(2);
   }
   if (e.target.matches('[data-ef]')) refreshEdge();
-  if (e.target.matches('[data-props-search]')) { propsSearch(e.target.value); const box = document.querySelector('[data-props-list]'); if (box) box.innerHTML = propsList(state.events); }
+  if (e.target.matches('[data-props-search]')) { propsSearch(e.target.value); const box = document.querySelector('[data-props-list]'); if (box) box.innerHTML = propsList(state.events, decodeURIComponent(parse().args[0] || '')); }
   playerInput(e.target, state.events);
 });
 document.addEventListener('keydown', (e) => {

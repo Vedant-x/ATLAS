@@ -18,7 +18,7 @@ import { validateReport } from '../js/validate.js';
 import { mkdir, copyFile, cp, writeFile, rm, readFile } from 'node:fs/promises';
 import { fetchAll, LEAGUES, fetchErrors, leagueStatus } from '../js/espn.js';
 import { leagueByPath } from '../js/catalog.js';
-import { CORE, PROVIDER, PROP_STATS, GAMELOG_KEYS, OPPORTUNITY, parseProps, gamelogRows, previousSeason, formFor, propHistory, propChance, hasForm } from '../js/props.js';
+import { CORE, PROVIDER, PROP_STATS, GAMELOG_KEYS, OPPORTUNITY, parseProps, gamelogRows, previousSeason, formFor, propHistory, propChance, withoutTeammate, hasForm } from '../js/props.js';
 import { KHL_API, khlEvent, khlRecords } from '../js/khl.js';
 import { toDecimal } from '../js/espn.js';
 
@@ -591,11 +591,44 @@ async function playerProps(events) {
   // Player history: each player's last 20 games from his ESPN game log (last season too while this
   // one is under 10 games old). It gives the props page its hit rates, splits and charts, and the
   // ATLAS chance (propChance): the price as a prior, moved by how the player's recent games went.
+  // Injury reports (ESPN match summaries) for every match with props: who is out, doubtful or
+  // questionable tonight, by athlete id, so their absence can be read from the game logs.
+  const INJ = /^(out|doubtful|questionable|day-to-day|injured reserve|suspension)/i;
+  const withProps = due.filter((e) => e.props?.length);
+  const sq = [...withProps];
+  let injured = 0;
+  await Promise.all(Array.from({ length: 6 }, async () => {
+    while (sq.length) {
+      const e = sq.shift();
+      try {
+        const sm = await getJson(`https://site.api.espn.com/apis/site/v2/sports/${e.leaguePath}/summary?event=${e.compId}`);
+        const inj = { home: [], away: [] };
+        for (const t of sm.injuries || []) {
+          const side = String(t.team?.id) === String(e.teamIds.home) ? 'home' : String(t.team?.id) === String(e.teamIds.away) ? 'away' : null;
+          if (!side) continue;
+          inj[side] = (t.injuries || []).map((x) => ({ id: x.athlete?.id != null ? String(x.athlete.id) : null, name: x.athlete?.displayName || '', status: x.status || x.type?.description || '' }))
+            .filter((x) => x.id && x.name && INJ.test(x.status));
+        }
+        if (inj.home.length || inj.away.length) { e.injuries = { ...inj, source: 'ESPN', at: Date.now() }; injured += inj.home.length + inj.away.length; }
+      } catch { /* no injury report */ }
+    }
+  }));
+  log(`Injury reports (ESPN): ${injured} players out, doubtful or questionable across ${withProps.filter((e) => e.injuries).length} of ${withProps.length} prop matches`);
+
+  // Player history: each player's last 20 games from his ESPN game log (last season too while this
+  // one is under 10 games old). It gives the props page its hit rates, splits and charts, and the
+  // ATLAS chance (propChance): the price as a prior, moved by how the player's recent games went.
+  // Injured teammates' logs are read too: the games they missed show how the player does without them.
   const logs = new Map();
   const want = [];
   for (const e of due) for (const pr of e.props || []) {
     const [sport, league] = e.leaguePath.split('/');
     if (hasForm(sport, pr.type) && !logs.has(`${league}|${pr.id}`) && want.length < 320) { logs.set(`${league}|${pr.id}`, null); want.push([sport, league, pr.id]); }
+  }
+  let mates = 0;
+  for (const e of withProps) for (const side of ['home', 'away']) for (const x of e.injuries?.[side] || []) {
+    const [sport, league] = e.leaguePath.split('/');
+    if (!logs.has(`${league}|${x.id}`) && mates < 160) { logs.set(`${league}|${x.id}`, null); want.push([sport, league, x.id]); mates++; }
   }
   const q = [...want];
   let backfilled = 0, sample = null;
@@ -620,7 +653,16 @@ async function playerProps(events) {
       } catch { /* price only */ }
     }
   }));
-  let formed = 0;
+  // Teammates of a prop player tonight: the injured (with their status) and the other prop players
+  // on his side, each with a game log.
+  const teammatesOf = (e, league, pr) => {
+    if (!pr.side) return [];
+    const list = (e.injuries?.[pr.side] || []).filter((x) => x.id !== String(pr.id)).map((x) => ({ id: x.id, name: x.name, status: x.status }));
+    for (const o of e.props || []) if (o.side === pr.side && String(o.id) !== String(pr.id) && !list.some((x) => x.id === String(o.id))) list.push({ id: String(o.id), name: o.player, status: null });
+    return list.filter((x) => logs.get(`${league}|${x.id}`)?.length);
+  };
+  const OUT = /^(out|doubtful|injured reserve|suspension)/i;
+  let formed = 0, adjusted = 0;
   for (const e of due) {
     const [sport, league] = e.leaguePath.split('/');
     for (const pr of e.props || []) {
@@ -631,31 +673,54 @@ async function playerProps(events) {
       if (!hist) continue;
       pr.hist = hist;
       pr.form = formFor(sport, pr.type, pr.target, rows.slice(0, 10));
-      pr.p = propChance(pr.pm ?? pr.p, sport, pr.type, pr.target, rows, { home }).p;
+      // Teammates ruled out (or doubtful) tonight: how he did in the games they missed moves the
+      // forecast; questionable ones are listed as "what if" only.
+      const adj = [];
+      for (const m of teammatesOf(e, league, pr).filter((x) => x.status)) {
+        const w = withoutTeammate(sport, pr.type, pr.target, rows, logs.get(`${league}|${m.id}`));
+        if (w) adj.push({ name: m.name, status: m.status, applied: OUT.test(m.status) && w.fresh, ...w });
+      }
+      const live = adj.filter((x) => x.applied).sort((a, b) => Math.abs(b.scale - 1) - Math.abs(a.scale - 1));
+      const scale = Math.min(1.4, Math.max(0.7, live.reduce((m, x) => m * x.scale, 1)));
+      const top = live[0];
+      pr.pBase = propChance(pr.pm ?? pr.p, sport, pr.type, pr.target, rows, { home }).p;
+      pr.p = top ? propChance(pr.pm ?? pr.p, sport, pr.type, pr.target, rows, { home, scale, without: top.without }).p : pr.pBase;
+      if (adj.length) pr.adj = adj.slice(0, 4);
+      if (top && Math.abs(pr.p - pr.pBase) >= 0.02) { pr.why = `without ${top.name} (${top.status.toLowerCase()})`; adjusted++; }
       formed++;
     }
     e.props?.sort((a, b) => b.p - a.p);
   }
-  // Every prop player's game log for the player research page (data/players.json, loaded on demand):
-  // per game the date, opponent, home/away, this season or last, minutes (or at-bats) and each stat a
-  // prop of his sport uses.
+  // Every prop player's game log (and his injured teammates') for the player research page
+  // (data/players.json, loaded on demand): per game the date, opponent, home/away, this season or
+  // last, minutes (or at-bats), the game and team ids (for with/without a teammate) and each stat a
+  // prop of his sport uses; and for prop players, tonight's teammates to compare against.
   const players = {};
+  const entry = (sport, rows, name, team, extra = {}) => {
+    const cols = [...new Set(Object.values(GAMELOG_KEYS[sport] || {}).flat())];
+    const opp = OPPORTUNITY[sport];
+    return {
+      n: name, s: sport, t: team, c: cols, o: opp || null, ...extra,
+      g: rows.map((r) => [r._at ? new Date(r._at).toISOString().slice(0, 10) : '', r._oppAbbr || '', r._opp || '', r._home === true ? 1 : r._home === false ? 0 : -1, r._season === false ? 0 : 1, opp && Number.isFinite(r[opp]) ? r[opp] : null, r._ev || '', r._team || '', ...cols.map((c) => (Number.isFinite(r[c]) ? r[c] : null))]),
+    };
+  };
   for (const e of due) {
     const [sport, league] = e.leaguePath.split('/');
     for (const pr of e.props || []) {
       const k = `${league}|${pr.id}`, rows = logs.get(k);
       if (!rows?.length || players[k]) continue;
-      const cols = [...new Set(Object.values(GAMELOG_KEYS[sport] || {}).flat())];
-      const opp = OPPORTUNITY[sport];
-      players[k] = {
-        n: pr.player, s: sport, t: pr.side === 'home' ? e.home : pr.side === 'away' ? e.away : '', c: cols, o: opp || null,
-        g: rows.map((r) => [r._at ? new Date(r._at).toISOString().slice(0, 10) : '', r._oppAbbr || '', r._opp || '', r._home === true ? 1 : r._home === false ? 0 : -1, r._season === false ? 0 : 1, opp && Number.isFinite(r[opp]) ? r[opp] : null, ...cols.map((c) => (Number.isFinite(r[c]) ? r[c] : null))]),
-      };
+      const team = pr.side === 'home' ? e.home : pr.side === 'away' ? e.away : '';
+      players[k] = entry(sport, rows, pr.player, team, { tm: teammatesOf(e, league, pr).map((m) => [`${league}|${m.id}`, m.name, m.status]) });
+      for (const m of teammatesOf(e, league, pr)) {
+        const mk = `${league}|${m.id}`;
+        if (!players[mk] && m.status) players[mk] = entry(sport, logs.get(mk), m.name, team, { inj: m.status });
+      }
     }
   }
   await mkdir(`${out}/data`, { recursive: true });
   await writeFile(`${out}/data/players.json`, JSON.stringify(players));
-  log(`Player history: ${[...logs.values()].filter(Boolean).length} of ${want.length} game logs (${backfilled} with last season), ${formed} props modelled from recent games`);
+  log(`Player history: ${[...logs.values()].filter(Boolean).length} of ${want.length} game logs (${mates} of injured teammates, ${backfilled} with last season), ${formed} props modelled from recent games, ${adjusted} moved by a teammate's absence`);
+  due.flatMap((e) => (e.props || []).filter((pr) => pr.why)).slice(0, 5).forEach((pr) => log(`  ABSENCE ${pr.player} ${pr.target}+ ${pr.label}: ${Math.round(pr.pBase * 100)}% → ${Math.round(pr.p * 100)}% ${pr.why}`));
   const withVenue = Object.values(players).reduce((n, pl) => n + pl.g.filter((g) => g[3] !== -1).length, 0), games = Object.values(players).reduce((n, pl) => n + pl.g.length, 0);
   if (sample) log(`  gamelog: previous season ${sample.season} · game keys ${Object.keys(sample.game || {}).join(',')} · atVs ${sample.game?.atVs} · opponent ${sample.game?.opponent?.abbreviation} · ${withVenue}/${games} games with home/away`);
   for (const e of due.filter((x) => x.props?.length).slice(0, 3)) log(`  PROPS ${e.away} @ ${e.home}: ${e.props.slice(0, 4).map((x) => `${x.player} ${x.target}+ ${x.label} @${x.odds}`).join(' · ')}`);

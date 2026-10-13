@@ -8,6 +8,7 @@ import { propLabel, propMarket } from './props.js';
 import { calibrated } from './track.js';
 import { trackCalibration, trackStats, recordLine, ensureTrack } from './trackview.js';
 import { split } from './ui.js';
+import { playerPanel } from './playerview.js';
 
 const KEY = 'atlas-props-v1';
 const DEFAULTS = { sport: 'all', stat: 'all', sort: 'edge', min: 0, q: '' };
@@ -39,8 +40,10 @@ export function propBars(hist, target) {
 }
 
 // One prop, with its match (e) for the slip leg and the opponent. `withMatch` adds the fixture line.
-export function propRow(e, x, { withMatch = false } = {}) {
-  const leg = { key: `${e.id}|${propMarket(x)}|${propLabel(x)}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: propMarket(x), pick: propLabel(x), odds: x.odds, p: x.p };
+export function propRow(e, x, { withMatch = false, sel = '' } = {}) {
+  const league = e.leaguePath?.split('/')[1];
+  const pkey = `${league}~${x.id}`;
+  const leg = { key: `${e.id}|${propMarket(x)}|${propLabel(x)}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: propMarket(x), pick: propLabel(x), odds: x.odds, p: x.p, prop: { id: String(x.id), league, type: x.type, target: x.target } };
   const team = x.side === 'home' ? e.home : x.side === 'away' ? e.away : '';
   const opp = x.side === 'home' ? e.away : x.side === 'away' ? e.home : '';
   const h = x.hist;
@@ -48,9 +51,9 @@ export function propRow(e, x, { withMatch = false } = {}) {
   const edge = x.p - mkt;
   const where = x.side ? `${x.side === 'home' ? 'vs' : '@'} ${opp}` : `${e.home} v ${e.away}`;
   const rates = h ? [hr('L5', h.l5), hr('L10', h.l10), hr('L20', h.l20), h.season ? hr('Season', h.season) : '', h.vs ? hr(`vs ${opp.split(' ').at(-1)}`, h.vs) : '', h.venue ? hr(h.home ? 'Home' : 'Away', h.venue) : ''].join('') : '<span class="muted">No recent games on record: the price alone</span>';
-  return `<div class="pp2">
-    <div class="pp2-head"><div><b>${esc(propLabel(x))}</b><small>${x.hist ? `<a class="pp2-who" href="#/player/${esc(`${e.leaguePath?.split('/')[1]}~${x.id}`)}">Research ›</a> ` : ''}${esc(team)} · ${esc(where)}${withMatch ? ` · <a href="#/match/${encodeURIComponent(e.id)}">${esc(ist(e.start).replace(/ IST$/, ''))}</a>` : ''}</small></div>${legButton(leg, odd(x.odds))}</div>
-    <div class="pp2-num"><span class="pp2-p" title="ATLAS forecast for this game"><i>ATLAS</i> ${pc(x.p, 0)}</span><span class="muted">market ${pc(mkt, 0)}</span><span class="${edge >= 0 ? 'pos' : 'neg'}">${edge >= 0 ? '+' : '−'}${Math.abs(edge * 100).toFixed(0)} pts</span>${h ? `<span class="muted">avg ${h.avg}</span>` : ''}</div>
+  return `<div class="pp2${sel && sel === pkey ? ' sel' : ''}">
+    <div class="pp2-head"><div><b>${esc(propLabel(x))}</b><small>${x.hist ? `<a class="pp2-who" href="#/props/${esc(pkey)}">Research ›</a> ` : ''}${esc(team)} · ${esc(where)}${withMatch ? ` · <a href="#/match/${encodeURIComponent(e.id)}">${esc(ist(e.start).replace(/ IST$/, ''))}</a>` : ''}</small></div>${legButton(leg, odd(x.odds))}</div>
+    <div class="pp2-num"><span class="pp2-p" title="ATLAS forecast for this game"><i>ATLAS</i> ${pc(x.p, 0)}</span><span class="muted">market ${pc(mkt, 0)}</span><span class="${edge >= 0 ? 'pos' : 'neg'}">${edge >= 0 ? '+' : '−'}${Math.abs(edge * 100).toFixed(0)} pts</span>${h ? `<span class="muted">avg ${h.avg}</span>` : ''}${x.why ? `<span class="pp2-why" title="ATLAS before this: ${pc(x.pBase, 0)}">${esc(x.why)}</span>` : ''}</div>
     <div class="pp2-hist"><div class="pp2-rates">${rates}</div>${h ? propBars(h, x.target) : ''}</div>
   </div>`;
 }
@@ -85,13 +88,15 @@ function filtered(list) {
   return l;
 }
 
-export function propsList(events) {
+export function propsList(events, sel = '') {
   const l = filtered(allProps(events));
   if (!l.length) return '<p class="muted">No props match these filters right now. Lines appear about a day before each game.</p>';
-  return `${l.slice(0, 120).map(({ e, x }) => propRow(e, x, { withMatch: true })).join('')}${l.length > 120 ? `<p class="muted">Showing 120 of ${l.length}: narrow it with a filter or search.</p>` : ''}`;
+  return `${l.slice(0, 120).map(({ e, x }) => propRow(e, x, { withMatch: true, sel })).join('')}${l.length > 120 ? `<p class="muted">Showing 120 of ${l.length}: narrow it with a filter or search.</p>` : ''}`;
 }
 
-export function propsView(events, refresh) {
+// The research view: the props list, and beside it (wide screens) or instead of it (phones) the
+// research panel for the player picked from it.
+export function propsView(events, refresh, sel = '') {
   ensureTrack(refresh);
   const all = allProps(events);
   const sports = [...new Set(all.map((p) => p.e.sport))];
@@ -100,19 +105,26 @@ export function propsView(events, refresh) {
   if (st.stat !== 'all' && !stats.includes(st.stat)) st.stat = 'all';
   const matches = new Set(all.map((p) => p.e.id)).size;
   const modelled = all.filter((p) => p.x.hist).length;
+  const moved = all.filter((p) => p.x.why).length;
   const rec = trackStats()?.byFamily?.find((f) => f.key === 'prop');
+  const pn = sel ? playerPanel(sel, events, refresh) : null;
   return {
-    mode: 'bankers', accent: '#3dff9a', title: 'Player props',
-    html: `<section class="hero small"><p class="kicker reveal">NEXT 36 HOURS · ${all.length} LINES · ${matches} MATCHES</p><h1>${split('PLAYER PROPS')}</h1>
-      <p class="lede reveal">The ATLAS chance weighs each player's last 20 games (recent ones count more) against the bookmaker's price. ${modelled} of ${all.length} lines have game history.</p></section>
+    mode: 'bankers', accent: '#3dff9a', title: pn?.name ? `${pn.name} · Props` : 'Player props',
+    html: `<section class="hero small"><p class="kicker reveal">NEXT 36 HOURS · ${all.length} LINES · ${matches} MATCHES${moved ? ` · ${moved} MOVED BY ABSENCES` : ''}</p><h1>${split('PLAYER PROPS')}</h1>
+      <p class="lede reveal">The ATLAS forecast weighs each player's last 20 games (recent ones count more, games without an injured teammate when he is out tonight) against the bookmaker's price. ${modelled} of ${all.length} lines have game history.</p></section>
+      <div class="rs${pn ? ' has-sel' : ''}">
+      <div class="rs-list">
       <div class="props-tools reveal">
         <input class="props-q" type="search" placeholder="Search player or team" value="${esc(st.q)}" data-props-search aria-label="Search player or team">
         <div class="chips">${chip('sport', 'all', 'All sports', st.sport === 'all')}${sports.map((s) => chip('sport', s, SPORT_NAME[s] || s, st.sport === s)).join('')}</div>
         <div class="chips">${chip('stat', 'all', 'All stats', st.stat === 'all')}${stats.map((s) => chip('stat', s, s, st.stat === s)).join('')}</div>
         <div class="chips">${SORTS.map(([k, t]) => chip('sort', k, t, st.sort === k)).join('')}<span class="nav-sep" aria-hidden="true"></span>${MINS.map(([k, t]) => chip('min', k, t, st.min === k)).join('')}</div>
       </div>
-      <div class="panel props-list2" data-props-list>${propsList(events)}</div>
-      ${recordLine(rec) ? `<p class="rec-line reveal">ATLAS props record · ${recordLine(rec)} · <a href="#/track">see every pick</a></p>` : '<p class="rec-line reveal muted">Props in the shortlist are graded from the box score after each game: the record builds up on the Results page.</p>'}`,
+      <div class="panel props-list2" data-props-list>${propsList(events, sel)}</div>
+      ${recordLine(rec) ? `<p class="rec-line reveal">ATLAS props record · ${recordLine(rec)} · <a href="#/track">see every pick</a></p>` : '<p class="rec-line reveal muted">Props in the shortlist are graded from the box score after each game: the record builds up on the Results page.</p>'}
+      </div>
+      ${pn ? `<aside class="rs-panel" aria-label="Player research"><div class="rs-head"><a class="rs-back" href="#/props">← All props</a><h2>${esc(pn.name || 'Player')}</h2>${pn.name ? `<small>${esc(pn.team || '')}${pn.next ? ` · ${esc(pn.next)}` : ''}${pn.e ? ` · <a href="#/match/${encodeURIComponent(pn.e.id)}">dossier</a>` : ''}</small>` : ''}</div>${pn.html}</aside>` : ''}
+      </div>`,
   };
 }
 
