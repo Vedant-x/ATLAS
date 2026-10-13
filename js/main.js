@@ -15,6 +15,45 @@ import { loadPlayers, playersData } from './playerdata.js';
 const RESEARCH = new Set(['props', 'player', 'bankers', 'x', 'target', 'mega', 'edge', 'compare', 'sports', 'sport', 'league']);
 const R_TABS = [['props', '#/props', 'Props', ['props', 'player']], ['builder', '#/x/2', 'Builder', ['bankers', 'x', 'target', 'mega']], ['edge', '#/edge', 'Edge', ['edge']], ['compare', '#/compare', 'Compare', ['compare']], ['sports', '#/sports', 'Sports', ['sports', 'sport', 'league']]];
 const researchTabs = (name) => `<nav class="research-tabs" aria-label="Research">${R_TABS.map(([k, h, l, on]) => `<a class="${on.includes(name) ? 'on' : ''}" href="${h}"${on.includes(name) ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>`;
+
+// "More": every page in one sheet (phones and tablets, where the bar holds only the main ones). The
+// tiles reuse the menu's own links and icons.
+const MORE_INFO = {
+  '#/': 'Shortlist, live strip and what is next', '#/live': 'Everything in play now', '#/watchlist': 'Matches you follow, with alerts',
+  '#/sports': 'Every sport and competition', '#/props': 'Player lines, hit rates, research', '#/edge': 'Every price against fair odds',
+  '#/bankers': 'Likeliest picks at short odds', '#/x/2': 'Slips from 2x to 1000x', '#/target': 'A slip for any multiplier you type',
+  '#/mega': '100x and 1000x slips', '#/compare': 'Pinned matches side by side', '#/track': 'Track record of every pick',
+};
+const sheet = document.getElementById('more-sheet');
+function fillMore() {
+  const grid = sheet?.querySelector('.ms-grid');
+  if (!grid || grid.children.length) return;
+  grid.innerHTML = [...document.querySelectorAll('nav.top a[href^="#/"]')].map((a) => {
+    const h = a.getAttribute('href');
+    return `<a href="${h}" class="ms-tile">${a.querySelector('svg')?.outerHTML || ''}<b>${esc(a.querySelector('span')?.textContent || a.dataset.m || '')}</b><small>${esc(MORE_INFO[h] || '')}</small></a>`;
+  }).join('') + '<button class="ms-tile" data-more-display><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/></svg><b>Display</b><small>Motion, density, ticker, 3D</small></button>';
+}
+function openMore(open) {
+  if (!sheet) return;
+  fillMore();
+  sheet.hidden = !open;
+  sheet.classList.toggle('open', open);
+  document.querySelector('nav.top [data-more]')?.setAttribute('aria-expanded', String(open));
+  if (open) sheet.querySelector('.ms-tile')?.focus({ preventScroll: true });
+}
+function closeMore() { if (sheet?.classList.contains('open')) openMore(false); }
+sheet?.addEventListener('click', (e) => {
+  if (e.target === sheet || e.target.closest('[data-more-close]')) { e.preventDefault(); openMore(false); return; }
+  if (e.target.closest('[data-more-display]')) { openMore(false); document.querySelector('[data-display-toggle]')?.click(); return; }
+  if (e.target.closest('a.ms-tile')) openMore(false);
+});
+document.addEventListener('click', (e) => {
+  const m = e.target.closest('nav.top [data-more]');
+  if (!m) return;
+  e.preventDefault();
+  openMore(!sheet.classList.contains('open'));
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMore(); });
 import { loadEvents, refreshLive, refreshCricket, refreshTeamNews, refreshAsia } from './data.js';
 import { refreshLiveCenter, liveCenterHtml } from './livecenter.js';
 import { loadF1, f1Data, pollF1Live } from './f1view.js';
@@ -210,8 +249,13 @@ function render(animate) {
   scene.setAccent(v.accent);
   document.documentElement.style.setProperty('--accent', readable(v.accent)); // selected chips carry black text on it
   scene.setMode(v.mode, v.sceneOpts);
-  const tab = RESEARCH.has(name) || name === 'match' ? 'props' : name; // every research page keeps Research lit
+  // Deeper pages keep their section lit: matches and leagues under Sports, player research under Props.
+  const tab = ['sport', 'league', 'match'].includes(name) ? 'sports' : name === 'player' ? 'props' : name;
   document.querySelectorAll('nav.top a').forEach((a) => { const h = a.getAttribute('href'); a.classList.toggle('on', h.startsWith('#/') && (h.split('/')[1] || 'home') === tab); });
+  // On phones and tablets, More is lit when the page's own menu item is folded into it.
+  const lit = document.querySelector('nav.top a.on:not([data-more])');
+  document.querySelector('nav.top [data-more]')?.classList.toggle('on', Boolean(lit) && getComputedStyle(lit).display === 'none');
+  closeMore();
   reveal(app, animate);
   fitTitles(app);
   countUp(app);

@@ -2,7 +2,7 @@
 // view, search, assistant, display settings) instead of leaving the page, as an app would. Opening a
 // panel adds one history entry; Back pops it and closes what is open. Closing a panel any other way
 // removes that entry again, so Back never needs pressing twice.
-const OPEN = ['#slip.open', '#qv.open', '#display-panel.open', '.pal:not([hidden])', '.ai-root.open'];
+const OPEN = ['#more-sheet.open', '#slip.open', '#qv.open', '#display-panel.open', '.pal:not([hidden])', '.ai-root.open'];
 const anyOpen = () => OPEN.some((s) => document.querySelector(s));
 
 export function backClosesPanels() {
