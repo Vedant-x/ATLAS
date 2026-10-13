@@ -656,7 +656,8 @@ async function playerProps(events) {
   await mkdir(`${out}/data`, { recursive: true });
   await writeFile(`${out}/data/players.json`, JSON.stringify(players));
   log(`Player history: ${[...logs.values()].filter(Boolean).length} of ${want.length} game logs (${backfilled} with last season), ${formed} props modelled from recent games`);
-  if (sample) log(`  gamelog fields: ${sample.keys} · previous season ${sample.season} · game ${JSON.stringify(sample.game || {}).slice(0, 300)}`);
+  const withVenue = Object.values(players).reduce((n, pl) => n + pl.g.filter((g) => g[3] !== -1).length, 0), games = Object.values(players).reduce((n, pl) => n + pl.g.length, 0);
+  if (sample) log(`  gamelog: previous season ${sample.season} · game keys ${Object.keys(sample.game || {}).join(',')} · atVs ${sample.game?.atVs} · opponent ${sample.game?.opponent?.abbreviation} · ${withVenue}/${games} games with home/away`);
   for (const e of due.filter((x) => x.props?.length).slice(0, 3)) log(`  PROPS ${e.away} @ ${e.home}: ${e.props.slice(0, 4).map((x) => `${x.player} ${x.target}+ ${x.label} @${x.odds}`).join(' · ')}`);
 }
 
