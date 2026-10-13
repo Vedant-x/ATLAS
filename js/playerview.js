@@ -62,7 +62,7 @@ function tonight(p, rows, offer, home) {
     const base = propChance(offer ? offer.pm ?? 1 / offer.odds : 0.5, p.s, st.type, st.line, rows, { home });
     const ifOut = propChance(offer ? offer.pm ?? 1 / offer.odds : 0.5, p.s, st.type, st.line, rows, { home, scale: w.scale, without: w.without });
     const a = offer ? base.p : base.form, b = offer ? ifOut.p : ifOut.form;
-    return `<li><b>${esc(name)}</b> · ${esc(status)} · without him: avg ${w.avgWithout} in ${w.without[1]} games (${w.without[0]}/${w.without[1]} cleared ${st.line}+) vs ${w.avgWith} with him · ${applied ? `<span class="pos">applied</span>: forecast ${pc(a, 0)} → ${pc(b, 0)}` : already ? `<span class="muted">already missed ${10 - w.recentWith} of his last 10 games: his recent form reflects it, so it is not applied again</span>` : `if he sits: ${pc(a, 0)} → ${pc(b, 0)}`}</li>`;
+    return `<li><b>${esc(name)}</b> · ${esc(status)} · without him: avg ${w.avgWithout} in ${w.without[1]} games (${w.without[0]}/${w.without[1]} cleared ${st.line}+) vs ${w.avgWith} with him · ${applied ? `<span class="pos">applied</span>: forecast ${pc(a, 0)} → ${pc(b, 0)}` : already ? `<span class="muted">already missed ${5 - w.recentWith} of his last 5 games: his recent form reflects it, so it is not applied again</span>` : `if he sits: ${pc(a, 0)} → ${pc(b, 0)}`}</li>`;
   }).join('');
   return `<div class="panel pl-tonight"><h3 class="ph">Tonight's absences <small>from ESPN's injury report · out and doubtful are applied to the forecast, questionable only as "if he sits"</small></h3><ul>${items}</ul></div>`;
 }
