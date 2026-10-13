@@ -301,7 +301,8 @@ export function splitByTeammate(rows, mate) {
   return out;
 }
 
-// How a teammate's absence tonight moves this prop: the player's average without him against his
+// How a teammate's absence tonight moves this prop (`fresh`: he played most of the player's last 10
+// games, so his absence is news the recent form does not already hold): the player's average without him against his
 // average with him, shrunk toward no change (6 games' worth of "no change"), and his hit rate in
 // those games. null when there are fewer than 2 games without him.
 export function withoutTeammate(sport, type, target, rows, mate) {
@@ -313,5 +314,9 @@ export function withoutTeammate(sport, type, target, rows, mate) {
   if (!(mw > 0)) return null;
   const k = vo.length / (vo.length + 6);
   const scale = 1 + (mo / mw - 1) * k;
-  return { scale: +Math.min(1.35, Math.max(0.75, scale)).toFixed(3), without: [vo.filter((v) => v >= target).length, vo.length], with: [vw.filter((v) => v >= target).length, vw.length], avgWith: +mw.toFixed(1), avgWithout: +mo.toFixed(1) };
+  // How many of his last 10 games the teammate played: if he has already missed most of them, the
+  // player's recent form reflects his absence and applying it again would count it twice.
+  const withSet = new Set(w);
+  const recentWith = (rows || []).slice(0, 10).filter((r) => withSet.has(r)).length;
+  return { scale: +Math.min(1.35, Math.max(0.75, scale)).toFixed(3), without: [vo.filter((v) => v >= target).length, vo.length], with: [vw.filter((v) => v >= target).length, vw.length], avgWith: +mw.toFixed(1), avgWithout: +mo.toFixed(1), recentWith, fresh: recentWith >= 5 };
 }

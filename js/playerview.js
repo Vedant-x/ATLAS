@@ -57,11 +57,12 @@ function tonight(p, rows, offer, home) {
   const items = mates.map(([key, name, status]) => {
     const w = withoutTeammate(p.s, st.type, st.line, rows, rowsOf(data[key]));
     if (!w) return `<li><b>${esc(name)}</b> · ${esc(status)} · <span class="muted">he has played every game with ${esc(first(name))} in this log: no "without" games to learn from</span></li>`;
-    const applied = OUT.test(status);
+    const applied = OUT.test(status) && w.fresh;
+    const already = OUT.test(status) && !w.fresh;
     const base = propChance(offer ? offer.pm ?? 1 / offer.odds : 0.5, p.s, st.type, st.line, rows, { home });
     const ifOut = propChance(offer ? offer.pm ?? 1 / offer.odds : 0.5, p.s, st.type, st.line, rows, { home, scale: w.scale, without: w.without });
     const a = offer ? base.p : base.form, b = offer ? ifOut.p : ifOut.form;
-    return `<li><b>${esc(name)}</b> · ${esc(status)} · without him: avg ${w.avgWithout} in ${w.without[1]} games (${w.without[0]}/${w.without[1]} cleared ${st.line}+) vs ${w.avgWith} with him · ${applied ? `<span class="pos">applied</span>: forecast ${pc(a, 0)} → ${pc(b, 0)}` : `if he sits: ${pc(a, 0)} → ${pc(b, 0)}`}</li>`;
+    return `<li><b>${esc(name)}</b> · ${esc(status)} · without him: avg ${w.avgWithout} in ${w.without[1]} games (${w.without[0]}/${w.without[1]} cleared ${st.line}+) vs ${w.avgWith} with him · ${applied ? `<span class="pos">applied</span>: forecast ${pc(a, 0)} → ${pc(b, 0)}` : already ? `<span class="muted">already missed ${10 - w.recentWith} of his last 10 games: his recent form reflects it, so it is not applied again</span>` : `if he sits: ${pc(a, 0)} → ${pc(b, 0)}`}</li>`;
   }).join('');
   return `<div class="panel pl-tonight"><h3 class="ph">Tonight's absences <small>from ESPN's injury report · out and doubtful are applied to the forecast, questionable only as "if he sits"</small></h3><ul>${items}</ul></div>`;
 }
@@ -89,7 +90,7 @@ function body(p, events) {
   const avg = games.length ? games.reduce((s, x) => s + x.v, 0) / games.length : null;
   // Forecast: the shown chance for a priced line; the model alone (with tonight's applied absences)
   // for any other line.
-  const applied = (p.tm || []).filter((m) => m[2] && OUT.test(m[2])).map((m) => withoutTeammate(sport, st.type, st.line, rows, rowsOf(data[m[0]]))).filter(Boolean)
+  const applied = (p.tm || []).filter((m) => m[2] && OUT.test(m[2])).map((m) => withoutTeammate(sport, st.type, st.line, rows, rowsOf(data[m[0]]))).filter((w) => w?.fresh)
     .sort((a, b) => Math.abs(b.scale - 1) - Math.abs(a.scale - 1));
   const scale = Math.min(1.4, Math.max(0.7, applied.reduce((m, x) => m * x.scale, 1)));
   const model = propChance(offer ? offer.pm ?? 1 / offer.odds : 0.5, sport, st.type, st.line, rows, { home, scale, without: applied[0]?.without });

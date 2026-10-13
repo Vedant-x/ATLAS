@@ -678,7 +678,7 @@ async function playerProps(events) {
       const adj = [];
       for (const m of teammatesOf(e, league, pr).filter((x) => x.status)) {
         const w = withoutTeammate(sport, pr.type, pr.target, rows, logs.get(`${league}|${m.id}`));
-        if (w) adj.push({ name: m.name, status: m.status, applied: OUT.test(m.status), ...w });
+        if (w) adj.push({ name: m.name, status: m.status, applied: OUT.test(m.status) && w.fresh, ...w });
       }
       const live = adj.filter((x) => x.applied).sort((a, b) => Math.abs(b.scale - 1) - Math.abs(a.scale - 1));
       const scale = Math.min(1.4, Math.max(0.7, live.reduce((m, x) => m * x.scale, 1)));

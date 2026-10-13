@@ -131,6 +131,10 @@ test('teammates: games with and without him from his own log; his absence moves 
   assert.equal(splitByTeammate(rows, mk([['x1', 10, '99']])).without.length, 0);
   const w = withoutTeammate('basketball', 'Points', 25, rows, star);
   assert.deepEqual(w.without, [4, 4]);
+  assert.equal(w.fresh, true, 'he played most of the last 10: his absence is news');
+  // A teammate out for the last 10 games: already in the recent form, not applied again.
+  const longOut = mk(Array.from({ length: 12 }, (_, i) => [`g${i}`, 25]).filter((_, i) => i >= 10));
+  assert.equal(withoutTeammate('basketball', 'Points', 25, rows, longOut).fresh, false);
   assert.ok(w.scale > 1.1 && w.scale <= 1.35, `scale ${w.scale}`);
   const base = propChance(0.4, 'basketball', 'Points', 25, rows).p;
   const adj = propChance(0.4, 'basketball', 'Points', 25, rows, { scale: w.scale, without: w.without }).p;
