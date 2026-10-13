@@ -85,7 +85,7 @@ const ratio = (l) => -Math.log(Math.max(1e-9, l.p)) / Math.log(l.odds);
 // Player props as slip legs (one-way prices; chance net of the margin).
 const propLegs = (events) => events.filter((e) => !e.live).flatMap((e) => (e.props || []).map((pr) => ({
   eventId: e.id, sport: e.sport, start: e.start, match: `${e.home} vs ${e.away}`, market: propMarket(pr), pick: propLabel(pr),
-  odds: pr.odds, p: pr.p, margin: 0.05, ev: pr.p * pr.odds - 1, prop: { id: pr.id, type: pr.type, target: pr.target },
+  odds: pr.odds, p: pr.p, margin: 0.05, ev: pr.p * pr.odds - 1, prop: { id: String(pr.id), league: e.leaguePath?.split('/')[1], type: pr.type, target: pr.target },
 })));
 export function legPool(events, { minP = 0.55, minOdds = 1.04, maxOdds = 1.6, cal = null } = {}) {
   const best = new Map();

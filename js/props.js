@@ -157,6 +157,7 @@ export function gamelogRows(g, n = 10) {
         Object.defineProperties(row, {
           _at: { value: at }, _opp: { value: info.opponent?.id != null ? String(info.opponent.id) : null },
           _oppAbbr: { value: info.opponent?.abbreviation || null }, _home: { value: info.atVs === 'vs' ? true : info.atVs === '@' ? false : null },
+          _ev: { value: String(ev.eventId) }, _team: { value: info.team?.id != null ? String(info.team.id) : null },
         });
         rows.push({ at, row });
       }
@@ -255,13 +256,15 @@ export function chanceRange(p, n, priced = true) {
 // games; the player's games move it as far as their effective number allows. Head-to-head samples are
 // shown but never trusted: a handful of games against one team says little.
 const HALF_LIFE = 8;
-export function propChance(market, sport, type, target, rows, { home = null } = {}) {
+export function propChance(market, sport, type, target, rows, { home = null, scale = 1, without = null } = {}) {
   const vals = propValues(sport, type, rows)?.slice(0, 20);
   if (!vals?.length) return { p: market, n: 0, nEff: 0, form: null };
   const w = vals.map((_, i) => 0.5 ** (i / HALF_LIFE));
   const sw = w.reduce((s, x) => s + x, 0), sw2 = w.reduce((s, x) => s + x * x, 0);
   const nEff = (sw * sw) / sw2;
-  const emp = vals.reduce((s, v, i) => s + w[i] * (v >= target ? 1 : 0), 0) / sw;
+  let emp = vals.reduce((s, v, i) => s + w[i] * (v >= target ? 1 : 0), 0) / sw;
+  // A key teammate out tonight: his games without that teammate count for more, as far as they go.
+  if (without?.[1] >= 3) emp = (without[1] * (without[0] / without[1]) + 6 * emp) / (without[1] + 6);
   let mean = vals.reduce((s, v, i) => s + w[i] * v, 0) / sw;
   const variance = vals.reduce((s, v, i) => s + w[i] * (v - mean) ** 2, 0) / sw;
   if (home != null) {
@@ -272,8 +275,43 @@ export function propChance(market, sport, type, target, rows, { home = null } = 
       mean *= 1 + (ratio - 1) * (at.length / (at.length + 10));
     }
   }
+  mean *= scale;
   const dist = countTail(mean, Math.max(variance, mean * 0.5), Math.ceil(target - 1e-9));
   const form = 0.5 * emp + 0.5 * dist;
   const p = (nEff * form + K * market) / (nEff + K);
   return { p: +Math.min(0.97, Math.max(0.03, p)).toFixed(4), n: vals.length, nEff: +nEff.toFixed(2), form: +form.toFixed(4) };
+}
+
+// ---------- teammates ----------
+// Whether a teammate played in each of the player's games, from the teammate's own game log: a game
+// is "without" him only if he was on the same team that season and has no entry for it (his log lists
+// the games he played). Returns { with: rows, without: rows } (games we cannot place are left out).
+export function splitByTeammate(rows, mate) {
+  const played = new Set(), onTeam = new Set();
+  for (const r of mate || []) {
+    if (r._ev) played.add(r._ev);
+    if (r._team) onTeam.add(`${r._team}|${r._season !== false}`);
+  }
+  const out = { with: [], without: [] };
+  for (const r of rows || []) {
+    if (!r._ev) continue;
+    if (played.has(r._ev)) out.with.push(r);
+    else if (r._team && onTeam.has(`${r._team}|${r._season !== false}`)) out.without.push(r);
+  }
+  return out;
+}
+
+// How a teammate's absence tonight moves this prop: the player's average without him against his
+// average with him, shrunk toward no change (6 games' worth of "no change"), and his hit rate in
+// those games. null when there are fewer than 2 games without him.
+export function withoutTeammate(sport, type, target, rows, mate) {
+  const { with: w, without: wo } = splitByTeammate(rows, mate);
+  const vw = propValues(sport, type, w), vo = propValues(sport, type, wo);
+  if (!vo || vo.length < 2 || !vw || !vw.length) return null;
+  const mean = (a) => a.reduce((s, v) => s + v, 0) / a.length;
+  const mw = mean(vw), mo = mean(vo);
+  if (!(mw > 0)) return null;
+  const k = vo.length / (vo.length + 6);
+  const scale = 1 + (mo / mw - 1) * k;
+  return { scale: +Math.min(1.35, Math.max(0.75, scale)).toFixed(3), without: [vo.filter((v) => v >= target).length, vo.length], with: [vw.filter((v) => v >= target).length, vw.length], avgWith: +mw.toFixed(1), avgWithout: +mo.toFixed(1) };
 }

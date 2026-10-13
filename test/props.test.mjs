@@ -116,3 +116,41 @@ test('prop chance: a steady player near the line is not over-read; a hot streak 
   const yds = propChance(0.5, 'football', 'Passing Yards', 250, Array.from({ length: 10 }, () => ({ passingYards: 300 }))).p;
   assert.ok(yds > 0.6, `yards ${yds}`);
 });
+
+test('teammates: games with and without him from his own log; his absence moves the forecast', async () => {
+  const { propChance, splitByTeammate, withoutTeammate } = await import('../js/props.js');
+  const mk = (list) => list.map(([ev, pts, team = '7']) => { const r = { points: pts }; Object.defineProperties(r, { _ev: { value: ev }, _team: { value: team }, _season: { value: true }, _home: { value: null } }); return r; });
+  // Player: 12 games; the star teammate missed g3, g6, g9, g11 (he scores 30 then, 20 otherwise).
+  const out = new Set(['g3', 'g6', 'g9', 'g11']);
+  const rows = mk(Array.from({ length: 12 }, (_, i) => [`g${i}`, out.has(`g${i}`) ? 30 : 20]));
+  const star = mk(Array.from({ length: 12 }, (_, i) => [`g${i}`, 25]).filter(([ev]) => !out.has(ev)));
+  const sp = splitByTeammate(rows, star);
+  assert.equal(sp.with.length, 8);
+  assert.equal(sp.without.length, 4);
+  // A teammate never on his team (another team id) places no game as "without".
+  assert.equal(splitByTeammate(rows, mk([['x1', 10, '99']])).without.length, 0);
+  const w = withoutTeammate('basketball', 'Points', 25, rows, star);
+  assert.deepEqual(w.without, [4, 4]);
+  assert.ok(w.scale > 1.1 && w.scale <= 1.35, `scale ${w.scale}`);
+  const base = propChance(0.4, 'basketball', 'Points', 25, rows).p;
+  const adj = propChance(0.4, 'basketball', 'Points', 25, rows, { scale: w.scale, without: w.without }).p;
+  assert.ok(adj > base + 0.05, `without the star he is more likely to reach 25 (${base} → ${adj})`);
+  assert.equal(withoutTeammate('basketball', 'Points', 25, rows, mk(Array.from({ length: 12 }, (_, i) => [`g${i}`, 25]))), null, 'never missed a game: no estimate');
+});
+
+test('prop alerts: re-rated with the reason, lines pulled, injury status changes', async () => {
+  const { snapshot, diff } = await import('../js/changelog.js');
+  const base = { id: 'e1', home: 'Nuggets', away: 'Celtics', start: Date.now() + 36e5, markets: [] };
+  const pr = (id, player, p, why) => ({ id, player, type: 'Points', label: 'points', target: 25, p, ...(why ? { why } : {}) });
+  const before = snapshot({ ...base, props: [pr('1', 'Nikola Jokic', 0.58), pr('2', 'Jamal Murray', 0.5)], injuries: { home: [{ name: 'Jamal Murray', status: 'Questionable' }], away: [] } });
+  const now = snapshot({ ...base, props: [pr('1', 'Nikola Jokic', 0.66, 'without Jamal Murray (out)')], injuries: { home: [{ name: 'Jamal Murray', status: 'Out' }], away: [] } });
+  const ch = diff(base, before, now);
+  const t = ch.map((c) => c.text);
+  assert.ok(t.includes('Nikola Jokic 25+ points: ATLAS 58% → 66% (without Jamal Murray (out))'), t.join(' | '));
+  assert.ok(t.some((x) => /^Lines pulled for Jamal Murray/.test(x)));
+  const inj = ch.find((c) => c.kind === 'injury');
+  assert.equal(inj.text, 'Jamal Murray: Questionable → Out');
+  assert.equal(inj.forecast, 'updated', 'a teammate prop moved with it');
+  // Old snapshots without props or injuries: nothing invented.
+  assert.equal(diff(base, { ...before, props: undefined, inj: undefined, propPlayers: undefined }, now).filter((c) => c.kind === 'prop' || c.kind === 'injury').length, 0);
+});

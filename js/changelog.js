@@ -6,6 +6,7 @@
 // whether it moves the forecast. A change whose effect ATLAS cannot quantify says so; it never gets a
 // made-up percentage.
 import { devig } from './engine.js';
+import { propLabel } from './props.js';
 
 const starterOf = (p) => p?.report?.name || p?.name || '';
 const mainMarket = (e) => e.markets?.find((m) => m.name === 'Winner' || m.name === 'Match Result') || e.markets?.[0];
@@ -21,6 +22,12 @@ export function snapshot(e) {
     odds: m ? Object.fromEntries(m.outcomes.map((o) => [o.name, o.odds])) : {},
     fair, market: m?.name || null,
     score: e.score || null, live: Boolean(e.live), start: e.start,
+    // Player props (the 24 likeliest) and tonight's injury report, for "re-rated" and "pulled" alerts.
+    ...(e.props?.length ? {
+      props: Object.fromEntries(e.props.slice().sort((a, b) => b.p - a.p).slice(0, 24).map((x) => [`${x.id}|${x.type}|${x.target}`, [+x.p.toFixed(3), propLabel(x), x.why || '']])),
+      propPlayers: Object.fromEntries(e.props.map((x) => [String(x.id), x.player])),
+    } : {}),
+    ...(e.injuries ? { inj: Object.fromEntries(['home', 'away'].flatMap((sd) => (e.injuries[sd] || []).map((x) => [x.name, x.status]))) } : {}),
   };
 }
 
@@ -63,6 +70,26 @@ export function diff(e, before, now, at = Date.now()) {
   const newOut = now.out.filter((n) => !before.out.includes(n)), back = before.out.filter((n) => !now.out.includes(n));
   if (newOut.length) push('injury', `Newly listed out: ${newOut.slice(0, 4).join(', ')}${newOut.length > 4 ? ` +${newOut.length - 4}` : ''}`, { after: newOut.join(', '), source: 'FotMob / ESPN', forecast: 'not-modelled' });
   if (back.length) push('injury', `No longer listed out: ${back.slice(0, 4).join(', ')}${back.length > 4 ? ` +${back.length - 4}` : ''}`, { before: back.join(', '), source: 'FotMob / ESPN', forecast: 'not-modelled' });
+  // Injury report (US sports): a player newly listed, a status change, or off the report. When a
+  // teammate's prop moved because of it, the forecast moved with it.
+  if (before.inj && now.inj) {
+    const moved = (n) => Object.values(now.props || {}).some((v) => v[2].includes(n));
+    for (const [n, st] of Object.entries(now.inj)) {
+      const was = before.inj[n];
+      if (was === st) continue;
+      push('injury', was ? `${n}: ${was} → ${st}` : `${n} listed ${st}`, { before: was || null, after: st, source: 'ESPN injury report', forecast: moved(n) ? 'updated' : 'not-modelled' });
+    }
+    for (const n of Object.keys(before.inj)) if (!(n in now.inj)) push('injury', `${n} is off the injury report`, { before: before.inj[n], after: null, source: 'ESPN injury report', forecast: 'not-modelled' });
+  }
+  // Player props: the ATLAS chance moved 5+ points (with the reason when it is a teammate's absence),
+  // or every line for a player was pulled (often injury news or a late scratch).
+  if (before.props && now.props) {
+    const moves = Object.entries(now.props).map(([k, [p, label, why]]) => [k, p, label, why, before.props[k]?.[0]]).filter(([, p, , , b]) => b != null && Math.abs(p - b) >= 0.05)
+      .sort((a, b) => Math.abs(b[1] - b[4]) - Math.abs(a[1] - a[4])).slice(0, 4);
+    for (const [, p, label, why, b] of moves) push('prop', `${label}: ATLAS ${pct(b)} → ${pct(p)}${why ? ` (${why})` : ''}`, { before: b, after: p, source: why ? 'ESPN injury report + game logs' : 'price and game logs', forecast: 'updated' });
+    const gone = Object.entries(before.propPlayers || {}).filter(([id]) => !(id in (now.propPlayers || {}))).map(([, n]) => n);
+    if (gone.length && Object.keys(now.propPlayers || {}).length) push('prop', `Lines pulled for ${gone.slice(0, 3).join(', ')}${gone.length > 3 ? ` +${gone.length - 3}` : ''}: often injury news or a late scratch`, { before: gone.join(', '), after: null, source: 'DraftKings via ESPN', forecast: 'not-modelled' });
+  }
   // Prices: the margin-free chance moved 4+ points, or the odds 8%+ (this does move the forecast).
   if (!Object.keys(before.fair || {}).length && Object.keys(now.fair).length) push('price', `Bookmaker prices now available (${now.market})`, { source: e.bookmaker || 'bookmaker', forecast: 'updated' });
   for (const [k, p] of Object.entries(now.fair || {})) {
@@ -79,5 +106,5 @@ export function diff(e, before, now, at = Date.now()) {
   return out;
 }
 
-export const KIND_ICON = { starter: '⚾', lineup: '📋', injury: '🩹', price: '📈', time: '🕒', start: '▶', soon: '⏱', score: '•' };
+export const KIND_ICON = { prop: '🎯', starter: '⚾', lineup: '📋', injury: '🩹', price: '📈', time: '🕒', start: '▶', soon: '⏱', score: '•' };
 export const FORECAST_NOTE = { updated: 'Forecast updated', 'not-modelled': 'Forecast impact not quantified', none: '' };
