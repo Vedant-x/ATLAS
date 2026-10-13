@@ -129,7 +129,9 @@ export function gradeProp(prop, sport, box) {
 // ---------- player form ----------
 // Each prop type as columns of ESPN's player game log (…/athletes/{id}/gamelog), which names its
 // columns differently from the box score. Types missing here (goalie saves, soccer) use the price.
-const G = {
+// The game-log column that says how much a player played (for the minutes filter), by sport.
+export const OPPORTUNITY = { basketball: 'minutes', hockey: 'timeOnIce', baseball: 'atBats' };
+export const GAMELOG_KEYS = {
   basketball: { Points: ['points'], Rebounds: ['totalRebounds'], Assists: ['assists'], '3-Point Field Goals': ['threePointFieldGoalsMade-threePointFieldGoalsAttempted'],
     'Points + Assists + Rebounds': ['points', 'totalRebounds', 'assists'], 'Points + Assists': ['points', 'assists'], 'Points + Rebounds': ['points', 'totalRebounds'],
     'Rebounds + Assists': ['totalRebounds', 'assists'], Steals: ['steals'], Blocks: ['blocks'] },
@@ -138,7 +140,9 @@ const G = {
   football: { 'Passing Yards': ['passingYards'], 'Rushing Yards': ['rushingYards'], 'Receiving Yards': ['receivingYards'], Receptions: ['receptions'],
     'Rushing + Receiving Yards': ['rushingYards', 'receivingYards'], 'Passing Touchdown': ['passingTouchdowns'], 'Anytime Touchdown Scorer': ['rushingTouchdowns', 'receivingTouchdowns'] },
 };
-// The player's last `n` games (regular season and playoffs, newest first) as { name: value } rows.
+// The player's last `n` games (regular season and playoffs, newest first) as { name: value } rows,
+// each with _at (time), _opp (opponent team id), _oppAbbr and _home (true at home, false away, null
+// unknown) from the log's own game list.
 export function gamelogRows(g, n = 10) {
   const names = g?.names || [];
   const rows = [];
@@ -146,9 +150,14 @@ export function gamelogRows(g, n = 10) {
     if (/preseason/i.test(st.displayName || '')) continue;
     for (const c of st.categories || []) {
       for (const ev of c.events || []) {
-        const at = Date.parse(g.events?.[ev.eventId]?.gameDate || '') || null;
+        const info = g.events?.[ev.eventId] || {};
+        const at = Date.parse(info.gameDate || '') || null;
         const row = {};
         names.forEach((k, i) => { const v = parseFloat(String(ev.stats?.[i] ?? '').split(/[-/]/)[0]); if (Number.isFinite(v)) row[k] = v; });
+        Object.defineProperties(row, {
+          _at: { value: at }, _opp: { value: info.opponent?.id != null ? String(info.opponent.id) : null },
+          _oppAbbr: { value: info.opponent?.abbreviation || null }, _home: { value: info.atVs === 'vs' ? true : info.atVs === '@' ? false : null },
+        });
         rows.push({ at, row });
       }
     }
@@ -156,15 +165,115 @@ export function gamelogRows(g, n = 10) {
   if (rows.every((r) => r.at)) rows.sort((a, b) => b.at - a.at);
   return rows.slice(0, n).map((r) => r.row);
 }
+// The season before the one a game log shows (from its season filter), to fill a short early-season log.
+export function previousSeason(g) {
+  const f = (g?.filters || []).find((x) => x.name === 'season');
+  const opts = (f?.options || []).map((o) => String(o.value)).filter((v) => /^\d{4}$/.test(v));
+  const cur = String(f?.value || opts[0] || '');
+  return opts.find((v) => Number(v) === Number(cur) - 1) || null;
+}
 // How often the player reached this line in those games: { n, hits, avg } (null if the log can't say).
 export function formFor(sport, type, target, rows) {
-  const keys = G[sport]?.[type];
-  if (!keys || !rows?.length || !rows.every((r) => keys.every((k) => Number.isFinite(r[k])))) return null;
-  const vals = rows.map((r) => keys.reduce((s, k) => s + r[k], 0));
+  const vals = propValues(sport, type, rows);
+  if (!vals) return null;
   return { n: vals.length, hits: vals.filter((v) => v >= target).length, avg: +(vals.reduce((s, v) => s + v, 0) / vals.length).toFixed(1) };
 }
-// The chance: the price's chance as a prior worth K games, updated by the player's own recent games.
-// A player who cleared the line in 9 of his last 10 moves well above the price; 3 of 10 well below.
+// The prop's stat in each game (null if any game lacks a column the prop needs).
+export function propValues(sport, type, rows) {
+  const keys = GAMELOG_KEYS[sport]?.[type];
+  if (!keys || !rows?.length || !rows.every((r) => keys.every((k) => Number.isFinite(r[k])))) return null;
+  return rows.map((r) => keys.reduce((s, k) => s + r[k], 0));
+}
+// The chance (the old model, kept for comparison in tests): the price as a prior worth K games, then
+// a flat count of the last 10.
 const K = 8;
 export const blendForm = (market, form) => (form?.n ? +((form.hits + K * market) / (form.n + K)).toFixed(4) : market);
-export const hasForm = (sport, type) => Boolean(G[sport]?.[type]);
+export const hasForm = (sport, type) => Boolean(GAMELOG_KEYS[sport]?.[type]);
+
+// ---------- prop history and the ATLAS chance ----------
+const rate = (vals, t) => [vals.filter((v) => v >= t).length, vals.length];
+// Everything the props page shows for one prop, from the player's games (newest first; `season` marks
+// the current season's games): hit rates over 5, 10 and 20 games, this season, against this opponent
+// and at this venue (home or away), the average, and the last 10 games for the chart.
+export function propHistory(sport, type, target, rows, { opp = null, home = null } = {}) {
+  const vals = propValues(sport, type, rows);
+  if (!vals?.length) return null;
+  const cur = rows.map((r, i) => [r, vals[i]]).filter(([r]) => r._season !== false);
+  const vs = rows.map((r, i) => [r, vals[i]]).filter(([r]) => opp && r._opp === String(opp));
+  const venue = home == null ? [] : rows.map((r, i) => [r, vals[i]]).filter(([r]) => r._home === home);
+  const l10 = vals.slice(0, 10);
+  return {
+    l5: rate(vals.slice(0, 5), target), l10: rate(l10, target), l20: rate(vals.slice(0, 20), target),
+    season: cur.length ? rate(cur.map((x) => x[1]), target) : null,
+    vs: vs.length ? rate(vs.map((x) => x[1]), target) : null,
+    venue: venue.length ? rate(venue.slice(0, 20).map((x) => x[1]), target) : null, home,
+    avg: +(l10.reduce((s, v) => s + v, 0) / l10.length).toFixed(1),
+    last: l10.map((v, i) => [v, rows[i]._oppAbbr || '', rows[i]._home === true ? 1 : rows[i]._home === false ? 0 : -1]),
+  };
+}
+
+// P(X >= t) for a count with this mean and variance: Poisson, or negative binomial when the games
+// vary more than a Poisson would.
+export function countTail(mean, variance, t) {
+  if (t <= 0) return 1;
+  if (!(mean > 0)) return 0;
+  // Large counts (yards, passing totals): the normal curve, with a continuity correction.
+  if (mean > 30) return 1 - normCdf((t - 0.5 - mean) / Math.sqrt(Math.max(variance, mean)));
+  let pmf, step;
+  if (variance > mean * 1.05) {
+    const r = (mean * mean) / (variance - mean), q = mean / (mean + r);
+    pmf = Math.exp(r * Math.log(1 - q));
+    step = (k) => (pmf *= ((k + r) / (k + 1)) * q);
+  } else {
+    pmf = Math.exp(-mean);
+    step = (k) => (pmf *= mean / (k + 1));
+  }
+  let below = 0;
+  for (let k = 0; k < t; k++) { below += pmf; step(k); }
+  return Math.min(1, Math.max(0, 1 - below));
+}
+
+// Standard normal CDF (Abramowitz-Stegun 7.1.26 erf, error < 1.5e-7).
+function normCdf(z) {
+  const x = Math.abs(z) / Math.SQRT2, t = 1 / (1 + 0.3275911 * x);
+  const erf = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+  return z >= 0 ? 0.5 * (1 + erf) : 0.5 * (1 - erf);
+}
+
+// An 80% range for a chance resting on `n` effective observations (the price counts as K more when
+// there is one): wide on a thin sample, narrow on a long one.
+export function chanceRange(p, n, priced = true) {
+  const m = n + (priced ? K : 0) + 1;
+  const half = 1.2816 * Math.sqrt((p * (1 - p)) / m);
+  return [Math.max(0.01, p - half), Math.min(0.99, p + half)];
+}
+
+// The ATLAS chance for a prop. Two readings of the player's last 20 games, recent games counting
+// more (a game 8 games ago counts half): how often he cleared the line, and the chance a player with
+// his average and spread clears it (smooths out 24s and 26s around a line of 25). His record at this
+// venue nudges the average when there are enough games. The bookmaker's price is the prior, worth 8
+// games; the player's games move it as far as their effective number allows. Head-to-head samples are
+// shown but never trusted: a handful of games against one team says little.
+const HALF_LIFE = 8;
+export function propChance(market, sport, type, target, rows, { home = null } = {}) {
+  const vals = propValues(sport, type, rows)?.slice(0, 20);
+  if (!vals?.length) return { p: market, n: 0, nEff: 0, form: null };
+  const w = vals.map((_, i) => 0.5 ** (i / HALF_LIFE));
+  const sw = w.reduce((s, x) => s + x, 0), sw2 = w.reduce((s, x) => s + x * x, 0);
+  const nEff = (sw * sw) / sw2;
+  const emp = vals.reduce((s, v, i) => s + w[i] * (v >= target ? 1 : 0), 0) / sw;
+  let mean = vals.reduce((s, v, i) => s + w[i] * v, 0) / sw;
+  const variance = vals.reduce((s, v, i) => s + w[i] * (v - mean) ** 2, 0) / sw;
+  if (home != null) {
+    const at = rows.slice(0, 20).map((r, i) => [r._home, vals[i]]).filter(([h, v]) => h === home && v != null);
+    const all = vals.reduce((s, v) => s + v, 0) / vals.length;
+    if (at.length >= 4 && all > 0) {
+      const ratio = at.reduce((s, x) => s + x[1], 0) / at.length / all;
+      mean *= 1 + (ratio - 1) * (at.length / (at.length + 10));
+    }
+  }
+  const dist = countTail(mean, Math.max(variance, mean * 0.5), Math.ceil(target - 1e-9));
+  const form = 0.5 * emp + 0.5 * dist;
+  const p = (nEff * form + K * market) / (nEff + K);
+  return { p: +Math.min(0.97, Math.max(0.03, p)).toFixed(4), n: vals.length, nEff: +nEff.toFixed(2), form: +form.toFixed(4) };
+}
