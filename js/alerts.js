@@ -57,9 +57,22 @@ export const watch = {
   subscribe: (f) => { subs.add(f); return () => subs.delete(f); },
 };
 
+// Inside the Android app (a WebView, which has no web notifications) the app shows them instead,
+// through window.AtlasAndroid.
+const app = () => (typeof window !== 'undefined' ? window.AtlasAndroid : null);
+export const notifyPermission = () => (app() ? app().permission() : 'Notification' in window ? Notification.permission : 'unsupported');
+export const requestNotify = () => {
+  if (app()) return new Promise((done) => { addEventListener('atlas-permission', () => done(notifyPermission()), { once: true }); app().requestPermission(); });
+  return 'Notification' in window ? Notification.requestPermission().catch(() => 'denied') : Promise.resolve('unsupported');
+};
+function systemNotify(title, opts) {
+  if (notifyPermission() !== 'granted') return;
+  if (app()) { app().show(title, opts.body || '', opts.tag || '', opts.data?.url || ''); return; }
+  navigator.serviceWorker?.getRegistration().then((r) => (r ? r.showNotification(title, opts) : new Notification(title, opts))).catch(() => {});
+}
+
 function askPermission() {
-  if (!('Notification' in window) || Notification.permission !== 'default') return;
-  Notification.requestPermission().catch(() => {});
+  if (notifyPermission() === 'default') requestNotify();
 }
 
 // What we compare between refreshes, and the messages for what changed: shared with the server-side
@@ -101,12 +114,8 @@ export function showMoment(m) {
   const icon = m.kind === 'card' && /^Red/.test(m.body) ? '🟥' : m.kind === 'score' ? SCORE_ICON[m.sport] || '⚽' : MOMENT_ICON[m.kind] || '•';
   toast({ id: m.id, kind: m.kind, text: `${m.title} · ${m.body}` }, icon);
   if (document.visibilityState === 'visible' && document.hasFocus()) return;
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
-  const opts = { body: `${icon} ${m.body}`, icon: 'icons/icon-192.png', badge: BADGE, vibrate: [90, 50, 90], tag: m.key, renotify: true, data: { url: `#/match/${m.id}` } };
-  navigator.serviceWorker?.getRegistration().then((r) => (r ? r.showNotification(m.title, opts) : new Notification(m.title, opts))).catch(() => {});
+  systemNotify(m.title, { body: `${icon} ${m.body}`, icon: 'icons/icon-192.png', badge: BADGE, vibrate: [90, 50, 90], tag: m.key, renotify: true, data: { url: `#/match/${m.id}` } });
 }
-export const notifyPermission = () => ('Notification' in window ? Notification.permission : 'unsupported');
-export const requestNotify = () => ('Notification' in window ? Notification.requestPermission().catch(() => 'denied') : Promise.resolve('unsupported'));
 function toast(m, icon) {
   let box = document.querySelector('.toasts');
   if (!box) { box = document.createElement('div'); box.className = 'toasts'; box.setAttribute('aria-live', 'polite'); document.body.append(box); }
@@ -128,8 +137,5 @@ function notify(m) {
   box.append(t);
   setTimeout(() => t.classList.add('out'), 7000);
   setTimeout(() => t.remove(), 7600);
-  if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-    const opts = { body: m.text, icon: 'icons/icon-192.png', badge: BADGE, tag: `${m.id}:${m.kind}`, data: { url: `#/match/${m.id}` } };
-    navigator.serviceWorker?.getRegistration().then((r) => (r ? r.showNotification('ATLAS', opts) : new Notification('ATLAS', opts))).catch(() => {});
-  }
+  if (document.hidden) systemNotify('ATLAS', { body: m.text, icon: 'icons/icon-192.png', badge: BADGE, tag: `${m.id}:${m.kind}`, data: { url: `#/match/${m.id}` } });
 }
