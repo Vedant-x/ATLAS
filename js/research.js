@@ -190,7 +190,7 @@ export function compareView() {
 export function alertPanel() {
   const perm = notifyPermission();
   const state = perm === 'granted' ? '<span class="al-on">Notifications on</span>'
-    : perm === 'denied' ? '<span class="al-off">Notifications are blocked for this site: allow them in your browser\'s site settings</span>'
+    : perm === 'denied' ? `<span class="al-off">${window.AtlasAndroid ? 'Notifications are off for the ATLAS app: turn them on in Android Settings › Apps › ATLAS' : 'Notifications are blocked for this site: allow them in your browser\'s site settings'}</span>`
       : perm === 'unsupported' ? '<span class="al-off">This browser can\'t show notifications here (on iPhone, add ATLAS to your Home Screen first)</span>'
         : '<button class="btn-ghost" data-notify-on>Turn on notifications</button>';
   return `<div class="panel alerts-panel reveal"><h3 class="ph">Live alerts <small>for matches you watch or have in your slip</small></h3>

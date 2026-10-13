@@ -515,6 +515,8 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
   }).catch(() => {}), 3000));
 }
 let installEvt = null;
+// Android browsers: a link to the Android app (ATLAS.apk), hidden inside the app itself.
+if (/Android/i.test(navigator.userAgent) && !window.AtlasAndroid) document.querySelectorAll('.apk-link').forEach((a) => { a.hidden = false; });
 // Phones and tablets (Android Chrome, Samsung Internet, Edge): a small card offers to install ATLAS
 // as an app once the visitor has had a look around; "Not now" hides it for two weeks.
 const LATER = 'atlas-install-later';

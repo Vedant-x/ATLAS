@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <color name="bg">#040406</color>
+  <color name="accent">#d2ff00</color>
+  <string name="channel_name">Live alerts</string>
+  <string name="channel_desc">Goals, cards, periods and full time for matches you follow</string>
+  <style name="Atlas" parent="android:Theme.Material.NoActionBar">
+    <item name="android:windowBackground">@color/bg</item>
+    <item name="android:colorBackground">@color/bg</item>
+    <item name="android:statusBarColor">@color/bg</item>
+    <item name="android:navigationBarColor">@color/bg</item>
+    <item name="android:colorAccent">@color/accent</item>
+  </style>
+</resources>
