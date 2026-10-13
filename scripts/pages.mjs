@@ -18,7 +18,7 @@ import { validateReport } from '../js/validate.js';
 import { mkdir, copyFile, cp, writeFile, rm, readFile } from 'node:fs/promises';
 import { fetchAll, LEAGUES, fetchErrors, leagueStatus } from '../js/espn.js';
 import { leagueByPath } from '../js/catalog.js';
-import { CORE, PROVIDER, PROP_STATS, parseProps, gamelogRows, formFor, blendForm, hasForm } from '../js/props.js';
+import { CORE, PROVIDER, PROP_STATS, GAMELOG_KEYS, OPPORTUNITY, parseProps, gamelogRows, previousSeason, formFor, propHistory, propChance, hasForm } from '../js/props.js';
 import { KHL_API, khlEvent, khlRecords } from '../js/khl.js';
 import { toDecimal } from '../js/espn.js';
 
@@ -588,31 +588,75 @@ async function playerProps(events) {
     }
   }));
   log(`Player props (DraftKings via ESPN): ${lines} lines on ${matched} of ${due.length} matches in the next 36h${failed ? `, ${failed} lookup(s) failed` : ''}`);
-  // Player form: each player's last 10 games from his ESPN game log. The chance blends the price's
-  // chance (worth 8 games) with how often he reached the line, so a prop is no longer just its price.
+  // Player history: each player's last 20 games from his ESPN game log (last season too while this
+  // one is under 10 games old). It gives the props page its hit rates, splits and charts, and the
+  // ATLAS chance (propChance): the price as a prior, moved by how the player's recent games went.
   const logs = new Map();
   const want = [];
   for (const e of due) for (const pr of e.props || []) {
     const [sport, league] = e.leaguePath.split('/');
-    if (hasForm(sport, pr.type) && !logs.has(`${league}|${pr.id}`) && want.length < 160) { logs.set(`${league}|${pr.id}`, null); want.push([sport, league, pr.id]); }
+    if (hasForm(sport, pr.type) && !logs.has(`${league}|${pr.id}`) && want.length < 320) { logs.set(`${league}|${pr.id}`, null); want.push([sport, league, pr.id]); }
   }
   const q = [...want];
-  await Promise.all(Array.from({ length: 6 }, async () => {
+  let backfilled = 0, sample = null;
+  await Promise.all(Array.from({ length: 8 }, async () => {
     while (q.length) {
       const [sport, league, id] = q.shift();
-      try { logs.set(`${league}|${id}`, gamelogRows(await getJson(`https://site.web.api.espn.com/apis/common/v3/sports/${sport}/${league}/athletes/${id}/gamelog`))); } catch { /* price only */ }
+      const base = `https://site.web.api.espn.com/apis/common/v3/sports/${sport}/${league}/athletes/${id}/gamelog`;
+      try {
+        const g = await getJson(base);
+        const rows = gamelogRows(g, 20);
+        sample ||= { keys: Object.keys(g).join(','), season: previousSeason(g), game: Object.values(g.events || {})[0] };
+        const prev = rows.length < 10 && previousSeason(g);
+        if (prev) {
+          try {
+            const old = gamelogRows(await getJson(`${base}?season=${prev}`), 20 - rows.length);
+            old.forEach((r) => Object.defineProperty(r, '_season', { value: false }));
+            rows.push(...old);
+            backfilled++;
+          } catch { /* this season only */ }
+        }
+        logs.set(`${league}|${id}`, rows);
+      } catch { /* price only */ }
     }
   }));
   let formed = 0;
   for (const e of due) {
     const [sport, league] = e.leaguePath.split('/');
     for (const pr of e.props || []) {
-      const form = formFor(sport, pr.type, pr.target, logs.get(`${league}|${pr.id}`));
-      if (form) { pr.form = form; pr.p = blendForm(pr.pm ?? pr.p, form); formed++; }
+      const rows = logs.get(`${league}|${pr.id}`);
+      const home = pr.side === 'home' ? true : pr.side === 'away' ? false : null;
+      const opp = pr.side ? e.teamIds?.[pr.side === 'home' ? 'away' : 'home'] : null;
+      const hist = rows?.length ? propHistory(sport, pr.type, pr.target, rows, { opp, home }) : null;
+      if (!hist) continue;
+      pr.hist = hist;
+      pr.form = formFor(sport, pr.type, pr.target, rows.slice(0, 10));
+      pr.p = propChance(pr.pm ?? pr.p, sport, pr.type, pr.target, rows, { home }).p;
+      formed++;
     }
     e.props?.sort((a, b) => b.p - a.p);
   }
-  log(`Player form: ${[...logs.values()].filter(Boolean).length} of ${want.length} game logs, ${formed} props modelled from recent games`);
+  // Every prop player's game log for the player research page (data/players.json, loaded on demand):
+  // per game the date, opponent, home/away, this season or last, minutes (or at-bats) and each stat a
+  // prop of his sport uses.
+  const players = {};
+  for (const e of due) {
+    const [sport, league] = e.leaguePath.split('/');
+    for (const pr of e.props || []) {
+      const k = `${league}|${pr.id}`, rows = logs.get(k);
+      if (!rows?.length || players[k]) continue;
+      const cols = [...new Set(Object.values(GAMELOG_KEYS[sport] || {}).flat())];
+      const opp = OPPORTUNITY[sport];
+      players[k] = {
+        n: pr.player, s: sport, t: pr.side === 'home' ? e.home : pr.side === 'away' ? e.away : '', c: cols, o: opp || null,
+        g: rows.map((r) => [r._at ? new Date(r._at).toISOString().slice(0, 10) : '', r._oppAbbr || '', r._opp || '', r._home === true ? 1 : r._home === false ? 0 : -1, r._season === false ? 0 : 1, opp && Number.isFinite(r[opp]) ? r[opp] : null, ...cols.map((c) => (Number.isFinite(r[c]) ? r[c] : null))]),
+      };
+    }
+  }
+  await mkdir(`${out}/data`, { recursive: true });
+  await writeFile(`${out}/data/players.json`, JSON.stringify(players));
+  log(`Player history: ${[...logs.values()].filter(Boolean).length} of ${want.length} game logs (${backfilled} with last season), ${formed} props modelled from recent games`);
+  if (sample) log(`  gamelog fields: ${sample.keys} · previous season ${sample.season} · game ${JSON.stringify(sample.game || {}).slice(0, 300)}`);
   for (const e of due.filter((x) => x.props?.length).slice(0, 3)) log(`  PROPS ${e.away} @ ${e.home}: ${e.props.slice(0, 4).map((x) => `${x.player} ${x.target}+ ${x.label} @${x.odds}`).join(' · ')}`);
 }
 

@@ -6,6 +6,8 @@ import { mountAssistant } from './assistant/ui.js';
 import { legalViews, ageGate } from './legal.js';
 import { trackViews } from './trackview.js';
 import { watch, checkAlerts, followed, showMoment, requestNotify } from './alerts.js';
+import { propsView, propsClick, propsSearch, propsList } from './propsview.js';
+import { playerView, playerClick, playerInput } from './playerview.js';
 import { loadEvents, refreshLive, refreshCricket, refreshTeamNews, refreshAsia } from './data.js';
 import { refreshLiveCenter, liveCenterHtml } from './livecenter.js';
 import { loadF1, f1Data, pollF1Live } from './f1view.js';
@@ -190,7 +192,7 @@ let current = null;
 function build() {
   const { name, args } = parse();
   legIndex.clear();
-  const research = { watchlist: watchlistView, compare: compareView };
+  const research = { watchlist: watchlistView, compare: compareView, props: () => propsView(state.events, softRender), player: (a) => playerView(a[0], state.events, softRender) };
   return { name, v: (views[name] || research[name] || legalViews[name] || trackViews[name] || views.notfound)(args.map(decodeURIComponent)) };
 }
 
@@ -244,7 +246,7 @@ function trail() {
   if (sp) parts.push([`#/sport/${sp.id}`, sp.name]);
   if (l) parts.push([`#/league/${leagueKey(l.path)}`, l.short || l.name]);
   if (e) parts.push(['', `${e.home} v ${e.away}`]);
-  const label = { edge: 'Edge board', x: 'Multipliers', target: 'Target', mega: 'Mega bets', bankers: 'Bankers', live: 'Live', watchlist: 'Watchlist', compare: 'Compare' }[name];
+  const label = { edge: 'Edge board', props: 'Player props', player: 'Player', x: 'Multipliers', target: 'Target', mega: 'Mega bets', bankers: 'Bankers', live: 'Live', watchlist: 'Watchlist', compare: 'Compare' }[name];
   if (label) parts.push(['', label]);
   return parts;
 }
@@ -260,7 +262,7 @@ function dock() {
 function route() {
   if (!location.hash.startsWith('#/')) return; // in-page anchors
   const { name } = parse();
-  const label = { home: 'TODAY', live: 'LIVE', watchlist: 'WATCHLIST', compare: 'COMPARE', track: 'RESULTS', sports: 'ALL SPORTS', sport: 'SPORT', league: 'LEAGUE', match: 'MATCH DOSSIER', edge: 'EDGE BOARD', x: 'MULTIPLIERS', target: 'TARGET', mega: 'MEGA BETS', bankers: 'BANKERS' }[name] || '';
+  const label = { home: 'TODAY', live: 'LIVE', watchlist: 'WATCHLIST', compare: 'COMPARE', track: 'RESULTS', sports: 'ALL SPORTS', sport: 'SPORT', league: 'LEAGUE', match: 'MATCH DOSSIER', edge: 'EDGE BOARD', props: 'PLAYER PROPS', player: 'PLAYER RESEARCH', x: 'MULTIPLIERS', target: 'TARGET', mega: 'MEGA BETS', bankers: 'BANKERS' }[name] || '';
   const h = location.hash || '#/';
   if (replacing) { stack[stack.length - 1] = h; replacing = false; } else if (stack.length > 1 && stack[stack.length - 2] === h) stack.pop(); else stack.push(h);
   // instant: html has scroll-behavior:smooth, and a smooth scroll still running when a live refresh
@@ -381,6 +383,7 @@ document.addEventListener('click', (e) => {
   const t = e.target.closest('button, a');
   if (!t) return;
   const d = t.dataset;
+  if ((d.pf && propsClick(t)) || (d.plf && playerClick(t))) { softRender(); return; }
   if (d.leg) {
     e.preventDefault(); e.stopPropagation();
     const leg = legIndex.get(d.leg);
@@ -431,6 +434,8 @@ document.addEventListener('input', (e) => {
     drawer.querySelector('[data-sum-exp]').textContent = (slip.stake * s.p * s.odds).toFixed(2);
   }
   if (e.target.matches('[data-ef]')) refreshEdge();
+  if (e.target.matches('[data-props-search]')) { propsSearch(e.target.value); const box = document.querySelector('[data-props-list]'); if (box) box.innerHTML = propsList(state.events); }
+  playerInput(e.target, state.events);
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { openSlip(false); closeQv(); document.getElementById('display-panel')?.classList.remove('open'); }

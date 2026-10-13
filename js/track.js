@@ -24,7 +24,9 @@ export const inRecord = (h) => h.type === 'banker' && h.odds >= MIN_ODDS && h.od
 //   graded from the box score.
 // 2026.10.5: player props use each player's last 10 games (blended with the price), not the price
 //   alone; UFC bouts priced from ESPN's core odds feed.
-export const MODEL_VERSION = '2026.10.5';
+// 2026.10.6: player props from the last 20 games (recent ones weighted more, a count model next to
+//   the hit rate, the venue split), with last season filling short early-season logs.
+export const MODEL_VERSION = '2026.10.6';
 
 // Market families the track record learns from: winner, 1X2 result, spread/handicap, totals.
 export const familyOf = (market = '') => (/^Player /.test(market) ? 'prop' : /^Total/.test(market) ? 'total' : market === 'Spread' ? 'spread' : market === 'Match Result' ? 'result' : 'winner');

@@ -1256,6 +1256,53 @@ body.scrolled .bar { height: 52px; padding-block: 0; }
 .props-list .pp b { display: block; font-size: 14.5px; }
 .props-list .pp small { color: var(--muted, #9aa3ad); font-size: 11.5px; }
 .props-list .pp-p { font: 700 14px var(--mono); font-variant-numeric: tabular-nums; }
+/* Player props with history (props page, match pages) */
+.props-list2 { display: grid; padding: 4px 14px; }
+.pp2 { display: grid; gap: 6px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.pp2:last-child { border-bottom: 0; }
+.pp2-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: start; }
+.pp2-head b { display: block; font-size: 15px; }
+.pp2-head small { color: var(--muted); font-size: 11.5px; }
+.pp2-head small a { color: var(--fg); text-decoration: underline; text-underline-offset: 2px; }
+.pp2-who { color: var(--accent) !important; font-weight: 700; text-decoration: none !important; }
+.pp2-num { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; font: 12px var(--mono); font-variant-numeric: tabular-nums; }
+.pp2-p { font-size: 17px; font-weight: 700; color: var(--fg); }
+.pp2-p i { font-style: normal; font-size: 10.5px; color: var(--accent); letter-spacing: .6px; }
+.pp2-hist { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; }
+.pp2-rates { display: flex; flex-wrap: wrap; gap: 4px; }
+.hr { display: inline-flex; gap: 5px; align-items: baseline; padding: 2px 7px; border: 1px solid var(--line2); border-radius: 6px; font: 11.5px var(--mono); font-variant-numeric: tabular-nums; color: var(--fg); }
+.hr i { font-style: normal; color: var(--muted); font-size: 10.5px; }
+.hr.hi { border-color: color-mix(in srgb, var(--pos) 55%, transparent); color: var(--pos); }
+.hr.mid { border-color: color-mix(in srgb, var(--draw) 45%, transparent); color: var(--draw); }
+.hr.lo { color: var(--muted); }
+.pbars rect.ov, .pl-chart rect.ov { fill: var(--pos); }
+.pbars rect.un, .pl-chart rect.un { fill: #6b6b78; }
+.pbars line, .pl-chart line { stroke: var(--fg); stroke-width: 1; stroke-dasharray: 3 2; opacity: .8; }
+.props-tools, .pl-tools { display: grid; gap: 8px; margin: 0 0 14px; }
+.props-tools .chips, .pl-tools .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.props-q { width: 100%; max-width: 420px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line2); background: var(--glass); color: var(--fg); font: inherit; }
+.pl-line-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font: 12px var(--mono); }
+.pl-line-ctl input[type=range] { flex: 1 1 100px; min-width: 0; max-width: 320px; accent-color: var(--accent); }
+.pl-line-ctl .muted { flex-basis: 100%; }
+.pl-line-ctl b { min-width: 3.5em; font-size: 15px; color: var(--accent); }
+.pl-line-ctl .muted { display: inline-flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.pl-soon { font-size: 11.5px; margin: 0; }
+.pl-nums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 6px 0 8px; }
+.pl-nums > div { padding: 12px 14px; border: 1px solid var(--line2); border-radius: 12px; background: var(--glass); display: grid; gap: 2px; }
+.pl-nums small { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .6px; }
+.pl-nums b { font: 700 26px var(--mono); font-variant-numeric: tabular-nums; color: var(--fg); }
+.pl-nums em { font-style: normal; color: var(--muted); font-size: 11.5px; }
+.pl-nums .pl-fc { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.pl-nums .pl-fc b { color: var(--accent); }
+.pl-evidence { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
+.pl-evidence.warn { color: var(--draw); }
+.pl-act { margin: 0 0 10px; }
+.pl-chart-wrap { padding: 14px; overflow-x: auto; }
+.pl-chart { display: block; width: 100%; min-width: 280px; height: auto; max-height: 220px; }
+.pl-chart text { fill: var(--muted); font: 9px var(--mono); }
+.pl-chart text.pl-line { fill: var(--fg); font-weight: 700; }
+.pl-log { margin-top: 12px; }
+@media (max-width: 820px) { .pl-nums { grid-template-columns: repeat(2, minmax(0, 1fr)); } .pl-nums b { font-size: 22px; } }
 
 /* Install card (phones and tablets): sits above the bottom bar. */
 .install-card { position: fixed; left: 12px; right: 12px; bottom: calc(92px + env(safe-area-inset-bottom)); z-index: 75; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line2); border-radius: 16px; background: #0e0e14; box-shadow: 0 12px 40px rgba(0,0,0,.6); max-width: 480px; margin-inline: auto; animation: toast-in .35s var(--ease); }

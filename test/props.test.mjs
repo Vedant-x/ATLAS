@@ -75,3 +75,44 @@ test('player form: the last 10 games (no preseason) move a prop away from its pr
   assert.ok(blendForm(0.6, formFor('basketball', 'Points', 13, rows)) < 0.35, 'one who never reached it rates well below');
   assert.equal(formFor('hockey', 'Goalkeeper Saves', 20, rows), null, 'no game-log column: the price alone');
 });
+
+test('prop history: hit rates over 5/10/20 games, season, opponent and venue; last 10 for the chart', async () => {
+  const { gamelogRows, propHistory, propChance, blendForm, formFor } = await import('../js/props.js');
+  const names = ['points'];
+  // 20 games, newest first: 30, 10, 30, 10, … ; odd games at home vs team 7.
+  const games = Array.from({ length: 20 }, (_, i) => ({ eventId: `g${i}`, stats: [String(i % 2 ? 10 : 30)] }));
+  const g = { names, events: Object.fromEntries(games.map((x, i) => [x.eventId, { gameDate: new Date(Date.UTC(2026, 3, 30 - i)).toISOString(), atVs: i % 2 ? 'vs' : '@', opponent: { id: i % 2 ? '7' : '9', abbreviation: i % 2 ? 'BOS' : 'NYK' } }])),
+    seasonTypes: [{ displayName: '2025-26 Regular Season', categories: [{ events: games }] }] };
+  const rows = gamelogRows(g, 20);
+  assert.equal(rows.length, 20);
+  assert.equal(rows[0]._oppAbbr, 'NYK');
+  assert.equal(rows[1]._home, true);
+  const h = propHistory('basketball', 'Points', 25, rows, { opp: '7', home: true });
+  assert.deepEqual(h.l5, [3, 5]);
+  assert.deepEqual(h.l10, [5, 10]);
+  assert.deepEqual(h.l20, [10, 20]);
+  assert.deepEqual(h.vs, [0, 10], 'against team 7 he never reached 25');
+  assert.deepEqual(h.venue, [0, 10], 'nor at home');
+  assert.equal(h.last.length, 10);
+  assert.deepEqual(h.last[0], [30, 'NYK', 0]);
+  // At home (where he scores 10) the chance is well below the away chance.
+  const atHome = propChance(0.5, 'basketball', 'Points', 25, rows, { home: true }).p;
+  const away = propChance(0.5, 'basketball', 'Points', 25, rows, { home: false }).p;
+  assert.ok(atHome < away, `venue matters (${atHome} vs ${away})`);
+});
+
+test('prop chance: a steady player near the line is not over-read; a hot streak moves the price', async () => {
+  const { propChance } = await import('../js/props.js');
+  const mk = (vals) => vals.map((v) => ({ points: v }));
+  // Always 24-26 around a line of 25: hit rate 50%, the price 50%: stays near 50%.
+  const steady = propChance(0.5, 'basketball', 'Points', 25, mk([26, 24, 26, 24, 25, 24, 26, 24, 26, 24])).p;
+  assert.ok(steady > 0.4 && steady < 0.62, `steady ${steady}`);
+  // Cleared 30 in each of the last 10, priced at 45%: well above the price but not certain.
+  const hot = propChance(0.45, 'basketball', 'Points', 25, mk([34, 31, 36, 30, 33, 35, 32, 31, 38, 30]));
+  assert.ok(hot.p > 0.65 && hot.p < 0.95, `hot ${hot.p}`);
+  // No log: the price.
+  assert.equal(propChance(0.6, 'basketball', 'Points', 25, []).p, 0.6);
+  // Yards use the normal curve without underflow.
+  const yds = propChance(0.5, 'football', 'Passing Yards', 250, Array.from({ length: 10 }, () => ({ passingYards: 300 }))).p;
+  assert.ok(yds > 0.6, `yards ${yds}`);
+});

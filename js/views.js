@@ -20,6 +20,7 @@ import { watch } from './alerts.js';
 import { trackCard, trackStats, trackCalibration, recordLine, ensureTrack, slipHistory, officialSlip } from './trackview.js';
 import { rankedBankers, slipPolicy, MAX_ODDS, calibrated } from './track.js';
 import { propLabel, propMarket } from './props.js';
+import { propRow, allProps } from './propsview.js';
 import { coherentBets } from './picks.js';
 import { mergeEvent } from './merge.js';
 import { casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips, changesPanel, orderBets, orderChips, orderLabel } from './research.js';
@@ -51,7 +52,7 @@ export function analysisFor(e) {
   return a;
 }
 
-function legButton(leg, label) {
+export function legButton(leg, label) {
   legIndex.set(leg.key, leg);
   const on = slip.has(leg.key);
   return `<button class="leg ${on ? 'on' : ''}" data-leg="${esc(leg.key)}" data-cursor="${on ? 'REMOVE' : 'ADD'}">${label}</button>`;
@@ -578,19 +579,14 @@ const priceCheck = (b) => `ATLAS ${pc(b.p, 0)}${b.fair != null ? ` · market ${p
 // Best bets for one match: 1-3 picks that agree with each other (see coherentBets in picks.js).
 export function matchBestBets(e, a) { return coherentBets(e, a, { cal: trackCalibration() }).picks; }
 
-// Player props for this match (DraftKings milestones and anytime scorers), likeliest first.
+// Player props for this match (DraftKings milestones and anytime scorers), likeliest first, each with
+// the player's hit rates and last 10 games (propsview.js).
 function propsPanel(e) {
   if (!e.props?.length) return '';
-  const cal = trackCalibration();
-  const rows = e.props.map((x) => ({ ...x, p: calibrated(x.p, propMarket(x), cal, e.sport) })).filter((x) => x.odds >= 1.2).sort((a, b) => b.p - a.p).slice(0, 16);
+  const rows = allProps([e], Date.now(), { any: true }).map((p) => p.x).sort((a, b) => b.p - a.p).slice(0, 16);
   if (!rows.length) return '';
-  return `<section class="sec-block" id="sec-props"><h2 class="sec reveal">Player props <small>${e.live ? 'pre-match prices · ' : ''}DraftKings lines · tap to add</small></h2>
-    <div class="panel reveal props-list">${rows.map((x) => {
-      const leg = { key: `${e.id}|${propMarket(x)}|${propLabel(x)}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: propMarket(x), pick: propLabel(x), odds: x.odds, p: x.p };
-      const team = x.side === 'home' ? e.home : x.side === 'away' ? e.away : '';
-      const form = x.form ? ` · last ${x.form.n}: ${x.form.hits}/${x.form.n} (avg ${x.form.avg})` : '';
-      return `<div class="pp"><div><b>${esc(propLabel(x))}</b><small>${esc(team)}${form}</small></div><span class="pp-p">${pc(x.p, 0)}</span>${legButton(leg, odd(x.odds))}</div>`;
-    }).join('')}</div></section>`;
+  return `<section class="sec-block" id="sec-props"><h2 class="sec reveal">Player props <small>${e.live ? 'pre-match prices · ' : ''}DraftKings lines · ATLAS chance vs market · tap a price to add · <a href="#/props">all props</a></small></h2>
+    <div class="panel reveal props-list2">${rows.map((x) => propRow(e, x)).join('')}</div></section>`;
 }
 
 function bestBetsPanel(e, a) {
