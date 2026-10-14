@@ -169,20 +169,39 @@ function overlapNote(s, i, all = []) {
   all.slice(0, i).forEach((o, j) => { const n = [...ids(o)].filter((k) => mine.has(k)).length; if (n && (!best || n > best.n)) best = { n, j }; });
   return best ? `<span class="overlap">Shares ${best.n} of ${s.legs.length} legs with #${String(best.j + 1).padStart(2, '0')}</span>` : (i ? '<span class="overlap fresh">No legs shared with the options above</span>' : '');
 }
+// One slip as a compact card: the multiplier, chance and edge up top, a strip with one segment per leg
+// (coloured by its chance, hover or long-press for the pick), the weakest leg, and the full legs
+// behind "Show legs". Short slips (4 legs or fewer, below 10x) open by default.
+const chanceTone = (p) => (p >= 0.8 ? 'c5' : p >= 0.72 ? 'c4' : p >= 0.65 ? 'c3' : p >= 0.58 ? 'c2' : 'c1');
+const hourMin = (t) => (Number.isFinite(t) ? new Date(t).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', hour: 'numeric', minute: '2-digit', hour12: true }) : '');
 function slipCard(s, i, target, all) {
+  const startOf = (l) => l.start ?? S.events.find((x) => x.id === l.eventId)?.start;
   const keys = s.legs.map((l) => {
     const leg = { key: `${l.eventId}|${l.market}|${l.pick}`, eventId: l.eventId, sport: l.sport, match: l.match, market: l.market, pick: l.pick, odds: l.odds, p: l.p, ...(l.prop ? { prop: l.prop } : {}) };
     legIndex.set(leg.key, leg);
     return leg.key;
   });
-  return `<article class="slipc tilt reveal">
+  const legs = orderBets(s.legs, undefined, startOf);
+  const edge = s.p * s.odds - 1;
+  const weakest = s.legs.reduce((w, l) => (!w || l.p < w.p ? l : w), null);
+  const times = s.legs.map(startOf).filter(Number.isFinite).sort((a, b) => a - b);
+  const sports = [...new Set(s.legs.map((l) => l.sport))];
+  const open = s.legs.length <= 4 && target < 10;
+  return `<article class="slipc slipc2 tilt reveal">
     <header><span class="tag">#${String(i + 1).padStart(2, '0')}</span><span class="mult">${s.odds.toFixed(2)}<small>x</small></span></header>
+    <div class="sc-stats">
+      <div><small>Chance</small><b>${pc(s.p, s.p < 0.01 ? 2 : 1)}</b></div>
+      <div><small>Edge</small><b class="${edge >= 0 ? 'pos' : 'neg'}">${edge >= 0 ? '+' : ''}${(edge * 100).toFixed(1)}%</b></div>
+      <div><small>Sports</small><b class="sc-sp" title="${esc(sports.map((x) => sportOf(x).name).join(', '))}">${sports.slice(0, 3).map((x) => sportOf(x).icon).join('')}${sports.length > 3 ? `<small>+${sports.length - 3}</small>` : ''}</b></div>
+    </div>
+    <div class="sc-strip" role="img" aria-label="${s.legs.length} legs by chance">${legs.map((l) => `<i class="${chanceTone(l.p)}" title="${esc(`${l.pick} · ${pc(l.p, 0)} · ${l.odds.toFixed(2)}`)}"></i>`).join('')}</div>
+    <p class="sc-line">${times.length ? `<span>${esc(hourMin(times[0]))}${times.length > 1 && times.at(-1) - times[0] > 36e5 ? ` → ${esc(hourMin(times.at(-1)))}` : ''}</span>` : ''}${weakest ? `<span>Weakest: <b>${esc(weakest.pick)}</b> ${pc(weakest.p, 0)}</span>` : ''}</p>
     ${overlapNote(s, i, all)}
-    <ul>${orderBets(s.legs, undefined, (l) => l.start ?? S.events.find((x) => x.id === l.eventId)?.start).map((l) => `<li><span class="sp">${sportOf(l.sport).icon}</span><div><b>${esc(l.pick)}</b><small>${esc(l.market)} · ${esc(l.match)}</small>${istTag(l.start ?? S.events.find((x) => x.id === l.eventId)?.start)}</div><em>${l.odds.toFixed(2)}</em><i>${pc(l.p, 0)}</i></li>`).join('')}</ul>
+    <details class="sc-legs"${open ? ' open' : ''}><summary><span>${s.legs.length} legs</span><span class="sr-only"> of slip ${target}x #${i + 1} at ${s.odds.toFixed(2)}</span><i aria-hidden="true"></i></summary>
+      <ul>${legs.map((l) => `<li><span class="sp">${sportOf(l.sport).icon}</span><div><b>${esc(l.pick)}</b><small>${esc(l.market)} · ${esc(l.match)}</small>${istTag(startOf(l))}</div><em>${l.odds.toFixed(2)}</em><i class="${chanceTone(l.p)}">${pc(l.p, 0)}</i></li>`).join('')}</ul>
+    </details>
     <footer>
-      <div class="meter"><i class="grow" style="--w:${Math.min(100, s.p * 100 * (target >= 100 ? 40 : 1)).toFixed(1)}%"></i></div>
-      <span>Estimated chance <b>${pc(s.p, s.p < 0.01 ? 2 : 1)}</b></span><span>Edge <b class="${s.p * s.odds - 1 >= 0 ? 'pos' : 'neg'}">${((s.p * s.odds - 1) * 100).toFixed(1)}%</b></span>
-      <p class="slip-note">${s.p * s.odds - 1 >= 0 ? 'Priced above its estimated chance' : 'Not a value bet: priced below its estimated chance'} · ${pc(1 - s.p, 0)} chance a leg loses · legs assumed independent</p>
+      <p class="slip-note">${edge >= 0 ? 'Priced above its estimated chance' : 'Priced below its estimated chance'} · legs treated as independent</p>
       <button class="btn-ghost" data-addall="${esc(keys.join('~'))}" data-cursor="ADD ALL">Add all to slip</button>
     </footer></article>`;
 }
