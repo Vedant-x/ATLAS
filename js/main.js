@@ -14,6 +14,7 @@ import { loadPlayers, playersData } from './playerdata.js';
 // edge board, compare, and sports and leagues).
 const RESEARCH = new Set(['props', 'player', 'bankers', 'x', 'target', 'mega', 'edge', 'compare', 'sports', 'sport', 'league']);
 const R_TABS = [['props', '#/props', 'Props', ['props', 'player']], ['builder', '#/x/2', 'Builder', ['bankers', 'x', 'target', 'mega']], ['edge', '#/edge', 'Edge', ['edge']], ['compare', '#/compare', 'Compare', ['compare']], ['sports', '#/sports', 'Sports', ['sports', 'sport', 'league']]];
+const withTabs = (name, html) => { if (!RESEARCH.has(name)) return html; const i = html.indexOf('</section>'); return i < 0 ? researchTabs(name) + html : html.slice(0, i + 10) + researchTabs(name) + html.slice(i + 10); };
 const researchTabs = (name) => `<nav class="research-tabs" aria-label="Research">${R_TABS.map(([k, h, l, on]) => `<a class="${on.includes(name) ? 'on' : ''}" href="${h}"${on.includes(name) ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>`;
 
 // "More": every page in one sheet (phones and tablets, where the bar holds only the main ones). The
@@ -244,7 +245,7 @@ function build() {
 
 function render(animate) {
   const { name, v } = build();
-  app.innerHTML = (RESEARCH.has(name) ? researchTabs(name) : '') + v.html;
+  app.innerHTML = withTabs(name, v.html);
   document.title = `${v.title} · ATLAS`;
   scene.setAccent(v.accent);
   document.documentElement.style.setProperty('--accent', readable(v.accent)); // selected chips carry black text on it
@@ -341,7 +342,7 @@ function softRender() {
   const { name, v } = build();
   // Prepare the new page exactly as the shown one was prepared, then patch only what differs.
   const t = document.createElement('template');
-  t.innerHTML = (RESEARCH.has(name) ? researchTabs(name) : '') + v.html;
+  t.innerHTML = withTabs(name, v.html);
   const f = t.content;
   f.querySelectorAll('details > summary').forEach((s) => { if (open.includes(s.textContent)) s.parentElement.open = true; });
   f.querySelectorAll('.reveal, .grow, .grow-y, .draw').forEach((el, i) => { el.style.setProperty('--d', `${Math.min(i % 12, 11) * 45}ms`); el.classList.add('in'); });
