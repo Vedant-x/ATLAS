@@ -27,7 +27,7 @@ jobs:
       MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }} # empty unless email alerts are set up
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -97,7 +97,17 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist/pages
+      # A push cancels a run that may be mid-publish, and GitHub then refuses the next publish for a
+      # short while ("deployment in progress"): retry once after a pause instead of failing the run
+      # (and emailing about it).
       - id: deployment
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+      - name: Wait before retrying the publish
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 45
+      - id: deployment_retry
+        if: steps.deployment.outcome == 'failure'
         uses: actions/deploy-pages@v4
       # Self-refreshing: GitHub runs the cron above only every few hours, so each run queues the
       # next one ~8 minutes after it finishes. Meanwhile it publishes live scores every 20 seconds for
