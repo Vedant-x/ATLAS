@@ -241,12 +241,14 @@ function normCdf(z) {
   return z >= 0 ? 0.5 * (1 + erf) : 0.5 * (1 - erf);
 }
 
-// An 80% range for a chance resting on `n` effective observations (the price counts as K more when
-// there is one): wide on a thin sample, narrow on a long one.
+// A rough 80% range for a chance resting on `n` effective observations (the price counts as K more
+// when there is one): wide on a thin sample, narrow on a long one. A normal approximation, not yet
+// checked against how often future results land inside it, so the page calls it approximate.
+const clamp01 = (x) => Math.min(0.99, Math.max(0.01, x));
 export function chanceRange(p, n, priced = true) {
   const m = n + (priced ? K : 0) + 1;
   const half = 1.2816 * Math.sqrt((p * (1 - p)) / m);
-  return [Math.max(0.01, p - half), Math.min(0.99, p + half)];
+  return [clamp01(p - half), clamp01(p + half)];
 }
 
 // The ATLAS chance for a prop. Two readings of the player's last 20 games, recent games counting

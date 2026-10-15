@@ -640,6 +640,7 @@ async function playerProps(events) {
         const g = await getJson(base);
         const rows = gamelogRows(g, 20);
         sample ||= { keys: Object.keys(g).join(','), season: previousSeason(g), game: Object.values(g.events || {})[0] };
+        if (sport === 'hockey' && !sample.hockeyNames) sample.hockeyNames = (g.names || []).join(',');
         const prev = rows.length < 10 && previousSeason(g);
         if (prev) {
           try {
@@ -718,10 +719,15 @@ async function playerProps(events) {
     }
   }
   await mkdir(`${out}/data`, { recursive: true });
-  await writeFile(`${out}/data/players.json`, JSON.stringify(players));
+  await writeFile(`${out}/data/players.json`, JSON.stringify({ updatedAt: Date.now(), players }));
   log(`Player history: ${[...logs.values()].filter(Boolean).length} of ${want.length} game logs (${mates} of injured teammates, ${backfilled} with last season), ${formed} props modelled from recent games, ${adjusted} moved by a teammate's absence`);
   due.flatMap((e) => (e.props || []).filter((pr) => pr.why)).slice(0, 5).forEach((pr) => log(`  ABSENCE ${pr.player} ${pr.target}+ ${pr.label}: ${Math.round(pr.pBase * 100)}% → ${Math.round(pr.p * 100)}% ${pr.why}`));
   const withVenue = Object.values(players).reduce((n, pl) => n + pl.g.filter((g) => g[3] !== -1).length, 0), games = Object.values(players).reduce((n, pl) => n + pl.g.length, 0);
+  // How complete the minutes / at-bats column is per sport (the player page disables the filter when thin).
+  const cover = {};
+  for (const pl of Object.values(players)) { const c = (cover[pl.s] ||= [0, 0]); c[0] += pl.g.filter((g) => g[5] != null).length; c[1] += pl.g.length; }
+  log(`  opportunity column: ${Object.entries(cover).map(([sp, [a, b]]) => `${sp} ${a}/${b}`).join(' · ')}`);
+  if (sample?.hockeyNames) log(`  hockey gamelog columns: ${sample.hockeyNames}`);
   if (sample) log(`  gamelog: previous season ${sample.season} · game keys ${Object.keys(sample.game || {}).join(',')} · atVs ${sample.game?.atVs} · opponent ${sample.game?.opponent?.abbreviation} · ${withVenue}/${games} games with home/away`);
   for (const e of due.filter((x) => x.props?.length).slice(0, 3)) log(`  PROPS ${e.away} @ ${e.home}: ${e.props.slice(0, 4).map((x) => `${x.player} ${x.target}+ ${x.label} @${x.odds}`).join(' · ')}`);
 }

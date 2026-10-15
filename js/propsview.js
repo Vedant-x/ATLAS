@@ -17,15 +17,18 @@ try { st = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}'), q: '
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ ...st, q: '' })); } catch { /* storage blocked */ } };
 
 const SPORT_NAME = { basketball: 'Basketball', baseball: 'Baseball', hockey: 'Hockey', soccer: 'Soccer', football: 'Football' };
-const SORTS = [['edge', 'Biggest edge'], ['chance', 'Likeliest'], ['l10', 'Best last 10'], ['time', 'Soonest']];
+// 'edge' sorts by the estimated return at the offered price (forecast x odds - 1), not by the gap to
+// the market estimate: a forecast a point above the market estimate can still lose money at the price.
+const SORTS = [['edge', 'Best return'], ['chance', 'Likeliest'], ['l10', 'Best last 10'], ['time', 'Soonest']];
+export const MARGIN_NOTE = 'Market estimate: the price\'s implied chance less an assumed 5% margin (one price is offered, so the true margin cannot be calculated)';
 const MINS = [[0, 'Any chance'], [0.6, '60%+'], [0.7, '70%+']];
 const frac = (r) => (r && r[1] ? `${r[0]}/${r[1]}` : '–');
 const ratio = (r) => (r && r[1] ? r[0] / r[1] : null);
 // Hit-rate cell, coloured by how often he cleared the line.
-const hr = (label, r) => {
+const hr = (label, r, title = '') => {
   const x = ratio(r);
   const cls = x == null ? '' : x >= 0.7 ? 'hi' : x >= 0.5 ? 'mid' : 'lo';
-  return `<span class="hr ${cls}"><i>${esc(label)}</i>${frac(r)}</span>`;
+  return `<span class="hr ${cls}"${title ? ` title="${esc(title)}"` : ''}><i>${esc(label)}</i>${frac(r)}</span>`;
 };
 
 // Last 10 games as bars against the line (oldest left): over in green, under in grey.
@@ -42,18 +45,19 @@ export function propBars(hist, target) {
 // One prop, with its match (e) for the slip leg and the opponent. `withMatch` adds the fixture line.
 export function propRow(e, x, { withMatch = false, sel = '' } = {}) {
   const league = e.leaguePath?.split('/')[1];
-  const pkey = `${league}~${x.id}`;
+  const pkey = `${league}~${x.id}~${x.type}~${x.target}`; // research opens on this exact stat and line
   const leg = { key: `${e.id}|${propMarket(x)}|${propLabel(x)}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: propMarket(x), pick: propLabel(x), odds: x.odds, p: x.p, prop: { id: String(x.id), league, type: x.type, target: x.target } };
   const team = x.side === 'home' ? e.home : x.side === 'away' ? e.away : '';
   const opp = x.side === 'home' ? e.away : x.side === 'away' ? e.home : '';
   const h = x.hist;
   const mkt = x.pm ?? 1 / x.odds;
-  const edge = x.p - mkt;
+  const gap = x.p - mkt;
+  const ret = x.p * x.odds - 1;
   const where = x.side ? `${x.side === 'home' ? 'vs' : '@'} ${opp}` : `${e.home} v ${e.away}`;
-  const rates = h ? [hr('L5', h.l5), hr('L10', h.l10), hr('L20', h.l20), h.season ? hr('Season', h.season) : '', h.vs ? hr(`vs ${opp.split(' ').at(-1)}`, h.vs) : '', h.venue ? hr(h.home ? 'Home' : 'Away', h.venue) : ''].join('') : '<span class="muted">No recent games on record: the price alone</span>';
+  const rates = h ? [hr('L5', h.l5), hr('L10', h.l10), hr('L20', h.l20), h.season ? hr('Season', h.season, 'this season\'s games among the last 20 stored') : '', h.vs ? hr(`vs ${opp.split(' ').at(-1)}`, h.vs) : '', h.venue ? hr(h.home ? 'Home' : 'Away', h.venue) : ''].join('') : '<span class="muted">No recent games on record: the price alone</span>';
   return `<div class="pp2${sel && sel === pkey ? ' sel' : ''}">
-    <div class="pp2-head"><div><b>${esc(propLabel(x))}</b><small>${x.hist ? `<a class="pp2-who" href="#/props/${esc(pkey)}">Research ›</a> ` : ''}${esc(team)} · ${esc(where)}${withMatch ? ` · <a href="#/match/${encodeURIComponent(e.id)}">${esc(ist(e.start).replace(/ IST$/, ''))}</a>` : ''}</small></div>${legButton(leg, odd(x.odds))}</div>
-    <div class="pp2-num"><span class="pp2-p" title="ATLAS forecast for this game"><i>ATLAS</i> ${pc(x.p, 0)}</span><span class="muted">market ${pc(mkt, 0)}</span><span class="${edge >= 0 ? 'pos' : 'neg'}">${edge >= 0 ? '+' : '−'}${Math.abs(edge * 100).toFixed(0)} pts</span>${h ? `<span class="muted">avg ${h.avg}</span>` : ''}${x.why ? `<span class="pp2-why" title="ATLAS before this: ${pc(x.pBase, 0)}">${esc(x.why)}</span>` : ''}</div>
+    <div class="pp2-head"><div><b>${esc(propLabel(x))}</b><small>${x.hist ? `<a class="pp2-who" href="#/props/${esc(`${league}~${x.id}~${encodeURIComponent(x.type)}~${x.target}`)}">Research ›</a> ` : ''}${esc(team)} · ${esc(where)}${withMatch ? ` · <a href="#/match/${encodeURIComponent(e.id)}">${esc(ist(e.start).replace(/ IST$/, ''))}</a>` : ''}</small></div>${legButton(leg, odd(x.odds))}</div>
+    <div class="pp2-num"><span class="pp2-p" title="ATLAS forecast for this game"><i>ATLAS</i> ${pc(x.p, 0)}</span><span class="muted" title="Break-even: the chance this price needs to pay off">break-even ${pc(1 / x.odds, 0)}</span><span class="${ret >= 0 ? 'pos' : 'neg'}" title="Estimated return at this price: forecast x odds - 1">return ${ret >= 0 ? '+' : '−'}${Math.abs(ret * 100).toFixed(0)}%</span><span class="muted" title="${MARGIN_NOTE}">vs market est. ${gap >= 0 ? '+' : '−'}${Math.abs(gap * 100).toFixed(0)} pts</span>${h ? `<span class="muted">avg ${h.avg}</span>` : ''}${x.why ? `<span class="pp2-why" title="ATLAS before this: ${pc(x.pBase, 0)}">${esc(x.why)}</span>` : ''}</div>
     <div class="pp2-hist"><div class="pp2-rates">${rates}</div>${h ? propBars(h, x.target) : ''}</div>
   </div>`;
 }
@@ -79,7 +83,7 @@ function filtered(list) {
   let l = list.filter(({ e, x }) => (st.sport === 'all' || e.sport === st.sport) && (st.stat === 'all' || x.label === st.stat) && x.p >= st.min
     && (!q || x.player.toLowerCase().includes(q) || e.home.toLowerCase().includes(q) || e.away.toLowerCase().includes(q)));
   const by = {
-    edge: (a, b) => (b.x.p - (b.x.pm ?? 1 / b.x.odds)) - (a.x.p - (a.x.pm ?? 1 / a.x.odds)),
+    edge: (a, b) => (b.x.p * b.x.odds) - (a.x.p * a.x.odds),
     chance: (a, b) => b.x.p - a.x.p,
     l10: (a, b) => (ratio(b.x.hist?.l10) ?? -1) - (ratio(a.x.hist?.l10) ?? -1) || b.x.p - a.x.p,
     time: (a, b) => a.e.start - b.e.start || b.x.p - a.x.p,
