@@ -5,7 +5,7 @@ import { ico } from '../icons.js';
 import { createKnowledge } from './knowledge.js';
 import { createBrain } from './brain.js';
 import { CHARACTERS, characterById, svgOf } from './characters.js';
-import { aiAvailable, askAI, loadEngine, engineLoaded, onProgress, deviceAI, deviceOptIn, setDeviceOptIn, downloadSize } from './ai.js';
+import { aiAvailable, askAI, loadEngine, engineLoaded, onProgress, deviceAI, deviceOptIn, setDeviceOptIn, downloadSize, aiMode, stopAI } from './ai.js';
 import { esc, legIndex } from '../views.js';
 import { slip } from '../slip.js';
 
@@ -91,7 +91,7 @@ export function mountAssistant(S) {
     const show = !deviceOptIn() && (await deviceAI());
     box.hidden = !show;
     if (show) box.innerHTML = `<p>Answers now come from ATLAS's built-in assistant. A fuller AI can run on this device: free and private, ${downloadSize()} to download once.</p><button class="ai-optin-btn" data-ai="optin">Use on-device AI</button>`;
-    setMode(deviceOptIn() && (await deviceAI()) ? 'AI · on your device' : 'Built-in assistant');
+    setMode(deviceOptIn() && (await deviceAI()) ? aiMode() : 'Built-in assistant');
   };
   optin();
 
@@ -152,26 +152,46 @@ export function mountAssistant(S) {
   }, { passive: true });
 
   // ---------- chat ----------
+  // A pick card carries the complete selection (prop details included, so the slip check can measure
+  // it). Before it can be added, its price is re-read from the live data: a moved price is shown and used.
+  const current = (c) => {
+    const e = K.eventById(c.e?.id || c.leg?.eventId);
+    if (!e) return null;
+    const pick = c.type === 'leg' ? c.leg.pick : c.pick, market = c.type === 'leg' ? c.leg.market : c.market;
+    return (K.candidates?.([e]) || []).find((x) => x.pick === pick && x.market === market) || null;
+  };
   const cardHtml = (c) => {
     if (c.type === 'match') return `<a class="ai-card match" href="#/match/${esc(c.e.id)}"><b>${esc(c.e.home)} <i>vs</i> ${esc(c.e.away)}</b><small>${esc(c.e.league)} · ${c.e.live ? 'LIVE' : new Date(c.e.start).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</small><em>Open dossier →</em></a>`;
-    const leg = c.type === 'leg' ? c.leg : { key: `${c.e.id}|${c.priced ? '' : 'fair|'}${c.market}|${c.pick}`, eventId: c.e.id, sport: c.e.sport, match: `${c.e.home} vs ${c.e.away}`, market: c.market, pick: c.pick, odds: c.odds, p: c.p, derived: !c.priced };
+    const base = c.type === 'leg' ? c.leg : { key: `${c.e.id}|${c.priced ? '' : 'fair|'}${c.market}|${c.pick}`, eventId: c.e.id, sport: c.e.sport, match: `${c.e.home} vs ${c.e.away}`, market: c.market, pick: c.pick, odds: c.odds, p: c.p, derived: !c.priced, ...(c.prop ? { prop: c.prop } : {}) };
+    const now = current(c);
+    const moved = now && Math.abs(now.odds - base.odds) >= 0.01;
+    const gone = !now && (c.e || K.eventById(base.eventId))?.start < Date.now();
+    const leg = now ? { ...base, odds: now.odds, p: now.p, ...(now.prop ? { prop: now.prop } : {}) } : base;
     legIndex.set(leg.key, leg);
-    return `<div class="ai-card pick"><div><b>${esc(leg.pick)}</b><small>${esc(leg.market)} · <a href="#/match/${esc(leg.eventId)}">${esc(leg.match)}</a></small></div>
+    return `<div class="ai-card pick"><div><b>${esc(leg.pick)}</b><small>${esc(leg.market)} · <a href="#/match/${esc(leg.eventId)}">${esc(leg.match)}</a>${moved ? ` · <span class="warn">price now ${Number(now.odds).toFixed(2)}, was ${Number(base.odds).toFixed(2)}</span>` : ''}${gone ? ' · <span class="warn">started: price no longer valid</span>' : ''}</small></div>
       <span class="ai-odds">${Number(leg.odds).toFixed(2)}<small>${pc(leg.p)}</small></span>
-      <button class="leg ${slip.has(leg.key) ? 'on' : ''}" data-leg="${esc(leg.key)}" aria-label="Add to slip">+</button></div>`;
+      ${gone ? '' : `<button class="leg ${slip.has(leg.key) ? 'on' : ''}" data-leg="${esc(leg.key)}" aria-label="Add to slip">+</button>`}</div>`;
   };
-  const msgHtml = (m) => `<div class="ai-msg ${m.role}">${m.role === 'user' ? `<p>${esc(m.text)}</p>` : md(m.text)}${(m.cards || []).length ? `<div class="ai-cards">${m.cards.map(cardHtml).join('')}</div>` : ''}</div>`;
+  // One message: the constraints it kept, the answer, verified cards, sources, follow-ups, and which
+  // engine wrote it.
+  const sourcesHtml = (list) => {
+    const seen = new Set(), rows = (list || []).filter((x) => { const k = `${x.what}|${x.from}|${x.match || ''}`; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 12);
+    return rows.length ? `<details class="ai-sources"><summary>Sources (${rows.length})<span class="sr-only"> ${esc(String(Math.random()).slice(2, 8))}</span></summary><ul>${rows.map((x) => `<li><b>${esc(x.what)}</b> · ${esc(x.from)} · ${esc(x.at)}${x.match ? ` · <small>${esc(x.match)}</small>` : ''}</li>`).join('')}</ul></details>` : '';
+  };
+  const msgHtml = (m) => `<div class="ai-msg ${m.role}">${m.role === 'user' ? `<p>${esc(m.text)}</p>` : `${(m.chips || []).length ? `<div class="ai-cons">${m.chips.map((c) => `<span>${esc(c)}</span>`).join('')}</div>` : ''}${md(m.text)}`}${(m.cards || []).length ? `<div class="ai-cards">${m.cards.map(cardHtml).join('')}</div>` : ''}${m.role !== 'user' ? sourcesHtml(m.sources) : ''}${(m.followups || []).length && !m.pending ? `<div class="ai-follow">${m.followups.map((f) => `<button class="ai-chip">${esc(f)}</button>`).join('')}</div>` : ''}${m.mode && !m.pending ? `<small class="ai-by">${esc(m.mode)}</small>` : ''}</div>`;
   const persist = () => store.set('atlas-ai-history', history.slice(-30).map((m) => ({ role: m.role, text: m.text }))); // cards hold live objects; only text is kept
   function render() {
-    log.innerHTML = history.length ? history.map(msgHtml).join('') : `<div class="ai-msg bot">${md(`Hey, I'm **${characterById(charId).name}**. Ask me anything: a bet for tonight, who's injured, how a pitcher's been throwing, or just talk sport. I can see every match, price and team-news update on ATLAS.`)}</div>`;
+    log.innerHTML = history.length ? history.map(msgHtml).join('') : `<div class="ai-msg bot">${md(`Hey, I'm **${characterById(charId).name}**. Ask for a bet with your own rules (a day, sports to skip, an odds range, positive return only), who's injured, a player's recent games, or a check of your slip. I answer from ATLAS's data and keep every filter you set; I can't search the wider web.`)}</div>`;
     log.scrollTop = log.scrollHeight;
     $('.ai-chips').innerHTML = brain.suggestions().map((s) => `<button class="ai-chip">${esc(s)}</button>`).join('');
   }
 
+  let stopped = false;
+  const setBusyUi = (on) => { const b = $('.ai-send'); if (!b) return; b.dataset.stop = on ? '1' : ''; b.setAttribute('aria-label', on ? 'Stop' : 'Send'); b.innerHTML = on ? '■' : ico('send'); };
   async function ask(text) {
     text = text.trim();
     if (!text || busy) return;
-    busy = true;
+    busy = true; stopped = false;
     history.push({ role: 'user', text });
     history.push({ role: 'bot', text: 'Thinking…', pending: true });
     render();
@@ -179,23 +199,28 @@ export function mountAssistant(S) {
     const pending = history[history.length - 1];
     const live = (t) => { pending.text = pending.streamed = t; const el = log.lastElementChild; if (el) { el.innerHTML = md(t); log.scrollTop = log.scrollHeight; } };
     let reply;
+    setBusyUi(true);
     // Without on-device AI (no WebGPU, or the model failed to load) the built-in brain answers.
-    const fallback = async () => (await brain.answer(text).catch(() => null)) || { text: 'Sorry, I couldn\'t work that out. Try asking another way.', cards: [] };
+    const fallback = async (why) => ({ mode: why ? `Built-in assistant (${why})` : 'Built-in assistant', ...((await brain.answer(text).catch(() => null)) || { text: 'Sorry, I couldn\'t work that out. Try asking another way.', cards: [] }) });
     if (!(await aiAvailable())) reply = await fallback();
     else {
       try {
-        // Earlier turns of this chat (not the question just asked) give the AI the thread.
-        const past = history.slice(0, -2).filter((m) => m.text && !m.pending).slice(-8).map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text }));
-        const answer = await askAI(K, past, text, { onText: live });
-        // Matches the AI linked to become tappable cards.
-        const ids = [...new Set([...answer.matchAll(/#\/match\/([^)\s]+)/g)].map((m) => m[1]))].slice(0, 3);
-        reply = { text: answer, cards: ids.map((id) => K.eventById(decodeURIComponent(id))).filter(Boolean).map((e) => ({ type: 'match', e })) };
+        // Earlier turns of this chat (not the question just asked) give the AI the thread; the brain's
+        // memory gives it the last list of picks, so "the second one" resolves.
+        const past = history.slice(0, -2).filter((m) => m.text && !m.pending).slice(-6).map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text }));
+        await brain.answer(text).catch(() => null); // keeps the structured memory in step with the conversation
+        const ai = await askAI(K, past, text, { onText: live, mem: brain.memory() });
+        // Matches the AI linked, and the picks it named by tag, become cards rendered from ATLAS's records.
+        const ids = [...new Set([...ai.text.matchAll(/#\/match\/([^)\s]+)/g)].map((m) => m[1]))].slice(0, 3);
+        reply = { text: ai.text, mode: ai.mode, chips: ai.chips, cards: [...ai.picks.map((x) => ({ type: 'pick', e: x.e, market: x.market, pick: x.pick, odds: x.odds, p: x.p, ev: x.ev, priced: x.priced, ...(x.prop ? { prop: x.prop } : {}) })), ...ids.map((id) => K.eventById(decodeURIComponent(id))).filter((e) => e && !ai.picks.some((x) => x.e.id === e.id)).map((e) => ({ type: 'match', e }))], followups: ai.picks.length ? ['Explain the risk', 'Compare alternatives'] : [] };
       } catch (err) {
-        console.warn('AI answer failed, using the built-in brain', err);
-        reply = await fallback();
+        if (err?.name === 'AbortError' || stopped) reply = { text: `${pending.streamed || ''}\n\n_Stopped._`, mode: aiMode() };
+        else { console.warn('AI answer failed, using the built-in brain', err); reply = await fallback('AI unavailable'); }
       }
     }
-    history[history.length - 1] = { role: 'bot', text: reply.text, cards: reply.cards || [] };
+    setBusyUi(false);
+    history[history.length - 1] = { role: 'bot', text: reply.text, cards: reply.cards || [], chips: reply.chips || [], followups: reply.followups || [], sources: reply.sources || [], mode: reply.mode || 'Built-in assistant' };
+    setMode(aiMode());
     busy = false;
     persist();
     render();
@@ -227,7 +252,9 @@ export function mountAssistant(S) {
   });
   root.addEventListener('submit', (e) => {
     e.preventDefault();
-    if (e.target.classList.contains('ai-form')) { const v = input.value; input.value = ''; ask(v); }
+    if (!e.target.classList.contains('ai-form')) return;
+    if (busy) { stopped = true; stopAI(); return; } // the send button is Stop while an answer is written
+    const v = input.value; input.value = ''; ask(v);
   });
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && !panel.hidden) toggle(false); });
   addEventListener('hashchange', () => { if (!panel.hidden) render(); });

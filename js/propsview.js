@@ -9,6 +9,7 @@ import { calibrated } from './track.js';
 import { trackCalibration, trackStats, recordLine, ensureTrack } from './trackview.js';
 import { split } from './ui.js';
 import { playerPanel } from './playerview.js';
+import { propReadiness, readinessBadge } from './propcheck.js';
 
 const KEY = 'atlas-props-v1';
 const DEFAULTS = { sport: 'all', stat: 'all', sort: 'edge', min: 0, q: '' };
@@ -57,7 +58,7 @@ export function propRow(e, x, { withMatch = false, sel = '' } = {}) {
   const rates = h ? [hr('L5', h.l5), hr('L10', h.l10), hr('L20', h.l20), h.season ? hr('Season', h.season, 'this season\'s games among the last 20 stored') : '', h.vs ? hr(`vs ${opp.split(' ').at(-1)}`, h.vs) : '', h.venue ? hr(h.home ? 'Home' : 'Away', h.venue) : ''].join('') : '<span class="muted">No recent games on record: the price alone</span>';
   return `<div class="pp2${sel && sel === pkey ? ' sel' : ''}">
     <div class="pp2-head"><div><b>${esc(propLabel(x))}</b><small>${x.hist ? `<a class="pp2-who" href="#/props/${esc(`${league}~${x.id}~${encodeURIComponent(x.type)}~${x.target}`)}">Research ›</a> ` : ''}${esc(team)} · ${esc(where)}${withMatch ? ` · <a href="#/match/${encodeURIComponent(e.id)}">${esc(ist(e.start).replace(/ IST$/, ''))}</a>` : ''}</small></div>${legButton(leg, odd(x.odds))}</div>
-    <div class="pp2-num"><span class="pp2-p" title="ATLAS forecast for this game"><i>ATLAS</i> ${pc(x.p, 0)}</span><span class="muted" title="Break-even: the chance this price needs to pay off">break-even ${pc(1 / x.odds, 0)}</span><span class="${ret >= 0 ? 'pos' : 'neg'}" title="Estimated return at this price: forecast x odds - 1">return ${ret >= 0 ? '+' : '−'}${Math.abs(ret * 100).toFixed(0)}%</span><span class="muted" title="${MARGIN_NOTE}">vs market est. ${gap >= 0 ? '+' : '−'}${Math.abs(gap * 100).toFixed(0)} pts</span>${h ? `<span class="muted">avg ${h.avg}</span>` : ''}${x.why ? `<span class="pp2-why" title="ATLAS before this: ${pc(x.pBase, 0)}">${esc(x.why)}</span>` : ''}</div>
+    <div class="pp2-num">${readinessBadge(propReadiness(e, x))}<span class="pp2-p" title="ATLAS forecast for this game"><i>ATLAS</i> ${pc(x.p, 0)}</span><span class="muted" title="Break-even: the chance this price needs to pay off">break-even ${pc(1 / x.odds, 0)}</span><span class="${ret >= 0 ? 'pos' : 'neg'}" title="Estimated return at this price: forecast x odds - 1">return ${ret >= 0 ? '+' : '−'}${Math.abs(ret * 100).toFixed(0)}%</span><span class="muted" title="${MARGIN_NOTE}">vs market est. ${gap >= 0 ? '+' : '−'}${Math.abs(gap * 100).toFixed(0)} pts</span>${h ? `<span class="muted">avg ${h.avg}</span>` : ''}${x.why ? `<span class="pp2-why" title="ATLAS before this: ${pc(x.pBase, 0)}">${esc(x.why)}</span>` : ''}</div>
     <div class="pp2-hist"><div class="pp2-rates">${rates}</div>${h ? propBars(h, x.target) : ''}</div>
   </div>`;
 }
