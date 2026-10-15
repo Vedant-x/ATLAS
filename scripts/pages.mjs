@@ -765,7 +765,27 @@ async function khl() {
 // The free public key allows about 30 requests a minute, so requests go one at a time, 2.2 s apart:
 // each sport's fixtures for yesterday to three days ahead (yesterday gives recent results), then the
 // last results of each competition seen, for every competitor's record and form.
+// These sports change slowly and the free key is slow to read, so the fixtures are kept for 30
+// minutes (data/sportsdb.json): most builds reuse the last copy, with finished games dropped and
+// live ones still shown until the next full read.
+const TSDB_KEEP = 30 * 6e4;
 async function sportsdb() {
+  try {
+    const r = await fetch((process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json').replace('index.json', 'sportsdb.json'), { signal: AbortSignal.timeout(15000) });
+    const prev = r.ok ? await r.json() : null;
+    if (prev?.fetchedAt && Date.now() - prev.fetchedAt < TSDB_KEEP && Array.isArray(prev.events)) {
+      const kept = prev.events.filter((e) => e.live || e.start > Date.now() - 3 * 36e5);
+      tsdbFile = prev;
+      log(`TheSportsDB: reusing ${kept.length} fixtures read ${Math.round((Date.now() - prev.fetchedAt) / 6e4)} min ago`);
+      return kept;
+    }
+  } catch { /* first build, or the site is unreachable: read afresh */ }
+  const events = await sportsdbFetch();
+  tsdbFile = { fetchedAt: Date.now(), events };
+  return events;
+}
+let tsdbFile = null;
+async function sportsdbFetch() {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   let last = 0, calls = 0, errors = 0;
   const getJson = async (path) => {
@@ -1058,6 +1078,7 @@ await playerProps(events).catch((e) => log('Player props failed', e.message));
 }
 const byLeague = {};
 for (const e of events) byLeague[e.leaguePath] = (byLeague[e.leaguePath] || 0) + 1;
+if (tsdbFile) await writeFile(`${out}/data/sportsdb.json`, JSON.stringify(tsdbFile));
 await writeFile(`${out}/data/index.json`, JSON.stringify({ source: 'ATLAS snapshot', fetchedAt: Date.now(), leagueStatus: Object.fromEntries(leagueStatus), events }));
 // Back-compat file name used by older builds of the front end.
 await writeFile(`${out}/data/odds.json`, JSON.stringify({ source: 'ATLAS snapshot', fetchedAt: Date.now(), events }));
