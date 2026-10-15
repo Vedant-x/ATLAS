@@ -20,6 +20,7 @@ import { fetchAll, LEAGUES, fetchErrors, leagueStatus } from '../js/espn.js';
 import { leagueByPath } from '../js/catalog.js';
 import { CORE, PROVIDER, PROP_STATS, GAMELOG_KEYS, OPPORTUNITY, parseProps, gamelogRows, previousSeason, formFor, propHistory, propChance, withoutTeammate, hasForm } from '../js/props.js';
 import { KHL_API, khlEvent, khlRecords } from '../js/khl.js';
+import { TSDB, TSDB_SPORTS, tsdbEvent, tsdbRecords } from '../js/sportsdb.js';
 import { toDecimal } from '../js/espn.js';
 
 const out = 'dist/pages';
@@ -759,6 +760,46 @@ async function khl() {
   return events;
 }
 
+// ---------- TheSportsDB: darts, snooker, handball, volleyball, table tennis, badminton, boxing … ----------
+// The free public key allows about 30 requests a minute, so requests go one at a time, 2.2 s apart:
+// each sport's fixtures for yesterday to three days ahead (yesterday gives recent results), then the
+// last results of each competition seen, for every competitor's record and form.
+async function sportsdb() {
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  let last = 0, calls = 0, errors = 0;
+  const getJson = async (path) => {
+    const gap = 2200 - (Date.now() - last);
+    if (gap > 0) await wait(gap);
+    last = Date.now(); calls++;
+    try { return JSON.parse(await get(`${TSDB}${path}`, { headers: { Accept: 'application/json' } })); } catch (e) { errors++; if (errors <= 4) log(`  TheSportsDB ${path}: ${e.message}`); return null; }
+  };
+  const iso = (off) => new Date(Date.now() + off * 864e5).toISOString().slice(0, 10);
+  const raw = new Map(), leagues = new Map(), counts = {};
+  for (const def of TSDB_SPORTS) {
+    let n = 0;
+    for (const off of [-1, 0, 1, 2, 3]) {
+      const j = await getJson(`eventsday.php?d=${iso(off)}&s=${encodeURIComponent(def.tsdb)}`);
+      for (const x of j?.events || []) {
+        if (def.only && !def.only.test(`${x.strLeague || ''} ${x.strEvent || ''}`)) continue;
+        raw.set(x.idEvent, { x, def }); n++;
+        if (x.idLeague && !leagues.has(x.idLeague)) leagues.set(x.idLeague, def);
+      }
+    }
+    counts[def.sport] = n;
+  }
+  // Recent results per competition (at most 24 competitions, the busiest first).
+  const busy = [...leagues.keys()].map((id) => [id, [...raw.values()].filter((r) => r.x.idLeague === id).length]).sort((a, b) => b[1] - a[1]).slice(0, 24);
+  const past = [];
+  for (const [id] of busy) { const j = await getJson(`eventspastleague.php?id=${id}`); past.push(...(j?.events || [])); }
+  const all = [...raw.values()].map((r) => r.x);
+  const records = tsdbRecords([...past, ...all]);
+  const events = [...raw.values()].map(({ x, def }) => tsdbEvent(x, def, records)).filter((e) => e && !e.final);
+  log(`TheSportsDB: ${events.length} upcoming or live fixtures (${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', ')} listed), ${events.filter((e) => e.live).length} live, ${events.filter((e) => e.stats.homeRecord && e.stats.awayRecord).length} with both records, from ${past.length} past results in ${busy.length} competitions; ${calls} requests, ${errors} failed`);
+  for (const e of events.slice(0, 6)) log(`  TSDB ${e.sport} ${e.league}: ${e.home} v ${e.away} ${new Date(e.start).toISOString()} rec ${e.stats.homeRecord || '-'} / ${e.stats.awayRecord || '-'}`);
+  if (calls && errors === calls) throw new Error('every request failed');
+  return events;
+}
+
 // ---------- MMA odds ----------
 // ESPN's MMA scoreboard carries no prices, but its core odds feed has DraftKings moneylines for each
 // bout. That feed's "home"/"away" doesn't follow the scoreboard's fighter order, so the favourite is
@@ -838,7 +879,7 @@ const cricket = async () => {
 // Sources that failed this build: their fixtures are carried over from the last good snapshot below.
 const failedSources = new Set();
 const fail = (src, msg) => (e) => { failedSources.add(src); log(`${msg} failed`, e.message); problems.push(`${msg} failed: ${e.message}`); return []; };
-const [espn, npbEvents, kboEvents, cricketEvents, esportsEvents, esoccerEvents, khlEvents] = await Promise.all([
+const [espn, npbEvents, kboEvents, cricketEvents, esportsEvents, esoccerEvents, khlEvents, tsdbEvents] = await Promise.all([
   fetchAll(AbortSignal.timeout(720000), ordered, { days: 4, concurrency: 3 }).catch((e) => { log('ESPN failed', e.message); problems.push(`ESPN scoreboards failed entirely: ${e.message}`); return []; }),
   npb().catch(fail('atlas/npb', 'NPB (Japan) schedule')),
   kbo().catch(fail('atlas/kbo', 'KBO (Korea) schedule')),
@@ -846,6 +887,7 @@ const [espn, npbEvents, kboEvents, cricketEvents, esportsEvents, esoccerEvents, 
   esports().catch((e) => { log('Esports failed', e.message); problems.push(`Esports feed (bo3.gg) failed: ${e.message}`); return []; }),
   esoccer().catch((e) => { log('eSoccer failed', e.message); problems.push(`eSoccer feed (EsportsBattle) failed: ${e.message}`); return []; }),
   khl().catch(fail('atlas/khl', 'KHL feed')),
+  sportsdb().catch((e) => { log('TheSportsDB failed', e.message); return []; }),
 ]);
 // Days 5 to 7 for the most-followed leagues, best effort, so 10x and bigger slips (which may use any
 // match in the next 7 days, track.js slipPolicy) have a full week to choose from.
@@ -857,7 +899,7 @@ const [espn, npbEvents, kboEvents, cricketEvents, esportsEvents, esoccerEvents, 
   log(`ESPN days 5-7: ${added.length} more events`);
 }
 // Known leagues only, and no stale fixtures: a game that started 12+ hours ago and isn't live is over.
-const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents, ...esportsEvents, ...esoccerEvents, ...khlEvents].filter((e) => leagueByPath(e.leaguePath) && (e.live || !(e.start < Date.now() - 12 * 36e5)));
+const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents, ...esportsEvents, ...esoccerEvents, ...khlEvents, ...tsdbEvents].filter((e) => leagueByPath(e.leaguePath) && (e.live || !(e.start < Date.now() - 12 * 36e5)));
 
 // Carry-forward: start from the previously published snapshot and restore anything a source has
 // since dropped for a match that hasn't finished: announced starters (the NPB page shows only one

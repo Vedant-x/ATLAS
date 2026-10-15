@@ -38,6 +38,9 @@ const SPORT_WORDS = [
   [/\b(lacrosse|pll|nll)\b/, 'lacrosse'],
   [/\b(volleyball)\b/, 'volleyball'],
   [/\b(cricket|ipl|t20|odi|test match|big bash|bbl)\b/, 'cricket'],
+  [/\b(darts|pdc)\b/, 'darts'], [/\b(snooker)\b/, 'snooker'], [/\b(handball)\b/, 'handball'],
+  [/\b(table tennis|ping ?pong)\b/, 'tabletennis'], [/\b(badminton|bwf)\b/, 'badminton'], [/\b(boxing|boxer)\b/, 'boxing'],
+  [/\b(netball)\b/, 'netball'], [/\b(gaa|gaelic|hurling)\b/, 'gaelic'],
 ];
 // League shortcuts people type ("nba", "epl", "npb") → league path.
 const LEAGUE_WORDS = [
