@@ -61,7 +61,11 @@ export function tsdbRecords(events) {
   }
   return rec;
 }
-const recText = (r) => (r ? (r.d ? `${r.w}-${r.d}-${r.l}` : `${r.w}-${r.l}`) : null);
+// Fewer than three results say almost nothing, so they are left out rather than shown as evidence.
+const MIN_GAMES = 3;
+const enough = (r) => r && r.w + r.l + r.d >= MIN_GAMES;
+const recText = (r) => (enough(r) ? (r.d ? `${r.w}-${r.d}-${r.l}` : `${r.w}-${r.l}`) : null);
+const formOf = (r) => (enough(r) ? r.form : null);
 
 // One TheSportsDB event as an ATLAS event, or null when it is not a two-sided fixture (a golf round, a
 // race) or is outside the sport (boxing is filed under "Fighting" with MMA).
@@ -80,7 +84,7 @@ export function tsdbEvent(x, def, records = {}, now = Date.now()) {
     live: state === 'live', final: state === 'final', score: state !== 'pre' && h != null && a != null ? `${h} – ${a}` : null,
     clock: state === 'live' ? String(x.strProgress || x.strStatus || 'Live') : state === 'final' ? 'Final' : '',
     venue: x.strVenue || null, markets: [], lineups: null, probables: [],
-    stats: { homeRecord: recText(records[x.strHomeTeam]), awayRecord: recText(records[x.strAwayTeam]), homeForm: records[x.strHomeTeam]?.form || null, awayForm: records[x.strAwayTeam]?.form || null },
+    stats: { homeRecord: recText(records[x.strHomeTeam]), awayRecord: recText(records[x.strAwayTeam]), homeForm: formOf(records[x.strHomeTeam]), awayForm: formOf(records[x.strAwayTeam]) },
     logos: { home: x.strHomeTeamBadge || null, away: x.strAwayTeamBadge || null },
     note: [x.strLeague, x.intRound && x.intRound !== '0' ? `round ${x.intRound}` : null].filter(Boolean).join(' · ') || null,
     source: 'TheSportsDB', fetchedAt: now, sourceUrl: `https://www.thesportsdb.com/event/${x.idEvent}`,

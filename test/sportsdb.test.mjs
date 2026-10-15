@@ -31,12 +31,14 @@ test('records and form from finished events; fixtures carry them into the model'
     ev({ idEvent: '2', strStatus: 'FT', intHomeScore: '10', intAwayScore: '4', strTimestamp: '2026-10-01T19:00:00' }),
     ev({ idEvent: '3', strStatus: 'FT', intHomeScore: '6', intAwayScore: '10', strHomeTeam: 'Luke Humphries', strAwayTeam: 'Luke Littler', strTimestamp: '2026-10-08T19:00:00' }),
     ev({ idEvent: '3', strStatus: 'FT', intHomeScore: '6', intAwayScore: '10', strHomeTeam: 'Luke Humphries', strAwayTeam: 'Luke Littler', strTimestamp: '2026-10-08T19:00:00' }),
+    ev({ idEvent: '4', strStatus: 'FT', intHomeScore: '10', intAwayScore: '8', strTimestamp: '2026-10-11T19:00:00' }),
   ];
   const rec = tsdbRecords(past);
-  assert.deepEqual(rec['Luke Littler'], { w: 2, l: 0, d: 0, form: ['W', 'W'] }, 'a repeated event counts once');
+  assert.deepEqual(rec['Luke Littler'], { w: 3, l: 0, d: 0, form: ['W', 'W', 'W'] }, 'a repeated event counts once');
   const e = tsdbEvent(ev(), darts, rec);
   assert.equal(e.leaguePath, 'atlas/darts');
-  assert.equal(e.stats.homeRecord, '2-0');
+  assert.equal(e.stats.homeRecord, '3-0');
+  assert.equal(tsdbEvent(ev(), darts, { 'Luke Littler': { w: 2, l: 0, d: 0, form: ['W', 'W'] } }).stats.homeRecord, null, 'two results are too few to show');
   assert.equal(e.neutral, true);
   const a = analyse(e);
   assert.equal(a.kind, 'binary');
