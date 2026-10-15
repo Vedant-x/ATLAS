@@ -5,6 +5,7 @@
 //   Tennis: per-set probability → set betting and total sets.
 // Every derived number is a model fair price, not a bookmaker quote, and the UI labels it so.
 import { devig } from './engine.js';
+import { eloWin } from './clubelo.js';
 
 // ---------- maths ----------
 const LN_FACT = [0];
@@ -116,6 +117,11 @@ function baselineWin(event) {
       const p = rankWin(rh || 150, ra || 150);
       return { win: { home: p, draw: 0, away: 1 - p }, confidence: 'medium', starterNote: `team ranking ${rh ? `#${rh}` : 'unranked'} vs ${ra ? `#${ra}` : 'unranked'}` };
     }
+  }
+  // European club soccer: ClubElo ratings (set by the build).
+  if (soccer && Number(st.homeElo) && Number(st.awayElo)) {
+    const w = eloWin(Number(st.homeElo), Number(st.awayElo), { neutral: event.neutral });
+    return { win: w, confidence: 'medium', starterNote: `ClubElo ${Math.round(st.homeElo)} vs ${Math.round(st.awayElo)}` };
   }
   // eSoccer: each player's recent goals for and against.
   if (event.sport === 'efootball') {

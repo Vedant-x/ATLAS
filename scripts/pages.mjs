@@ -21,6 +21,7 @@ import { leagueByPath } from '../js/catalog.js';
 import { CORE, PROVIDER, PROP_STATS, GAMELOG_KEYS, OPPORTUNITY, parseProps, gamelogRows, previousSeason, formFor, propHistory, propChance, withoutTeammate, hasForm } from '../js/props.js';
 import { KHL_API, khlEvent, khlRecords } from '../js/khl.js';
 import { TSDB, TSDB_SPORTS, tsdbEvent, tsdbRecords } from '../js/sportsdb.js';
+import { CLUBELO, parseClubElo, eloIndex, isEuropean } from '../js/clubelo.js';
 import { toDecimal } from '../js/espn.js';
 
 const out = 'dist/pages';
@@ -968,6 +969,25 @@ const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents, ...esport
   const soon = events.filter((e) => /^(soccer|basketball|football|hockey|baseball|mma)\//.test(e.leaguePath || '') && e.start > Date.now() && e.start < Date.now() + 6 * 3600e3).length;
   if (answered && !listed && soon >= 10) { log('  COMPLETENESS: ESPN headers list no leagues - the header format may have changed'); problems.push('Completeness check: ESPN headers list no leagues (the header format may have changed)'); }
 }
+
+// ClubElo ratings for European club matches (the model uses them where no bookmaker price exists).
+try {
+  const dayIso = new Date().toISOString().slice(0, 10);
+  let csv = null;
+  for (const u of [CLUBELO(dayIso), CLUBELO(dayIso).replace('http:', 'https:')]) { try { csv = await get(u); break; } catch (err) { log(`ClubElo ${u}: ${err.message}`); } }
+  const rows = parseClubElo(csv);
+  const idx = eloIndex(rows);
+  const euro = events.filter((e) => isEuropean(e.leaguePath) && !/\.w\./.test(e.leaguePath));
+  let both = 0, one = 0;
+  const missed = new Map();
+  for (const e of euro) {
+    const h = idx.find(e.home, e.leaguePath), a = idx.find(e.away, e.leaguePath);
+    if (!h) missed.set(e.home, e.leaguePath); if (!a) missed.set(e.away, e.leaguePath);
+    if (h && a) { e.stats = { ...(e.stats || {}), homeElo: h.elo, awayElo: a.elo, eloAt: Date.now() }; both++; } else if (h || a) one++;
+  }
+  log(`ClubElo: ${rows.length} clubs rated; ${both}/${euro.length} European matches with both ratings (${one} with one), ${euro.filter((e) => e.stats?.homeElo && !e.markets?.length).length} of them unpriced`);
+  if (missed.size) log(`  ClubElo unmatched (first 30): ${[...missed].slice(0, 30).map(([n, p]) => `${n} [${p.split('/')[1]}]`).join(' · ')}`);
+} catch (err) { log('ClubElo failed', err.message); }
 
 // Soccer absences: ESPN's soccer injury feed is empty, FotMob lists who is injured or suspended.
 const soccer = events.filter((e) => e.leaguePath?.startsWith('soccer/') && e.start < Date.now() + 5 * 864e5).sort((a, b) => a.start - b.start).slice(0, 400);
