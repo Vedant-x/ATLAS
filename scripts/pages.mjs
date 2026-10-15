@@ -20,6 +20,8 @@ import { fetchAll, LEAGUES, fetchErrors, leagueStatus } from '../js/espn.js';
 import { leagueByPath } from '../js/catalog.js';
 import { CORE, PROVIDER, PROP_STATS, GAMELOG_KEYS, OPPORTUNITY, parseProps, gamelogRows, previousSeason, formFor, propHistory, propChance, withoutTeammate, hasForm } from '../js/props.js';
 import { KHL_API, khlEvent, khlRecords } from '../js/khl.js';
+import { TSDB, TSDB_SPORTS, tsdbEvent, tsdbRecords } from '../js/sportsdb.js';
+import { CLUBELO, parseClubElo, eloIndex, isEuropean } from '../js/clubelo.js';
 import { toDecimal } from '../js/espn.js';
 
 const out = 'dist/pages';
@@ -759,6 +761,57 @@ async function khl() {
   return events;
 }
 
+// ---------- TheSportsDB: darts, snooker, handball, volleyball, table tennis, badminton, boxing … ----------
+// The free public key allows about 30 requests a minute, so requests go one at a time, 2.2 s apart:
+// each sport's fixtures for yesterday to three days ahead (yesterday gives recent results), then the
+// last results of each competition seen, for every competitor's record and form.
+async function sportsdb() {
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  let last = 0, calls = 0, errors = 0;
+  const getJson = async (path) => {
+    const gap = 2200 - (Date.now() - last);
+    if (gap > 0) await wait(gap);
+    last = Date.now(); calls++;
+    try { return JSON.parse(await get(`${TSDB}${path}`, { headers: { Accept: 'application/json' } })); } catch (e) { errors++; if (errors <= 4) log(`  TheSportsDB ${path}: ${e.message}`); return null; }
+  };
+  const iso = (off) => new Date(Date.now() + off * 864e5).toISOString().slice(0, 10);
+  const raw = new Map(), leagues = new Map(), counts = {};
+  for (const def of TSDB_SPORTS) {
+    let n = 0;
+    for (const off of [-1, 0, 1, 2, 3]) {
+      const j = await getJson(`eventsday.php?d=${iso(off)}&s=${encodeURIComponent(def.tsdb)}`);
+      for (const x of j?.events || []) {
+        if (def.only && !def.only.test(`${x.strLeague || ''} ${x.strEvent || ''}`)) continue;
+        raw.set(x.idEvent, { x, def }); n++;
+        if (x.idLeague && !leagues.has(x.idLeague)) leagues.set(x.idLeague, def);
+      }
+    }
+    counts[def.sport] = n;
+  }
+  // Each competition's current season (results so far and the fixtures still to come): records and
+  // form, and fixtures the day lists missed. At most 16 competitions, the busiest first.
+  const busy = [...leagues.keys()].map((id) => [id, [...raw.values()].filter((r) => r.x.idLeague === id).length]).sort((a, b) => b[1] - a[1]).slice(0, 16);
+  const past = [];
+  let seasons = 0;
+  for (const [id] of busy) {
+    const lg = (await getJson(`lookupleague.php?id=${id}`))?.leagues?.[0];
+    const season = lg?.strCurrentSeason;
+    const j = season ? await getJson(`eventsseason.php?id=${id}&s=${encodeURIComponent(season)}`) : null;
+    const list = j?.events?.length ? j.events : (await getJson(`eventspastleague.php?id=${id}`))?.events || [];
+    if (j?.events?.length) seasons++;
+    past.push(...list);
+    const def = leagues.get(id), lo = Date.now() - 864e5, hi = Date.now() + 4 * 864e5;
+    for (const x of list) { const t = Date.parse(`${x.dateEvent || ''}T00:00:00Z`); if (t >= lo && t <= hi && !raw.has(x.idEvent)) raw.set(x.idEvent, { x, def }); }
+  }
+  const all = [...raw.values()].map((r) => r.x);
+  const records = tsdbRecords([...past, ...all]);
+  const events = [...raw.values()].map(({ x, def }) => tsdbEvent(x, def, records)).filter((e) => e && !e.final);
+  log(`TheSportsDB: ${events.length} upcoming or live fixtures (${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', ')} listed), ${events.filter((e) => e.live).length} live, ${events.filter((e) => e.stats.homeRecord && e.stats.awayRecord).length} with both records, from ${past.length} season events in ${busy.length} competitions (${seasons} full seasons); ${calls} requests, ${errors} failed`);
+  for (const e of events.slice(0, 6)) log(`  TSDB ${e.sport} ${e.league}: ${e.home} v ${e.away} ${new Date(e.start).toISOString()} rec ${e.stats.homeRecord || '-'} / ${e.stats.awayRecord || '-'}`);
+  if (calls && errors === calls) throw new Error('every request failed');
+  return events;
+}
+
 // ---------- MMA odds ----------
 // ESPN's MMA scoreboard carries no prices, but its core odds feed has DraftKings moneylines for each
 // bout. That feed's "home"/"away" doesn't follow the scoreboard's fighter order, so the favourite is
@@ -838,7 +891,7 @@ const cricket = async () => {
 // Sources that failed this build: their fixtures are carried over from the last good snapshot below.
 const failedSources = new Set();
 const fail = (src, msg) => (e) => { failedSources.add(src); log(`${msg} failed`, e.message); problems.push(`${msg} failed: ${e.message}`); return []; };
-const [espn, npbEvents, kboEvents, cricketEvents, esportsEvents, esoccerEvents, khlEvents] = await Promise.all([
+const [espn, npbEvents, kboEvents, cricketEvents, esportsEvents, esoccerEvents, khlEvents, tsdbEvents] = await Promise.all([
   fetchAll(AbortSignal.timeout(720000), ordered, { days: 4, concurrency: 3 }).catch((e) => { log('ESPN failed', e.message); problems.push(`ESPN scoreboards failed entirely: ${e.message}`); return []; }),
   npb().catch(fail('atlas/npb', 'NPB (Japan) schedule')),
   kbo().catch(fail('atlas/kbo', 'KBO (Korea) schedule')),
@@ -846,6 +899,7 @@ const [espn, npbEvents, kboEvents, cricketEvents, esportsEvents, esoccerEvents, 
   esports().catch((e) => { log('Esports failed', e.message); problems.push(`Esports feed (bo3.gg) failed: ${e.message}`); return []; }),
   esoccer().catch((e) => { log('eSoccer failed', e.message); problems.push(`eSoccer feed (EsportsBattle) failed: ${e.message}`); return []; }),
   khl().catch(fail('atlas/khl', 'KHL feed')),
+  sportsdb().catch((e) => { log('TheSportsDB failed', e.message); return []; }),
 ]);
 // Days 5 to 7 for the most-followed leagues, best effort, so 10x and bigger slips (which may use any
 // match in the next 7 days, track.js slipPolicy) have a full week to choose from.
@@ -857,7 +911,7 @@ const [espn, npbEvents, kboEvents, cricketEvents, esportsEvents, esoccerEvents, 
   log(`ESPN days 5-7: ${added.length} more events`);
 }
 // Known leagues only, and no stale fixtures: a game that started 12+ hours ago and isn't live is over.
-const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents, ...esportsEvents, ...esoccerEvents, ...khlEvents].filter((e) => leagueByPath(e.leaguePath) && (e.live || !(e.start < Date.now() - 12 * 36e5)));
+const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents, ...esportsEvents, ...esoccerEvents, ...khlEvents, ...tsdbEvents].filter((e) => leagueByPath(e.leaguePath) && (e.live || !(e.start < Date.now() - 12 * 36e5)));
 
 // Carry-forward: start from the previously published snapshot and restore anything a source has
 // since dropped for a match that hasn't finished: announced starters (the NPB page shows only one
@@ -926,6 +980,36 @@ const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents, ...esport
   const soon = events.filter((e) => /^(soccer|basketball|football|hockey|baseball|mma)\//.test(e.leaguePath || '') && e.start > Date.now() && e.start < Date.now() + 6 * 3600e3).length;
   if (answered && !listed && soon >= 10) { log('  COMPLETENESS: ESPN headers list no leagues - the header format may have changed'); problems.push('Completeness check: ESPN headers list no leagues (the header format may have changed)'); }
 }
+
+// ClubElo ratings for European club matches (the model uses them where no bookmaker price exists).
+try {
+  // Today's file, else the last two days' (a day's file can lag; ratings move little in a day).
+  let csv = null;
+  for (const off of [0, 1, 2]) {
+    const d = new Date(Date.now() - off * 864e5).toISOString().slice(0, 10);
+    for (const u of [CLUBELO(d), CLUBELO(d).replace('http:', 'https:')]) {
+      try { const t = await get(u); if (/^Rank,Club/.test(t)) { csv = t; break; } log(`ClubElo ${u}: not a ratings file`); } catch (err) { log(`ClubElo ${u}: ${err.message}`); }
+    }
+    if (csv) { if (off) log(`ClubElo: using ratings from ${d}`); break; }
+  }
+  // Last try: a plain request, without the browser headers the other feeds need.
+  if (!csv) {
+    const u = CLUBELO(new Date().toISOString().slice(0, 10));
+    try { const r = await fetch(u, { signal: AbortSignal.timeout(20000) }); const t = r.ok ? await r.text() : ''; if (/^Rank,Club/.test(t)) csv = t; else log(`ClubElo plain request: ${r.status}`); } catch (err) { log(`ClubElo plain request: ${err.message}`); }
+  }
+  const rows = parseClubElo(csv);
+  const idx = eloIndex(rows);
+  const euro = events.filter((e) => isEuropean(e.leaguePath) && !/\.w\./.test(e.leaguePath));
+  let both = 0, one = 0;
+  const missed = new Map();
+  for (const e of euro) {
+    const h = idx.find(e.home, e.leaguePath), a = idx.find(e.away, e.leaguePath);
+    if (!h) missed.set(e.home, e.leaguePath); if (!a) missed.set(e.away, e.leaguePath);
+    if (h && a) { e.stats = { ...(e.stats || {}), homeElo: h.elo, awayElo: a.elo, eloAt: Date.now() }; both++; } else if (h || a) one++;
+  }
+  log(`ClubElo: ${rows.length} clubs rated; ${both}/${euro.length} European matches with both ratings (${one} with one), ${euro.filter((e) => e.stats?.homeElo && !e.markets?.length).length} of them unpriced`);
+  if (missed.size) log(`  ClubElo unmatched (first 30): ${[...missed].slice(0, 30).map(([n, p]) => `${n} [${p.split('/')[1]}]`).join(' · ')}`);
+} catch (err) { log('ClubElo failed', err.message); }
 
 // Soccer absences: ESPN's soccer injury feed is empty, FotMob lists who is injured or suspended.
 const soccer = events.filter((e) => e.leaguePath?.startsWith('soccer/') && e.start < Date.now() + 5 * 864e5).sort((a, b) => a.start - b.start).slice(0, 400);

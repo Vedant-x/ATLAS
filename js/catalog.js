@@ -108,8 +108,20 @@ export const CATALOG = [
   },
   {
     id: 'volleyball', name: 'Volleyball', icon: '🏐', color: '#ffe36e', model: 'binary',
-    groups: [{ name: 'College', leagues: [L('volleyball/mens-college-volleyball', "NCAA Men's"), L('volleyball/womens-college-volleyball', "NCAA Women's")] }],
+    groups: [
+      { name: 'Pro & international', leagues: [L('atlas/volleyball', 'Pro leagues & internationals', 'Pro volleyball')] },
+      { name: 'College', leagues: [L('volleyball/mens-college-volleyball', "NCAA Men's"), L('volleyball/womens-college-volleyball', "NCAA Women's")] },
+    ],
   },
+  // From TheSportsDB (js/sportsdb.js): fixtures, scores and each side's recent results, no prices.
+  { id: 'darts', name: 'Darts', icon: '🎯', color: '#ff5c5c', model: 'binary', groups: [{ name: 'Darts', leagues: [L('atlas/darts', 'PDC & world events', 'Darts')] }] },
+  { id: 'snooker', name: 'Snooker', icon: '🎱', color: '#3ddc84', model: 'binary', groups: [{ name: 'Snooker', leagues: [L('atlas/snooker', 'World Snooker Tour', 'Snooker')] }] },
+  { id: 'handball', name: 'Handball', icon: '🤾', color: '#ffb347', model: 'binary', groups: [{ name: 'Handball', leagues: [L('atlas/handball', 'Leagues & internationals', 'Handball')] }] },
+  { id: 'tabletennis', name: 'Table Tennis', icon: '🏓', color: '#ff7eb6', model: 'binary', groups: [{ name: 'Table tennis', leagues: [L('atlas/tabletennis', 'Table tennis', 'Table tennis')] }] },
+  { id: 'badminton', name: 'Badminton', icon: '🏸', color: '#b5f2ff', model: 'binary', groups: [{ name: 'Badminton', leagues: [L('atlas/badminton', 'BWF & leagues', 'Badminton')] }] },
+  { id: 'boxing', name: 'Boxing', icon: '🥊', color: '#ff4d4d', model: 'binary', groups: [{ name: 'Boxing', leagues: [L('atlas/boxing', 'Title & major fights', 'Boxing')] }] },
+  { id: 'netball', name: 'Netball', icon: '🏐', color: '#ffd1f0', model: 'binary', groups: [{ name: 'Netball', leagues: [L('atlas/netball', 'Netball', 'Netball')] }] },
+  { id: 'gaelic', name: 'Gaelic Games', icon: '☘️', color: '#4ce07a', model: 'binary', groups: [{ name: 'GAA', leagues: [L('atlas/gaelic', 'Gaelic football & hurling', 'GAA')] }] },
 ];
 
 export const ALL_LEAGUES = CATALOG.flatMap((s) => s.groups.flatMap((g) => g.leagues.map((l) => ({ ...l, sport: s.id, group: g.name }))));
