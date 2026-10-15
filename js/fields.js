@@ -23,20 +23,27 @@ const gauss = (u) => { const a = Math.max(1e-12, u()), b = u(); return Math.sqrt
 export const toPar = (s) => (s == null || s === '' ? null : /^E$/i.test(String(s).trim()) ? 0 : Number.isFinite(Number(s)) ? Number(s) : null);
 
 // ---------- golf ----------
+// Holes played in a round: the hole-by-hole scores when the feed has them; otherwise estimated from
+// the strokes (no 18-hole round is under 55; about four strokes a hole), so a round in progress is
+// never taken for a finished one.
+const holesOf = (r) => (Array.isArray(r.linescores) && r.linescores.length ? Math.min(18, r.linescores.length) : r.value >= 55 ? 18 : Math.max(1, Math.min(17, Math.round(r.value / 4))));
 // One ESPN golf event → { id, name, start, end, state, round, field: [...] }.
 export function parseGolf(ev, tour) {
   const c = ev?.competitions?.[0];
   if (!c) return null;
-  const state = c.status?.type?.state || ev.status?.type?.state || 'pre';
+  const round = c.status?.period || 0, end = Date.parse(ev.endDate || ev.date);
+  // ESPN marks a day's play complete as "post" mid-tournament ("Round 1 - Play Complete").
+  let state = c.status?.type?.state || ev.status?.type?.state || 'pre';
+  if (state === 'post' && round < 4 && end > Date.now() && !c.status?.type?.completed) state = 'in';
   const field = (c.competitors || []).map((x) => {
     const rounds = (x.linescores || []).filter((r) => Number.isFinite(r.value) && r.value > 0).map((r) => ({
-      n: r.period, strokes: r.value, toPar: toPar(r.displayValue), holes: Array.isArray(r.linescores) && r.linescores.length ? Math.min(18, r.linescores.length) : 18,
+      n: r.period, strokes: r.value, toPar: toPar(r.displayValue), holes: holesOf(r),
     }));
     return { id: String(x.id), name: x.athlete?.displayName || x.athlete?.fullName || '?', country: x.athlete?.flag?.alt || '', pos: x.order || null, toPar: toPar(x.score), rounds };
   });
   return {
-    id: `golf-${tour}-${ev.id}`, sport: 'golf', tour, name: ev.name, start: Date.parse(ev.date), end: Date.parse(ev.endDate || ev.date),
-    state, round: c.status?.period || 0, detail: c.status?.type?.shortDetail || c.status?.type?.detail || '', field,
+    id: `golf-${tour}-${ev.id}`, sport: 'golf', tour, name: ev.name, start: Date.parse(ev.date), end,
+    state, round, detail: c.status?.type?.shortDetail || c.status?.type?.detail || '', field,
   };
 }
 

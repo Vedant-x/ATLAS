@@ -58,6 +58,7 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMore(
 import { loadEvents, refreshLive, refreshCricket, refreshTeamNews, refreshAsia } from './data.js';
 import { refreshLiveCenter, liveCenterHtml } from './livecenter.js';
 import { loadF1, f1Data, pollF1Live } from './f1view.js';
+import { loadFields, fieldsData } from './fieldview.js';
 import { liveSession } from './f1.js';
 import { overlayLive } from './merge.js';
 import { enrichMlb } from './mlbstats.js';
@@ -233,6 +234,15 @@ async function tickF1() {
   if (d && d.updatedAt !== before && (onF1() || current === 'home' || current === 'sports')) softRender();
 }
 setInterval(tickF1, 4 * 6e4);
+// Golf and motor racing: their file every few minutes (leaderboards move during a round).
+const onField = () => (current === 'sport' && ['golf', 'motorsport'].includes(parse().args[0])) || (current === 'league' && /^atlas~(golf|nascar|indycar)/.test(parse().args[0] || ''));
+async function tickFields() {
+  const before = fieldsData()?.updatedAt;
+  const d = await loadFields();
+  if (d && d.updatedAt !== before && (onField() || current === 'sports' || current === 'home')) softRender();
+}
+tickFields();
+setInterval(tickFields, 4 * 6e4);
 setInterval(() => { const d = f1Data(); if (d && onF1() && !document.hidden && liveSession(d.race.sessions)) pollF1Live(d, scene); }, 5000);
 
 // ---------- routing ----------

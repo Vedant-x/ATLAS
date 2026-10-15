@@ -5,6 +5,7 @@ import { readable } from './color.js';
 import { devig, buildSlips, todayEvents } from './engine.js';
 import { liveCenterHtml } from './livecenter.js';
 import { f1View, f1Teaser } from './f1view.js';
+import { fieldView, fieldsTeaser } from './fieldview.js';
 import { applyModel } from './intel.js';
 import { analyse, winProbs, kelly } from './models.js';
 import { probBar, gauge, heatmap, distBars, formStrip, outcomeBars, valueTrack, pc, odd } from './charts.js';
@@ -25,6 +26,8 @@ import { coherentBets } from './picks.js';
 import { mergeEvent } from './merge.js';
 import { casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips, changesPanel, orderBets, orderChips, orderLabel } from './research.js';
 import { readiness } from './readiness.js';
+// Golf and motor racing: a field of players or drivers, drawn by fieldview.js.
+const FIELD_SPORTS = new Set(['golf', 'motorsport']);
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const safeHref = (u) => (/^https?:\/\//i.test(String(u || '')) ? esc(u) : '#');
@@ -238,7 +241,7 @@ export const views = {
           const list = counts[s.id] || [];
           const next = list.filter((e) => !e.live).sort((a, b) => a.start - b.start)[0];
           return `<a class="sport tilt reveal" href="#/sport/${s.id}" style="--c:${s.color}" data-cursor="ENTER"><span class="ico">${s.icon}</span><b>${s.name}</b>
-            <small>${s.id === 'f1' ? f1Teaser() : `${list.length} events${list.filter((e) => e.live).length ? ` · <span class="live">${list.filter((e) => e.live).length} live</span>` : ''}`}</small>
+            <small>${s.id === 'f1' ? f1Teaser() : FIELD_SPORTS.has(s.id) ? fieldsTeaser(s.id) : `${list.length} events${list.filter((e) => e.live).length ? ` · <span class="live">${list.filter((e) => e.live).length} live</span>` : ''}`}</small>
             ${next ? `<small class="next">Next: ${esc(next.home)} v ${esc(next.away)}</small>` : ''}</a>`;
         }).join('')}</div></section>
       <section class="sec-block"><h2 class="sec reveal">Multipliers</h2>
@@ -274,7 +277,7 @@ export const views = {
           const n = sp.groups.reduce((t, g) => t + g.leagues.reduce((u, l) => u + (by[l.path]?.n || 0), 0), 0);
           const live = sp.groups.reduce((t, g) => t + g.leagues.reduce((u, l) => u + (by[l.path]?.live || 0), 0), 0);
           return `<a class="sport tilt reveal" href="#/sport/${sp.id}" style="--c:${sp.color}" data-cursor="ENTER"><span class="ico">${sp.icon}</span><b>${esc(sp.name)}</b>
-            <small>${sp.id === 'f1' ? f1Teaser() : `${n} match${n === 1 ? "" : "es"} · ${sp.groups.reduce((t, g) => t + g.leagues.length, 0)} competitions${live ? ` · <span class="live">${live} live</span>` : ''}`}</small></a>`;
+            <small>${sp.id === 'f1' ? f1Teaser() : FIELD_SPORTS.has(sp.id) ? fieldsTeaser(sp.id) : `${n} match${n === 1 ? "" : "es"} · ${sp.groups.reduce((t, g) => t + g.leagues.length, 0)} competitions${live ? ` · <span class="live">${live} live</span>` : ''}`}</small></a>`;
         }).join('')}</div>`,
     };
   },
@@ -283,6 +286,7 @@ export const views = {
     const sp = sportById(id);
     if (!sp) return views.notfound();
     if (id === 'f1') return f1View(S, { legButton, notice });
+    if (FIELD_SPORTS.has(id)) return fieldView(S, id, { legButton, notice });
     // Only leagues the snapshot couldn't load are fetched again here (each league is several requests).
     const after = () => liveLoad(sp.groups.flatMap((g) => g.leagues.map((l) => l.path)).filter((p) => !leagueKnown(p)));
     const by = countBy();
@@ -322,6 +326,7 @@ export const views = {
     const l = leagueFromKey(key || '');
     if (!l) return views.notfound();
     if (l.sport === 'f1') return f1View(S, { legButton, notice });
+    if (FIELD_SPORTS.has(l.sport)) return fieldView(S, l.sport, { legButton, notice, only: l.only });
     const sp = sportById(l.sport);
     const list = S.events.filter((e) => e.leaguePath === l.path).sort((a, b) => (b.live - a.live) || a.start - b.start);
     const days = new Map();

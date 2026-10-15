@@ -67,3 +67,17 @@ test('racing: last result from a finished scoreboard event', () => {
   assert.deepEqual(raceResult(ev).top, ['A', 'B']);
   assert.equal(raceResult({ competitions: [{ status: { type: { state: 'pre' } } }] }), null);
 });
+
+test('golf: a round in progress is not taken for a finished one, and play-complete is still in progress', () => {
+  const ev = { id: '7', name: 'Shanghai', date: new Date(Date.now() - 864e5).toISOString(), endDate: new Date(Date.now() + 2 * 864e5).toISOString(),
+    competitions: [{ status: { period: 1, type: { state: 'post', completed: false } }, competitors: [
+      { id: 'a', order: 1, athlete: { displayName: 'A' }, score: '-8', linescores: [{ period: 1, value: 48, displayValue: '-8' }] },
+      ...Array.from({ length: 30 }, (_, k) => ({ id: `b${k}`, order: k + 2, athlete: { displayName: `B${k}` }, score: '-3', linescores: [{ period: 1, value: 69, displayValue: '-3' }] })),
+    ] }] };
+  const e = parseGolf(ev, 'lpga');
+  assert.equal(e.state, 'in');
+  assert.equal(e.field[0].rounds[0].holes, 12);
+  assert.equal(golfForm([e]).get('a'), undefined, 'a partial round adds no strength');
+  const ch = golfChances(e, new Map(), { sims: 4000 });
+  assert.ok(ch[0].id === 'a' && ch[0].win < 0.6, `a five-shot lead with 60 holes left is far from certain: ${ch[0].win}`);
+});
