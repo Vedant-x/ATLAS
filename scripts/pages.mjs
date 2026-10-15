@@ -788,14 +788,25 @@ async function sportsdb() {
     }
     counts[def.sport] = n;
   }
-  // Recent results per competition (at most 24 competitions, the busiest first).
-  const busy = [...leagues.keys()].map((id) => [id, [...raw.values()].filter((r) => r.x.idLeague === id).length]).sort((a, b) => b[1] - a[1]).slice(0, 24);
+  // Each competition's current season (results so far and the fixtures still to come): records and
+  // form, and fixtures the day lists missed. At most 16 competitions, the busiest first.
+  const busy = [...leagues.keys()].map((id) => [id, [...raw.values()].filter((r) => r.x.idLeague === id).length]).sort((a, b) => b[1] - a[1]).slice(0, 16);
   const past = [];
-  for (const [id] of busy) { const j = await getJson(`eventspastleague.php?id=${id}`); past.push(...(j?.events || [])); }
+  let seasons = 0;
+  for (const [id] of busy) {
+    const lg = (await getJson(`lookupleague.php?id=${id}`))?.leagues?.[0];
+    const season = lg?.strCurrentSeason;
+    const j = season ? await getJson(`eventsseason.php?id=${id}&s=${encodeURIComponent(season)}`) : null;
+    const list = j?.events?.length ? j.events : (await getJson(`eventspastleague.php?id=${id}`))?.events || [];
+    if (j?.events?.length) seasons++;
+    past.push(...list);
+    const def = leagues.get(id), lo = Date.now() - 864e5, hi = Date.now() + 4 * 864e5;
+    for (const x of list) { const t = Date.parse(`${x.dateEvent || ''}T00:00:00Z`); if (t >= lo && t <= hi && !raw.has(x.idEvent)) raw.set(x.idEvent, { x, def }); }
+  }
   const all = [...raw.values()].map((r) => r.x);
   const records = tsdbRecords([...past, ...all]);
   const events = [...raw.values()].map(({ x, def }) => tsdbEvent(x, def, records)).filter((e) => e && !e.final);
-  log(`TheSportsDB: ${events.length} upcoming or live fixtures (${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', ')} listed), ${events.filter((e) => e.live).length} live, ${events.filter((e) => e.stats.homeRecord && e.stats.awayRecord).length} with both records, from ${past.length} past results in ${busy.length} competitions; ${calls} requests, ${errors} failed`);
+  log(`TheSportsDB: ${events.length} upcoming or live fixtures (${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', ')} listed), ${events.filter((e) => e.live).length} live, ${events.filter((e) => e.stats.homeRecord && e.stats.awayRecord).length} with both records, from ${past.length} season events in ${busy.length} competitions (${seasons} full seasons); ${calls} requests, ${errors} failed`);
   for (const e of events.slice(0, 6)) log(`  TSDB ${e.sport} ${e.league}: ${e.home} v ${e.away} ${new Date(e.start).toISOString()} rec ${e.stats.homeRecord || '-'} / ${e.stats.awayRecord || '-'}`);
   if (calls && errors === calls) throw new Error('every request failed');
   return events;
