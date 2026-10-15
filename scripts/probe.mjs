@@ -1,15 +1,17 @@
 // Temporary: prints the shape of feeds before parsers are written for them (CI only).
 const UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130 Safari/537.36' };
 const get = async (u) => { const r = await fetch(u, { headers: UA, signal: AbortSignal.timeout(20000) }); return { status: r.status, j: r.ok ? await r.json().catch(() => null) : null }; };
-const short = (o, d = 0) => {
+const short = (o, d = 0) => String(short0(o, d));
+const short0 = (o, d = 0) => {
   if (o == null || typeof o !== 'object') return JSON.stringify(o)?.slice(0, 80);
   if (Array.isArray(o)) return `[${o.length}] ${o.length ? short(o[0], d + 1) : ''}`;
   if (d > 3) return '{…}';
   return `{${Object.entries(o).slice(0, 40).map(([k, v]) => `${k}: ${typeof v === 'object' && v ? short(v, d + 1) : JSON.stringify(v)?.slice(0, 60)}`).join(', ')}}`;
 };
 const S = 'https://site.api.espn.com/apis/site/v2/sports';
-for (const p of ['golf/pga', 'golf/lpga', 'golf/eur', 'golf/liv', 'racing/nascar-premier', 'racing/irl']) {
-  const { status, j } = await get(`${S}/${p}/scoreboard`);
+for (const p of ['golf/pga', 'golf/pga?dates=20261012', 'golf/lpga', 'golf/eur', 'golf/eur?dates=20261012', 'golf/liv', 'racing/nascar-premier', 'racing/nascar-premier?dates=20261012', 'racing/irl', 'racing/irl?dates=20260830']) {
+  const [path, qs] = p.split('?');
+  const { status, j } = await get(`${S}/${path}/scoreboard${qs ? `?${qs}` : ''}`);
   console.log(`\n=== ${p} ${status} events ${j?.events?.length}`);
   const ev = j?.events?.[0];
   if (!ev) continue;
