@@ -108,7 +108,7 @@ export function createKnowledge(S) {
         // The shortlist's own candidates and calibration (sport included), so the assistant and the
         // cards always quote the same chance for the same pick.
         for (const b of bankers([e], { min: 0, limit: 999 })) {
-          const p = calibrated(b.p, b.market, cal, e.sport);
+          const p = calibrated(b.p, b.market, cal, e.sport, b.derived ? null : b.odds);
           out.push({ e, market: b.market, pick: b.pick, odds: b.odds, p, fair: b.fair, ev: p * b.odds - 1, priced: true, ...(b.prop ? { prop: { ...b.prop, id: String(b.prop.id), league: e.leaguePath?.split('/')[1] } } : {}) });
         }
       } else {

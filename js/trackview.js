@@ -64,6 +64,22 @@ const pickRow = (h) => (h.type === 'multi' ? `<li class="tr-${h.status}"><span c
   <div><b>${esc(h.pick)}</b><small>${sportOf(h.sport).icon} ${esc(h.home)} v ${esc(h.away)} · ${esc(ist(h.start))} · ${esc(h.market)}${h.score ? ` · final ${esc(h.score)}` : ''} · ${h.type === 'value' ? 'value spot' : 'banker'}</small></div>
   <em>${Number(h.odds).toFixed(2)}</em><i>${pct(h.shown ?? h.p, 0)}</i></li>`);
 
+// How far the shown chance trusts ATLAS's own estimate against the price, per sport and market, as
+// learned from the settled picks (track.js calibration), with each one's accuracy (Brier score:
+// lower is better) for ATLAS alone, the price alone and the blend shown.
+function trustPanel(picks) {
+  const cal = calibration(picks);
+  const famName = { winner: 'winner', result: '1X2 result', spread: 'handicap', total: 'totals', prop: 'player props' };
+  const rows = Object.entries(cal).filter(([k, r]) => k.includes(':') && r.w != null && r.priced >= 20).sort((a, b) => b[1].priced - a[1].priced);
+  if (!rows.length) return '';
+  return `<div class="panel reveal"><h3 class="ph">How much ATLAS trusts itself <small>learned from settled picks</small></h3>
+    <p class="muted">Where the bookmaker's price has predicted results better than ATLAS's own estimate, the chance shown leans toward the price. It leans only as far as the results justify, and it moves as more picks settle. Brier score: lower is better.</p>
+    <table class="tbl tight"><thead><tr><th>Sport · market</th><th class="num">Picks</th><th class="num">Weight on ATLAS</th><th class="num">ATLAS alone</th><th class="num">Price alone</th><th class="num">Shown</th></tr></thead><tbody>${rows.map(([k, r]) => {
+      const [sp, fam] = k.split(':');
+      return `<tr><td>${sportOf(sp).icon} ${esc(sportOf(sp).name)} · ${esc(famName[fam] || fam)}</td><td class="num">${r.priced}</td><td class="num">${pct(r.w, 0)}</td><td class="num">${r.brier.model.toFixed(3)}</td><td class="num">${r.brier.market.toFixed(3)}</td><td class="num"><b>${r.brier.blend.toFixed(3)}</b></td></tr>`;
+    }).join('')}</tbody></table></div>`;
+}
+
 function body(data) {
   const s = summarize(data.picks || []);
   if (!s.all.won && !s.all.lost) {
@@ -82,6 +98,7 @@ function body(data) {
     <div class="panel reveal"><h3 class="ph">Are the estimates honest? <small>calibration</small></h3>
       <p class="muted">When ATLAS says 65%, it should land about 65% of the time. Small samples swing a lot.</p>
       <div class="tr-cal">${s.buckets.map((b) => `<div><small>Estimated ${b.label}</small>${b.n ? `<div class="tr-bars"><i style="--w:${((b.predicted || 0) * 100).toFixed(0)}%"></i><i class="act" style="--w:${((b.actual || 0) * 100).toFixed(0)}%"></i></div>` : ''}<span>${b.n ? `${pct(b.predicted, 0)} estimated · ${pct(b.actual, 0)} actual · ${b.n} picks` : 'no picks yet'}</span></div>`).join('')}</div></div>
+    ${trustPanel(data.picks || [])}
     <div class="panel reveal"><h3 class="ph">Latest results</h3><ul class="tr-list">${s.recent.map(pickRow).join('')}</ul></div>
     ${s.pending.length ? `<div class="panel reveal"><h3 class="ph">Waiting on results <small>${s.pending.length}</small></h3><ul class="tr-list">${s.pending.slice(0, 20).map(pickRow).join('')}</ul></div>` : ''}`;
 }
