@@ -983,9 +983,15 @@ const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents, ...esport
 
 // ClubElo ratings for European club matches (the model uses them where no bookmaker price exists).
 try {
-  const dayIso = new Date().toISOString().slice(0, 10);
+  // Today's file, else the last two days' (a day's file can lag; ratings move little in a day).
   let csv = null;
-  for (const u of [CLUBELO(dayIso), CLUBELO(dayIso).replace('http:', 'https:')]) { try { csv = await get(u); break; } catch (err) { log(`ClubElo ${u}: ${err.message}`); } }
+  for (const off of [0, 1, 2]) {
+    const d = new Date(Date.now() - off * 864e5).toISOString().slice(0, 10);
+    for (const u of [CLUBELO(d), CLUBELO(d).replace('http:', 'https:')]) {
+      try { const t = await get(u); if (/^Rank,Club/.test(t)) { csv = t; break; } log(`ClubElo ${u}: not a ratings file`); } catch (err) { log(`ClubElo ${u}: ${err.message}`); }
+    }
+    if (csv) { if (off) log(`ClubElo: using ratings from ${d}`); break; }
+  }
   const rows = parseClubElo(csv);
   const idx = eloIndex(rows);
   const euro = events.filter((e) => isEuropean(e.leaguePath) && !/\.w\./.test(e.leaguePath));
