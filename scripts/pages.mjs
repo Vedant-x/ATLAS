@@ -992,6 +992,11 @@ try {
     }
     if (csv) { if (off) log(`ClubElo: using ratings from ${d}`); break; }
   }
+  // Last try: a plain request, without the browser headers the other feeds need.
+  if (!csv) {
+    const u = CLUBELO(new Date().toISOString().slice(0, 10));
+    try { const r = await fetch(u, { signal: AbortSignal.timeout(20000) }); const t = r.ok ? await r.text() : ''; if (/^Rank,Club/.test(t)) csv = t; else log(`ClubElo plain request: ${r.status}`); } catch (err) { log(`ClubElo plain request: ${err.message}`); }
+  }
   const rows = parseClubElo(csv);
   const idx = eloIndex(rows);
   const euro = events.filter((e) => isEuropean(e.leaguePath) && !/\.w\./.test(e.leaguePath));
