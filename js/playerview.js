@@ -21,8 +21,8 @@ import { loadPlayers, playersData, playersMeta, retryPlayers, rowsOf, valueOf, o
 
 // Page state: which stat and line, and which past games count.
 const st = { key: null, type: null, line: null, win: 20, venue: 'all', minOpp: 0, vs: false, mate: '' };
-const OPP_LABEL = { minutes: 'minutes', timeOnIce: 'minutes on ice', atBats: 'at-bats' };
-const OPP_STEPS = { minutes: [0, 20, 25, 30, 35], timeOnIce: [0, 12, 15, 18, 21], atBats: [0, 3, 4] };
+const OPP_LABEL = { minutes: 'minutes', timeOnIcePerGame: 'minutes on ice', atBats: 'at-bats' };
+const OPP_STEPS = { minutes: [0, 20, 25, 30, 35], timeOnIcePerGame: [0, 12, 15, 18, 21], atBats: [0, 3, 4] };
 const OUT = /^(out|doubtful|injured reserve|suspension)/i;
 
 const shortDate = (d) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '');

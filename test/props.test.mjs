@@ -158,3 +158,11 @@ test('prop alerts: re-rated with the reason, lines pulled, injury status changes
   // Old snapshots without props or injuries: nothing invented.
   assert.equal(diff(base, { ...before, props: undefined, inj: undefined, propPlayers: undefined }, now).filter((c) => c.kind === 'prop' || c.kind === 'injury').length, 0);
 });
+
+test('game log: hockey time on ice "18:32" reads as 18.5 minutes', async () => {
+  const { gamelogRows, OPPORTUNITY } = await import('../js/props.js');
+  const g = { names: ['goals', 'timeOnIcePerGame'], events: { a: { gameDate: '2026-10-10T23:00Z' } }, seasonTypes: [{ displayName: '2026-27 Regular Season', categories: [{ events: [{ eventId: 'a', stats: ['1', '18:32'] }] }] }] };
+  const [r] = gamelogRows(g, 5);
+  assert.equal(r.timeOnIcePerGame, 18.5);
+  assert.equal(r[OPPORTUNITY.hockey], 18.5);
+});

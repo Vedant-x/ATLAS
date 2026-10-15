@@ -130,7 +130,7 @@ export function gradeProp(prop, sport, box) {
 // Each prop type as columns of ESPN's player game log (…/athletes/{id}/gamelog), which names its
 // columns differently from the box score. Types missing here (goalie saves, soccer) use the price.
 // The game-log column that says how much a player played (for the minutes filter), by sport.
-export const OPPORTUNITY = { basketball: 'minutes', hockey: 'timeOnIce', baseball: 'atBats' };
+export const OPPORTUNITY = { basketball: 'minutes', hockey: 'timeOnIcePerGame', baseball: 'atBats' };
 export const GAMELOG_KEYS = {
   basketball: { Points: ['points'], Rebounds: ['totalRebounds'], Assists: ['assists'], '3-Point Field Goals': ['threePointFieldGoalsMade-threePointFieldGoalsAttempted'],
     'Points + Assists + Rebounds': ['points', 'totalRebounds', 'assists'], 'Points + Assists': ['points', 'assists'], 'Points + Rebounds': ['points', 'totalRebounds'],
@@ -153,7 +153,12 @@ export function gamelogRows(g, n = 10) {
         const info = g.events?.[ev.eventId] || {};
         const at = Date.parse(info.gameDate || '') || null;
         const row = {};
-        names.forEach((k, i) => { const v = parseFloat(String(ev.stats?.[i] ?? '').split(/[-/]/)[0]); if (Number.isFinite(v)) row[k] = v; });
+        names.forEach((k, i) => {
+          const raw = String(ev.stats?.[i] ?? '');
+          const clock = /^(\d+):(\d{2})$/.exec(raw); // time on ice "18:32" -> 18.5 minutes
+          const v = clock ? +(Number(clock[1]) + Number(clock[2]) / 60).toFixed(1) : parseFloat(raw.split(/[-/]/)[0]);
+          if (Number.isFinite(v)) row[k] = v;
+        });
         Object.defineProperties(row, {
           _at: { value: at }, _opp: { value: info.opponent?.id != null ? String(info.opponent.id) : null },
           _oppAbbr: { value: info.opponent?.abbreviation || null }, _home: { value: info.atVs === 'vs' ? true : info.atVs === '@' ? false : null },
