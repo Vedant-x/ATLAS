@@ -16,7 +16,7 @@ import { PROP_STATS, GAMELOG_KEYS, propLabel, propMarket, propChance, chanceRang
 import { calibrated } from './track.js';
 import { trackCalibration } from './trackview.js';
 import { split } from './ui.js';
-import { MARGIN_NOTE } from './propsview.js';
+import { propReadiness, analysisPanel } from './propcheck.js';
 import { loadPlayers, playersData, playersMeta, retryPlayers, rowsOf, valueOf, opportunityCoverage } from './playerdata.js';
 
 // Page state: which stat and line, and which past games count.
@@ -107,17 +107,23 @@ function body(p, events) {
   const range = fc != null ? chanceRange(fc, model.nEff, Boolean(offer)) : null;
   const thin = games.length < 8;
   const mateName = mateKey ? data[mateKey]?.n : '';
-  const nums = `<div class="pl-nums">
-    <div><small>Hit rate · ${games.length} game${games.length === 1 ? '' : 's'} selected</small><b>${games.length ? pc(hits / games.length, 0) : '–'}</b><em>${hits}/${games.length}${avg != null ? ` · avg ${avg.toFixed(1)}` : ''}</em></div>
-    <div class="pl-fc"><small>ATLAS forecast · next game</small><b>${fc != null ? pc(fc, 0) : '–'}</b><em>${range ? `approx. 80% range ${pc(range[0], 0)}–${pc(range[1], 0)}` : 'not enough games'}${offer ? '' : ' · model only, no price at this line'}${offer?.why ? ` · ${esc(offer.why)}` : ''}</em></div>
-    <div title="${esc(MARGIN_NOTE)}"><small>Market estimate · assumed 5% margin</small><b>${offer ? pc(offer.pm ?? 1 / offer.odds, 0) : '–'}</b><em>${offer ? `DraftKings ${odd(offer.odds)} · forecast ${fc >= (offer.pm ?? 1 / offer.odds) ? '+' : '−'}${Math.abs((fc - (offer.pm ?? 1 / offer.odds)) * 100).toFixed(0)} pts vs it` : 'no price at this line'}</em></div>
-    <div><small>Break-even · return at this price</small><b>${offer ? pc(1 / offer.odds, 0) : '–'}</b><em>${offer ? `estimated return <span class="${fc * offer.odds - 1 >= 0 ? 'pos' : 'neg'}">${fc * offer.odds - 1 >= 0 ? '+' : '−'}${Math.abs((fc * offer.odds - 1) * 100).toFixed(1)}%</span>` : '–'}</em></div>
-  </div>
+  // The prop on offer (or, for an unpriced line, the player's nearest one) for readiness.
+  const ref = offer || lines.find((x) => x.type === st.type) || lines[0];
+  const pmeta = playersMeta();
+  const rd = e && ref ? propReadiness(e, ref, { logsAt: pmeta.updatedAt }) : null;
+  const age = (t) => (t ? Math.max(0, Math.round((Date.now() - t) / 6e4)) : null);
+  const nums = analysisPanel({
+    hits, n: games.length, avg, forecast: fc, range, nEff: model.nEff, priced: Boolean(offer), odds: offer?.odds,
+    marketEst: offer ? offer.pm ?? 1 / offer.odds : null, why: offer?.why, readiness: rd,
+    priceAge: age(e?.fetchedAt), logsAge: age(pmeta.updatedAt), filtersNote: mateName ? `${mateMode} ${mateName}` : '',
+  });
+  const notes = `
   <p class="pl-evidence ${thin ? 'warn' : ''}">Evidence: ${games.length} game${games.length === 1 ? '' : 's'} after filters${mateName ? ` (${mateMode} ${esc(mateName)})` : ''}${thin ? ' · a small sample: treat the hit rate with care' : ''} · the forecast always uses his last 20 games (recent ones weighted more)${st.vs ? ' · head-to-head games are shown, never trusted on their own' : ''}.</p>
   <p class="pl-evidence">Game history: up to 20 recent games per player (last season fills a young season), so "Season" means this season's games among them, not the whole season${logAge()}.</p>`;
+  const numsAll = nums + notes;
   const leg = offer && e ? legButton({ key: `${e.id}|${propMarket(offer)}|${propLabel(offer)}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: propMarket(offer), pick: propLabel(offer), odds: offer.odds, p: offer.p, prop: { id: String(offer.id), league, type: offer.type, target: offer.target } }, `Add ${odd(offer.odds)}`) : '';
   const table = games.length ? `<table class="tbl tight pl-log"><thead><tr><th>Date</th><th>Opponent</th>${p.o ? `<th class="num">${esc(OPP_LABEL[p.o] || 'played')}</th>` : ''}<th class="num">${esc(label(sport, st.type))}</th><th></th></tr></thead><tbody>${games.map((x) => `<tr><td>${esc(shortDate(x.date))}</td><td>${x.home === true ? 'vs' : x.home === false ? '@' : ''} ${esc(x.opp)}</td>${p.o ? `<td class="num">${x.played ?? '–'}</td>` : ''}<td class="num">${x.v}</td><td class="${x.v >= st.line ? 'pos' : 'muted'}">${x.v >= st.line ? '✓' : '✗'}</td></tr>`).join('')}</tbody></table>` : '';
-  return { e, lines, oppName, html: `${nums}<div class="pl-act">${leg}</div>${tonight(p, rows, offer, home)}<div class="panel pl-chart-wrap">${chart(games, st.line)}</div>${table}` };
+  return { e, lines, oppName, html: `${numsAll}<div class="pl-act">${leg}</div>${tonight(p, rows, offer, home)}<div class="panel pl-chart-wrap">${chart(games, st.line)}</div>${table}` };
 }
 
 const chip = (k, v, t, on) => `<button class="chip ${on ? 'on' : ''}" data-plf="${k}:${esc(String(v))}">${esc(t)}</button>`;

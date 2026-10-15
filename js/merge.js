@@ -36,7 +36,7 @@ export function mergeProbables(old = [], fresh = []) {
   return out;
 }
 
-const KEEP = ['absences', 'injuries', 'props', 'predictor', 'lineups', 'source', 'sourceUrl', 'tennis', 'note', 'venue', 'colors'];
+const KEEP = ['absences', 'injuries', 'injuryChecked', 'props', 'predictor', 'lineups', 'source', 'sourceUrl', 'tennis', 'note', 'venue', 'colors'];
 
 export function mergeEvent(old, fresh) {
   if (!old) return fresh;

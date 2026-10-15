@@ -602,6 +602,7 @@ async function playerProps(events) {
       const e = sq.shift();
       try {
         const sm = await getJson(`https://site.api.espn.com/apis/site/v2/sports/${e.leaguePath}/summary?event=${e.compId}`);
+        e.injuryChecked = Date.now(); // the report was read, even if nobody is on it
         const inj = { home: [], away: [] };
         for (const t of sm.injuries || []) {
           const side = String(t.team?.id) === String(e.teamIds.home) ? 'home' : String(t.team?.id) === String(e.teamIds.away) ? 'away' : null;

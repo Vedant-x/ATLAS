@@ -14,6 +14,11 @@ import { researchRow, caseFor } from '../research.js';
 import { changesSince, lastVisit, needsReview, timelineUpdatedAt } from '../timeline.js';
 import { watch } from '../alerts.js';
 import { readiness } from '../readiness.js';
+import { playersData, playersMeta, loadPlayers, rowsOf, valueOf } from '../playerdata.js';
+import { analyseSlip } from '../slipcheck.js';
+import { slip } from '../slip.js';
+import { propReadiness } from '../propcheck.js';
+import { PROP_STATS } from '../props.js';
 
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const words = (s) => norm(s).split(/[^a-z0-9]+/).filter((w) => w.length >= 3);
@@ -78,11 +83,15 @@ export function createKnowledge(S) {
     }).filter((x) => x.score > 0).sort((a, b) => b.score - a.score || a.e.start - b.e.start).map((x) => x.e);
   }
 
-  function filterEvents({ sport, league, today, live, upcoming = true } = {}) {
+  // from / to: a start-time window (e.g. tomorrow); exclude: { sports: [], leagues: [] }.
+  function filterEvents({ sport, league, today, live, upcoming = true, from, to, exclude } = {}) {
     let list = S.events;
     if (sport) list = list.filter((e) => e.sport === sport);
     if (league) list = list.filter((e) => e.leaguePath === league);
+    if (exclude?.sports?.length) list = list.filter((e) => !exclude.sports.includes(e.sport));
+    if (exclude?.leagues?.length) list = list.filter((e) => !exclude.leagues.includes(e.leaguePath));
     if (live) list = list.filter((e) => e.live);
+    else if (from || to) list = list.filter((e) => !e.live && (!from || e.start >= from) && (!to || e.start < to));
     else if (today) list = todayEvents(list);
     else if (upcoming) list = list.filter((e) => e.live || e.start > Date.now() - 3 * 36e5);
     return list;
@@ -100,7 +109,7 @@ export function createKnowledge(S) {
         // cards always quote the same chance for the same pick.
         for (const b of bankers([e], { min: 0, limit: 999 })) {
           const p = calibrated(b.p, b.market, cal, e.sport);
-          out.push({ e, market: b.market, pick: b.pick, odds: b.odds, p, fair: b.fair, ev: p * b.odds - 1, priced: true });
+          out.push({ e, market: b.market, pick: b.pick, odds: b.odds, p, fair: b.fair, ev: p * b.odds - 1, priced: true, ...(b.prop ? { prop: { ...b.prop, id: String(b.prop.id), league: e.leaguePath?.split('/')[1] } } : {}) });
         }
       } else {
         const a = analysisFor(e), w = a.win;
@@ -114,8 +123,8 @@ export function createKnowledge(S) {
 
   // mode: safe (highest win chance), value (model above the price), balanced (short-ish odds, high chance).
   // The visitor's saved filters apply: minimum odds, and preferred sports when none is named.
-  function picks({ sport, league, today = false, mode = 'balanced', limit = 5, minOdds = prefs.get().minOdds, maxOdds } = {}) {
-    let list = filterEvents({ sport, league, today });
+  function picks({ sport, league, today = false, mode = 'balanced', limit = 5, minOdds = prefs.get().minOdds, maxOdds, from, to, exclude, skip = [] } = {}) {
+    let list = filterEvents({ sport, league, today, from, to, exclude });
     if (!sport && !league) list = prefEvents(list);
     let c = candidates(list);
     if (prefs.get().pricedOnly) c = c.filter((x) => x.priced);
@@ -125,7 +134,8 @@ export function createKnowledge(S) {
     else if (mode === 'value') c = c.filter((x) => x.priced && x.ev > 0 && x.odds <= 5).sort((a, b) => b.ev - a.ev);
     else c = c.filter((x) => x.odds >= 1.3 && x.odds <= 2.6 && x.p >= 0.45).sort((a, b) => (b.priced - a.priced) || b.p - a.p);
     const seen = new Set(), out = [];
-    for (const x of c) { if (seen.has(x.e.id)) continue; seen.add(x.e.id); out.push(x); if (out.length >= limit) break; }
+    const skipped = new Set(skip);
+    for (const x of c) { if (seen.has(x.e.id) || skipped.has(pickId(x))) continue; seen.add(x.e.id); out.push(x); if (out.length >= limit) break; }
     return out;
   }
 
@@ -177,9 +187,47 @@ export function createKnowledge(S) {
   const changes = ({ since = lastVisit(), watchedOnly = false } = {}) => changesSince(since).filter((c) => !watchedOnly || watch.has(c.eventId));
   const reviewList = () => watch.ids().map((id) => S.events.find((e) => e.id === id)).filter(Boolean).map((e) => ({ e, changes: needsReview(e.id) })).filter((x) => x.changes.length);
   const freshness = () => ({ pricesAt: S.fetchedAt || null, changesAt: timelineUpdatedAt() });
-  const slips = (target, today = true) => S.slips(target, { count: 5, today: today && target < 100 });
+  // Slips, optionally limited to the events a question allows (sport, dates, exclusions) and a minimum
+  // leg price; a filtered set is built fresh rather than read from the page's cache.
+  const slips = (target, today = true, { filter = null, key = '', minOdds = null } = {}) => S.slips(target, { count: 5, today: today && target < 100, filter, key, minOdds });
+  const pickId = (x) => `${x.e.id}|${x.market}|${x.pick}`;
+
+  // Player research for the assistant: a player named in the question, with every line he has and
+  // what his recent games say (same model and data as the props pages).
+  function playerResearch(text) {
+    const data = playersData() || loadPlayers();
+    if (!data) return null;
+    const t = norm(text);
+    const hit = Object.entries(data).find(([, p]) => { const parts = norm(p.n).split(' '); const last = parts.at(-1); return last.length > 3 && t.includes(last) && (parts.length < 2 || t.includes(parts[0]) || t.split(/\s+/).includes(last)); });
+    if (!hit) return null;
+    const [key, p] = hit;
+    const [league, id] = key.split('|');
+    const lines = [];
+    for (const e of S.events) {
+      if (e.leaguePath?.split('/')[1] !== league) continue;
+      for (const x of e.props || []) if (String(x.id) === id) lines.push({ e, x, r: propReadiness(e, x, { logsAt: playersMeta().updatedAt }) });
+    }
+    const rows = rowsOf(p);
+    return { key, name: p.n, team: p.t, sport: p.s, games: rows.length, logsAt: playersMeta().updatedAt, lines, injury: p.inj || null,
+      recent: (type) => rows.slice(0, 10).map((r) => valueOf(p.s, type, r)).filter((v) => v != null), label: (type) => PROP_STATS[p.s]?.[type]?.label || type };
+  }
+  // The visitor's current slip, analysed (dependencies, combined chance, return at the price).
+  const slipSummary = () => (slip.legs.length ? { legs: slip.legs, ...analyseSlip(slip.legs, { logs: playersData() }) } : null);
+  // Where the facts for a match come from, and how old each one is.
+  function sourcesFor(e) {
+    const age = (t) => (t ? `${Math.max(0, Math.round((Date.now() - t) / 6e4))} min ago` : 'time unknown');
+    const out = [];
+    if (e.markets?.length) out.push({ what: 'Prices', from: e.bookmaker || 'bookmaker feed', at: age(e.fetchedAt || S.fetchedAt) });
+    out.push({ what: 'Fixture and scores', from: e.source || 'league feed', at: age(e.fetchedAt || S.fetchedAt) });
+    if (e.props?.length) out.push({ what: 'Player props', from: 'DraftKings via ESPN', at: age(e.fetchedAt || S.fetchedAt) });
+    if (e.injuries || e.injuryChecked) out.push({ what: 'Injury report', from: 'ESPN', at: age(e.injuryChecked || e.injuries?.at) });
+    if (e.absences) out.push({ what: 'Absences and lineups', from: e.absences.source || 'FotMob', at: age(e.absences.at) });
+    if ((e.probables || []).some((x) => x.report)) out.push({ what: 'Starting pitchers', from: 'MLB / NPB / KBO feeds', at: age(e.fetchedAt || S.fetchedAt) });
+    if (playersMeta().updatedAt && e.props?.some((x) => x.hist)) out.push({ what: 'Player game logs', from: 'ESPN game logs', at: age(playersMeta().updatedAt) });
+    return out;
+  }
 
   const catalog = () => CATALOG.map((s) => ({ id: s.id, name: s.name, matches: S.events.filter((e) => e.sport === s.id).length }));
 
-  return { route, currentEvent, currentScope, eventById, sportIn, leagueIn, eventsIn, filterEvents, picks, matchSummary, injuriesOf, startersOf, slips, catalog, norm, caseOf, readinessOf, changes, reviewList, freshness, lastVisit, minOdds: () => prefs.get().minOdds };
+  return { route, currentEvent, currentScope, eventById, sportIn, leagueIn, eventsIn, filterEvents, picks, pickId, candidates, matchSummary, injuriesOf, startersOf, slips, catalog, norm, caseOf, readinessOf, changes, reviewList, freshness, lastVisit, minOdds: () => prefs.get().minOdds, playerResearch, slipSummary, sourcesFor, SPORT_WORDS, LEAGUE_WORDS };
 }
