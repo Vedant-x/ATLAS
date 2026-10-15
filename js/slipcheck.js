@@ -41,40 +41,61 @@ export function pairLift(j) {
   return +(1 + (raw - 1) * (j.n / (j.n + SHRINK))).toFixed(3);
 }
 
-export function analyseSlip(legs, { logs = null } = {}) {
-  const n = legs.length;
-  const odds = legs.reduce((a, l) => a * l.odds, 1);
-  const product = legs.reduce((a, l) => a * l.p, 1);
-  // Dependencies: every pair of legs from the same match.
+// The same player, stat and match at several lines ("25+ points", "30+ points"): only the strictest
+// line matters, since it implies the others.
+const nestKey = (l) => (l.prop ? `${l.eventId}|${l.prop.id}|${l.prop.type}` : null);
+
+// The combined chance of a set of legs, computed from scratch: nested lines collapsed to their
+// strictest leg, then each pair of remaining legs from the same match measured (two props from the
+// games both players played) or flagged as unmeasured, and the measured lifts applied once each.
+function combined(legs, logs) {
+  const groups = new Map(), units = [];
+  for (const l of legs) {
+    const k = nestKey(l);
+    if (!k) { units.push({ leg: l, members: [l] }); continue; }
+    const g = groups.get(k);
+    if (g) { g.members.push(l); if (l.p < g.leg.p) g.leg = l; } else { const u = { leg: l, members: [l] }; groups.set(k, u); units.push(u); }
+  }
   const pairs = [];
-  for (let i = 0; i < n; i++) for (let k = i + 1; k < n; k++) {
-    const a = legs[i], b = legs[k];
+  for (const u of units) if (u.members.length > 1) {
+    for (const m of u.members) if (m !== u.leg) pairs.push({ a: m, b: u.leg, kind: 'nested', lift: null, joint: null });
+  }
+  for (let i = 0; i < units.length; i++) for (let k = i + 1; k < units.length; k++) {
+    const a = units[i].leg, b = units[k].leg;
     if (a.eventId !== b.eventId) continue;
     const pair = { a, b, kind: 'unmeasured', lift: null, joint: null };
-    if (a.prop && b.prop && a.prop.id === b.prop.id && a.prop.type === b.prop.type) {
-      // The same stat for the same player at two lines: the higher line implies the lower one.
-      pair.kind = 'nested';
-      pair.lift = Math.min(a.p, b.p) / (a.p * b.p);
-    } else if (a.prop && b.prop) {
+    if (a.prop && b.prop) {
       pair.joint = jointHistory(a, b, logs);
       pair.lift = pairLift(pair.joint);
       pair.kind = pair.lift != null ? 'measured' : 'thin';
     }
     pairs.push(pair);
   }
-  let adjusted = product;
-  for (const p of pairs) if (p.lift != null) adjusted *= p.lift;
-  adjusted = Math.min(adjusted, Math.min(...legs.map((l) => l.p)));
-  const uncertain = pairs.some((p) => p.kind === 'unmeasured' || p.kind === 'thin');
+  const base = units.reduce((x, u) => x * u.leg.p, 1);
+  let adjusted = base;
+  for (const p of pairs) if (p.kind === 'measured') adjusted *= p.lift;
+  adjusted = Math.min(adjusted, ...units.map((u) => u.leg.p), 1);
+  return { adjusted, pairs, units, uncertain: pairs.some((p) => p.kind === 'unmeasured' || p.kind === 'thin') };
+}
+
+export function analyseSlip(legs, { logs = null } = {}) {
+  const n = legs.length;
+  const odds = legs.reduce((a, l) => a * l.odds, 1);
+  const product = legs.reduce((a, l) => a * l.p, 1); // as if every leg were unrelated
+  const { adjusted, pairs, uncertain } = combined(legs, logs);
   const weakest = legs.reduce((w, l) => (!w || l.p < w.p ? l : w), null);
-  const without = legs.map((l) => ({ leg: l, odds: odds / l.odds, p: adjusted / l.p }));
+  // Without each leg: the rest recomputed from scratch (dividing by a dependent leg's chance is wrong).
+  const without = legs.map((l) => {
+    const rest = legs.filter((x) => x !== l);
+    return { leg: l, odds: odds / l.odds, p: rest.length ? combined(rest, logs).adjusted : 1 };
+  });
   const limits = [];
   const derived = legs.filter((l) => l.derived).length;
   if (derived) limits.push(`${derived} leg${derived > 1 ? 's are' : ' is'} priced by ATLAS, not a bookmaker: no one is offering that exact price`);
   const bare = legs.filter((l) => l.prop && logs && !logs[`${l.prop.league}|${l.prop.id}`]).length;
   if (bare) limits.push(`${bare} prop leg${bare > 1 ? 's have' : ' has'} no game history: the chance is the price's own`);
   if (uncertain) limits.push('same-match legs ATLAS cannot measure: the combined chance is uncertain, not just the number shown');
-  return { n, odds, product, adjusted, breakEven: 1 / odds, pairs, uncertain, weakest, without, limits };
+  return { n, odds, product, adjusted, breakEven: 1 / odds, ret: adjusted * odds - 1, pairs, uncertain, weakest, without, limits };
 }
 
 const pc = (x, d = 0) => `${(x * 100).toFixed(d)}%`;
@@ -84,10 +105,9 @@ export function slipCheck(legs, { logs, esc }) {
   if (legs.length < 2) return '';
   const a = analyseSlip(legs, { logs });
   const d = a.adjusted < 0.01 ? 2 : 1;
-  const verdict = a.adjusted > a.breakEven ? '<span class="pos">above</span>' : '<span class="neg">below</span>';
   const pairs = a.pairs.map((p) => {
     const names = `${esc(short(p.a))} + ${esc(short(p.b))}`;
-    if (p.kind === 'nested') return `<li><b>${names}</b>: the same stat at two lines; the higher line already implies the lower one, so the pair is only as likely as the harder leg.</li>`;
+    if (p.kind === 'nested') return `<li><b>${names}</b>: the same stat at two lines; the higher line implies the lower one, so only the harder leg counts toward the combined chance.</li>`;
     if (p.kind === 'measured') {
       const j = p.joint, indep = (j.ha / j.n) * (j.hb / j.n);
       return `<li><b>${names}</b>: both landed in ${j.both} of ${j.n} games they played together (${pc(j.both / j.n)}); if unrelated, ${pc(indep)}. ${p.lift > 1.03 ? 'They tend to land together' : p.lift < 0.97 ? 'One tends to come at the other\'s expense' : 'Little sign they move together'} (×${p.lift.toFixed(2)} applied, shrunk for sample size).</li>`;
@@ -97,7 +117,7 @@ export function slipCheck(legs, { logs, esc }) {
   }).join('');
   return `<div class="slip-an">
     <h4>Slip check</h4>
-    <p>Combined chance <b>${pc(a.adjusted, d)}</b>${Math.abs(a.adjusted - a.product) > 1e-4 ? ` <small>(${pc(a.product, d)} if every leg were unrelated)</small>` : ''} · break-even ${pc(a.breakEven, d)} · the estimate is ${verdict} it${a.uncertain ? ' <small class="warn">(uncertain: see below)</small>' : ''}.</p>
+    <p>Combined chance <b>${pc(a.adjusted, d)}</b>${Math.abs(a.adjusted - a.product) > 1e-4 ? ` <small>(${pc(a.product, d)} if every leg were unrelated)</small>` : ''} · break-even ${pc(a.breakEven, d)} · estimated return at this price <b class="${a.ret >= 0 ? 'pos' : 'neg'}">${a.ret >= 0 ? '+' : ''}${(a.ret * 100).toFixed(1)}%</b>${a.uncertain ? ' <small class="warn">(uncertain: see below)</small>' : ''}.</p>
     ${pairs ? `<h5>Legs that depend on each other</h5><ul>${pairs}</ul>` : '<p class="muted">No two legs share a match: they settle independently.</p>'}
     <p><b>Weakest leg:</b> ${esc(short(a.weakest))} (${pc(a.weakest.p)}).</p>
     <h5>Without each leg</h5>

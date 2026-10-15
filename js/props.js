@@ -130,7 +130,7 @@ export function gradeProp(prop, sport, box) {
 // Each prop type as columns of ESPN's player game log (…/athletes/{id}/gamelog), which names its
 // columns differently from the box score. Types missing here (goalie saves, soccer) use the price.
 // The game-log column that says how much a player played (for the minutes filter), by sport.
-export const OPPORTUNITY = { basketball: 'minutes', hockey: 'timeOnIce', baseball: 'atBats' };
+export const OPPORTUNITY = { basketball: 'minutes', hockey: 'timeOnIcePerGame', baseball: 'atBats' };
 export const GAMELOG_KEYS = {
   basketball: { Points: ['points'], Rebounds: ['totalRebounds'], Assists: ['assists'], '3-Point Field Goals': ['threePointFieldGoalsMade-threePointFieldGoalsAttempted'],
     'Points + Assists + Rebounds': ['points', 'totalRebounds', 'assists'], 'Points + Assists': ['points', 'assists'], 'Points + Rebounds': ['points', 'totalRebounds'],
@@ -153,7 +153,12 @@ export function gamelogRows(g, n = 10) {
         const info = g.events?.[ev.eventId] || {};
         const at = Date.parse(info.gameDate || '') || null;
         const row = {};
-        names.forEach((k, i) => { const v = parseFloat(String(ev.stats?.[i] ?? '').split(/[-/]/)[0]); if (Number.isFinite(v)) row[k] = v; });
+        names.forEach((k, i) => {
+          const raw = String(ev.stats?.[i] ?? '');
+          const clock = /^(\d+):(\d{2})$/.exec(raw); // time on ice "18:32" -> 18.5 minutes
+          const v = clock ? +(Number(clock[1]) + Number(clock[2]) / 60).toFixed(1) : parseFloat(raw.split(/[-/]/)[0]);
+          if (Number.isFinite(v)) row[k] = v;
+        });
         Object.defineProperties(row, {
           _at: { value: at }, _opp: { value: info.opponent?.id != null ? String(info.opponent.id) : null },
           _oppAbbr: { value: info.opponent?.abbreviation || null }, _home: { value: info.atVs === 'vs' ? true : info.atVs === '@' ? false : null },
@@ -241,12 +246,14 @@ function normCdf(z) {
   return z >= 0 ? 0.5 * (1 + erf) : 0.5 * (1 - erf);
 }
 
-// An 80% range for a chance resting on `n` effective observations (the price counts as K more when
-// there is one): wide on a thin sample, narrow on a long one.
+// A rough 80% range for a chance resting on `n` effective observations (the price counts as K more
+// when there is one): wide on a thin sample, narrow on a long one. A normal approximation, not yet
+// checked against how often future results land inside it, so the page calls it approximate.
+const clamp01 = (x) => Math.min(0.99, Math.max(0.01, x));
 export function chanceRange(p, n, priced = true) {
   const m = n + (priced ? K : 0) + 1;
   const half = 1.2816 * Math.sqrt((p * (1 - p)) / m);
-  return [Math.max(0.01, p - half), Math.min(0.99, p + half)];
+  return [clamp01(p - half), clamp01(p + half)];
 }
 
 // The ATLAS chance for a prop. Two readings of the player's last 20 games, recent games counting

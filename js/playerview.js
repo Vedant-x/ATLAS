@@ -5,7 +5,8 @@
 //   hit rate   what happened in the games selected
 //   forecast   the ATLAS chance for the next game, with an 80% range (needs a price at this line to
 //              blend with; otherwise it is the model alone, and says so)
-//   market     the bookmaker's own chance, margin removed
+//   market     the price's implied chance less an assumed 5% margin (one price, so it cannot be
+//              calculated), and the break-even and estimated return at the price
 //   break-even what the price needs to win to pay off
 // Tonight's absences are listed with what they did to the forecast (out or doubtful: applied;
 // questionable: "if he sits" only).
@@ -15,16 +16,24 @@ import { PROP_STATS, GAMELOG_KEYS, propLabel, propMarket, propChance, chanceRang
 import { calibrated } from './track.js';
 import { trackCalibration } from './trackview.js';
 import { split } from './ui.js';
-import { loadPlayers, playersData, rowsOf, valueOf } from './playerdata.js';
+import { MARGIN_NOTE } from './propsview.js';
+import { loadPlayers, playersData, playersMeta, retryPlayers, rowsOf, valueOf, opportunityCoverage } from './playerdata.js';
 
 // Page state: which stat and line, and which past games count.
 const st = { key: null, type: null, line: null, win: 20, venue: 'all', minOpp: 0, vs: false, mate: '' };
-const OPP_LABEL = { minutes: 'minutes', timeOnIce: 'minutes on ice', atBats: 'at-bats' };
-const OPP_STEPS = { minutes: [0, 20, 25, 30, 35], timeOnIce: [0, 12, 15, 18, 21], atBats: [0, 3, 4] };
+const OPP_LABEL = { minutes: 'minutes', timeOnIcePerGame: 'minutes on ice', atBats: 'at-bats' };
+const OPP_STEPS = { minutes: [0, 20, 25, 30, 35], timeOnIcePerGame: [0, 12, 15, 18, 21], atBats: [0, 3, 4] };
 const OUT = /^(out|doubtful|injured reserve|suspension)/i;
 
 const shortDate = (d) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '');
 const label = (sport, type) => PROP_STATS[sport]?.[type]?.label || type.toLowerCase();
+// How old the game logs are, from the file's own build time.
+function logAge() {
+  const t = playersMeta().updatedAt;
+  if (!t) return '';
+  const m = Math.round((Date.now() - t) / 6e4);
+  return ` · logs built ${m < 1 ? 'just now' : m < 90 ? `${m} min ago` : `${Math.round(m / 60)} h ago`}${m > 45 ? ' (older than usual: the next build will refresh them)' : ''}`;
+}
 const first = (name) => String(name || '').split(' ').at(-1);
 
 // The upcoming match and the lines on offer for this player.
@@ -100,11 +109,12 @@ function body(p, events) {
   const mateName = mateKey ? data[mateKey]?.n : '';
   const nums = `<div class="pl-nums">
     <div><small>Hit rate · ${games.length} game${games.length === 1 ? '' : 's'} selected</small><b>${games.length ? pc(hits / games.length, 0) : '–'}</b><em>${hits}/${games.length}${avg != null ? ` · avg ${avg.toFixed(1)}` : ''}</em></div>
-    <div class="pl-fc"><small>ATLAS forecast · next game</small><b>${fc != null ? pc(fc, 0) : '–'}</b><em>${range ? `80% range ${pc(range[0], 0)}–${pc(range[1], 0)}` : 'not enough games'}${offer ? '' : ' · model only, no price at this line'}${offer?.why ? ` · ${esc(offer.why)}` : ''}</em></div>
-    <div><small>Market · margin removed</small><b>${offer ? pc(offer.pm ?? 1 / offer.odds, 0) : '–'}</b><em>${offer ? `DraftKings ${odd(offer.odds)}` : 'no price at this line'}</em></div>
-    <div><small>Break-even at this price</small><b>${offer ? pc(1 / offer.odds, 0) : '–'}</b><em>${offer ? (fc > 1 / offer.odds ? '<span class="pos">forecast is above it</span>' : '<span class="neg">forecast is below it</span>') : '–'}</em></div>
+    <div class="pl-fc"><small>ATLAS forecast · next game</small><b>${fc != null ? pc(fc, 0) : '–'}</b><em>${range ? `approx. 80% range ${pc(range[0], 0)}–${pc(range[1], 0)}` : 'not enough games'}${offer ? '' : ' · model only, no price at this line'}${offer?.why ? ` · ${esc(offer.why)}` : ''}</em></div>
+    <div title="${esc(MARGIN_NOTE)}"><small>Market estimate · assumed 5% margin</small><b>${offer ? pc(offer.pm ?? 1 / offer.odds, 0) : '–'}</b><em>${offer ? `DraftKings ${odd(offer.odds)} · forecast ${fc >= (offer.pm ?? 1 / offer.odds) ? '+' : '−'}${Math.abs((fc - (offer.pm ?? 1 / offer.odds)) * 100).toFixed(0)} pts vs it` : 'no price at this line'}</em></div>
+    <div><small>Break-even · return at this price</small><b>${offer ? pc(1 / offer.odds, 0) : '–'}</b><em>${offer ? `estimated return <span class="${fc * offer.odds - 1 >= 0 ? 'pos' : 'neg'}">${fc * offer.odds - 1 >= 0 ? '+' : '−'}${Math.abs((fc * offer.odds - 1) * 100).toFixed(1)}%</span>` : '–'}</em></div>
   </div>
-  <p class="pl-evidence ${thin ? 'warn' : ''}">Evidence: ${games.length} game${games.length === 1 ? '' : 's'} after filters${mateName ? ` (${mateMode} ${esc(mateName)})` : ''}${thin ? ' · a small sample: treat the hit rate with care' : ''} · the forecast always uses his last 20 games (recent ones weighted more)${st.vs ? ' · head-to-head games are shown, never trusted on their own' : ''}.</p>`;
+  <p class="pl-evidence ${thin ? 'warn' : ''}">Evidence: ${games.length} game${games.length === 1 ? '' : 's'} after filters${mateName ? ` (${mateMode} ${esc(mateName)})` : ''}${thin ? ' · a small sample: treat the hit rate with care' : ''} · the forecast always uses his last 20 games (recent ones weighted more)${st.vs ? ' · head-to-head games are shown, never trusted on their own' : ''}.</p>
+  <p class="pl-evidence">Game history: up to 20 recent games per player (last season fills a young season), so "Season" means this season's games among them, not the whole season${logAge()}.</p>`;
   const leg = offer && e ? legButton({ key: `${e.id}|${propMarket(offer)}|${propLabel(offer)}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: propMarket(offer), pick: propLabel(offer), odds: offer.odds, p: offer.p, prop: { id: String(offer.id), league, type: offer.type, target: offer.target } }, `Add ${odd(offer.odds)}`) : '';
   const table = games.length ? `<table class="tbl tight pl-log"><thead><tr><th>Date</th><th>Opponent</th>${p.o ? `<th class="num">${esc(OPP_LABEL[p.o] || 'played')}</th>` : ''}<th class="num">${esc(label(sport, st.type))}</th><th></th></tr></thead><tbody>${games.map((x) => `<tr><td>${esc(shortDate(x.date))}</td><td>${x.home === true ? 'vs' : x.home === false ? '@' : ''} ${esc(x.opp)}</td>${p.o ? `<td class="num">${x.played ?? '–'}</td>` : ''}<td class="num">${x.v}</td><td class="${x.v >= st.line ? 'pos' : 'muted'}">${x.v >= st.line ? '✓' : '✗'}</td></tr>`).join('')}</tbody></table>` : '';
   return { e, lines, oppName, html: `${nums}<div class="pl-act">${leg}</div>${tonight(p, rows, offer, home)}<div class="panel pl-chart-wrap">${chart(games, st.line)}</div>${table}` };
@@ -115,19 +125,33 @@ const chip = (k, v, t, on) => `<button class="chip ${on ? 'on' : ''}" data-plf="
 // The research panel for one player: controls and body. Used on its own page and beside the props
 // list on wide screens. null while the logs load or when there is no log.
 export function playerPanel(arg, events, refresh) {
-  const key = String(arg || '').replace('~', '|');
-  const data = playersData() || loadPlayers(refresh);
-  if (!data) return { title: 'Player', loading: true, html: '<p class="muted loading-dots">Loading game logs</p>' };
+  // arg: "<league>~<athlete id>" with, from a props row, "~<stat type>~<line>" so research opens on
+  // exactly the line that was tapped.
+  const [lg, pid, selType, selLine] = String(arg || '').split('~');
+  const key = `${lg}|${pid}`;
+  const data = loadPlayers(refresh);
+  const pm = playersMeta();
+  if (!data) {
+    return pm.failed
+      ? { title: 'Player', html: '<p class="muted">Could not load the game logs. ATLAS tries again in a minute. <button class="chip" data-plf="retry:1">Retry now</button></p>' }
+      : { title: 'Player', loading: true, html: '<p class="muted loading-dots">Loading game logs</p>' };
+  }
   const p = data[key];
   if (!p) return { title: 'Player', html: '<p class="muted">No game log for this player right now: logs are kept for players with a prop line in the next 36 hours. <a href="#/props">All props</a></p>' };
   const [league, id] = key.split('|');
   const { lines } = offers(events, league, id);
   const rows = rowsOf(p);
   const types = Object.keys(GAMELOG_KEYS[p.s] || {}).filter((t) => rows.some((r) => valueOf(p.s, t, r) != null));
-  if (st.key !== key) {
+  const sel = selType && types.includes(selType) ? `${selType}~${selLine}` : '';
+  if (st.key !== key || (sel && st.sel !== sel)) {
     const top = lines.filter((x) => types.includes(x.type)).sort((a, b) => b.p - a.p)[0];
-    Object.assign(st, { key, type: top?.type || types[0], line: top?.target ?? 1, win: 20, venue: 'all', minOpp: 0, vs: false, mate: '' });
+    const type = sel ? selType : top?.type || types[0];
+    const line = sel && Number.isFinite(Number(selLine)) ? Number(selLine) : top?.target ?? 1;
+    Object.assign(st, { key, sel, type, line, win: 20, venue: 'all', minOpp: 0, vs: false, mate: '' });
   }
+  // The minutes / at-bats filter needs that column in most games; hockey logs, for one, lack it.
+  const oppCover = opportunityCoverage(p);
+  if (oppCover < 0.6) st.minOpp = 0;
   const b = body(p, events);
   const steps = OPP_STEPS[p.o] || [];
   const offered = b.lines.filter((x) => x.type === st.type).map((x) => x.target);
@@ -138,8 +162,8 @@ export function playerPanel(arg, events, refresh) {
     html: `<div class="pl-tools">
         <div class="chips">${types.map((t) => chip('type', t, label(p.s, t), st.type === t)).join('')}</div>
         <div class="pl-line-ctl"><span>Line</span><button class="chip" data-plf="line:-1" aria-label="Lower the line">−</button><input type="range" min="0" max="${Math.max(10, Math.ceil(Math.max(...rows.map((r) => valueOf(p.s, st.type, r) ?? 0)) * 1.2))}" step="1" value="${st.line}" data-pl-line aria-label="Line"><b data-pl-line-v>${st.line}+</b><button class="chip" data-plf="line:+1" aria-label="Raise the line">+</button>${offered.length ? `<span class="muted">priced: ${offered.map((t) => `<button class="chip ${t === st.line ? 'on' : ''}" data-plf="set:${t}">${t}+</button>`).join('')}</span>` : ''}</div>
-        <div class="chips">${[[5, 'Last 5'], [10, 'Last 10'], [20, 'Last 20'], [0, 'All']].map(([v, t]) => chip('win', v, t, st.win === v)).join('')}<span class="nav-sep" aria-hidden="true"></span>${[['all', 'Home + away'], ['home', 'Home'], ['away', 'Away']].map(([v, t]) => chip('venue', v, t, st.venue === v)).join('')}${b.oppName ? `<span class="nav-sep" aria-hidden="true"></span>${chip('vs', st.vs ? 0 : 1, `vs ${b.oppName}`, st.vs)}` : ''}</div>
-        ${steps.length ? `<div class="chips">${steps.map((v) => chip('minOpp', v, v ? `${v}+ ${OPP_LABEL[p.o]}` : `Any ${OPP_LABEL[p.o]}`, st.minOpp === v)).join('')}</div>` : ''}
+        <div class="chips">${[[5, 'Last 5'], [10, 'Last 10'], [20, 'Last 20'], [0, `All ${rows.length} stored`]].map(([v, t]) => chip('win', v, t, st.win === v)).join('')}<span class="nav-sep" aria-hidden="true"></span>${[['all', 'Home + away'], ['home', 'Home'], ['away', 'Away']].map(([v, t]) => chip('venue', v, t, st.venue === v)).join('')}${b.oppName ? `<span class="nav-sep" aria-hidden="true"></span>${chip('vs', st.vs ? 0 : 1, `vs ${b.oppName}`, st.vs)}` : ''}</div>
+        ${steps.length && oppCover >= 0.6 ? `<div class="chips">${steps.map((v) => chip('minOpp', v, v ? `${v}+ ${OPP_LABEL[p.o]}` : `Any ${OPP_LABEL[p.o]}`, st.minOpp === v)).join('')}${oppCover < 0.95 ? `<span class="muted pl-cover">${Math.round(oppCover * 100)}% of games list ${OPP_LABEL[p.o]}</span>` : ''}</div>` : steps.length ? `<p class="muted pl-cover">No ${OPP_LABEL[p.o] || 'playing-time'} filter: ESPN's ${p.s} game logs do not list it${oppCover ? ` (only ${Math.round(oppCover * 100)}% of games)` : ''}.</p>` : ''}
         ${mates.length ? `<div class="chips pl-mates"><span class="muted">Teammate:</span>${chip('mate', '', 'Any', !st.mate)}${mates.map(([k, n, s]) => `${chip('mate', `${k}|without`, `Without ${first(n)}${s ? ` (${s.toLowerCase()})` : ''}`, st.mate === `${k}|without`)}${chip('mate', `${k}|with`, `With ${first(n)}`, st.mate === `${k}|with`)}`).join('')}</div>` : ''}
       </div>
       <div data-pl-body>${b.html}</div>`,
@@ -166,6 +190,7 @@ export function playerClick(t) {
   else if (k === 'venue') st.venue = v;
   else if (k === 'vs') st.vs = v === '1';
   else if (k === 'mate') st.mate = v;
+  else if (k === 'retry') retryPlayers();
   else st[k] = Number(v);
   return true;
 }

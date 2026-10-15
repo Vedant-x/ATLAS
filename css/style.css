@@ -1416,3 +1416,4 @@ body.scrolled .bar { height: 52px; padding-block: 0; }
 .tr-legs li b { font-weight: 600; color: var(--fg); margin-right: 6px; }
 .tr-legs li small { color: var(--muted); }
 
+.pl-cover { font-size: 11.5px; margin: 0; }
