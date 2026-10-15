@@ -43,7 +43,7 @@ function offers(events, league, id) {
   for (const e of events) {
     if (e.live || !(e.start > now) || e.leaguePath?.split('/')[1] !== league) continue;
     const mine = (e.props || []).filter((x) => String(x.id) === String(id));
-    if (mine.length) return { e, lines: mine.map((x) => ({ ...x, p: calibrated(x.p, propMarket(x), cal, e.sport) })) };
+    if (mine.length) return { e, lines: mine.map((x) => ({ ...x, p: calibrated(x.p, propMarket(x), cal, e.sport, x.odds) })) };
   }
   return { e: null, lines: [] };
 }

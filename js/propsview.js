@@ -71,7 +71,7 @@ export function allProps(events, now = Date.now(), { any = false } = {}) {
     if (!e.props?.length || (!any && (e.live || !(e.start > now)))) continue;
     for (const x of e.props) {
       if (!(x.odds >= 1.2)) continue;
-      out.push({ e, x: { ...x, p: calibrated(x.p, propMarket(x), cal, e.sport) } });
+      out.push({ e, x: { ...x, p: calibrated(x.p, propMarket(x), cal, e.sport, x.odds) } });
     }
   }
   return out;

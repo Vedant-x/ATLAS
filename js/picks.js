@@ -45,7 +45,7 @@ export function coherentBets(e, a, { cal = null, max = 3, preferBook = false } =
     const d = devig(m);
     d.outcomes.forEach((o, i) => {
       const p = m.outcomes[i].model ?? o.fair;
-      { const q = calibrated(p, m.name, cal, e.sport); cands.push({ market: m.name, pick: o.name, p, q, fair: o.fair, odds: o.odds, book: true, ev: q * o.odds - 1 }); }
+      { const q = calibrated(p, m.name, cal, e.sport, o.odds); cands.push({ market: m.name, pick: o.name, p, q, fair: o.fair, odds: o.odds, book: true, ev: q * o.odds - 1 }); }
     });
   }
   for (const g of a.groups || []) for (const m of g.markets) for (const o of m.outcomes) {
@@ -90,7 +90,7 @@ const propLegs = (events) => events.filter((e) => !e.live).flatMap((e) => (e.pro
 export function legPool(events, { minP = 0.55, minOdds = 1.04, maxOdds = 1.6, cal = null } = {}) {
   const best = new Map();
   for (const l of [...allLegs(events.filter((e) => e.markets?.length && !e.live)), ...propLegs(events)]) {
-    const p = calibrated(l.p, l.market, cal, l.sport);
+    const p = calibrated(l.p, l.market, cal, l.sport, l.derived ? null : l.odds);
     // A banker is a clear favourite at a fair-ish price: short odds and an estimate close to the price.
     if (l.cushion || l.odds < minOdds || l.odds > maxOdds || p < minP || p * l.odds < 0.93) continue;
     const leg = { ...l, pRaw: l.p, p };

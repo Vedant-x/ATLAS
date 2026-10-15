@@ -28,7 +28,9 @@ export const inRecord = (h) => h.type === 'banker' && h.odds >= MIN_ODDS && h.od
 //   the hit rate, the venue split), with last season filling short early-season logs.
 // 2026.10.7: a teammate out (or doubtful) tonight moves his teammates' props by how they did in the
 //   games he missed (from both players' game logs, shrunk for small samples).
-export const MODEL_VERSION = '2026.10.7';
+// 2026.10.8: the shown chance blends ATLAS's estimate with the price's, by a weight learned per sport
+//   and market from the settled picks (lower Brier score on the newer 40% when fitted on the older 60%).
+export const MODEL_VERSION = '2026.10.8';
 
 // Market families the track record learns from: winner, 1X2 result, spread/handicap, totals.
 export const familyOf = (market = '') => (/^Player /.test(market) ? 'prop' : /^Total/.test(market) ? 'total' : market === 'Spread' ? 'spread' : market === 'Match Result' ? 'result' : 'winner');
@@ -42,13 +44,50 @@ export const familyOf = (market = '') => (/^Player /.test(market) ? 'prop' : /^T
 // Each family is also tracked per sport ("hockey:spread"): a hockey +1.5 puck line and a soccer
 // handicap behave differently, so once a sport has enough settled picks in a family, its own record
 // is used instead of the all-sports one.
+//
+// Market blend: the record also learns how far to trust ATLAS's estimate against the price. For each
+// family (and sport + family) the settled forecasts give the weight w that scored best (lowest Brier
+// score) for  shown = market + w x (ATLAS - market),  where market is the price's chance less a
+// typical margin. w = 1 keeps ATLAS's estimate; w = 0 is the price alone. The fitted weight is pulled
+// toward 1 by BLEND_PRIOR forecasts' worth, so it moves only as far as the results justify. The
+// over/under-confidence factor is then measured again on the blended chances.
+export const MARGIN = 0.045;
+export const marketChance = (odds) => (odds > 1 ? Math.min(0.97, 1 / odds / (1 + MARGIN)) : null);
+const BLEND_PRIOR = 40;
+const blendOf = (p, odds, w) => { const m = marketChance(odds); return m == null ? p : m + w * (p - m); };
+// down / up: how hard a shortfall or a surplus moves it (the raw estimate is penalised twice as hard;
+// the blended one, already pulled toward the price, symmetrically).
+const factorOf = (n, won, exp, down = 2, up = 1.2) => {
+  const w = n / (n + 12), d = won / n / (exp / n) - 1;
+  return Math.max(0.8, Math.min(1.05, 1 + (d < 0 ? down : up) * w * d));
+};
+function fitBlend(obs) {
+  const priced = obs.filter((o) => o.odds > 1);
+  if (priced.length < 10) return null;
+  let best = 1, score = Infinity;
+  for (let i = 0; i <= 20; i++) {
+    const w = i / 20;
+    const s = priced.reduce((a, o) => a + (blendOf(o.p, o.odds, w) - o.y) ** 2, 0);
+    if (s < score - 1e-9) { score = s; best = w; }
+  }
+  const n = priced.length, w = (n * best + BLEND_PRIOR) / (n + BLEND_PRIOR);
+  const bl = priced.map((o) => blendOf(o.p, o.odds, w));
+  const brier = (f) => priced.reduce((a, o, i) => a + (f(o, i) - o.y) ** 2, 0) / n;
+  return {
+    w: +w.toFixed(3), fitted: best, priced: n,
+    blendFactor: factorOf(n, priced.reduce((a, o) => a + o.y, 0), bl.reduce((a, x) => a + x, 0), 1, 1),
+    brier: { model: brier((o) => o.p), market: brier((o) => marketChance(o.odds)), blend: brier((o, i) => bl[i]) },
+  };
+}
+
 export function calibration(history = []) {
-  const out = {};
-  const add = (market, p, status, sport) => {
+  const out = {}, obs = {};
+  const add = (market, p, status, sport, odds) => {
     if (status !== 'won' && status !== 'lost') return;
     for (const key of [familyOf(market), sport ? `${sport}:${familyOf(market)}` : null].filter(Boolean)) {
       const r = (out[key] ||= { n: 0, won: 0, exp: 0 });
       r.n++; r.won += status === 'won' ? 1 : 0; r.exp += p;
+      (obs[key] ||= []).push({ p, odds, y: status === 'won' ? 1 : 0 });
     }
   };
   // One observation per forecast: the same pick recorded as a single and again as a slip leg (or in
@@ -57,27 +96,33 @@ export function calibration(history = []) {
   const once = (r) => { const k = `${r.eventId}|${r.market}|${r.pick}`; if (!r.eventId || !seen.has(k)) { seen.add(k); return true; } return false; };
   for (const h of history) {
     // Always the model's own (uncalibrated) estimate, so the correction never feeds on itself.
-    if (h.type === 'multi') { for (const l of h.legs || []) if (once(l)) add(l.market, l.pRaw ?? l.p, l.status, l.sport); }
-    else if (once(h)) add(h.market, h.p, h.status, h.sport);
+    if (h.type === 'multi') { for (const l of h.legs || []) if (once(l)) add(l.market, l.pRaw ?? l.p, l.status, l.sport, l.odds); }
+    else if (once(h)) add(h.market, h.p, h.status, h.sport, h.odds);
   }
-  for (const r of Object.values(out)) {
+  for (const [key, r] of Object.entries(out)) {
     r.hit = r.won / r.n; r.expected = r.exp / r.n;
-    const w = r.n / (r.n + 12), d = r.hit / r.expected - 1;
-    r.factor = Math.max(0.8, Math.min(1.05, 1 + (d < 0 ? 2 : 1.2) * w * d));
+    r.factor = factorOf(r.n, r.won, r.exp);
+    const b = fitBlend(obs[key]);
+    if (b) Object.assign(r, b);
   }
   return out;
 }
 const SPORT_MIN = 30; // settled forecasts before a sport's own record replaces the all-sports one
-export const calibrated = (p, market, cal, sport) => {
+// The chance the site shows. With the price (odds) known and a learned blend, the estimate is first
+// blended with the price's chance, then the blended record's factor applied; without either, the
+// estimate is only scaled by its record.
+export const calibrated = (p, market, cal, sport, odds) => {
   const own = sport ? cal?.[`${sport}:${familyOf(market)}`] : null;
-  return Math.min(0.99, p * ((own?.n >= SPORT_MIN ? own : cal?.[familyOf(market)])?.factor ?? 1));
+  const r = own?.n >= SPORT_MIN ? own : cal?.[familyOf(market)];
+  if (r?.w != null && marketChance(odds) != null) return Math.min(0.99, Math.max(0.01, blendOf(p, odds, r.w) * (r.blendFactor ?? 1)));
+  return Math.min(0.99, p * (r?.factor ?? 1));
 };
 
 // One probability per selection, everywhere: the model estimate after the track-record check
 // (calibrated). Cards, slips, the assistant and the official record all use these two functions, so a
 // pick shows the same chance wherever it appears. Each row keeps the market's margin-free chance
 // (fair) and the uncalibrated model estimate (pRaw) alongside, for transparency.
-const withCal = (b, cal) => { const p = calibrated(b.p, b.market, cal, b.event?.sport); return { ...b, pRaw: b.p, p, ev: p * b.odds - 1 }; };
+const withCal = (b, cal) => { const p = calibrated(b.p, b.market, cal, b.event?.sport, b.derived ? null : b.odds);return { ...b, pRaw: b.p, p, ev: p * b.odds - 1 }; };
 
 // A varied list instead of the same bet type again and again: one pick per match, and no market
 // family (winner, result, total) may take more than 40% of the list (handicaps: under a quarter), nor one sport more than
