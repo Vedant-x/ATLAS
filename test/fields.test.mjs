@@ -70,7 +70,7 @@ test('racing: last result from a finished scoreboard event', () => {
 
 test('golf: a round in progress is not taken for a finished one, and play-complete is still in progress', () => {
   const ev = { id: '7', name: 'Shanghai', date: new Date(Date.now() - 864e5).toISOString(), endDate: new Date(Date.now() + 2 * 864e5).toISOString(),
-    competitions: [{ status: { period: 1, type: { state: 'post', completed: false } }, competitors: [
+    competitions: [{ status: { period: 1, type: { state: 'post', completed: true } }, competitors: [
       { id: 'a', order: 1, athlete: { displayName: 'A' }, score: '-8', linescores: [{ period: 1, value: 48, displayValue: '-8' }] },
       ...Array.from({ length: 30 }, (_, k) => ({ id: `b${k}`, order: k + 2, athlete: { displayName: `B${k}` }, score: '-3', linescores: [{ period: 1, value: 69, displayValue: '-3' }] })),
     ] }] };

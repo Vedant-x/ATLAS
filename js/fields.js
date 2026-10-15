@@ -34,7 +34,7 @@ export function parseGolf(ev, tour) {
   const round = c.status?.period || 0, end = Date.parse(ev.endDate || ev.date);
   // ESPN marks a day's play complete as "post" mid-tournament ("Round 1 - Play Complete").
   let state = c.status?.type?.state || ev.status?.type?.state || 'pre';
-  if (state === 'post' && round < 4 && end > Date.now() && !c.status?.type?.completed) state = 'in';
+  if (state === 'post' && round < 4 && end > Date.now()) state = 'in';
   const field = (c.competitors || []).map((x) => {
     const rounds = (x.linescores || []).filter((r) => Number.isFinite(r.value) && r.value > 0).map((r) => ({
       n: r.period, strokes: r.value, toPar: toPar(r.displayValue), holes: holesOf(r),
