@@ -78,7 +78,7 @@ function priceBandPanel(picks) {
   }).filter((r) => r.n >= 5);
   if (!rows.length) return '';
   return `<div class="panel reveal"><h3 class="ph">Hit rate by price <small>against what the price itself implies</small></h3>
-    <p class="muted">A price is a chance: 1.30 means the bookmaker expects about 74% (after its margin), 1.10 about 87%. A hit rate is only good or bad against that. To land 90% you need prices around 1.10 or shorter (the Safest tier), and each win then returns about 10% of the stake.</p>
+    <p class="muted">A price is a chance: 1.30 means the bookmaker expects about 74% (after its margin), 1.10 about 87%. A hit rate is only good or bad against that. Picks where ATLAS claims to beat the price have landed least often; the Surest list leaves them out.</p>
     <table class="tbl tight"><thead><tr><th>Odds</th><th class="num">Picks</th><th class="num">Hit rate</th><th class="num">Price implies</th><th class="num">Difference</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${r.lo.toFixed(2)}–${r.hi >= 10 ? '+' : r.hi.toFixed(2)}</td><td class="num">${r.n}</td><td class="num">${pct(r.hit, 0)}</td><td class="num">${pct(r.implied, 0)}</td><td class="num ${r.hit >= r.implied ? 'pos' : 'neg'}">${r.hit >= r.implied ? '+' : '−'}${Math.abs((r.hit - r.implied) * 100).toFixed(0)} pts</td></tr>`).join('')}</tbody></table></div>`;
 }
 
@@ -113,7 +113,7 @@ function body(data) {
     <div class="panel reveal"><h3 class="ph">Are the estimates honest? <small>calibration</small></h3>
       <p class="muted">When ATLAS says 65%, it should land about 65% of the time. Small samples swing a lot.</p>
       <div class="tr-cal">${s.buckets.map((b) => `<div><small>Estimated ${b.label}</small>${b.n ? `<div class="tr-bars"><i style="--w:${((b.predicted || 0) * 100).toFixed(0)}%"></i><i class="act" style="--w:${((b.actual || 0) * 100).toFixed(0)}%"></i></div>` : ''}<span>${b.n ? `${pct(b.predicted, 0)} estimated · ${pct(b.actual, 0)} actual · ${b.n} picks` : 'no picks yet'}</span></div>`).join('')}</div></div>
-    ${s.safe?.won + s.safe?.lost ? `<div class="panel reveal"><h3 class="ph">Safest tier <small>odds ${SAFE.minOdds.toFixed(2)}–${SAFE.maxOdds.toFixed(2)}, 85%+ · its own record</small></h3><p>${recordLine(s.safe)}</p></div>` : ''}
+    ${s.safe?.won + s.safe?.lost ? `<div class="panel reveal"><h3 class="ph">Surest picks <small>odds ${SAFE.minOdds.toFixed(2)}–${SAFE.maxOdds.toFixed(2)}, ATLAS not above the price · its own record</small></h3><p>${recordLine(s.safe)}</p></div>` : ''}
     ${priceBandPanel(data.picks || [])}
     ${trustPanel(data.picks || [])}
     <div class="panel reveal"><h3 class="ph">Latest results</h3><ul class="tr-list">${s.recent.map(pickRow).join('')}</ul></div>

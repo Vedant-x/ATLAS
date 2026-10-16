@@ -14,10 +14,19 @@ export const MAX_ODDS = 1.8;
 // and longer prices saved before this rule stay in the history file (and still teach the track-record
 // correction) but are counted separately, whatever their result.
 export const inRecord = (h) => h.type === 'banker' && h.odds >= MIN_ODDS && h.odds <= MAX_ODDS;
-// The safest tier, kept as its own record: short prices (SAFE.minOdds to SAFE.maxOdds) where the
-// chance shown is SAFE.min or more. The price itself says 80-95% for these, so this is where a 90%
-// hit rate is realistic; the return per win is small.
-export const SAFE = { minOdds: 1.04, maxOdds: 1.25, min: 0.85 };
+// No pick or slip leg below FLOOR_ODDS anywhere ATLAS recommends.
+export const FLOOR_ODDS = 1.2;
+// The surest tier, kept as its own record: odds SAFE.minOdds to SAFE.maxOdds where ATLAS's own
+// estimate is not above the price's chance by more than SAFE.overclaim. In the settled record,
+// picks at these prices where ATLAS claimed to beat the price landed 69% (72% implied) and those
+// where it did not landed 75%; held out (fitted on the older 60/70%), 80-83% against 72%. Picks the
+// model "loves" more than the bookmaker are the ones that fail most.
+export const SAFE = { minOdds: 1.2, maxOdds: 1.4, min: 0.68, overclaim: 0.02 };
+export function surestPicks(events, { cal = null, limit = 10 } = {}) {
+  const list = rankedBankers(events, { cal, min: SAFE.min, minOdds: SAFE.minOdds, maxOdds: SAFE.maxOdds, limit: 400, mix: false })
+    .filter((b) => b.pRaw <= marketChance(b.odds) + SAFE.overclaim);
+  return diversify(list, limit).sort((x, y) => y.p - x.p);
+}
 // Stamped on every recorded pick, so results can be split by the model that made them.
 // 2026.10.1: calibrated chance everywhere, legs feed calibration, shared slip policy.
 // 2026.10.2: venue records, starting pitchers and soccer absences in the model; spread lines move
@@ -37,7 +46,9 @@ export const SAFE = { minOdds: 1.04, maxOdds: 1.25, min: 0.85 };
 // 2026.10.9: bet types whose results fell clearly short of their prices are held back; multipliers
 //   use fewer, longer legs (cap grows with the target, two legs minimum); a separate safest tier
 //   (1.04-1.25, 85%+).
-export const MODEL_VERSION = '2026.10.9';
+// 2026.10.10: nothing below 1.20; the surest tier is 1.20-1.40 where ATLAS does not claim to beat
+//   the price (those land most often).
+export const MODEL_VERSION = '2026.10.10';
 
 // Market families the track record learns from: winner, 1X2 result, spread/handicap, totals.
 export const familyOf = (market = '') => (/^Player /.test(market) ? 'prop' : /^Total/.test(market) ? 'total' : market === 'Spread' ? 'spread' : market === 'Match Result' ? 'result' : 'winner');
@@ -189,14 +200,15 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
   const soon = applyModel(events.filter((e) => !e.live && e.compId && e.start > now && e.start < now + hours * 36e5));
   const cal = calibration(history);
   const row = (type) => (b) => ({
-    key: `${b.event.id}|${b.market}|${b.pick}`, type, eventId: b.event.id, leaguePath: b.event.leaguePath, compId: b.event.compId,
+    // The surest list keeps its own record, so its key differs from the same pick on the shortlist.
+    key: `${type === 'safe' ? 'safe|' : ''}${b.event.id}|${b.market}|${b.pick}`, type, eventId: b.event.id, leaguePath: b.event.leaguePath, compId: b.event.compId,
     sport: b.event.sport, league: b.event.league, home: b.event.home, away: b.event.away, start: b.event.start,
     market: b.market, pick: b.pick, odds: b.odds, p: +b.pRaw.toFixed(4), shown: +b.p.toFixed(4), fair: b.fair == null ? null : +b.fair.toFixed(4),
     recordedAt: now, status: 'pending', model: MODEL_VERSION, ...(b.prop ? { prop: b.prop } : {}),
   });
   return [
     ...rankedBankers(soon, { cal, min: 0.6, minOdds: MIN_ODDS, maxOdds: MAX_ODDS, limit: 40 }).map(row('banker')),
-    ...rankedBankers(soon, { cal, min: SAFE.min, minOdds: SAFE.minOdds, maxOdds: SAFE.maxOdds, limit: 20 }).map(row('safe')),
+    ...surestPicks(soon, { cal, limit: 20 }).map(row('safe')),
     ...multiPicks(events, now, history),
   ];
 }
@@ -216,7 +228,7 @@ export function multiPicks(events, now = Date.now(), history = []) {
   const day = localDay(now); // IST calendar day: one official slip per target per day
   const out = [];
   for (const target of MULTI_TARGETS) {
-    const best = bankerSlips(slipWindow(pool, target, now), target, { count: 1, tolerance: slipPolicy(target).tolerance, cal })[0];
+    const best = bankerSlips(slipWindow(pool, target, now), target, { count: 1, tolerance: slipPolicy(target).tolerance, cal, minOdds: FLOOR_ODDS })[0];
     if (!best) continue;
     const legs = best.legs.map((l) => { const e = byId.get(l.eventId); return { eventId: e.id, leaguePath: e.leaguePath, compId: e.compId, sport: e.sport, league: e.league, home: e.home, away: e.away, start: e.start, market: l.market, pick: l.pick, odds: l.odds, p: +l.p.toFixed(4), pRaw: +(l.pRaw ?? l.p).toFixed(4), status: 'pending', ...(l.prop ? { prop: l.prop } : {}) }; });
     out.push({
