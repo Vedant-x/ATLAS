@@ -7,7 +7,7 @@
 //    forty 1.2s, and 2x two or three short favourites.
 import { devig, allLegs } from './engine.js';
 import { propLabel, propMarket } from './props.js';
-import { calibrated } from './track.js';
+import { calibrated, blockedSegment } from './track.js';
 
 const norm = (s) => String(s || '').toLowerCase();
 
@@ -92,7 +92,7 @@ export function legPool(events, { minP = 0.55, minOdds = 1.04, maxOdds = 1.6, ca
   for (const l of [...allLegs(events.filter((e) => e.markets?.length && !e.live)), ...propLegs(events)]) {
     const p = calibrated(l.p, l.market, cal, l.sport, l.derived ? null : l.odds);
     // A banker is a clear favourite at a fair-ish price: short odds and an estimate close to the price.
-    if (l.cushion || l.odds < minOdds || l.odds > maxOdds || p < minP || p * l.odds < 0.93) continue;
+    if (l.cushion || l.odds < minOdds || l.odds > maxOdds || p < minP || p * l.odds < 0.93 || blockedSegment(cal, l.sport, l.market)) continue;
     const leg = { ...l, pRaw: l.p, p };
     const cur = best.get(l.eventId);
     if (!cur || ratio(leg) < ratio(cur)) best.set(l.eventId, leg);
@@ -102,11 +102,14 @@ export function legPool(events, { minP = 0.55, minOdds = 1.04, maxOdds = 1.6, ca
 
 // Up to `count` slips near `target` built from the pool, each using its own legs where possible.
 export function bankerSlips(events, target, { count = 5, tolerance = 0.1, cal = null, minOdds = 1.04 } = {}) {
-  // Strictest first (every leg rated 70%+ after the track-record check); if the board is thin, allow
-  // slightly weaker or longer legs and a wider band so the page is never empty while there are
-  // priced favourites.
-  const short = target <= 2.5 ? 1.7 : target <= 10 ? 1.6 : 1.5;
-  for (const [minP, maxOdds, tol] of [[0.7, short, tolerance], [0.62, short, tolerance], [0.6, target <= 10 ? 1.9 : 1.7, Math.max(tolerance, 0.15)], [0.55, 2.2, 0.2]]) {
+  // Fewer, longer legs: every leg pays the bookmaker's margin again, so for the same total odds two
+  // legs at 1.73 keep more of the true chance than four at 1.32. The longest leg allowed grows with
+  // the target (about its square root, so a slip has two legs or more), and legs are ranked by
+  // chance per unit of odds, which with the price-blended chance favours legs that carry little
+  // margin. The chance floor follows the price (a 2.2 leg can't be a 70% leg). If the board is thin,
+  // a slightly wider band.
+  const cap = Math.min(2.6, Math.max(1.5, Math.sqrt(target) * 1.1));
+  for (const [minP, maxOdds, tol] of [[0.4, cap, tolerance], [0.4, cap, Math.max(tolerance, 0.15)], [0.35, Math.max(cap, 2.2), 0.2]]) {
     // The user's minimum odds per leg is a hard rule: never relaxed by the fallbacks.
     const lo = Math.max(1.04, minOdds);
     const pool = legPool(events, { minP, maxOdds: Math.max(maxOdds, lo + 0.15), cal, minOdds: lo });
@@ -143,16 +146,18 @@ function buildFrom(pool, target, count, tolerance, mix = false) {
     for (const l of src) {
       if (odds >= lo) break;
       if (clash(l)) continue;
+      // A multiplier has two legs at least: a first leg that alone reaches the target is skipped.
+      if (!legs.length && l.odds >= lo) continue;
       const need = target / odds;
       if (l.odds > need * (1 + tolerance)) {
         // This leg overshoots: finish with the best-ratio leg that lands inside the band, if any.
-        const fit = src.filter((x) => !legs.includes(x) && !clash(x) && odds * x.odds >= lo && odds * x.odds <= hi).sort((x, y) => ratio(x) - ratio(y))[0];
+        const fit = legs.length ? src.filter((x) => !legs.includes(x) && !clash(x) && odds * x.odds >= lo && odds * x.odds <= hi).sort((x, y) => ratio(x) - ratio(y))[0] : null;
         if (fit) { take(fit); break; }
         continue;
       }
       take(l);
     }
-    if (odds < lo || odds > hi || !legs.length) break;
+    if (odds < lo || odds > hi || legs.length < 2) break;
     const p = legs.reduce((s, l) => s * l.p, 1);
     if (slips.some((s) => s.legs.length === legs.length && s.legs.every((l, i) => l.eventId === legs[i].eventId))) break;
     slips.push({ legs, odds, p, ev: p * odds - 1 });

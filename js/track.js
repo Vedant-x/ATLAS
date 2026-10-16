@@ -14,6 +14,10 @@ export const MAX_ODDS = 1.8;
 // and longer prices saved before this rule stay in the history file (and still teach the track-record
 // correction) but are counted separately, whatever their result.
 export const inRecord = (h) => h.type === 'banker' && h.odds >= MIN_ODDS && h.odds <= MAX_ODDS;
+// The safest tier, kept as its own record: short prices (SAFE.minOdds to SAFE.maxOdds) where the
+// chance shown is SAFE.min or more. The price itself says 80-95% for these, so this is where a 90%
+// hit rate is realistic; the return per win is small.
+export const SAFE = { minOdds: 1.04, maxOdds: 1.25, min: 0.85 };
 // Stamped on every recorded pick, so results can be split by the model that made them.
 // 2026.10.1: calibrated chance everywhere, legs feed calibration, shared slip policy.
 // 2026.10.2: venue records, starting pitchers and soccer absences in the model; spread lines move
@@ -30,7 +34,10 @@ export const inRecord = (h) => h.type === 'banker' && h.odds >= MIN_ODDS && h.od
 //   games he missed (from both players' game logs, shrunk for small samples).
 // 2026.10.8: the shown chance blends ATLAS's estimate with the price's, by a weight learned per sport
 //   and market from the settled picks (lower Brier score on the newer 40% when fitted on the older 60%).
-export const MODEL_VERSION = '2026.10.8';
+// 2026.10.9: bet types whose results fell clearly short of their prices are held back; multipliers
+//   use fewer, longer legs (cap grows with the target, two legs minimum); a separate safest tier
+//   (1.04-1.25, 85%+).
+export const MODEL_VERSION = '2026.10.9';
 
 // Market families the track record learns from: winner, 1X2 result, spread/handicap, totals.
 export const familyOf = (market = '') => (/^Player /.test(market) ? 'prop' : /^Total/.test(market) ? 'total' : market === 'Spread' ? 'spread' : market === 'Match Result' ? 'result' : 'winner');
@@ -104,9 +111,23 @@ export function calibration(history = []) {
     r.factor = factorOf(r.n, r.won, r.exp);
     const b = fitBlend(obs[key]);
     if (b) Object.assign(r, b);
+    // Guard: a sport's bet type whose settled picks landed clearly less often than their own prices
+    // implied (25+ priced results, z <= -2) is left out of the shortlist and the slips until the
+    // record recovers. Today's example: hockey +1.5 puck lines, 50% landed against 68% implied.
+    if (key.includes(':')) {
+      const pr = obs[key].filter((o) => marketChance(o.odds) != null);
+      const imp = pr.reduce((a, o) => a + marketChance(o.odds), 0), v = pr.reduce((a, o) => { const m = marketChance(o.odds); return a + m * (1 - m); }, 0);
+      const won = pr.reduce((a, o) => a + o.y, 0);
+      r.implied = pr.length ? imp / pr.length : null;
+      r.z = v > 0 ? (won - imp) / Math.sqrt(v) : 0;
+      r.blocked = pr.length >= GUARD_MIN && r.z <= GUARD_Z;
+    }
   }
   return out;
 }
+const GUARD_MIN = 25, GUARD_Z = -2;
+// Is this sport's bet type held back by the guard above?
+export const blockedSegment = (cal, sport, market) => Boolean(sport && cal?.[`${sport}:${familyOf(market)}`]?.blocked);
 const SPORT_MIN = 30; // settled forecasts before a sport's own record replaces the all-sports one
 // The chance the site shows. With the price (odds) known and a learned blend, the estimate is first
 // blended with the price's chance, then the blended record's factor applied; without either, the
@@ -150,12 +171,13 @@ export function diversify(list, limit, { familyShare = 0.4, sportShare = 0.5 } =
 // qualifies when every price is below the estimate) and 'evidence' (60%+ picks whose match has every
 // input its sport needs confirmed, `ready(event)` true).
 export function rankedBankers(events, { cal = null, min = 0.6, minOdds = 1, maxOdds = MAX_ODDS, limit = 10, mix = true, mode = 'likely', ready = null } = {}) {
+  const ok = (b) => !blockedSegment(cal, b.event?.sport, b.market);
   if (mode === 'value') {
-    const v = bankers(events, { min: 0.4, minOdds, limit: 2000 }).filter((b) => b.odds <= 3).map((b) => withCal(b, cal))
+    const v = bankers(events, { min: 0.4, minOdds, limit: 2000 }).filter((b) => b.odds <= 3 && ok(b)).map((b) => withCal(b, cal))
       .filter((b) => b.ev > 0 && b.p >= 0.45).sort((x, y) => y.ev - x.ev);
     return (mix ? diversify(v, limit) : v.slice(0, limit)).sort((x, y) => y.ev - x.ev);
   }
-  const all = bankers(events, { min: min * 0.9, minOdds, limit: Math.max(200, limit * 12) }).filter((b) => b.odds <= maxOdds).map((b) => withCal(b, cal))
+  const all = bankers(events, { min: min * 0.9, minOdds, limit: Math.max(200, limit * 12) }).filter((b) => b.odds <= maxOdds && ok(b)).map((b) => withCal(b, cal))
     .filter((b) => b.p >= min && (mode !== 'evidence' || !ready || ready(b.event))).sort((x, y) => y.p - x.p);
   return (mix ? diversify(all, limit) : all.slice(0, limit)).sort((x, y) => y.p - x.p);
 }
@@ -174,6 +196,7 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
   });
   return [
     ...rankedBankers(soon, { cal, min: 0.6, minOdds: MIN_ODDS, maxOdds: MAX_ODDS, limit: 40 }).map(row('banker')),
+    ...rankedBankers(soon, { cal, min: SAFE.min, minOdds: SAFE.minOdds, maxOdds: SAFE.maxOdds, limit: 20 }).map(row('safe')),
     ...multiPicks(events, now, history),
   ];
 }
@@ -317,7 +340,8 @@ function brier(list) {
 export function summarize(history) {
   const settledAll = history.filter((h) => h.status === 'won' || h.status === 'lost' || h.status === 'push');
   const graded = settledAll.filter(inRecord);
-  const outside = settledAll.filter((h) => h.type !== 'multi' && !inRecord(h));
+  const outside = settledAll.filter((h) => h.type !== 'multi' && h.type !== 'safe' && !inRecord(h));
+  const safe = settledAll.filter((h) => h.type === 'safe');
   const multis = settledAll.filter((h) => h.type === 'multi');
   const slipsOf = (ts) => history.filter((h) => h.type === 'multi' && ts.includes(h.target)).sort((a, b) => b.start - a.start);
   const stat = (list) => {
@@ -348,7 +372,7 @@ export function summarize(history) {
     byType: group((h) => h.type), bySport: group((h) => h.sport), byFamily: group((h) => familyOf(h.market)), byModel: group((h) => h.model || 'before 2026.10.1'), buckets,
     pending: history.filter((h) => h.status === 'pending' && inRecord(h)).sort((a, b) => a.start - b.start),
     unresolved: history.filter((h) => h.status === 'unresolved' && inRecord(h)).length,
-    outside: stat(outside),
+    outside: stat(outside), safe: stat(safe),
     recent: graded.slice().sort((a, b) => b.start - a.start).slice(0, 40),
   };
 }
