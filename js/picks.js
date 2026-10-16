@@ -101,7 +101,7 @@ export function legPool(events, { minP = 0.55, minOdds = 1.04, maxOdds = 1.6, ca
 }
 
 // Up to `count` slips near `target` built from the pool, each using its own legs where possible.
-export function bankerSlips(events, target, { count = 5, tolerance = 0.1, cal = null, minOdds = 1.04 } = {}) {
+export function bankerSlips(events, target, { count = 5, tolerance = 0.1, cal = null, minOdds = 1.2 } = {}) {
   // Fewer, longer legs: every leg pays the bookmaker's margin again, so for the same total odds two
   // legs at 1.73 keep more of the true chance than four at 1.32. The longest leg allowed grows with
   // the target (about its square root, so a slip has two legs or more), and legs are ranked by

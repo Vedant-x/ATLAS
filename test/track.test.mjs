@@ -57,11 +57,12 @@ test('summary: hit rate, flat-stake profit and calibration (shortlist picks only
   assert.equal(s.outside.won, 1); assert.equal(s.outside.lost, 1);
 });
 
-test('official picks are shortlist bankers only: no value spots, odds 1.30 to 1.80', async () => {
+test('official picks: shortlist bankers (1.30 to 1.80) and the surest list (1.20 to 1.40), no value spots', async () => {
   const { selectPicks } = await import('../js/track.js');
   const now = Date.parse('2026-10-07T08:00:00Z');
   const ev = (id, a, b) => ({ id, compId: id, sport: 'basketball', league: 'NBA', home: `H${id}`, away: `A${id}`, start: now + 36e5, markets: [{ name: 'Winner', outcomes: [{ name: `H${id}`, odds: a }, { name: `A${id}`, odds: b }] }] });
   const picks = selectPicks([ev('1', 1.35, 3.3), ev('2', 1.25, 4.1), ev('3', 1.62, 2.35), ev('4', 1.9, 1.95)], now, 12, []).filter((p) => p.type !== 'multi');
   assert.ok(picks.length > 0);
-  assert.ok(picks.every((p) => p.type === 'banker' && p.odds >= 1.3 && p.odds <= 1.8), JSON.stringify(picks.map((p) => [p.type, p.odds])));
+  assert.ok(picks.every((p) => (p.type === 'banker' && p.odds >= 1.3 && p.odds <= 1.8) || (p.type === 'safe' && p.odds >= 1.2 && p.odds <= 1.4)), JSON.stringify(picks.map((p) => [p.type, p.odds])));
+  assert.equal(new Set(picks.map((p) => p.key)).size, picks.length, 'a pick on both lists keeps two records');
 });
