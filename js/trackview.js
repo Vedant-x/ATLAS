@@ -1,6 +1,6 @@
 // Record page: every official ATLAS pick (locked before kick-off) and how it turned out.
 import { esc, sportOf, ist } from './views.js';
-import { summarize, MIN_ODDS, MAX_ODDS, calibration } from './track.js';
+import { summarize, MIN_ODDS, MAX_ODDS, calibration, marketChance, SAFE } from './track.js';
 import { localDay } from './engine.js';
 
 const pct = (x, d = 1) => (x == null ? '—' : `${(x * 100).toFixed(d)}%`);
@@ -67,6 +67,21 @@ const pickRow = (h) => (h.type === 'multi' ? `<li class="tr-${h.status}"><span c
 // How far the shown chance trusts ATLAS's own estimate against the price, per sport and market, as
 // learned from the settled picks (track.js calibration), with each one's accuracy (Brier score:
 // lower is better) for ATLAS alone, the price alone and the blend shown.
+// Hit rate by price band against what the price itself implies (its chance less a typical margin):
+// the yardstick for a hit rate. 70% at 1.30 is above the price's ~74%? Below? This answers it.
+function priceBandPanel(picks) {
+  const singles = picks.filter((h) => h.type !== 'multi' && (h.status === 'won' || h.status === 'lost') && h.odds > 1);
+  const bands = [[1.01, 1.25], [1.25, 1.35], [1.35, 1.45], [1.45, 1.6], [1.6, 1.8], [1.8, 10]];
+  const rows = bands.map(([lo, hi]) => {
+    const l = singles.filter((h) => h.odds >= lo && h.odds < hi);
+    return { lo, hi, n: l.length, hit: l.length ? l.filter((h) => h.status === 'won').length / l.length : null, implied: l.length ? l.reduce((a, h) => a + marketChance(h.odds), 0) / l.length : null };
+  }).filter((r) => r.n >= 5);
+  if (!rows.length) return '';
+  return `<div class="panel reveal"><h3 class="ph">Hit rate by price <small>against what the price itself implies</small></h3>
+    <p class="muted">A price is a chance: 1.30 means the bookmaker expects about 74% (after its margin), 1.10 about 87%. A hit rate is only good or bad against that. To land 90% you need prices around 1.10 or shorter (the Safest tier), and each win then returns about 10% of the stake.</p>
+    <table class="tbl tight"><thead><tr><th>Odds</th><th class="num">Picks</th><th class="num">Hit rate</th><th class="num">Price implies</th><th class="num">Difference</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${r.lo.toFixed(2)}–${r.hi >= 10 ? '+' : r.hi.toFixed(2)}</td><td class="num">${r.n}</td><td class="num">${pct(r.hit, 0)}</td><td class="num">${pct(r.implied, 0)}</td><td class="num ${r.hit >= r.implied ? 'pos' : 'neg'}">${r.hit >= r.implied ? '+' : '−'}${Math.abs((r.hit - r.implied) * 100).toFixed(0)} pts</td></tr>`).join('')}</tbody></table></div>`;
+}
+
 function trustPanel(picks) {
   const cal = calibration(picks);
   const famName = { winner: 'winner', result: '1X2 result', spread: 'handicap', total: 'totals', prop: 'player props' };
@@ -98,6 +113,8 @@ function body(data) {
     <div class="panel reveal"><h3 class="ph">Are the estimates honest? <small>calibration</small></h3>
       <p class="muted">When ATLAS says 65%, it should land about 65% of the time. Small samples swing a lot.</p>
       <div class="tr-cal">${s.buckets.map((b) => `<div><small>Estimated ${b.label}</small>${b.n ? `<div class="tr-bars"><i style="--w:${((b.predicted || 0) * 100).toFixed(0)}%"></i><i class="act" style="--w:${((b.actual || 0) * 100).toFixed(0)}%"></i></div>` : ''}<span>${b.n ? `${pct(b.predicted, 0)} estimated · ${pct(b.actual, 0)} actual · ${b.n} picks` : 'no picks yet'}</span></div>`).join('')}</div></div>
+    ${s.safe?.won + s.safe?.lost ? `<div class="panel reveal"><h3 class="ph">Safest tier <small>odds ${SAFE.minOdds.toFixed(2)}–${SAFE.maxOdds.toFixed(2)}, 85%+ · its own record</small></h3><p>${recordLine(s.safe)}</p></div>` : ''}
+    ${priceBandPanel(data.picks || [])}
     ${trustPanel(data.picks || [])}
     <div class="panel reveal"><h3 class="ph">Latest results</h3><ul class="tr-list">${s.recent.map(pickRow).join('')}</ul></div>
     ${s.pending.length ? `<div class="panel reveal"><h3 class="ph">Waiting on results <small>${s.pending.length}</small></h3><ul class="tr-list">${s.pending.slice(0, 20).map(pickRow).join('')}</ul></div>` : ''}`;

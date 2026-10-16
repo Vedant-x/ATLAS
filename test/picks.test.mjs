@@ -33,13 +33,19 @@ test('match bets never back both sides or both goal directions, and stay short',
 const ev = (i, h, a) => ({ id: `e${i}`, compId: String(i), sport: 'basketball', home: `H${i}`, away: `A${i}`, start: now + 36e5, markets: [{ name: 'Winner', outcomes: [{ name: `H${i}`, odds: h }, { name: `A${i}`, odds: a }] }] });
 const board = Array.from({ length: 120 }, (_, i) => ev(i, [1.12, 1.18, 1.22, 1.28, 1.35, 1.5, 2.1, 2.6][i % 8], [7, 5.2, 4.4, 3.8, 3.2, 2.6, 1.75, 1.5][i % 8]));
 
-test('big targets are built from many short favourites, not long shots', () => {
+test('big targets use fewer, longer legs (each leg pays the margin again), within the cap', () => {
   const [s] = bankerSlips(board, 1000, { count: 1, tolerance: 0.15 });
   assert.ok(s, 'a 1000x slip exists');
   assert.ok(s.odds >= 850 && s.odds <= 1150, `odds ${s.odds}`);
-  assert.ok(s.legs.length >= 15, `${s.legs.length} legs`);
-  assert.ok(s.legs.every((l) => l.odds <= 1.5));
+  assert.ok(s.legs.length >= 2 && s.legs.length < 15, `${s.legs.length} legs`);
+  assert.ok(s.legs.every((l) => l.odds <= 2.6), 'no long shots: legs stay within the cap');
   assert.equal(new Set(s.legs.map((l) => l.eventId)).size, s.legs.length, 'one leg per match');
+});
+
+test('every multiplier has two legs or more, and a 5x slip uses few legs', () => {
+  for (const t of [2, 3, 5, 10]) for (const s of bankerSlips(board, t, { count: 3 })) assert.ok(s.legs.length >= 2, `${t}x: ${s.legs.length} legs`);
+  const [five] = bankerSlips(board, 5, { count: 1 });
+  assert.ok(five.legs.length <= 4, `5x: ${five.legs.length} legs`);
 });
 
 test('2x slips use short legs and distinct slips use different matches', () => {

@@ -19,7 +19,7 @@ import { prefs, prefEvents } from './prefs.js';
 import { liveWin } from './live.js';
 import { watch } from './alerts.js';
 import { trackCard, trackStats, trackCalibration, recordLine, ensureTrack, slipHistory, officialSlip } from './trackview.js';
-import { rankedBankers, slipPolicy, MAX_ODDS, calibrated } from './track.js';
+import { rankedBankers, slipPolicy, MAX_ODDS, calibrated, SAFE } from './track.js';
 import { propLabel, propMarket } from './props.js';
 import { propRow, allProps } from './propsview.js';
 import { coherentBets } from './picks.js';
@@ -528,18 +528,24 @@ function dashboard(ev, live) {
   const hrs = researchPrefs().shortHours;
   const mode = researchPrefs().shortMode || 'likely';
   const ready = (e) => readiness(e, { priceAt: e.fetchedAt || S.fetchedAt }).state === 'ready';
-  const short = orderBets(rankedBankers(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration(), min: 0.6, minOdds, limit: 10, mode, ready })), when2 = `next ${hrs} hours`;
-  const MODES = [['likely', 'Most likely', '60%+ win chance'], ['value', 'Best value', 'ATLAS chance above the price'], ['evidence', 'Best evidence', '60%+ with every key input confirmed']];
+  // Safest: short prices where the chance shown is 85%+ (its own record; the minimum-odds setting
+  // does not apply, since these are below most people's minimum by design).
+  const safest = mode === 'safest';
+  const short = orderBets(rankedBankers(todayEvents(pool, Date.now(), hrs), safest
+    ? { cal: trackCalibration(), min: SAFE.min, minOdds: SAFE.minOdds, maxOdds: SAFE.maxOdds, limit: 10 }
+    : { cal: trackCalibration(), min: 0.6, minOdds, limit: 10, mode, ready })), when2 = `next ${hrs} hours`;
+  const MODES = [['likely', 'Most likely', '60%+ win chance'], ['safest', 'Safest', `85%+ at odds ${SAFE.minOdds.toFixed(2)}–${SAFE.maxOdds.toFixed(2)}`], ['value', 'Best value', 'ATLAS chance above the price'], ['evidence', 'Best evidence', '60%+ with every key input confirmed']];
   const empty = { likely: `No strong picks in the next ${hrs} hours right now.${hrs < 48 ? ' Try a longer window, or' : ''} lower the minimum odds / add sports.`,
     value: `No qualifying selection: every price in the next ${hrs} hours is at or below ATLAS's estimate.`,
-    evidence: `No qualifying selection: no 60%+ pick in the next ${hrs} hours has all its inputs confirmed yet (starters, lineups, a fresh price).` }[mode];
-  const rec = recordLine(trackStats()?.byType.find((r) => r.key === 'banker'));
+    evidence: `No qualifying selection: no 60%+ pick in the next ${hrs} hours has all its inputs confirmed yet (starters, lineups, a fresh price).`,
+    safest: `No 85%+ pick at odds ${SAFE.minOdds.toFixed(2)}–${SAFE.maxOdds.toFixed(2)} in the next ${hrs} hours.${hrs < 48 ? ' Try a longer window.' : ''}` }[mode];
+  const rec = safest ? recordLine(trackStats()?.safe) : recordLine(trackStats()?.byType.find((r) => r.key === 'banker'));
   return `<section class="dash">
     <div class="panel dash-short reveal"><h2 class="ph">Shortlist <small>${when2} · ${MODES.find((m) => m[0] === mode)[2]} · ${orderLabel()}</small></h2>
       <div class="win-chips" role="group" aria-label="Rank by">${MODES.map(([k, l]) => `<button class="chip ${mode === k ? 'on' : ''}" data-smode="${k}" aria-pressed="${mode === k}">${l}</button>`).join('')}</div>
       ${windowChips('shours', hrs)}
       ${orderChips()}
-      ${rec ? `<p class="rec-line">Bankers so far: ${rec} · <a href="#/track">full record</a></p>` : ''}
+      ${safest ? `<p class="rec-line">${rec ? `Safest tier so far: ${rec}` : 'Safest tier: tracked from today'} · each win returns ${Math.round((SAFE.minOdds - 1) * 100)}–${Math.round((SAFE.maxOdds - 1) * 100)}% of the stake, so one loss costs several wins</p>` : rec ? `<p class="rec-line">Bankers so far: ${rec} · <a href="#/track">full record</a></p>` : ''}
       <div class="minilist">${short.map((b) => miniPick(b)).join('') || `<p class="muted">${empty}</p>`}</div>${prefsBar()}</div>
     <div class="panel dash-live reveal"><h2 class="ph">Live now <small>${live.length}</small></h2>
       ${live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${esc(e.score || '')}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>
