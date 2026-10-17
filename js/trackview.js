@@ -141,6 +141,20 @@ export const trackViews = {
 };
 
 // Home dashboard card: the record so far (loads in the background, then the page redraws).
+// One line near the top of Today: the last 30 days of the shortlist record, the reason to trust the
+// rest of the page. Left out until 10 picks in that window have settled.
+export function trackStrip(refresh) {
+  ensureTrack(refresh);
+  if (!cache) return '';
+  const since = Date.now() - 30 * 864e5;
+  const a = summarize((cache.data.picks || []).filter((h) => h.start >= since)).all;
+  if (a.won + a.lost < 10) return '';
+  const clv = a.clvN >= 10 ? ` · <span>price beat the close on <b>${pct(a.beatClose, 0)}</b></span>` : '';
+  return `<a class="track-strip reveal" href="#/track"><small>Last 30 days</small>
+    <span><b>${a.won}–${a.lost}</b> won–lost</span> · <span><b>${pct(a.hitRate, 0)}</b> hit rate (est. ${pct(a.expected, 0)})</span> · <span>avg odds <b>${a.avgOdds.toFixed(2)}</b></span> · <span>ROI <b class="${a.profit >= 0 ? 'pos' : 'neg'}">${a.roi >= 0 ? '+' : ''}${(a.roi * 100).toFixed(1)}%</b></span>${clv}
+    <em>Every pick saved before kick-off →</em></a>`;
+}
+
 export function trackCard(refresh) {
   ensureTrack(refresh);
   if (!cache) return '';

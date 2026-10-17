@@ -10,20 +10,21 @@ import { propsView, propsClick, propsSearch, propsList } from './propsview.js';
 import { playerView, playerClick, playerInput } from './playerview.js';
 import { slipCheck } from './slipcheck.js';
 import { loadPlayers, playersData } from './playerdata.js';
-// The Research area: one tab bar across its pages (props and player research, the builder, the
-// edge board, compare, and sports and leagues).
+// The Research area: one tab bar across its pages (props and player research, Picks, compare,
+// and sports and leagues).
+const PICKS = ['bankers', 'edge', 'x', 'target', 'mega'];
 const RESEARCH = new Set(['props', 'player', 'bankers', 'x', 'target', 'mega', 'edge', 'compare', 'sports', 'sport', 'league']);
-const R_TABS = [['props', '#/props', 'Props', ['props', 'player']], ['builder', '#/x/2', 'Builder', ['bankers', 'x', 'target', 'mega']], ['edge', '#/edge', 'Edge', ['edge']], ['compare', '#/compare', 'Compare', ['compare']], ['sports', '#/sports', 'Sports', ['sports', 'sport', 'league']]];
-const withTabs = (name, html) => { if (!RESEARCH.has(name)) return html; const i = html.indexOf('</section>'); return i < 0 ? researchTabs(name) + html : html.slice(0, i + 10) + researchTabs(name) + html.slice(i + 10); };
+const R_TABS = [['props', '#/props', 'Props', ['props', 'player']], ['picks', '#/bankers', 'Picks', PICKS], ['compare', '#/compare', 'Compare', ['compare']], ['sports', '#/sports', 'Sports', ['sports', 'sport', 'league']]];
+// Picks pages carry their own tab row (Bankers, Edge board, Multipliers, Target, Mega) instead.
+const withTabs = (name, html) => { if (!RESEARCH.has(name) || PICKS.includes(name)) return html; const i = html.indexOf('</section>'); return i < 0 ? researchTabs(name) + html : html.slice(0, i + 10) + researchTabs(name) + html.slice(i + 10); };
 const researchTabs = (name) => `<nav class="research-tabs" aria-label="Research">${R_TABS.map(([k, h, l, on]) => `<a class="${on.includes(name) ? 'on' : ''}" href="${h}"${on.includes(name) ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>`;
 
 // "More": every page in one sheet (phones and tablets, where the bar holds only the main ones). The
 // tiles reuse the menu's own links and icons.
 const MORE_INFO = {
   '#/': 'Shortlist, live strip and what is next', '#/live': 'Everything in play now', '#/watchlist': 'Matches you follow, with alerts',
-  '#/sports': 'Every sport and competition', '#/props': 'Player lines, hit rates, research', '#/edge': 'Every price against fair odds',
-  '#/bankers': 'Likeliest picks at short odds', '#/x/2': 'Slips from 2x to 1000x', '#/target': 'A slip for any multiplier you type',
-  '#/mega': '100x and 1000x slips', '#/compare': 'Pinned matches side by side', '#/track': 'Track record of every pick',
+  '#/sports': 'Every sport and competition', '#/props': 'Player lines, hit rates, research',
+  '#/bankers': 'Bankers, edge board and slips from 2x to 1000x', '#/compare': 'Pinned matches side by side', '#/track': 'Track record of every pick',
 };
 const sheet = document.getElementById('more-sheet');
 function fillMore() {
@@ -263,8 +264,8 @@ function render(animate) {
   scene.setAccent(v.accent);
   document.documentElement.style.setProperty('--accent', readable(v.accent)); // selected chips carry black text on it
   scene.setMode(v.mode, v.sceneOpts);
-  // Deeper pages keep their section lit: matches and leagues under Sports, player research under Props.
-  const tab = ['sport', 'league', 'match'].includes(name) ? 'sports' : name === 'player' ? 'props' : name;
+  // Deeper pages keep their section lit: matches and leagues under Sports, player research under Props, the builder and edge board under Picks.
+  const tab = ['sport', 'league', 'match'].includes(name) ? 'sports' : name === 'player' ? 'props' : PICKS.includes(name) ? 'bankers' : name;
   document.querySelectorAll('nav.top a').forEach((a) => { const h = a.getAttribute('href'); a.classList.toggle('on', h.startsWith('#/') && (h.split('/')[1] || 'home') === tab); });
   // On phones and tablets, More is lit when the page's own menu item is folded into it.
   const lit = document.querySelector('nav.top a.on:not([data-more])');
@@ -625,7 +626,8 @@ document.addEventListener('click', (e) => {
 });
 
 // ---------- boot ----------
-ageGate();
+// A first visit answers the age check straight away, not after the intro animation.
+if (ageGate()) document.getElementById('preloader')?.remove();
 cursor();
 tilt();
 renderSlip();

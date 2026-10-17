@@ -445,6 +445,16 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .facts small { font: 700 10px var(--mono); color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
 .facts span { font-size: 12px; color: var(--muted); }
 .loading-dots::after { content: ' ...'; animation: blink 1s infinite; }
+/* The one-line reason under a pick. */
+small.why { display: block; color: var(--fg); opacity: .78; font-size: 12px; line-height: 1.35; margin: 2px 0; }
+/* Today: the 30-day record in one line under the hero numbers. */
+.track-strip { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin-top: 14px; padding: 10px 14px; border: 1px solid var(--line2); border-radius: 12px; background: var(--glass); color: var(--muted); font-size: 13px; }
+.track-strip small { font: 700 10px var(--mono); letter-spacing: 2px; text-transform: uppercase; color: var(--accent); margin-right: 4px; }
+.track-strip b { color: var(--fg); }
+.track-strip b.pos { color: var(--pos); } .track-strip b.neg { color: var(--neg); }
+.track-strip em { font-style: normal; margin-left: auto; color: var(--fg); }
+.track-strip:hover { border-color: var(--accent); }
+@media (max-width: 700px) { .track-strip { font-size: 12px; } .track-strip em { margin-left: 0; flex-basis: 100%; } }
 /* Loading placeholders: shown until the first snapshot, so an empty "0" never reads as "no games". */
 .skel-num, .skel-row { display: block; border-radius: 6px; background: linear-gradient(90deg, rgba(255,255,255,.05) 25%, rgba(255,255,255,.12) 50%, rgba(255,255,255,.05) 75%) 0 0 / 200% 100%; animation: skel 1.4s linear infinite; }
 .stats b.skel-num { width: 2.2ch; height: .9em; margin-bottom: 6px; }

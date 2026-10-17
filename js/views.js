@@ -18,7 +18,7 @@ import { fetchAll, LEAGUES, leagueStatus } from './espn.js';
 import { prefs, prefEvents } from './prefs.js';
 import { liveWin } from './live.js';
 import { watch } from './alerts.js';
-import { trackCard, trackStats, trackCalibration, recordLine, ensureTrack, slipHistory, officialSlip } from './trackview.js';
+import { trackCard, trackStrip, trackStats, trackCalibration, recordLine, ensureTrack, slipHistory, officialSlip } from './trackview.js';
 import { rankedBankers, slipPolicy, MAX_ODDS, calibrated, SAFE, surestPicks } from './track.js';
 import { propLabel, propMarket } from './props.js';
 import { propRow, allProps } from './propsview.js';
@@ -27,6 +27,7 @@ import { mergeEvent } from './merge.js';
 import { casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips, changesPanel, orderBets, orderChips, orderLabel } from './research.js';
 import { readiness } from './readiness.js';
 import { lastVisit } from './timeline.js';
+import { whyLine } from './why.js';
 // Golf and motor racing: a field of players or drivers, drawn by fieldview.js.
 const FIELD_SPORTS = new Set(['golf', 'motorsport']);
 
@@ -211,7 +212,8 @@ function slipCard(s, i, target, all) {
 }
 
 // Builder pages share one sub-navigation so multipliers, target, mega and bankers feel like one tool.
-const builderNav = (on) => `<nav class="builder-nav reveal" aria-label="Builder">${[['x', '#/x/2', 'Multipliers'], ['target', '#/target', 'Target'], ['mega', '#/mega', 'Mega'], ['bankers', '#/bankers', 'Bankers']].map(([k, h, l]) => `<a class="chip ${k === on ? 'on' : ''}" href="${h}">${l}</a>`).join('')}</nav>`;
+// Picks: one menu entry, these pages as its tabs.
+const builderNav = (on) => `<nav class="builder-nav reveal" aria-label="Picks">${[['bankers', '#/bankers', 'Bankers'], ['edge', '#/edge', 'Edge board'], ['x', '#/x/2', 'Multipliers'], ['target', '#/target', 'Target'], ['mega', '#/mega', 'Mega']].map(([k, h, l]) => `<a class="chip ${k === on ? 'on' : ''}" href="${h}"${k === on ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>`;
 
 // ---------- views ----------
 // A hero number: a placeholder bar until the first snapshot lands, so "0" never stands in for "not loaded yet".
@@ -238,6 +240,7 @@ export const views = {
           <div>${statNum(modelled)}<span>with prices${S.loading ? '' : ` (${ev.length ? Math.round((modelled / ev.length) * 100) : 0}%)`}</span></div>
           <div>${statNum(live.length, 'hot')}<span>in play</span></div>
         </div>
+        ${trackStrip(() => S.refresh?.())}
       </section>
       ${notice()}
       ${dashboard(ev, live)}
@@ -421,7 +424,7 @@ export const views = {
   edge() {
     return {
       mode: 'edge', accent: '#4fd1ff', title: 'Edge board',
-      html: `<section class="hero small"><p class="kicker reveal">EVERY PRICE · EVERY SPORT · RANKED</p><h1>${split('EDGE BOARD')}</h1>
+      html: `<section class="hero small"><p class="kicker reveal">EVERY PRICE · EVERY SPORT · RANKED</p><h1>${split('EDGE BOARD')}</h1>${builderNav('edge')}
         <p class="lede reveal">Every bookmaker outcome on the board with its fair probability (margin removed), the ATLAS model probability, edge and quarter-Kelly stake.</p></section>
         ${notice()}
         <div class="filters panel reveal">
@@ -607,6 +610,7 @@ function smartBankers(events, { min = 0.7, limit = 10, minOdds = 1 } = {}) {
 }
 // Likely is not the same as good value: the chance a pick needs just to break even at its price, and
 // the market's own margin-free chance, next to ATLAS's estimate.
+const whyTag = (b) => { const w = whyLine(b); return w ? `<small class="why"><b>Why:</b> ${esc(w)}</small>` : ''; };
 const priceCheck = (b) => `ATLAS ${pc(b.p, 0)}${b.fair != null ? ` · market ${pc(b.fair, 0)}` : ''} · break-even ${pc(1 / b.odds, 0)}`;
 
 // Best bets for one match: 1-3 picks that agree with each other (see coherentBets in picks.js).
@@ -649,7 +653,7 @@ function miniPick(b) {
   const leg = { key: `${b.event.id}|${b.market}|${b.pick}`, eventId: b.event.id, sport: b.event.sport, match: `${b.event.home} vs ${b.event.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p, ...(b.prop ? { prop: b.prop } : {}) };
   const edge = `${b.ev >= 0 ? '+' : ''}${(b.ev * 100).toFixed(1)}%`;
   return `<div class="mini reveal"><span class="mini-ico">${s.icon}</span>
-    <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(b.event.home)} v ${esc(b.event.away)}</small>${b.event.live ? '<small class="live">LIVE</small>' : istTag(b.event.start)}${pendingInputs(b.event)}</a>
+    <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(b.event.home)} v ${esc(b.event.away)}</small>${whyTag(b)}${b.event.live ? '<small class="live">LIVE</small>' : istTag(b.event.start)}${pendingInputs(b.event)}</a>
     <div class="mini-nums"><span><small>ATLAS</small><b>${pc(b.p, 0)}</b></span>${b.fair != null ? `<span><small>Market</small><b>${pc(b.fair, 0)}</b></span>` : ''}<span><small>Break-even</small><b>${pc(1 / b.odds, 0)}</b></span><span><small>Edge</small><b class="${b.ev >= 0 ? 'pos' : 'neg'}">${edge}</b></span></div>
     ${legButton(leg, odd(b.odds))}</div>`;
 }
@@ -660,7 +664,7 @@ function bigPick(b, value) {
   return `<article class="row tilt reveal" style="--c:${s.color}">
     <a class="row-link" href="#/match/${esc(e.id)}" data-cursor="OPEN" aria-label="${esc(b.pick)}"></a>
     <span class="ico">${s.icon}</span>
-    <div class="teams"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(e.home)} v ${esc(e.away)} · ${esc(e.league)} · ${when(e)}</small><small class="pcheck">${priceCheck(b)}</small></div>
+    <div class="teams"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(e.home)} v ${esc(e.away)} · ${esc(e.league)} · ${when(e)}</small><small class="pcheck">${priceCheck(b)}</small>${whyTag(b)}</div>
     <div class="row-prob">${gaugeMini(b.p)}</div>
     <div class="odds"><span class="stat"><small>chance</small>${pc(b.p, 1)}</span><span class="stat ${b.ev >= 0 ? 'pos' : ''}"><small>edge</small>${(b.ev * 100).toFixed(1)}%</span>${legButton(leg, `<small>odds</small>${odd(b.odds)}`)}</div>
     ${value ? '<span class="conf conf-high">VALUE</span>' : '<span class="conf conf-medium">BANKER</span>'}
