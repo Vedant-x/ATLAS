@@ -4,7 +4,8 @@
 // are remembered per device. The same row is used on match pages.
 import { esc, legButton, ist } from './views.js';
 import { pc, odd } from './charts.js';
-import { propLabel, propMarket } from './props.js';
+import { propLabel, propMarket, propOver, propLadder } from './props.js';
+import { playersData, rowsOf, loadPlayers } from './playerdata.js';
 import { calibrated } from './track.js';
 import { trackCalibration, trackStats, recordLine, ensureTrack } from './trackview.js';
 import { split } from './ui.js';
@@ -43,6 +44,51 @@ export function propBars(hist, target) {
   return `<svg class="pbars" viewBox="0 0 ${w} ${H}" width="${w}" height="${H}" role="img" aria-label="Last ${last.length} games against the line of ${target}">${bars}<line x1="0" x2="${w}" y1="${y(target).toFixed(1)}" y2="${y(target).toFixed(1)}" /></svg>`;
 }
 
+// Other lines for the same prop, the way most bookmakers write them ("over 24.5"), with ATLAS's chance
+// and fair odds at each, and a price check for whatever line and price another bookmaker shows. The
+// chances come from the player's game logs (props.js propLadder) and are shifted by the same
+// track-record calibration as the offered line, so the offered row matches the chance shown above.
+function otherLines(e, x) {
+  if (x.yes) return '';
+  const league = e.leaguePath?.split('/')[1];
+  const p = playersData()?.[`${league}|${x.id}`];
+  if (!p) return playersData() ? '' : '<p class="muted pp2-lines-wait">Other lines appear once the game logs load.</p>';
+  const rows = rowsOf(p), home = x.side ? x.side === 'home' : null;
+  const opts = { home, scale: x.adj?.find((a) => a.applied)?.scale ?? 1, without: x.adj?.find((a) => a.applied)?.without ?? null };
+  const mkt = x.pm ?? 1 / x.odds;
+  const near = propLadder(mkt, e.sport, x.type, x.target, rows, opts);
+  if (!near.length) return '';
+  const k = x.p / (near.find((l) => l.offered)?.p || x.p);
+  const adj = (q) => Math.min(0.97, Math.max(0.03, q * k));
+  // Every whole-number threshold up to well past the line, for the price check.
+  const maxT = Math.max(x.target * 2 + 2, x.target + 10);
+  const step = x.target >= 100 ? 5 : 1;
+  const ts = []; for (let t = 1; t <= maxT && ts.length < 60; t += step) ts.push(t);
+  const all = Object.fromEntries(propLadder(mkt, e.sport, x.type, x.target, rows, { ...opts, thresholds: ts }).map((l) => [l.t, +adj(l.p).toFixed(4)]));
+  return `<details class="pp2-lines"><summary>Other lines · over / under at any line</summary>
+    <table class="tbl tight"><thead><tr><th>Line</th><th class="num">ATLAS over</th><th class="num">Fair odds over / under</th></tr></thead><tbody>${near.map((l) => { const q = adj(l.p); return `<tr${l.offered ? ' class="on"' : ''}><td>Over ${l.line}${l.offered ? ' <small>· this price</small>' : ''}</td><td class="num">${pc(q, 0)}</td><td class="num">${(1 / q).toFixed(2)} / ${(1 / (1 - q)).toFixed(2)}</td></tr>`; }).join('')}</tbody></table>
+    <div class="pp2-check" data-ladder='${esc(JSON.stringify(all))}' data-step="${step}"><b>Check another bookmaker's price</b>
+      <label>Over <input type="number" inputmode="decimal" step="0.5" min="0.5" value="${x.target - 0.5}" data-lc="line" aria-label="Line"></label>
+      <label>at <input type="number" inputmode="decimal" step="0.01" min="1.01" placeholder="odds" data-lc="odds" aria-label="Odds"></label>
+      <output data-lc="out" class="muted">Enter the line and price you see.</output></div>
+  </details>`;
+}
+// Price check: chance at the line typed, break-even and estimated return at the price typed.
+export function lineCheck(box) {
+  const map = JSON.parse(box.dataset.ladder || '{}'), step = Number(box.dataset.step) || 1;
+  const line = Number(box.querySelector('[data-lc="line"]').value), odds = Number(box.querySelector('[data-lc="odds"]').value);
+  const out = box.querySelector('[data-lc="out"]');
+  if (!(line > 0)) { out.textContent = 'Enter the line and price you see.'; return; }
+  let t = Math.floor(line) + 1;
+  if (step > 1) t = Math.max(1, Math.round(t / step) * step);
+  const p = map[t];
+  if (p == null) { out.textContent = 'That line is outside what the game logs can say.'; return; }
+  if (!(odds > 1)) { out.innerHTML = `Over ${line}: ATLAS <b>${pc(p, 0)}</b> · fair odds ${(1 / p).toFixed(2)} (under ${(1 / (1 - p)).toFixed(2)})`; return; }
+  const ret = p * odds - 1;
+  out.innerHTML = `Over ${line} at ${odds.toFixed(2)}: ATLAS <b>${pc(p, 0)}</b> · break-even ${pc(1 / odds, 0)} · estimated return <span class="${ret >= 0 ? 'pos' : 'neg'}">${ret >= 0 ? '+' : '−'}${Math.abs(ret * 100).toFixed(0)}%</span>`;
+}
+if (typeof document !== 'undefined') document.addEventListener('input', (ev) => { const box = ev.target.closest?.('.pp2-check'); if (box) lineCheck(box); });
+
 // One prop, with its match (e) for the slip leg and the opponent. `withMatch` adds the fixture line.
 export function propRow(e, x, { withMatch = false, sel = '' } = {}) {
   const league = e.leaguePath?.split('/')[1];
@@ -57,9 +103,10 @@ export function propRow(e, x, { withMatch = false, sel = '' } = {}) {
   const where = x.side ? `${x.side === 'home' ? 'vs' : '@'} ${opp}` : `${e.home} v ${e.away}`;
   const rates = h ? [hr('L5', h.l5), hr('L10', h.l10), hr('L20', h.l20), h.season ? hr('Season', h.season, 'this season\'s games among the last 20 stored') : '', h.vs ? hr(`vs ${opp.split(' ').at(-1)}`, h.vs) : '', h.venue ? hr(h.home ? 'Home' : 'Away', h.venue) : ''].join('') : '<span class="muted">No recent games on record: the price alone</span>';
   return `<div class="pp2${sel && sel === pkey ? ' sel' : ''}">
-    <div class="pp2-head"><div><b>${esc(propLabel(x))}</b><small>${x.hist ? `<a class="pp2-who" href="#/props/${esc(`${league}~${x.id}~${encodeURIComponent(x.type)}~${x.target}`)}">Research ›</a> ` : ''}${esc(team)} · ${esc(where)}${withMatch ? ` · <a href="#/match/${encodeURIComponent(e.id)}">${esc(ist(e.start).replace(/ IST$/, ''))}</a>` : ''}</small></div>${legButton(leg, odd(x.odds))}</div>
+    <div class="pp2-head"><div><b>${esc(propLabel(x))}</b>${propOver(x) ? ` <span class="pp2-over">${esc(propOver(x))}</span>` : ''}<small>${x.hist ? `<a class="pp2-who" href="#/props/${esc(`${league}~${x.id}~${encodeURIComponent(x.type)}~${x.target}`)}">Research ›</a> ` : ''}${esc(team)} · ${esc(where)}${withMatch ? ` · <a href="#/match/${encodeURIComponent(e.id)}">${esc(ist(e.start).replace(/ IST$/, ''))}</a>` : ''}</small></div>${legButton(leg, odd(x.odds))}</div>
     <div class="pp2-num">${readinessBadge(propReadiness(e, x))}<span class="pp2-p" title="ATLAS forecast for this game"><i>ATLAS</i> ${pc(x.p, 0)}</span><span class="muted" title="Break-even: the chance this price needs to pay off">break-even ${pc(1 / x.odds, 0)}</span><span class="${ret >= 0 ? 'pos' : 'neg'}" title="Estimated return at this price: forecast x odds - 1">return ${ret >= 0 ? '+' : '−'}${Math.abs(ret * 100).toFixed(0)}%</span><span class="muted" title="${MARGIN_NOTE}">vs market est. ${gap >= 0 ? '+' : '−'}${Math.abs(gap * 100).toFixed(0)} pts</span>${h ? `<span class="muted">avg ${h.avg}</span>` : ''}${x.why ? `<span class="pp2-why" title="ATLAS before this: ${pc(x.pBase, 0)}">${esc(x.why)}</span>` : ''}</div>
     <div class="pp2-hist"><div class="pp2-rates">${rates}</div>${h ? propBars(h, x.target) : ''}</div>
+    ${otherLines(e, x)}
   </div>`;
 }
 
@@ -103,6 +150,7 @@ export function propsList(events, sel = '') {
 // research panel for the player picked from it.
 export function propsView(events, refresh, sel = '') {
   ensureTrack(refresh);
+  loadPlayers(refresh); // game logs, for other lines
   const all = allProps(events);
   const sports = [...new Set(all.map((p) => p.e.sport))];
   if (st.sport !== 'all' && !sports.includes(st.sport)) st.sport = 'all';

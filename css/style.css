@@ -1440,3 +1440,28 @@ body.scrolled .bar { height: 52px; padding-block: 0; }
 .ai-sources small { color: var(--muted); }
 .ai-by { display: block; margin-top: 6px; font: 600 10px var(--mono); letter-spacing: .5px; color: var(--muted); text-transform: uppercase; }
 .ai-card .warn { color: var(--draw); }
+
+/* Props: the bookmaker-style line, other lines and the price check */
+.pp2-over { font-size: 12px; color: var(--muted); font-weight: 600; margin: 0 8px 0 6px; white-space: nowrap; }
+.pp2-head .pp2-over + small { display: block; }
+.pp2-lines { margin-top: 10px; }
+.pp2-lines > summary { cursor: pointer; color: var(--muted); font: 700 12px var(--sans); list-style: none; }
+.pp2-lines > summary::-webkit-details-marker { display: none; }
+.pp2-lines > summary::before { content: '+ '; color: var(--accent); }
+.pp2-lines[open] > summary::before { content: '− '; }
+.pp2-lines table { margin-top: 8px; width: 100%; font-size: 12px; }
+.pp2-lines th, .pp2-lines td { white-space: nowrap; padding-left: 6px; padding-right: 6px; }
+.pp2-lines th { letter-spacing: 0; text-transform: none; }
+.pp2-lines tr.on td { color: var(--fg); font-weight: 700; }
+.pp2-check { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 10px; font-size: 13px; color: var(--fg); }
+.pp2-check input { width: 76px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line2); background: var(--glass); color: var(--fg); font: 600 13px var(--sans); }
+.pp2-check output { flex-basis: 100%; }
+.pp2-lines-wait { font-size: 12px; margin-top: 8px; }
+/* Prop cards never grow past their list: children may shrink, the lines table scrolls inside itself. */
+.pp2 { min-width: 0; max-width: 100%; box-sizing: border-box; }
+.pp2-head > div, .pp2-num, .pp2-hist { min-width: 0; }
+.pp2-lines { max-width: 100%; overflow-x: auto; }
+.pp2-lines th { white-space: normal; line-height: 1.25; vertical-align: bottom; }
+.pp2-lines .tbl th.num, .pp2-lines .tbl th { white-space: normal; letter-spacing: .5px; }
+.pp2-lines .tbl .num { font-size: 12px; }
+.pp2-lines .tbl td, .pp2-lines .tbl th { padding: 6px 5px; }
