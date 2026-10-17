@@ -30,6 +30,7 @@ export const CATALOG = [
     groups: [
       { name: 'Pro', leagues: [L('basketball/nba', 'NBA'), L('basketball/wnba', 'WNBA'), L('basketball/nba-development', 'NBA G League'), L('basketball/nbl', 'NBL (Australia)')] },
       { name: 'College', leagues: [L('basketball/mens-college-basketball', "NCAA Men's"), L('basketball/womens-college-basketball', "NCAA Women's")] },
+      { name: 'Europe', leagues: [L('atlas/euroleague', 'EuroLeague'), L('atlas/eurocup', 'EuroCup')] },
       { name: 'International', leagues: [L('basketball/fiba', 'FIBA World Cup')] },
     ],
   },
@@ -44,6 +45,7 @@ export const CATALOG = [
     id: 'hockey', name: 'Ice Hockey', icon: '🏒', color: '#b08cff', model: 'hockey',
     groups: [
       { name: 'Pro', leagues: [L('hockey/nhl', 'NHL'), L('atlas/khl', 'KHL (Russia)', 'KHL')] },
+      { name: 'Europe', leagues: [L('atlas/liiga', 'Liiga (Finland)', 'Liiga')] },
       { name: 'College', leagues: [L('hockey/mens-college-hockey', "NCAA Men's Hockey"), L('hockey/womens-college-hockey', "NCAA Women's Hockey")] },
     ],
   },

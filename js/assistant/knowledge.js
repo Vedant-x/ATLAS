@@ -48,7 +48,7 @@ const LEAGUE_WORDS = [
   [/\bmlb\b/, 'baseball/mlb'], [/\bnpb\b/, 'atlas/npb'], [/\bkbo\b/, 'atlas/kbo'], [/\batp\b/, 'tennis/atp'], [/\bwta\b/, 'tennis/wta'],
   [/\bufc\b/, 'mma/ufc'], [/\b(epl|premier league)\b/, 'soccer/eng.1'], [/\bla ?liga\b/, 'soccer/esp.1'], [/\bbundesliga\b/, 'soccer/ger.1'],
   [/\bserie a\b/, 'soccer/ita.1'], [/\bligue 1\b/, 'soccer/fra.1'], [/\b(ucl|champions league)\b/, 'soccer/uefa.champions'],
-  [/\b(uel|europa league)\b/, 'soccer/uefa.europa'], [/\b(ipl|big bash|bbl|t20 league)\b/, 'atlas/cricket-t20'], [/\bmls\b/, 'soccer/usa.1'], [/\bafl\b/, 'australian-football/afl'],
+  [/\b(uel|europa league)\b/, 'soccer/uefa.europa'], [/\b(ipl|big bash|bbl|t20 league)\b/, 'atlas/cricket-t20'], [/\bmls\b/, 'soccer/usa.1'], [/\bafl\b/, 'australian-football/afl'], [/\beuroleague\b/, 'atlas/euroleague'], [/\beurocup\b/, 'atlas/eurocup'], [/\bliiga\b/, 'atlas/liiga'],
 ];
 
 export function createKnowledge(S) {

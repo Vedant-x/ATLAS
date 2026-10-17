@@ -23,6 +23,7 @@ import { KHL_API, khlEvent, khlRecords } from '../js/khl.js';
 import { TSDB, TSDB_SPORTS, tsdbEvent, tsdbRecords } from '../js/sportsdb.js';
 import { CLUBELO, parseClubElo, eloIndex, isEuropean } from '../js/clubelo.js';
 import { parseGolf, golfForm, golfChances, parseStandings, raceChances, raceResult } from '../js/fields.js';
+import { EUROLEAGUE, LIIGA, euroSeason, euroRecords, euroEvent, liigaRecords, liigaEvent } from '../js/europe.js';
 import { toDecimal } from '../js/espn.js';
 
 const out = 'dist/pages';
@@ -881,6 +882,30 @@ async function fields() {
   return { updatedAt: Date.now(), golf, racing };
 }
 
+// ---------- European leagues from their own feeds: EuroLeague, EuroCup, Liiga ----------
+async function europe() {
+  const getJson = async (u) => JSON.parse(await get(u, { headers: { Accept: 'application/json' } }));
+  const season = euroSeason(), now = Date.now(), soon = (e) => e && (e.live || (e.start > now - 3 * 36e5 && e.start < now + 7 * 864e5));
+  const out = [];
+  for (const [comp, league, path] of [['E', 'EuroLeague', 'atlas/euroleague'], ['U', 'EuroCup', 'atlas/eurocup']]) {
+    try {
+      const games = (await getJson(EUROLEAGUE(comp, season))).data || [];
+      const rec = euroRecords(games);
+      const ev = games.map((g) => euroEvent(g, { comp, league, path }, rec, now)).filter((e) => soon(e) && !e.final);
+      out.push(...ev);
+      log(`${league}: ${ev.length} games in the next 7 days (${games.filter((g) => g.played).length} played this season, ${Object.keys(rec).length} clubs with records)${ev[0] ? `; next ${ev[0].home} v ${ev[0].away} (${ev[0].stats.homeRecord || '-'} / ${ev[0].stats.awayRecord || '-'})` : ''}`);
+    } catch (err) { log(`${league} failed: ${err.message}`); problems.push(`${league} feed failed: ${err.message}`); }
+  }
+  try {
+    const games = await getJson(LIIGA(season + 1));
+    const rec = liigaRecords(games);
+    const ev = games.map((g) => liigaEvent(g, rec, now)).filter(soon);
+    out.push(...ev);
+    log(`Liiga: ${ev.length} games in the next 7 days, ${ev.filter((e) => e.markets.length).length} with Veikkaus prices, ${games.filter((g) => g.ended).length} played${ev[0] ? `; next ${ev[0].home} v ${ev[0].away} ${ev[0].markets[0] ? ev[0].markets[0].outcomes.map((o) => o.odds).join('/') : 'unpriced'}` : ''}`);
+  } catch (err) { log(`Liiga failed: ${err.message}`); problems.push(`Liiga feed failed: ${err.message}`); }
+  return out;
+}
+
 // ---------- MMA odds ----------
 // ESPN's MMA scoreboard carries no prices, but its core odds feed has DraftKings moneylines for each
 // bout. That feed's "home"/"away" doesn't follow the scoreboard's fighter order, so the favourite is
@@ -960,7 +985,7 @@ const cricket = async () => {
 // Sources that failed this build: their fixtures are carried over from the last good snapshot below.
 const failedSources = new Set();
 const fail = (src, msg) => (e) => { failedSources.add(src); log(`${msg} failed`, e.message); problems.push(`${msg} failed: ${e.message}`); return []; };
-const [espn, npbEvents, kboEvents, cricketEvents, esportsEvents, esoccerEvents, khlEvents, tsdbEvents] = await Promise.all([
+const [espn, npbEvents, kboEvents, cricketEvents, esportsEvents, esoccerEvents, khlEvents, tsdbEvents, euroEvents] = await Promise.all([
   fetchAll(AbortSignal.timeout(720000), ordered, { days: 4, concurrency: 3 }).catch((e) => { log('ESPN failed', e.message); problems.push(`ESPN scoreboards failed entirely: ${e.message}`); return []; }),
   npb().catch(fail('atlas/npb', 'NPB (Japan) schedule')),
   kbo().catch(fail('atlas/kbo', 'KBO (Korea) schedule')),
@@ -969,6 +994,7 @@ const [espn, npbEvents, kboEvents, cricketEvents, esportsEvents, esoccerEvents, 
   esoccer().catch((e) => { log('eSoccer failed', e.message); problems.push(`eSoccer feed (EsportsBattle) failed: ${e.message}`); return []; }),
   khl().catch(fail('atlas/khl', 'KHL feed')),
   sportsdb().catch((e) => { log('TheSportsDB failed', e.message); return []; }),
+  europe().catch((e) => { log('European feeds failed', e.message); return []; }),
 ]);
 // Days 5 to 7 for the most-followed leagues, best effort, so 10x and bigger slips (which may use any
 // match in the next 7 days, track.js slipPolicy) have a full week to choose from.
@@ -980,7 +1006,7 @@ const [espn, npbEvents, kboEvents, cricketEvents, esportsEvents, esoccerEvents, 
   log(`ESPN days 5-7: ${added.length} more events`);
 }
 // Known leagues only, and no stale fixtures: a game that started 12+ hours ago and isn't live is over.
-const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents, ...esportsEvents, ...esoccerEvents, ...khlEvents, ...tsdbEvents].filter((e) => leagueByPath(e.leaguePath) && (e.live || !(e.start < Date.now() - 12 * 36e5)));
+const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents, ...esportsEvents, ...esoccerEvents, ...khlEvents, ...tsdbEvents, ...euroEvents].filter((e) => leagueByPath(e.leaguePath) && (e.live || !(e.start < Date.now() - 12 * 36e5)));
 
 // Carry-forward: start from the previously published snapshot and restore anything a source has
 // since dropped for a match that hasn't finished: announced starters (the NPB page shows only one
