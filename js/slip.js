@@ -2,16 +2,18 @@
 const KEY = 'atlas-slip-v1';
 let legs = [];
 let stake = 10;
+let bankroll = 0; // 0: no stake guidance
 const subs = new Set();
 
 try {
   const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
   if (Array.isArray(saved.legs)) legs = saved.legs;
   if (Number.isFinite(saved.stake)) stake = saved.stake;
+  if (Number.isFinite(saved.bankroll)) bankroll = saved.bankroll;
 } catch { /* storage blocked: slip lives for this visit only */ }
 
 function save() {
-  try { localStorage.setItem(KEY, JSON.stringify({ legs, stake })); } catch { /* ignore */ }
+  try { localStorage.setItem(KEY, JSON.stringify({ legs, stake, bankroll })); } catch { /* ignore */ }
   subs.forEach((f) => f());
 }
 
@@ -19,6 +21,8 @@ export const slip = {
   get legs() { return legs; },
   get stake() { return stake; },
   set stake(v) { stake = Math.max(0, Number(v) || 0); save(); },
+  get bankroll() { return bankroll; },
+  set bankroll(v) { bankroll = Math.max(0, Number(v) || 0); save(); },
   has: (key) => legs.some((l) => l.key === key),
   toggle(leg) {
     if (legs.some((l) => l.key === leg.key)) legs = legs.filter((l) => l.key !== leg.key);

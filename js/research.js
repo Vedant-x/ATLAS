@@ -14,6 +14,7 @@ import { changesFor, latestChange, needsReview, changesSince, lastVisit, timelin
 import { FORECAST_NOTE } from './changelog.js';
 import { ORDERS, orderByTime } from './engine.js';
 import { watch, notifyPermission } from './alerts.js';
+import { alertPrefs, ALERT_KINDS } from './livealerts.js';
 import { pc, odd } from './charts.js';
 
 let S;
@@ -196,8 +197,12 @@ export function alertPanel() {
       : perm === 'unsupported' ? '<span class="al-off">This browser can\'t show notifications here (on iPhone, add ATLAS to your Home Screen first)</span>'
         : '<button class="btn-ghost" data-notify-on>Turn on notifications</button>';
   return `<div class="panel alerts-panel reveal"><h3 class="ph">Live alerts <small>for matches you watch or have in your slip</small></h3>
-    <div class="al-row">${state}</div></div>`;
+    <div class="al-row">${state}</div>${alertChips(alertPrefs.get(), '', 'For every match')}</div>`;
 }
+// Which moments to announce, for every match or one ("goals" in soccer, "scores" elsewhere).
+const KIND_LABEL = (k, sport) => ({ scores: sport === 'football' ? 'Goals' : 'Scores', cards: 'Cards', periods: 'Breaks', final: 'Full time' }[k]);
+const alertChips = (p, id, label, sport) => `<div class="al-kinds" role="group" aria-label="${esc(label)}"><span>${esc(label)}</span>${ALERT_KINDS.filter((k) => k !== 'cards' || !sport || sport === 'football')
+  .map((k) => `<button class="chip ${p[k] ? 'on' : ''}" data-alert-kind="${k}"${id ? ` data-alert-match="${esc(id)}"` : ''} aria-pressed="${Boolean(p[k])}">${KIND_LABEL(k, sport)}</button>`).join('')}</div>`;
 // A watched match that has ended: kept with its result until cleared.
 const doneRow = (id, m) => `<div class="row wl done reveal">
         <span class="ico">${sportOf(m.sport).icon}</span>
@@ -218,7 +223,8 @@ export function watchlistView() {
         <span class="ico">${sportOf(x.e.sport).icon}</span>
         <div class="teams"><b>${esc(x.e.home)} v ${esc(x.e.away)}</b><small>${esc(x.e.league)} · ${x.e.live ? `<span class="live">LIVE ${esc(x.e.score || '')}</span>` : esc(ist(x.e.start))}</small>
           ${x.review.length ? `<small class="nr">⚠ Needs review: ${esc(x.review[0].text)}${x.review.length > 1 ? ` (+${x.review.length - 1} more)` : ''}</small>` : ''}</div>
-        <div class="odds">${x.main ? `<span class="stat"><small>${esc(x.main.pick)}</small>${pc(x.main.q, 0)}</span>` : ''}${readyBadge(x.r)}</div></a>`).join('')}</div>` : !doneIds.length ? '<p class="muted reveal">No saved matches. Use Watch on any match or in the research table.</p>' : ''}
+        <div class="odds">${x.main ? `<span class="stat"><small>${esc(x.main.pick)}</small>${pc(x.main.q, 0)}</span>` : ''}${readyBadge(x.r)}</div></a>
+        ${alertChips(alertPrefs.forMatch(x.e.id), x.e.id, alertPrefs.hasOwn(x.e.id) ? 'Alerts (this match)' : 'Alerts', x.e.sport)}`).join('')}</div>` : !doneIds.length ? '<p class="muted reveal">No saved matches. Use Watch on any match or in the research table.</p>' : ''}
       ${doneIds.length ? `<div class="wl-done-head reveal"><h3 class="ph">Finished</h3><button class="btn-ghost" data-clear-finished>Clear finished (${doneIds.length})</button></div>
       ${done.length ? `<div class="list">${done.map((id) => doneRow(id, watch.meta(id))).join('')}</div>` : ''}` : ''}
       ${changesPanel(list, { title: 'Changes to your matches', limit: 20 })}`,

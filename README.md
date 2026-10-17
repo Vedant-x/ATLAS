@@ -19,7 +19,8 @@ public track record. Static site on GitHub Pages; free to run, no keys.
 | `#/bankers` | Picks: likeliest picks at odds 1.30–1.80, with tabs for the edge board and multiplier slips |
 | `#/x/<n>`, `#/target`, `#/mega` | Slips near a multiplier (10x and up use the next 7 days) |
 | `#/edge` | Every price with fair odds, model chance and edge |
-| `#/watchlist` | Saved matches with live alerts (goals, cards, periods, full time) |
+| `#/watchlist` | Saved matches with live alerts (goals, cards, periods, full time), set for every match or one |
+| `#/slip/<code>` | A shared slip: the legs packed into the link, with one button to add them to your own |
 | `#/compare` | Pinned matches side by side |
 | `#/track` | Track record of shortlist picks, saved before kick-off and graded after |
 

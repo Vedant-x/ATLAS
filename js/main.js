@@ -9,6 +9,9 @@ import { watch, checkAlerts, followed, showMoment, requestNotify } from './alert
 import { propsView, propsClick, propsSearch, propsList } from './propsview.js';
 import { playerView, playerClick, playerInput } from './playerview.js';
 import { slipCheck } from './slipcheck.js';
+import { suggestStake, overExposed } from './staking.js';
+import { encodeSlip } from './share.js';
+import { sharedSlipView } from './shareview.js';
 import { loadPlayers, playersData } from './playerdata.js';
 // The Research area: one tab bar across its pages (props and player research, Picks, compare,
 // and sports and leagues).
@@ -70,7 +73,7 @@ import { trackCalibration } from './trackview.js';
 import { prefs, prefEvents } from './prefs.js';
 import { applyModel } from './intel.js';
 import { fetchLineups, fetchSummary } from './espn.js';
-import { startLiveAlerts } from './livealerts.js';
+import { startLiveAlerts, alertPrefs } from './livealerts.js';
 import { morph } from './morph.js';
 import { views, bind, legIndex, edgeTable, countdown, esc, sportOf, ist } from './views.js';
 import { slip } from './slip.js';
@@ -253,7 +256,7 @@ let current = null;
 function build() {
   const { name, args } = parse();
   legIndex.clear();
-  const research = { watchlist: watchlistView, compare: compareView, props: (a) => propsView(state.events, softRender, a[0] || ''), player: (a) => playerView(a[0], state.events, softRender) };
+  const research = { slip: (a) => sharedSlipView(a[0], state.events), watchlist: watchlistView, compare: compareView, props: (a) => propsView(state.events, softRender, a[0] || ''), player: (a) => playerView(a[0], state.events, softRender) };
   return { name, v: (views[name] || research[name] || legalViews[name] || trackViews[name] || views.notfound)(args.map(decodeURIComponent)) };
 }
 
@@ -386,6 +389,15 @@ function staleNote(l) {
 const drawer = document.getElementById('slip');
 // Re-check the slip's warnings after live data changes, unless the stake box is being edited.
 function refreshSlip() { if (slip.legs.length && document.activeElement?.dataset?.slipStake === undefined) renderSlip(); }
+// Stake guidance under the slip: quarter Kelly on the combined chance, capped (staking.js).
+function stakeTip() {
+  const s = slip.summary(), b = slip.bankroll;
+  if (!(b > 0)) return 'Add a bankroll for a suggested stake. Kept in this browser only.';
+  const g = suggestStake(b, s.p, s.odds, { legs: s.n });
+  const warn = overExposed(b, slip.stake) ? ` <b class="neg">Your stake is ${pc(slip.stake / b, 0)} of your bankroll: more than ATLAS would ever suggest.</b>` : '';
+  if (!g.edge) return `Suggested stake: <b>none</b>. At ${s.odds.toFixed(2)} this slip needs ${pc(1 / s.odds, 1)} to break even and ATLAS has ${pc(s.p, 1)}; it loses on average.${warn}`;
+  return `Suggested stake: <b>${g.amount}</b> (${pc(g.frac, 1)} of bankroll, quarter Kelly${g.capped ? `, capped at ${pc(g.cap, 0)}` : ''}). <button class="link-btn" data-slip-usestake="${g.amount}">Use it</button>${warn}`;
+}
 function renderSlip() {
   const s = slip.summary();
   document.querySelectorAll('[data-slip-count]').forEach((el) => { el.textContent = s.n; el.classList.toggle('has', s.n > 0); });
@@ -401,11 +413,20 @@ function renderSlip() {
       <div><small>Potential return</small><b data-sum-pay>${s.payout.toFixed(2)}</b></div>
       <div><small>Expected return</small><b data-sum-exp>${(slip.stake * s.p * s.odds).toFixed(2)}</b></div>
     </div>
-    <div class="slip-actions"><button class="btn" data-slip-copy>Copy slip</button><button class="btn-ghost" data-slip-clear>Clear</button></div>`
+    <div class="slip-bank"><label><small>Your bankroll</small><input type="number" min="0" step="10" value="${Number(slip.bankroll) || ''}" placeholder="optional" data-slip-bankroll></label><p data-stake-tip>${stakeTip()}</p></div>
+    <div class="slip-actions"><button class="btn" data-slip-share>Share link</button><button class="btn-ghost" data-slip-copy>Copy text</button><button class="btn-ghost" data-slip-clear>Clear</button></div>`
     : '<p class="muted">Tap any price to add it here. ATLAS shows the combined odds, the estimated win chance and the edge as you build.</p>';
 }
+// A link that opens the slip on anyone's ATLAS (#/slip/<code>): the phone's share sheet where there
+// is one, otherwise the link is copied.
+function shareSlip(btn) {
+  const url = `${location.origin}${location.pathname}#/slip/${encodeSlip(slip.legs)}`;
+  const s = slip.summary();
+  if (navigator.share) { navigator.share({ title: 'ATLAS slip', text: `${s.n} legs · ${s.odds.toFixed(2)}x`, url }).catch(() => {}); return; }
+  navigator.clipboard?.writeText(url).then(() => { btn.textContent = 'Link copied'; setTimeout(() => { btn.textContent = 'Share link'; }, 1400); }).catch(() => {});
+}
 slip.subscribe(() => {
-  if (document.activeElement?.matches?.('[data-slip-stake]')) return;
+  if (document.activeElement?.matches?.('[data-slip-stake], [data-slip-bankroll]')) return;
   renderSlip();
   document.querySelectorAll('[data-leg]').forEach((b) => b.classList.toggle('on', slip.has(b.dataset.leg)));
 });
@@ -470,7 +491,9 @@ document.addEventListener('click', (e) => {
     openSlip(true); bump();
   } else if (d.unleg) slip.remove(d.unleg);
   else if ('slipClear' in d) slip.clear();
-  else if ('slipCopy' in d) navigator.clipboard?.writeText(slip.text()).then(() => { t.textContent = 'Copied'; setTimeout(() => { t.textContent = 'Copy slip'; }, 1400); }).catch(() => {});
+  else if ('slipCopy' in d) navigator.clipboard?.writeText(slip.text()).then(() => { t.textContent = 'Copied'; setTimeout(() => { t.textContent = 'Copy text'; }, 1400); }).catch(() => {});
+  else if ('slipShare' in d) shareSlip(t);
+  else if (d.slipUsestake) { slip.stake = d.slipUsestake; }
   else if ('slipToggle' in d) openSlip(!drawer.classList.contains('open'));
   else if (d.watch) {
     e.preventDefault(); e.stopPropagation();
@@ -496,6 +519,9 @@ document.addEventListener('click', (e) => {
     else if (d.pref === 'sport') prefs.set({ sports: v === 'all' ? [] : p.sports.includes(v) ? p.sports.filter((x) => x !== v) : [...p.sports, v] });
     else if (d.pref === 'priced') prefs.set({ pricedOnly: !p.pricedOnly });
     state.slipCache.clear(); softRender(); }
+  else if (d.alertKind) { const on = t.getAttribute('aria-pressed') !== 'true';
+    if (d.alertMatch) alertPrefs.setMatch(d.alertMatch, { [d.alertKind]: on }); else alertPrefs.set({ [d.alertKind]: on });
+    softRender(); }
   else if ('clearFinished' in d) { watch.removeMany(watch.finished(state.events)); softRender(); }
   else if ('notifyOn' in d) { requestNotify().then(() => softRender()); }
   else if ('fxToggle' in d) { try { localStorage.setItem('atlas-fx', fxOff ? 'on' : 'off'); } catch { /* storage blocked */ } if (/[?&]lite\b/.test(location.search)) location.search = ''; else location.reload(); }
@@ -509,7 +535,9 @@ document.addEventListener('input', (e) => {
     const s = slip.summary();
     drawer.querySelector('[data-sum-pay]').textContent = s.payout.toFixed(2);
     drawer.querySelector('[data-sum-exp]').textContent = (slip.stake * s.p * s.odds).toFixed(2);
+    drawer.querySelector('[data-stake-tip]').innerHTML = stakeTip();
   }
+  if (e.target.matches('[data-slip-bankroll]')) { slip.bankroll = e.target.value; drawer.querySelector('[data-stake-tip]').innerHTML = stakeTip(); }
   if (e.target.matches('[data-ef]')) refreshEdge();
   if (e.target.matches('[data-props-search]')) { propsSearch(e.target.value); const box = document.querySelector('[data-props-list]'); if (box) box.innerHTML = propsList(state.events, decodeURIComponent(parse().args[0] || '')); }
   playerInput(e.target, state.events);
