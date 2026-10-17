@@ -235,7 +235,7 @@ async function tickF1() {
 }
 setInterval(tickF1, 4 * 6e4);
 // Golf and motor racing: their file every few minutes (leaderboards move during a round).
-const onField = () => (current === 'sport' && ['golf', 'motorsport'].includes(parse().args[0])) || (current === 'league' && /^atlas~(golf|nascar|indycar)/.test(parse().args[0] || ''));
+const onField = () => (current === 'sport' && ['golf', 'motorsport'].includes(parse().args[0])) || (current === 'league' && /^atlas~(golf|nascar|indycar|moto)/.test(parse().args[0] || ''));
 async function tickFields() {
   const before = fieldsData()?.updatedAt;
   const d = await loadFields();
