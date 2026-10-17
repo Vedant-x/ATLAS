@@ -88,8 +88,8 @@ export const CATALOG = [
     groups: [{ name: 'World Championship', leagues: [L('atlas/f1', 'Formula 1 World Championship', 'F1')] }],
   },
   // Field events (js/fields.js): a tournament or race is a field, not a two-sided match.
-  { id: 'golf', name: 'Golf', icon: '⛳', color: '#5cd68b', model: 'field', groups: [{ name: 'Tours', leagues: [L('atlas/golf-pga', 'PGA Tour', 'PGA', { only: 'pga' }), L('atlas/golf-lpga', 'LPGA Tour', 'LPGA', { only: 'lpga' }), L('atlas/golf-eur', 'DP World Tour', 'DP World', { only: 'eur' })] }] },
-  { id: 'motorsport', name: 'Motor Racing', icon: '🏁', color: '#ffb347', model: 'field', groups: [{ name: 'Series', leagues: [L('atlas/nascar', 'NASCAR Cup Series', 'NASCAR', { only: 'nascar-premier' }), L('atlas/indycar', 'IndyCar Series', 'IndyCar', { only: 'irl' })] }] },
+  { id: 'golf', name: 'Golf', icon: '⛳', color: '#5cd68b', model: 'field', groups: [{ name: 'Tours', leagues: [L('atlas/golf-pga', 'PGA Tour', 'PGA', { only: 'pga' }), L('atlas/golf-lpga', 'LPGA Tour', 'LPGA', { only: 'lpga' }), L('atlas/golf-eur', 'DP World Tour', 'DP World', { only: 'eur' }), L('atlas/golf-champions', 'PGA Tour Champions', 'Champions', { only: 'champions-tour' })] }] },
+  { id: 'motorsport', name: 'Motor Racing', icon: '🏁', color: '#ffb347', model: 'field', groups: [{ name: 'Series', leagues: [L('atlas/nascar', 'NASCAR Cup Series', 'NASCAR', { only: 'nascar-premier' }), L('atlas/nascar-xfinity', "NASCAR O'Reilly Series", 'NASCAR 2', { only: 'nascar-secondary' }), L('atlas/nascar-truck', 'NASCAR Truck Series', 'Trucks', { only: 'nascar-truck' }), L('atlas/indycar', 'IndyCar Series', 'IndyCar', { only: 'irl' })] }] },
   {
     id: 'esports', name: 'Esports', icon: '🎮', color: '#a46bff', model: 'esports',
     groups: [

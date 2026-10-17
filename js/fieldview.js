@@ -71,11 +71,11 @@ export function fieldView(S, sport, { legButton, notice, only = null } = {}) {
   const title = golf ? 'GOLF' : 'MOTOR RACING';
   const after = () => { loadFields().then((x) => { if (x && !d) S.refresh?.(); }); };
   if (!d) return { mode: 'race', accent: golf ? '#5cd68b' : '#ffb347', title: golf ? 'Golf' : 'Motor racing', after,
-    html: `<section class="hero"><p class="kicker reveal">${golf ? 'PGA · LPGA · DP WORLD TOUR' : 'NASCAR CUP · INDYCAR'}</p><h1>${split(title)}</h1><p class="lede reveal">Loading…</p></section>` };
+    html: `<section class="hero"><p class="kicker reveal">${golf ? 'PGA · LPGA · DP WORLD · CHAMPIONS' : 'NASCAR · INDYCAR'}</p><h1>${split(title)}</h1><p class="lede reveal">Loading…</p></section>` };
   const list = golf ? d.golf.filter((t) => !only || t.tour === only) : d.racing.filter((r) => !only || r.series === only);
   return {
     mode: 'race', accent: golf ? '#5cd68b' : '#ffb347', title: golf ? 'Golf' : 'Motor racing', after,
-    html: `<section class="hero"><p class="kicker reveal">${golf ? '⛳ PGA · LPGA · DP WORLD TOUR' : '🏁 NASCAR CUP · INDYCAR'} · ATLAS MODEL · NO BOOKMAKER PRICE</p><h1>${split(title)}</h1>
+    html: `<section class="hero"><p class="kicker reveal">${golf ? '⛳ PGA · LPGA · DP WORLD · CHAMPIONS' : '🏁 NASCAR · INDYCAR'} · ATLAS MODEL · NO BOOKMAKER PRICE</p><h1>${split(title)}</h1>
       <p class="lede reveal">${golf ? 'This week\'s tournaments: the leaderboard and each player\'s chance to win, finish top 5, top 10 or top 20.' : 'The next race in each series and each driver\'s chance to win, finish on the podium or in the top 10.'}</p></section>
       ${notice ? notice() : ''}
       ${list.length ? list.map((x) => (golf ? golfSection(x, legButton) : raceSection(x, legButton))).join('') : '<section class="panel reveal"><p class="muted">Nothing scheduled right now.</p></section>'}

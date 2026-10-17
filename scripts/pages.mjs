@@ -836,8 +836,8 @@ async function sportsdbFetch() {
 // ---------- Golf and motor racing (field events, data/fields.json) ----------
 // Golf: each tour's event this week from ESPN, with form from the tour's previous four events.
 // Racing: NASCAR Cup and IndyCar, the next (or last) race and the season standings.
-const GOLF_TOURS = [['pga', 'PGA Tour'], ['lpga', 'LPGA Tour'], ['eur', 'DP World Tour']];
-const RACING = [['nascar-premier', 'NASCAR Cup Series'], ['irl', 'IndyCar Series']];
+const GOLF_TOURS = [['pga', 'PGA Tour'], ['lpga', 'LPGA Tour'], ['eur', 'DP World Tour'], ['champions-tour', 'PGA Tour Champions']];
+const RACING = [['nascar-premier', 'NASCAR Cup Series'], ['nascar-secondary', "NASCAR O'Reilly Series"], ['nascar-truck', 'NASCAR Truck Series'], ['irl', 'IndyCar Series']];
 async function fields() {
   const S = 'https://site.api.espn.com/apis/site/v2/sports';
   const getJson = async (u) => JSON.parse(await get(u));
