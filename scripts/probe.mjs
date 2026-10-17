@@ -1,33 +1,24 @@
-// Temporary: walk ESPN's directory of sports and leagues and list every league with games in the
-// next 7 days that the catalog does not have (CI only).
-import { ALL_LEAGUES } from '../js/catalog.js';
-const UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130 Safari/537.36' };
-const get = async (u) => { try { const r = await fetch(u.replace(/^http:/, 'https:'), { headers: UA, signal: AbortSignal.timeout(20000) }); return r.ok ? await r.json() : null; } catch { return null; } };
-const have = new Set(ALL_LEAGUES.map((l) => l.path));
-const sports = (await get('https://sports.core.api.espn.com/v2/sports?limit=200'))?.items || [];
-console.log('ESPN sports:', sports.length);
-const leagues = [];
-for (const s of sports) {
-  const sj = await get(s.$ref); const slug = sj?.slug; if (!slug) continue;
-  const lj = await get(`https://sports.core.api.espn.com/v2/sports/${slug}/leagues?limit=1000`);
-  const items = lj?.items || [];
-  console.log(`sport ${slug}: ${lj?.count ?? items.length} leagues`);
-  for (const it of items) leagues.push({ sport: slug, ref: it.$ref });
+// Temporary: shapes of official league feeds before writing parsers (CI only).
+const UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130 Safari/537.36', Accept: 'application/json' };
+const get = async (u) => { try { const r = await fetch(u, { headers: UA, signal: AbortSignal.timeout(20000) }); const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch {} return { s: r.status, j, t: t.slice(0, 300) }; } catch (e) { return { s: 0, e: e.message }; } };
+const short = (o, d = 0) => { if (o == null || typeof o !== 'object') return JSON.stringify(o)?.slice(0, 70); if (Array.isArray(o)) return `[${o.length}] ${o.length ? short(o[0], d + 1) : ''}`; if (d > 2) return '{…}'; return `{${Object.entries(o).slice(0, 30).map(([k, v]) => `${k}: ${short(v, d + 1)}`).join(', ')}}`; };
+const today = new Date().toISOString().slice(0, 10);
+const urls = [
+  'https://api-live.euroleague.net/v2/competitions/E/seasons/E2026/games',
+  'https://api-live.euroleague.net/v2/competitions/U/seasons/U2026/games',
+  'https://api-live.euroleague.net/v1/schedules?seasonCode=E2026',
+  'https://liiga.fi/api/v2/games?tournament=runkosarja&season=2027',
+  'https://api.motogp.pulselive.com/motogp/v1/results/seasons',
+  'https://api.motogp.pulselive.com/motogp/v1/events?seasonYear=2026',
+  `https://www.thesportsdb.com/api/v1/json/123/eventsday.php?d=${today}&s=Basketball`,
+  `https://www.thesportsdb.com/api/v1/json/123/eventsday.php?d=${today}&s=Ice%20Hockey`,
+  `https://www.thesportsdb.com/api/v1/json/123/eventsday.php?d=${today}&s=Cycling`,
+  `https://www.thesportsdb.com/api/v1/json/123/eventsday.php?d=${today}&s=Rugby`,
+  `https://www.thesportsdb.com/api/v1/json/123/all_sports.php`,
+];
+for (const u of urls) {
+  const r = await get(u);
+  console.log(`\n=== ${u}\nstatus ${r.s}${r.e ? ` ${r.e}` : ''}\n${r.j ? short(r.j).slice(0, 2200) : r.t}`);
+  if (u.includes('eventsday') && r.j?.events) console.log('leagues:', [...new Set(r.j.events.map((x) => x.strLeague))].join(' | '), 'count', r.j.events.length);
+  if (u.includes('all_sports') && r.j?.sports) console.log('sports:', r.j.sports.map((x) => x.strSport).join(', '));
 }
-const ymd = (o) => new Date(Date.now() + o * 864e5).toISOString().slice(0, 10).replaceAll('-', '');
-const found = [];
-let i = 0;
-await Promise.all(Array.from({ length: 10 }, async () => {
-  while (i < leagues.length) {
-    const l = leagues[i++];
-    const lj = await get(l.ref); const slug = lj?.slug; if (!slug) continue;
-    const path = `${l.sport}/${slug}`;
-    if (have.has(path)) continue;
-    const sb = await get(`https://site.api.espn.com/apis/site/v2/sports/${path}/scoreboard?dates=${ymd(0)}-${ymd(7)}&limit=300`);
-    const n = sb?.events?.length || 0;
-    if (n) found.push({ path, name: lj.name || lj.abbreviation, n, odds: (sb.events || []).filter((e) => e.competitions?.[0]?.odds?.length).length });
-  }
-}));
-found.sort((a, b) => b.n - a.n);
-console.log(`\nLEAGUES WITH GAMES NOT IN CATALOG: ${found.length}`);
-for (const f of found) console.log(`  ${f.path} | ${f.name} | ${f.n} events | ${f.odds} with odds`);
