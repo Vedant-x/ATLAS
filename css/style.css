@@ -445,6 +445,14 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .facts small { font: 700 10px var(--mono); color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
 .facts span { font-size: 12px; color: var(--muted); }
 .loading-dots::after { content: ' ...'; animation: blink 1s infinite; }
+/* Loading placeholders: shown until the first snapshot, so an empty "0" never reads as "no games". */
+.skel-num, .skel-row { display: block; border-radius: 6px; background: linear-gradient(90deg, rgba(255,255,255,.05) 25%, rgba(255,255,255,.12) 50%, rgba(255,255,255,.05) 75%) 0 0 / 200% 100%; animation: skel 1.4s linear infinite; }
+.stats b.skel-num { width: 2.2ch; height: .9em; margin-bottom: 6px; }
+.skel-list { display: grid; gap: 10px; padding: 6px 0; }
+.skel-row { height: 46px; }
+.skel-row:nth-child(2n) { width: 86%; }
+@keyframes skel { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .skel-num, .skel-row { animation: none; } }
 @media (max-width: 600px) { .leader { grid-template-columns: 1fr auto; } .leader small, .leader span { grid-column: 1 / -1; } }
 
 /* ---------- back / home dock ---------- */
@@ -1069,7 +1077,8 @@ p a:not(.btn):not(.more), .rec-line a, .lede a, .note a, .muted a { text-decorat
 /* Phones: three or four essential numbers per row; the rest is one tap away in the quick view. */
 @media (max-width: 700px) {
   .hero.compact.today h1 { font-size: 22px; letter-spacing: .08em; }
-  .hero.compact.today .stats { gap: 18px; }
+  .hero.compact.today .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .hero.compact.today .stats span { display: block; font-size: 9px; letter-spacing: 1px; line-height: 1.3; }
 
 }
 

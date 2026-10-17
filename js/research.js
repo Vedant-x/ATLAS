@@ -45,13 +45,15 @@ export const WINDOWS = [3, 6, 12, 24, 48];
 export const windowChips = (key, cur) => `<div class="win-chips" role="group" aria-label="Time window"><span>Starting in</span>${WINDOWS.map((h) => `<button class="chip ${cur === h ? 'on' : ''}" data-${key}="${h}" aria-pressed="${cur === h}">${h}h</button>`).join('')}</div>`;
 
 // ---------- what changed ----------
-export function changesPanel(events, { limit = 8, title = 'What changed' } = {}) {
+export function changesPanel(events, { limit = 8, title = 'What changed', hideEmpty = false } = {}) {
   const ids = new Set(events.map((e) => e.id));
   const since = lastVisit();
   const all = changesSince(null).filter((c) => ids.has(c.eventId) && c.start > Date.now() - 36e5);
   const fresh = since ? all.filter((c) => c.at > since) : all;
   const watched = all.filter((c) => watch.has(c.eventId) && needsReview(c.eventId).length);
   const list = [...new Map([...watched, ...fresh].map((c) => [c.id, c])).values()].slice(0, limit);
+  // Nothing recorded yet (first load, or the timeline has not arrived): an empty panel says nothing.
+  if (hideEmpty && !list.length && !timelineUpdatedAt()) return '';
   return `<div class="changes panel reveal"><h2 class="ph">${title} <small>${since ? `since your last visit (${ago(since)} ago)` : 'last 48 hours'}${timelineUpdatedAt() ? ` · checked ${ago(timelineUpdatedAt())} ago` : ''}</small></h2>
     ${list.length ? `<ul class="ch-list">${list.map(changeItem).join('')}</ul>` : `<p class="muted">${timelineUpdatedAt() ? 'No material changes (starters, lineups, absences, price moves) since you last looked.' : 'The change timeline starts with the next data update.'}</p>`}
   </div>`;

@@ -26,6 +26,7 @@ import { coherentBets } from './picks.js';
 import { mergeEvent } from './merge.js';
 import { casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips, changesPanel, orderBets, orderChips, orderLabel } from './research.js';
 import { readiness } from './readiness.js';
+import { lastVisit } from './timeline.js';
 // Golf and motor racing: a field of players or drivers, drawn by fieldview.js.
 const FIELD_SPORTS = new Set(['golf', 'motorsport']);
 
@@ -71,7 +72,7 @@ const freshClass = (t) => (!t ? 'stale' : Date.now() - t < 30 * 6e4 ? 'fresh' : 
 function prefsBar() {
   const p = prefs.get();
   const sports = SPORTS.filter((s) => S.events.some((e) => e.sport === s.id));
-  return `<div class="prefs reveal"><span class="pl">Min odds</span>${[1.1, 1.2, 1.3, 1.5, 1.8].map((o) => `<button class="pchip ${p.minOdds === o ? 'on' : ''}" data-pref="minOdds" data-value="${o}">${o.toFixed(2)}</button>`).join('')}
+  return `<div class="prefs reveal"><span class="pl">Min odds</span>${[1.2, 1.3, 1.5, 1.8].map((o) => `<button class="pchip ${p.minOdds === o ? 'on' : ''}" data-pref="minOdds" data-value="${o}">${o.toFixed(2)}</button>`).join('')}
     <span class="pl">Sports</span><button class="pchip ${p.sports.length ? '' : 'on'}" data-pref="sport" data-value="all">All</button>${sports.map((s) => `<button class="pchip ${p.sports.includes(s.id) ? 'on' : ''}" data-pref="sport" data-value="${s.id}" title="${esc(s.name)}">${s.icon}</button>`).join('')}
     <button class="pchip ${p.pricedOnly ? 'on' : ''}" data-pref="priced" data-value="1">Bookmaker-priced only</button></div>`;
 }
@@ -213,6 +214,10 @@ function slipCard(s, i, target, all) {
 const builderNav = (on) => `<nav class="builder-nav reveal" aria-label="Builder">${[['x', '#/x/2', 'Multipliers'], ['target', '#/target', 'Target'], ['mega', '#/mega', 'Mega'], ['bankers', '#/bankers', 'Bankers']].map(([k, h, l]) => `<a class="chip ${k === on ? 'on' : ''}" href="${h}">${l}</a>`).join('')}</nav>`;
 
 // ---------- views ----------
+// A hero number: a placeholder bar until the first snapshot lands, so "0" never stands in for "not loaded yet".
+const statNum = (n, cls = '') => (S.loading ? `<b class="skel-num ${cls}" aria-label="loading"></b>` : `<b class="${cls}" data-count-to="${n}">0</b>`);
+const skelRows = (n) => `<div class="skel-list" aria-busy="true" aria-label="Loading">${'<i class="skel-row"></i>'.repeat(n)}</div>`;
+
 export const views = {
   home() {
     const ev = S.events;
@@ -228,10 +233,10 @@ export const views = {
       <section class="hero compact today">
         <p class="kicker reveal">TODAY · ${esc(new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase())} · IST</p>
         <h1>${split('EVERY SPORT. EVERY EDGE.')}</h1>
-        <div class="stats reveal">
-          <div><b data-count-to="${ev.length}">0</b><span>events tracked</span></div>
-          <div><b data-count-to="${modelled}">0</b><span>with bookmaker prices (${ev.length ? Math.round((modelled / ev.length) * 100) : 0}%)</span></div>
-          <div><b class="hot" data-count-to="${live.length}">0</b><span>in play</span></div>
+        <div class="stats reveal${S.loading ? ' is-loading' : ''}">
+          <div>${statNum(ev.length)}<span>events tracked</span></div>
+          <div>${statNum(modelled)}<span>with prices${S.loading ? '' : ` (${ev.length ? Math.round((modelled / ev.length) * 100) : 0}%)`}</span></div>
+          <div>${statNum(live.length, 'hot')}<span>in play</span></div>
         </div>
       </section>
       ${notice()}
@@ -544,10 +549,10 @@ function dashboard(ev, live) {
       ${windowChips('shours', hrs)}
       ${orderChips()}
       ${safest ? `<p class="rec-line">${rec ? `Surest so far: ${rec}` : 'Surest: tracked from today'} · picks where ATLAS does not claim to beat the bookmaker: in the record these landed most often</p>` : rec ? `<p class="rec-line">Bankers so far: ${rec} · <a href="#/track">full record</a></p>` : ''}
-      <div class="minilist">${short.map((b) => miniPick(b)).join('') || `<p class="muted">${empty}</p>`}</div>${prefsBar()}</div>
-    <div class="panel dash-live reveal"><h2 class="ph">Live now <small>${live.length}</small></h2>
-      ${live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${esc(e.score || '')}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>
-    ${changesPanel(ev, { title: 'Since your last visit', limit: 6 })}
+      <div class="minilist">${S.loading ? skelRows(4) : short.map((b) => miniPick(b)).join('') || `<p class="muted">${empty}</p>`}</div>${prefsBar()}</div>
+    <div class="panel dash-live reveal"><h2 class="ph">Live now <small>${S.loading ? '' : live.length}</small></h2>
+      ${S.loading ? skelRows(3) : live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${esc(e.score || '')}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>
+    ${changesPanel(ev, { title: lastVisit() ? 'Since your last visit' : 'What changed', limit: 6, hideEmpty: true })}
     ${trackCard(() => S.refresh?.())}
     <div class="panel dash-health reveal"><h2 class="ph">Source health</h2>${sourceHealth(ev)}</div>
   </section>`;
@@ -558,7 +563,7 @@ function sourceHealth(ev) {
   const espn = ev.filter((e) => e.leaguePath && !e.leaguePath.startsWith('atlas/') && e.source !== 'MLB Stats API');
   const reports = ev.flatMap((e) => (e.probables || []).filter((p) => p.report?.league === 'MLB').map((p) => p.report));
   const rows = [
-    ['Snapshot build', ev.length, S.fetchedAt, 'every league, rebuilt every 15 min'],
+    ['Snapshot build', ev.length, S.fetchedAt, 'every league, rebuilt about every 10 min'],
     ['ESPN scoreboards', espn.length, newest(espn, (e) => e.fetchedAt), 'fixtures, scores, reference odds'],
     ['NPB official', ev.filter((e) => e.leaguePath === 'atlas/npb').length, newest(ev.filter((e) => e.leaguePath === 'atlas/npb'), (e) => e.fetchedAt), 'schedule, starters'],
     ['KBO official', ev.filter((e) => e.leaguePath === 'atlas/kbo').length, newest(ev.filter((e) => e.leaguePath === 'atlas/kbo'), (e) => e.fetchedAt), 'schedule, starters'],
@@ -566,7 +571,7 @@ function sourceHealth(ev) {
     ['MLB Stats API', reports.length, newest(reports, (r) => r.fetchedAt), 'starter reports'],
     ['FotMob', ev.filter((e) => e.absences).length, newest(ev, (e) => e.absences?.fetchedAt), 'soccer absences'],
   ];
-  return `<ul class="health">${rows.map(([n, c, t, what]) => `<li class="${c ? freshClass(t) : 'idle'}"><i></i><b>${n}</b><span>${c ? `${c} · ${ago(t)}` : 'nothing scheduled'}</span><small>${what}</small></li>`).join('')}</ul>`;
+  return `<ul class="health">${rows.map(([n, c, t, what]) => `<li class="${S.loading ? 'idle' : c ? freshClass(t) : 'idle'}"><i></i><b>${n}</b><span>${S.loading ? 'checking…' : c ? `${c} · ${ago(t)}` : 'nothing scheduled'}</span><small>${what}</small></li>`).join('')}</ul>`;
 }
 
 // In play: the live estimate from the current score and time left, then a note that the rest is pre-match.
