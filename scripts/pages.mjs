@@ -24,6 +24,7 @@ import { TSDB, TSDB_SPORTS, tsdbEvent, tsdbRecords } from '../js/sportsdb.js';
 import { CLUBELO, parseClubElo, eloIndex, isEuropean } from '../js/clubelo.js';
 import { parseGolf, golfForm, golfChances, parseStandings, raceChances, raceResult } from '../js/fields.js';
 import { EUROLEAGUE, LIIGA, SWISS, euroSeason, euroRecords, euroEvent, liigaRecords, liigaEvent, swissRecords, swissEvent } from '../js/europe.js';
+import { ODDS_API, ODDS_SPORT_KEYS, matchOdds } from '../js/oddsapi.js';
 import { toDecimal } from '../js/espn.js';
 
 const out = 'dist/pages';
@@ -1180,6 +1181,48 @@ await playerProps(events).catch((e) => log('Player props failed', e.message));
   const data = await f1(prevF1).catch((e) => { log('F1 failed', e.message); problems.push(`Formula 1 data failed: ${e.message}`); return null; });
   if (data) await writeFile(`${out}/data/f1.json`, JSON.stringify(data));
   else if (prevF1) await writeFile(`${out}/data/f1.json`, JSON.stringify(prevF1));
+}
+// Optional real bookmaker odds from The Odds API. Runs only with an ODDS_API_KEY (a free key the
+// owner registers). To protect the free budget the raw odds are cached in data/odds-extra.json and
+// re-fetched only when older than ODDS_HOURS (default 12); they are merged onto unpriced matches on
+// every build. One credit is spent per market per region per request, so markets, regions and how
+// many sports are fetched are all capped and configurable.
+if (process.env.ODDS_API_KEY) {
+  try {
+    const key = process.env.ODDS_API_KEY;
+    const markets = (process.env.ODDS_MARKETS || 'h2h').split(',').map((x) => x.trim()).filter(Boolean).join(',');
+    const regions = (process.env.ODDS_REGIONS || 'us').split(',').map((x) => x.trim()).filter(Boolean).join(',');
+    const maxAgeH = Number(process.env.ODDS_HOURS || 12), maxSports = Number(process.env.ODDS_MAX_SPORTS || 8);
+    // The cached raw odds from the last good build.
+    let cache = { fetchedAt: 0, sports: {} };
+    try { const r = await fetch((process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json').replace('index.json', 'odds-extra.json'), { signal: AbortSignal.timeout(15000) }); if (r.ok) cache = await r.json(); } catch { /* first run */ }
+    const stale = !cache.fetchedAt || Date.now() - cache.fetchedAt > maxAgeH * 36e5;
+    if (stale) {
+      // Only sports the API reports in season, that we map, and that have upcoming matches here.
+      let inSeason = new Set();
+      try { const list = await (await fetch(`${ODDS_API}/sports?apiKey=${key}`, { signal: AbortSignal.timeout(20000) })).json(); if (Array.isArray(list)) inSeason = new Set(list.filter((x) => x.active).map((x) => x.key)); } catch (e) { log(`Odds API sports list failed: ${e.message}`); }
+      const want = [...new Set(events.filter((e) => e.start > Date.now() && ODDS_SPORT_KEYS[e.leaguePath]).map((e) => ODDS_SPORT_KEYS[e.leaguePath]))].filter((k) => !inSeason.size || inSeason.has(k)).slice(0, maxSports);
+      const sports = {};
+      let credits = null, used = 0;
+      for (const sk of want) {
+        try {
+          const res = await fetch(`${ODDS_API}/sports/${sk}/odds?apiKey=${key}&regions=${regions}&markets=${markets}&oddsFormat=decimal`, { signal: AbortSignal.timeout(20000) });
+          credits = res.headers.get('x-requests-remaining') ?? credits; used = res.headers.get('x-requests-used') ?? used;
+          if (res.ok) sports[sk] = await res.json(); else log(`Odds API ${sk}: HTTP ${res.status}`);
+        } catch (e) { log(`Odds API ${sk}: ${e.message}`); }
+      }
+      cache = { fetchedAt: Date.now(), markets, regions, sports };
+      log(`Odds API: fetched ${Object.keys(sports).length}/${want.length} sport(s) [${markets} @ ${regions}]; credits used ${used}, remaining ${credits ?? '?'}`);
+    } else {
+      log(`Odds API: reusing cached odds from ${Math.round((Date.now() - cache.fetchedAt) / 36e5)}h ago (refetch after ${maxAgeH}h)`);
+    }
+    let priced = 0;
+    const byKey = {};
+    for (const e of events) if (ODDS_SPORT_KEYS[e.leaguePath]) (byKey[ODDS_SPORT_KEYS[e.leaguePath]] ||= []).push(e);
+    for (const [sk, list] of Object.entries(cache.sports || {})) if (byKey[sk]) priced += matchOdds(byKey[sk], list, {});
+    await writeFile(`${out}/data/odds-extra.json`, JSON.stringify(cache));
+    log(`Odds API: priced ${priced} previously unpriced match(es) from ${Object.keys(cache.sports || {}).length} sport(s)`);
+  } catch (e) { log(`Odds API failed: ${e.message}`); }
 }
 const byLeague = {};
 for (const e of events) byLeague[e.leaguePath] = (byLeague[e.leaguePath] || 0) + 1;
