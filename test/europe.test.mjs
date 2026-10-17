@@ -39,3 +39,16 @@ test('Liiga: Veikkaus prices in hundredths, regulation records, finished games d
   const a = analyse(e);
   assert.ok(a.win.home > a.win.away && a.win.draw > 0.15, JSON.stringify(a.win));
 });
+
+test('Swiss National League: records with overtime losses, upcoming games only', async () => {
+  const { swissRecords, swissEvent } = await import('../js/europe.js');
+  const now = Date.parse('2026-10-17T12:00:00Z');
+  const done = { gameId: '1', homeTeamName: 'ZSC Lions', awayTeamName: 'HC Davos', date: '2026-10-10T18:00:00+00:00', status: 'finished', homeTeamResult: 3, awayTeamResult: 2, isOvertime: true };
+  const next = { gameId: '2', homeTeamName: 'HC Davos', awayTeamName: 'ZSC Lions', date: '2026-10-18T18:00:00+00:00', status: 'scheduled' };
+  const rec = swissRecords([done]);
+  assert.equal(rec['HC Davos'].otl, 1);
+  assert.equal(swissEvent(done, rec, now), null);
+  const e = swissEvent(next, rec, now);
+  assert.equal(e.leaguePath, 'atlas/swissnl');
+  assert.equal(e.stats.awayRecord, '1-0-0');
+});

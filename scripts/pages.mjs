@@ -23,7 +23,7 @@ import { KHL_API, khlEvent, khlRecords } from '../js/khl.js';
 import { TSDB, TSDB_SPORTS, tsdbEvent, tsdbRecords } from '../js/sportsdb.js';
 import { CLUBELO, parseClubElo, eloIndex, isEuropean } from '../js/clubelo.js';
 import { parseGolf, golfForm, golfChances, parseStandings, raceChances, raceResult } from '../js/fields.js';
-import { EUROLEAGUE, LIIGA, euroSeason, euroRecords, euroEvent, liigaRecords, liigaEvent } from '../js/europe.js';
+import { EUROLEAGUE, LIIGA, SWISS, euroSeason, euroRecords, euroEvent, liigaRecords, liigaEvent, swissRecords, swissEvent } from '../js/europe.js';
 import { toDecimal } from '../js/espn.js';
 
 const out = 'dist/pages';
@@ -879,6 +879,22 @@ async function fields() {
       log(`Racing ${series}: ${next ? `next ${next.name} ${new Date(next.start).toISOString()}` : last ? `last ${last.name}: ${last.top.slice(0, 3).join(', ')}` : 'no race'}; ${drivers.length} drivers in standings; favourites ${chances.slice(0, 3).map((d) => `${d.name} ${(d.win * 100).toFixed(1)}%`).join(', ') || '-'}`);
     } catch (err) { log(`Racing ${series} failed: ${err.message}`); }
   }
+  // MotoGP, Moto2 and Moto3 from the championship's own results feed.
+  try {
+    const M = 'https://api.motogp.pulselive.com/motogp/v1';
+    const seasons = await getJson(`${M}/results/seasons`);
+    const cur = seasons.find((x) => x.current) || seasons[0];
+    const cats = await getJson(`${M}/results/categories?seasonUuid=${cur.id}`);
+    const next = (await getJson(`${M}/results/events?seasonUuid=${cur.id}&isFinished=false`)).filter((e) => !e.test).sort((a, b) => Date.parse(a.date_start) - Date.parse(b.date_start))[0];
+    for (const c of cats) {
+      const name = String(c.name || '').replace(/™/g, '').trim();
+      const st = await getJson(`${M}/results/standings?seasonUuid=${cur.id}&categoryUuid=${c.id}`);
+      const drivers = (st.classification || []).map((r, i) => ({ id: String(r.rider?.id || i), name: r.rider?.full_name || [r.rider?.name, r.rider?.surname].filter(Boolean).join(' ') || '?', pos: r.position ?? i + 1, points: r.points ?? null, starts: null, wins: r.race_wins ?? null, top5: r.podiums ?? null, top10: null }));
+      const chances = raceChances(drivers);
+      racing.push({ series: `motogp-${name.toLowerCase()}`, seriesName: name, next: next ? { name: next.sponsored_name || next.name, start: Date.parse(`${next.date_end}T12:00:00Z`), state: next.status === 'NOT-STARTED' ? 'pre' : 'in' } : null, last: null, season: cur.year, drivers: chances.slice(0, 40) });
+      log(`Racing ${name}: ${drivers.length} riders in standings; next ${next?.name || '-'} (${next?.date_start || '-'}); favourites ${chances.slice(0, 3).map((d) => `${d.name} ${(d.win * 100).toFixed(1)}%`).join(', ')}`);
+    }
+  } catch (err) { log(`MotoGP failed: ${err.message}`); }
   return { updatedAt: Date.now(), golf, racing };
 }
 
@@ -903,6 +919,13 @@ async function europe() {
     out.push(...ev);
     log(`Liiga: ${ev.length} games in the next 7 days, ${ev.filter((e) => e.markets.length).length} with Veikkaus prices, ${games.filter((g) => g.ended).length} played${ev[0] ? `; next ${ev[0].home} v ${ev[0].away} ${ev[0].markets[0] ? ev[0].markets[0].outcomes.map((o) => o.odds).join('/') : 'unpriced'}` : ''}`);
   } catch (err) { log(`Liiga failed: ${err.message}`); problems.push(`Liiga feed failed: ${err.message}`); }
+  try {
+    const games = await getJson(SWISS);
+    const rec = swissRecords(games);
+    const ev = games.map((g) => swissEvent(g, rec, now)).filter(soon);
+    out.push(...ev);
+    log(`Swiss National League: ${ev.length} games in the next 7 days, ${Object.keys(rec).length} teams with records${ev[0] ? `; next ${ev[0].home} v ${ev[0].away} (${ev[0].stats.homeRecord || '-'} / ${ev[0].stats.awayRecord || '-'})` : ''}; statuses ${[...new Set(games.map((g) => g.status))].join(',')}`);
+  } catch (err) { log(`Swiss NL failed: ${err.message}`); }
   return out;
 }
 

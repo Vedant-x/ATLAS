@@ -3,10 +3,12 @@
 //     results; records and last-five form are counted from the games played. No prices.
 //   Liiga, Finland's top hockey league (liiga.fi): the season's games with Veikkaus 1X2 prices
 //     (regulation time), each team's table position and records counted from the results.
+//   Swiss National League hockey (nationalleague.ch): the season's games and results; records and form.
 // Pure parsers, so they can be tested; the build (scripts/pages.mjs) fetches.
 
 export const EUROLEAGUE = (comp, season) => `https://api-live.euroleague.net/v2/competitions/${comp}/seasons/${comp}${season}/games`;
 export const LIIGA = (season) => `https://liiga.fi/api/v2/games?tournament=runkosarja&season=${season}`;
+export const SWISS = 'https://www.nationalleague.ch/api/games';
 
 // The season code: a season starting in the autumn of year Y is "Y" for EuroLeague and "Y+1" for Liiga.
 export const euroSeason = (now = Date.now()) => { const d = new Date(now); return d.getUTCMonth() >= 6 ? d.getUTCFullYear() : d.getUTCFullYear() - 1; };
@@ -82,5 +84,36 @@ export function liigaEvent(g, records = {}, now = Date.now()) {
     stats: { homeRecord: rec(home), awayRecord: rec(away), homeForm: records[home]?.form || null, awayForm: records[away]?.form || null, homeRank: g.homeTeam?.ranking || null, awayRank: g.awayTeam?.ranking || null },
     logos: { home: g.homeTeam?.logos?.darkBg || g.homeTeam?.logos?.lightBg || null, away: g.awayTeam?.logos?.darkBg || g.awayTeam?.logos?.lightBg || null },
     note: g.gameWeek ? `Round ${g.gameWeek}` : null, source: 'Liiga', fetchedAt: now, sourceUrl: `https://liiga.fi/fi/ottelut/${g.season}/runkosarja/${g.id}`,
+  };
+}
+
+// ---------- Swiss National League ----------
+const swissDone = (g) => /finished|ended|final/i.test(`${g.status || ''} ${g.baseStatus || ''}`);
+const swissLive = (g) => /live|running|progress|period|intermission/i.test(`${g.status || ''} ${g.baseStatus || ''}`);
+export function swissRecords(games) {
+  const rec = {};
+  for (const g of [...games].filter(swissDone).sort((a, b) => Date.parse(a.date) - Date.parse(b.date))) {
+    const h = Number(g.homeTeamResult), a = Number(g.awayTeamResult);
+    if (!Number.isFinite(h) || !Number.isFinite(a) || h === a) continue;
+    const extra = Boolean(g.isOvertime || g.isShootout);
+    for (const [t, won] of [[g.homeTeamName, h > a], [g.awayTeamName, a > h]]) {
+      const r = (rec[t] ||= { w: 0, l: 0, otl: 0, form: [] });
+      if (won) r.w++; else if (extra) r.otl++; else r.l++;
+      formPush(r, won ? 'W' : 'L');
+    }
+  }
+  return rec;
+}
+export function swissEvent(g, records = {}, now = Date.now()) {
+  const home = g.homeTeamName, away = g.awayTeamName, start = Date.parse(g.date);
+  if (!home || !away || !Number.isFinite(start) || swissDone(g)) return null;
+  const live = swissLive(g);
+  const rec = (t) => { const r = records[t]; return r ? `${r.w}-${r.l}-${r.otl}` : null; };
+  return {
+    id: `atlas_swissnl-${g.gameId}`, sport: 'hockey', league: 'National League (Switzerland)', leaguePath: 'atlas/swissnl', group: 'Europe',
+    home, away, start, live, score: live && g.homeTeamResult != null ? `${g.homeTeamResult} – ${g.awayTeamResult}` : null, clock: live ? 'Live' : '',
+    venue: null, markets: [], lineups: null, probables: [],
+    stats: { homeRecord: rec(home), awayRecord: rec(away), homeForm: records[home]?.form || null, awayForm: records[away]?.form || null },
+    logos: { home: null, away: null }, note: null, source: 'National League', fetchedAt: now, sourceUrl: 'https://www.nationalleague.ch/',
   };
 }
