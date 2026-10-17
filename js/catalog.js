@@ -45,7 +45,7 @@ export const CATALOG = [
     id: 'hockey', name: 'Ice Hockey', icon: '🏒', color: '#b08cff', model: 'hockey',
     groups: [
       { name: 'Pro', leagues: [L('hockey/nhl', 'NHL'), L('atlas/khl', 'KHL (Russia)', 'KHL')] },
-      { name: 'Europe', leagues: [L('atlas/liiga', 'Liiga (Finland)', 'Liiga'), L('atlas/swissnl', 'National League (Switzerland)', 'Swiss NL')] },
+      { name: 'Europe', leagues: [L('atlas/liiga', 'Liiga (Finland)', 'Liiga'), L('atlas/swissnl', 'Swiss hockey (National League & Swiss League)', 'Swiss hockey')] },
       { name: 'College', leagues: [L('hockey/mens-college-hockey', "NCAA Men's Hockey"), L('hockey/womens-college-hockey', "NCAA Women's Hockey")] },
     ],
   },

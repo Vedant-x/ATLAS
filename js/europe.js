@@ -3,7 +3,7 @@
 //     results; records and last-five form are counted from the games played. No prices.
 //   Liiga, Finland's top hockey league (liiga.fi): the season's games with Veikkaus 1X2 prices
 //     (regulation time), each team's table position and records counted from the results.
-//   Swiss National League hockey (nationalleague.ch): the season's games and results; records and form.
+//   Swiss hockey (nationalleague.ch): National League and Swiss League games and results; records and form.
 // Pure parsers, so they can be tested; the build (scripts/pages.mjs) fetches.
 
 export const EUROLEAGUE = (comp, season) => `https://api-live.euroleague.net/v2/competitions/${comp}/seasons/${comp}${season}/games`;
@@ -88,7 +88,7 @@ export function liigaEvent(g, records = {}, now = Date.now()) {
 }
 
 // ---------- Swiss National League ----------
-const swissDone = (g) => /finished|ended|final/i.test(`${g.status || ''} ${g.baseStatus || ''}`);
+const swissDone = (g) => /finished|\bend(ed)?\b|final/i.test(`${g.status || ''} ${g.baseStatus || ''}`);
 const swissLive = (g) => /live|running|progress|period|intermission/i.test(`${g.status || ''} ${g.baseStatus || ''}`);
 export function swissRecords(games) {
   const rec = {};
@@ -110,7 +110,7 @@ export function swissEvent(g, records = {}, now = Date.now()) {
   const live = swissLive(g);
   const rec = (t) => { const r = records[t]; return r ? `${r.w}-${r.l}-${r.otl}` : null; };
   return {
-    id: `atlas_swissnl-${g.gameId}`, sport: 'hockey', league: 'National League (Switzerland)', leaguePath: 'atlas/swissnl', group: 'Europe',
+    id: `atlas_swissnl-${g.gameId}`, sport: 'hockey', league: 'Swiss hockey', leaguePath: 'atlas/swissnl', group: 'Europe',
     home, away, start, live, score: live && g.homeTeamResult != null ? `${g.homeTeamResult} – ${g.awayTeamResult}` : null, clock: live ? 'Live' : '',
     venue: null, markets: [], lineups: null, probables: [],
     stats: { homeRecord: rec(home), awayRecord: rec(away), homeForm: records[home]?.form || null, awayForm: records[away]?.form || null },

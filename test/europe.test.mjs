@@ -48,6 +48,7 @@ test('Swiss National League: records with overtime losses, upcoming games only',
   const rec = swissRecords([done]);
   assert.equal(rec['HC Davos'].otl, 1);
   assert.equal(swissEvent(done, rec, now), null);
+  assert.equal(swissEvent({ ...next, status: 'end' }, rec, now), null, '"end" means finished');
   const e = swissEvent(next, rec, now);
   assert.equal(e.leaguePath, 'atlas/swissnl');
   assert.equal(e.stats.awayRecord, '1-0-0');
