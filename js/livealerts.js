@@ -13,7 +13,7 @@ export const ALERT_KINDS = ['scores', 'cards', 'periods', 'final'];
 const KIND_PREF = { score: 'scores', card: 'cards', period: 'periods', final: 'final' };
 let stored = load(PREF_KEY, {});
 export const alertPrefs = {
-  get: () => { const { match, ...general } = stored; return { scores: true, cards: true, periods: true, final: true, ...general }; },
+  get: () => { const general = { ...stored }; delete general.match; return { scores: true, cards: true, periods: true, final: true, ...general }; },
   set(patch) { stored = { ...stored, ...patch }; save(PREF_KEY, stored); },
   // The settings in force for one match: the general ones with that match's own on top.
   forMatch: (id) => ({ ...alertPrefs.get(), ...(stored.match?.[id] || {}) }),

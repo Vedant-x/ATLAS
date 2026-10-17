@@ -47,7 +47,7 @@ public track record. Static site on GitHub Pages; free to run, no keys.
 ## Project layout
 
 ```
-index.html, css/style.css   page shell and all styles (phone rules last)
+index.html, css/*.css       page shell and styles in five parts, loaded in order (newest rules last)
 sw.js, manifest.webmanifest offline cache and installable app
 js/
   main.js                   router, live polling, slip, events

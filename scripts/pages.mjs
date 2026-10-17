@@ -985,8 +985,12 @@ await writeFile(`${out}/.nojekyll`, '');
       entryPoints: ['js/main.js'], bundle: true, splitting: true, format: 'esm', minify: true, target: 'es2020',
       outdir: `${out}/js`, entryNames: '[name]', chunkNames: 'chunks/[name]-[hash]', legalComments: 'none', metafile: true, logLevel: 'warning',
     });
-    const css = (await esbuild.transform(await readFile('css/style.css', 'utf8'), { loader: 'css', minify: true })).code;
-    const html = (await readFile(`${out}/index.html`, 'utf8')).replace('<link rel="stylesheet" href="css/style.css" />', () => `<style>${css}</style>`);
+    // The stylesheet parts in the order index.html lists them, joined into one inline <style>.
+    let html = await readFile(`${out}/index.html`, 'utf8');
+    const links = [...html.matchAll(/ *<link rel="stylesheet" href="(css\/[a-z-]+\.css)" \/>\n?/g)];
+    const css = (await esbuild.transform((await Promise.all(links.map((m) => readFile(m[1], 'utf8')))).join('\n'), { loader: 'css', minify: true })).code;
+    html = html.replace(links[0][0], () => `<style>${css}</style>\n`);
+    for (const m of links.slice(1)) html = html.replace(m[0], '');
     await writeFile(`${out}/index.html`, html);
     const sizes = Object.entries(r.metafile.outputs).map(([f, o]) => [f.replace(`${out}/`, ''), o.bytes]).sort((x, y) => y[1] - x[1]);
     log(`Bundled: main ${(sizes.find(([f]) => f === 'js/main.js')?.[1] / 1024).toFixed(0)} KB, ${sizes.length} files (largest ${sizes.slice(0, 3).map(([f, n]) => `${f} ${(n / 1024).toFixed(0)} KB`).join(', ')}); CSS inlined (${(css.length / 1024).toFixed(0)} KB)`);

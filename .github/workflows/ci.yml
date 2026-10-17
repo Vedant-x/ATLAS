@@ -18,3 +18,12 @@ jobs:
         run: node scripts/pages.mjs
       - name: Track record dry run (empty history, live results)
         run: node scripts/record.mjs /tmp/track/picks.json dist/pages/data/index.json /tmp/track/track.json
+      - name: Browser tests (fixed board, the built pages in Chromium)
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+          npm run test:ui
+      - name: Keep the browser-test screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: ui-screenshots, path: test-results/, if-no-files-found: ignore }
