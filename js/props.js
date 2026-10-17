@@ -42,6 +42,8 @@ export const propDef = (sport, type) => PROP_STATS[sport]?.[String(type || '').r
 
 const idOf = (ref) => /\/athletes\/(\d+)/.exec(ref || '')?.[1] || null;
 export const propLabel = (pr) => (pr.yes ? `${pr.player} to score${pr.label === 'touchdown' ? ' a TD' : ''}` : `${pr.player} ${pr.target}+ ${pr.label}`);
+// The same prop as most bookmakers write it: "over 24.5 points" for 25+.
+export const propOver = (pr) => (pr.yes ? '' : `over ${pr.target - 0.5} ${pr.label}`);
 export const propMarket = (pr) => `Player ${pr.label}`;
 
 // Raw propBets items → props for one match. `who(id)` gives { name, side } for an athlete id.
@@ -287,6 +289,37 @@ export function propChance(market, sport, type, target, rows, { home = null, sca
   const form = 0.5 * emp + 0.5 * dist;
   const p = (nEff * form + K * market) / (nEff + K);
   return { p: +Math.min(0.97, Math.max(0.03, p)).toFixed(4), n: vals.length, nEff: +nEff.toFixed(2), form: +form.toFixed(4) };
+}
+
+// ---------- other lines ----------
+// Bookmakers offer the same prop at different lines (DraftKings "25+ points" is "over 24.5"; another
+// book may offer over 26.5). The chance at any line, from the same model: the bookmaker's price at
+// the offered line fixes the mean it implies (with the player's own spread), that mean gives the
+// price's chance at every other line, and the player's games then move it exactly as they do at the
+// offered line (propChance). Lines are written the bookmakers' way: N+ is "over N-0.5".
+export const overLine = (target) => target - 0.5;
+export function impliedMean(market, dispersion, t) {
+  let lo = 0.01, hi = Math.max(5, t * 6);
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    if (countTail(mid, Math.max(dispersion * mid, mid * 0.5), t) < market) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+export function propLadder(market, sport, type, target, rows, { home = null, scale = 1, without = null, thresholds = null } = {}) {
+  const vals = propValues(sport, type, rows)?.slice(0, 20);
+  if (!vals?.length || !(market > 0 && market < 1)) return [];
+  const mean = vals.reduce((s, v) => s + v, 0) / vals.length;
+  const variance = vals.reduce((s, v) => s + (v - mean) ** 2, 0) / vals.length;
+  const d = mean > 0 ? Math.max(0.5, variance / mean) : 1;
+  const m = impliedMean(market, d, target);
+  const step = target >= 100 ? 10 : target >= 40 ? 5 : 1;
+  const ts = thresholds || [...new Set(Array.from({ length: 7 }, (_, i) => target + (i - 3) * step).filter((t) => t >= 1))];
+  return ts.map((t) => {
+    const prior = t === target ? market : Math.min(0.97, Math.max(0.03, countTail(m, Math.max(d * m, m * 0.5), t)));
+    const p = propChance(prior, sport, type, t, rows, { home, scale, without }).p;
+    return { t, line: overLine(t), p, fair: +(1 / p).toFixed(2), offered: t === target };
+  });
 }
 
 // ---------- teammates ----------
