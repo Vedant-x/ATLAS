@@ -885,7 +885,7 @@ async function fields() {
       const ev = sb.events?.[0];
       const st = await getJson(`https://site.api.espn.com/apis/v2/sports/racing/${series}/standings`);
       const entries = st?.children?.[0]?.standings?.entries || [];
-      if (entries[0]) log(`  ${series} standings stats: ${(entries[0].stats || []).map((x) => `${x.name || x.abbreviation}=${x.displayValue ?? x.value}`).join(' ')}`);
+      if (entries[0]) log(`  ${series} standings stats: ${(entries[0].stats || []).filter((x) => (x.name || x.abbreviation) && (x.displayValue ?? x.value) != null).map((x) => `${x.name || x.abbreviation}=${x.displayValue ?? x.value}`).join(' ')}`);
       const drivers = parseStandings(st);
       const state = ev?.competitions?.[0]?.status?.type?.state || ev?.status?.type?.state || 'pre';
       const next = ev && state !== 'post' ? { name: ev.name, start: Date.parse(ev.date), state } : null;
@@ -1247,8 +1247,14 @@ try {
   const nhl = events.filter((e) => e.leaguePath === 'hockey/nhl' && e.start > Date.now() - 36e5 && e.start < Date.now() + 36 * 36e5).length;
   if (nhl) {
     try {
-      const data = nextData(await get(DF_GOALIES));
-      const games = goalieGames(data);
+      // The page lists one US (Eastern) day; each day with NHL games here is fetched by its date.
+      const etDay = (t) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(t));
+      const dates = [...new Set(events.filter((e) => e.leaguePath === 'hockey/nhl' && e.start > Date.now() - 36e5 && e.start < Date.now() + 36 * 36e5).map((e) => etDay(e.start)))].sort().slice(0, 3);
+      let data = null; const games = [];
+      for (const d of dates) {
+        try { const x = nextData(await get(`${DF_GOALIES}/${d}`)); data ||= x; games.push(...goalieGames(x)); } catch (err) { log(`Daily Faceoff ${d}: ${err.message}`); }
+      }
+      if (!games.length) { data = nextData(await get(DF_GOALIES)); games.push(...goalieGames(data)); }
       const n = applyGoalies(events, games);
       log(`Daily Faceoff goalies: ${data ? 'page data read' : 'NO page data'}; ${games.length} games listed; ${n}/${nhl} NHL matches${games[0] ? ` (e.g. ${games[0].away} @ ${games[0].home}: ${games[0].awayGoalie} / ${games[0].homeGoalie}, ${games[0].homeStatus}, ${games[0].date})` : ''}`);
       if (games.length && n < nhl) log(`  NHL matches here: ${events.filter((e) => e.leaguePath === 'hockey/nhl' && e.start > Date.now() - 36e5 && e.start < Date.now() + 36 * 36e5).map((e) => `${e.away} @ ${e.home}`).join(' · ')} | listed: ${games.slice(0, 16).map((g) => `${g.away} @ ${g.home}`).join(' · ')}`);
