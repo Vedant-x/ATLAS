@@ -7,7 +7,7 @@ import { loadDetail, detailFor } from '../detail.js';
 import { CATALOG, ALL_LEAGUES, sportById } from '../catalog.js';
 import { prefs, prefEvents } from '../prefs.js';
 import { liveWin } from '../live.js';
-import { calibrated, shownProp, rankedBankers, bestBets, MAX_ODDS } from '../track.js';
+import { calibrated, shownProp, rankedBankers, bestBets, MAX_ODDS, recommendationFor } from '../track.js';
 import { bankers } from '../intel.js';
 import { trackCalibration } from '../trackview.js';
 import { researchRow, caseFor, researchPrefs } from '../research.js';
@@ -137,7 +137,7 @@ export function createKnowledge(S) {
     const ranked = mode === 'value' ? rankedBankers(list, { cal, minOdds: lo, limit: 2000, mix: false, mode: 'value' })
       : mode === 'safe' ? rankedBankers(list, { cal, min: 0.6, minOdds: lo, maxOdds: maxOdds ?? (lo > MAX_ODDS ? 50 : MAX_ODDS), limit: 2000, mix: false })
         : bestBets(list, { cal, limit: 2000 });
-    let c = ranked.map((b) => ({ e: b.event, market: b.market, pick: b.pick, odds: b.odds, p: b.p, fair: b.fair, ev: b.p * b.odds - 1, priced: true, book: b.book || null,
+    let c = ranked.map((b) => ({ e: b.event, market: b.market, pick: b.pick, odds: b.odds, p: b.p, fair: b.fair, ev: b.p * b.odds - 1, priced: true, book: b.book || null, recommendationId: recommendationFor(b, cal).recommendationId,
       ...(b.prop ? { prop: { ...b.prop, id: String(b.prop.id), league: b.event.leaguePath?.split('/')[1] } } : {}) }));
     if (!prefs.get().pricedOnly && mode !== 'value') c = [...c, ...candidates(list).filter((x) => !x.priced && x.p >= (mode === 'safe' ? 0.6 : 0.55)).sort((a, b) => b.p - a.p)];
     if (minOdds) c = c.filter((x) => x.odds >= minOdds);

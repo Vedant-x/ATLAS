@@ -21,7 +21,7 @@ export function createBrain(K) {
     const w = Object.keys(NUM).find((k) => new RegExp(`\\b${k}\\b`).test(q));
     return w ? NUM[w] : d;
   };
-  const pickCard = (x) => ({ type: 'pick', e: x.e, market: x.market, pick: x.pick, odds: x.odds, p: x.p, ev: x.ev, priced: x.priced, ...(x.prop ? { prop: x.prop } : {}), at: Date.now() });
+  const pickCard = (x) => ({ type: 'pick', e: x.e, market: x.market, pick: x.pick, odds: x.odds, p: x.p, ev: x.ev, priced: x.priced, ...(x.prop ? { prop: x.prop } : {}), ...(x.recommendationId ? { recommendationId: x.recommendationId } : {}), at: Date.now() });
   // Structured memory of this conversation.
   const mem = { list: [], focus: null, constraints: null, event: null };
   const remember = (list, c) => { mem.list = list; mem.constraints = c; mem.focus = list[0] || null; mem.event = list[0]?.e || mem.event; };

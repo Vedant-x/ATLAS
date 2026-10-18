@@ -7,6 +7,7 @@ import { boxStats, gradeProp } from './props.js';
 import { bankerSlips, legPool } from './picks.js';
 import { localDay } from './engine.js';
 import { selectionId, dueForRead, FINAL } from './settle.js';
+import { recommendation } from './recommendation.js';
 
 export const MIN_ODDS = 1.3;
 // The shortlist's price range: short-priced favourites only. The record, the shortlist and the
@@ -239,6 +240,15 @@ export const calibrated = (p, market, cal, sport, odds) => {
 // market: the prop's market name (props.js propMarket).
 export const shownProp = (x, market, cal, sport) => ({ ...x, pRaw: x.pRaw ?? x.p, p: calibrated(x.pRaw ?? x.p, market, cal, sport, x.odds) });
 
+// The calibration's version: how many settled forecasts it was fitted on (one per family key).
+export const calVersionOf = (cal) => `cal-${Object.entries(cal || {}).filter(([k]) => !k.includes(':')).reduce((a, [, r]) => a + (r.n || 0), 0)}`;
+// How many settled forecasts of this kind the shown chance rests on (the sport's own record once it
+// is used, else the all-sports one).
+export const calSize = (cal, sport, market) => { const own = sport ? cal?.[`${sport}:${familyOf(market)}`] : null; return (own?.n >= 30 ? own : cal?.[familyOf(market)])?.n ?? 0; };
+// The recommendation object (recommendation.js) for a ranked pick, with this model's version and the
+// calibration it was shown with: the same pick at the same quote gets the same id on every surface.
+export const recommendationFor = (b, cal, extra = {}) => recommendation(b, { modelVersion: MODEL_VERSION, calibrationVersion: calVersionOf(cal), calN: calSize(cal, (b.event || b.e)?.sport, b.market), ...extra });
+
 // One probability per selection, everywhere: the model estimate after the track-record check
 // (calibrated). Cards, slips, the assistant and the official record all use these two functions, so a
 // pick shows the same chance wherever it appears. Each row keeps the market's margin-free chance
@@ -289,9 +299,10 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
   const soon = applyModel(events.filter((e) => !e.live && e.compId && e.start > now && e.start < now + hours * 36e5));
   const cal = calibration(history);
   // The calibration a forecast was shown with: the number of settled forecasts it was fitted on.
-  const calVersion = `cal-${observations(history).list.filter((o) => o.status !== 'pending').length}`;
+  const calVersion = calVersionOf(cal);
   const quote = (e) => ({ book: e.bookmaker || null, oddsSource: e.oddsSource || null, quoteType: e.quoteType || (e.markets?.length ? 'bookmaker' : null), priceAt: e.priceAt ?? null });
   const row = (type) => (b) => ({ sel: selectionId({ eventId: b.event.id, market: b.market, pick: b.pick, prop: b.prop }), ...quote(b.event), calVersion,
+    ...(() => { const r = recommendationFor(b, cal, { now, mode: type }); return { recommendationId: r.recommendationId, uncertaintyRange: r.uncertaintyRange }; })(),
     // The surest list keeps its own record, so its key differs from the same pick on the shortlist.
     key: `${type === 'safe' ? 'safe|' : type === 'best' ? 'best|' : ''}${b.event.id}|${b.market}|${b.pick}`, type, eventId: b.event.id, leaguePath: b.event.leaguePath, compId: b.event.compId,
     sport: b.event.sport, league: b.event.league, home: b.event.home, away: b.event.away, start: b.event.start,

@@ -233,6 +233,10 @@ test('assistant and dashboard agree: the same picks at the same chance', async (
   await page.press('.ai-input', 'Enter');
   await page.waitForSelector('.ai-msg.bot .ai-card.pick');
   const said = await page.$$eval('.ai-msg.bot:last-child .ai-card.pick', (cards) => cards.map((c) => c.querySelector('b').textContent.trim()));
+  // The same recommendation (same id: selection, quote, model and calibration) on both surfaces.
+  const recs = await page.$$eval('.ai-msg.bot:last-child .ai-card.pick[data-rec]', (cards) => cards.map((c) => c.dataset.rec));
+  const boardRecs = await page.$$eval('.dash-short .mini[data-rec]', (rows) => rows.map((r) => r.dataset.rec));
+  assert.ok(recs.length > 0 && recs.every((r) => boardRecs.includes(r)), JSON.stringify({ recs, boardRecs }));
   assert.ok(said.length > 0);
   // Every pick the assistant gives is on the dashboard's Best bets list.
   const names = board.map(([n]) => n);
