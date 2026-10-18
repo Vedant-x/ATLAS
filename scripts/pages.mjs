@@ -593,8 +593,10 @@ async function playerProps(events) {
       if (!items.length) continue;
       const [h, a] = await Promise.all([roster(e.leaguePath, e.teamIds.home), roster(e.leaguePath, e.teamIds.away)]);
       const extra = new Map();
-      const refs = [...new Set(items.map((x) => x.athlete?.$ref).filter((r) => r && !h.has(/athletes\/(\d+)/.exec(r)?.[1]) && !a.has(/athletes\/(\d+)/.exec(r)?.[1])))].slice(0, 25);
-      for (const r of refs) { const x = await athlete(r); if (x?.name) extra.set(/athletes\/(\d+)/.exec(r)[1], { name: x.name, side: x.team === String(e.teamIds.home) ? 'home' : x.team === String(e.teamIds.away) ? 'away' : null }); }
+      // Only player references (a team or other ref has no athlete id, and used to stop the whole step).
+      const idOf = (r) => /athletes\/(\d+)/.exec(r || '')?.[1];
+      const refs = [...new Set(items.map((x) => x.athlete?.$ref).filter((r) => idOf(r) && !h.has(idOf(r)) && !a.has(idOf(r))))].slice(0, 25);
+      for (const r of refs) { const x = await athlete(r); if (x?.name) extra.set(idOf(r), { name: x.name, side: x.team === String(e.teamIds.home) ? 'home' : x.team === String(e.teamIds.away) ? 'away' : null }); }
       const who = (id) => (h.has(id) ? { name: h.get(id), side: 'home' } : a.has(id) ? { name: a.get(id), side: 'away' } : extra.get(id) || null);
       e.props = parseProps(items, sport, who);
       if (e.props.length) { matched++; lines += e.props.length; }
@@ -1169,13 +1171,19 @@ try {
 
 // Tennis Elo (Tennis Abstract): overall and per-surface ratings for singles matches with no price.
 try {
-  const [atpHtml, wtaHtml] = await Promise.all([get(TA_ELO.atp).catch((e) => { log(`Tennis Abstract ATP: ${e.message}`); return ''; }), get(TA_ELO.wta).catch((e) => { log(`Tennis Abstract WTA: ${e.message}`); return ''; })]);
+  // The browser headers first, then a plain request (the site has refused the first from CI).
+  const page = async (u, tour) => {
+    try { return await get(u); } catch (e) { log(`Tennis Abstract ${tour}: ${e.message}; trying a plain request`); }
+    try { const r = await fetch(u, { signal: AbortSignal.timeout(20000) }); if (r.ok) return r.text(); log(`Tennis Abstract ${tour} plain request: HTTP ${r.status}`); } catch (e) { log(`Tennis Abstract ${tour} plain request: ${e.message}`); }
+    return '';
+  };
+  const [atpHtml, wtaHtml] = await Promise.all([page(TA_ELO.atp, 'ATP'), page(TA_ELO.wta, 'WTA')]);
   const atp = tennisEloIndex(parseEloPage(atpHtml)), wta = tennisEloIndex(parseEloPage(wtaHtml));
   const singles = events.filter((e) => e.sport === 'tennis' && e.tennis?.draw === 'Singles' && !e.markets?.length);
   const r = applyTennisElo(events, { atp, wta });
   log(`Tennis Abstract Elo: ${atp.size} ATP and ${wta.size} WTA players; ${r.rated}/${singles.length} unpriced singles matches rated`);
   if (r.unmatched.length) log(`  Tennis Elo unmatched (first 30): ${r.unmatched.slice(0, 30).join(' · ')}`);
-  noteSource('Tennis Abstract', 'tennisabstract.com', 'Tennis Elo (overall and by surface) for the model', atp.size + wta.size > 0, r.rated, atp.size + wta.size ? `${r.rated} of ${singles.length} unpriced singles matches rated` : 'pages read but no ratings found');
+  noteSource('Tennis Abstract', 'tennisabstract.com', 'Tennis Elo (overall and by surface) for the model', atp.size + wta.size > 0, r.rated, atp.size + wta.size ? `${r.rated} of ${singles.length} unpriced singles matches rated` : atpHtml || wtaHtml ? 'pages read but no ratings found' : 'the site refused the request: rankings used instead');
 } catch (err) { log('Tennis Abstract failed', err.message); noteSource('Tennis Abstract', 'tennisabstract.com', 'Tennis Elo (overall and by surface) for the model', false, null, err.message); }
 
 // NFL injury report (Sleeper): the injured players only, kept in data/nfl-injuries.json and refreshed

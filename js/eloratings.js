@@ -57,7 +57,8 @@ export function eloratingsIndex(worldTsv, teamsTsv) {
 }
 
 // The leagues whose matches are between national teams.
-export const isInternational = (leaguePath) => /^soccer\/(fifa\.(world|worldq|friendly)|uefa\.(nations|euro)|conmebol\.america|concacaf\.(gold|nations)|caf\.nations|afc\.asian)/.test(leaguePath || '');
+// Whole league ids only: "uefa.euro" must not catch the club Europa League ("uefa.europa").
+export const isInternational = (leaguePath) => /^soccer\/(fifa\.(world|worldq\.[a-z]+|friendly)|uefa\.(nations|euro|euroq)|conmebol\.america|concacaf\.(gold|nations)|caf\.nations|afc\.asian\.cup)$/.test(leaguePath || '');
 
 // Ratings onto international matches with no rating yet. Returns { rated, unmatched: [names] }.
 export function applyEloratings(events, index) {

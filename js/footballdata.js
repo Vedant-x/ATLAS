@@ -91,10 +91,12 @@ export function applyFixtures(events, fixtures, { now = Date.now(), fileAt = nul
   if (fileAt != null && now - fileAt > maxAge) return out;
   const idx = fixtureIndex(fixtures);
   const leagues = new Set(Object.values(FD_LEAGUES));
+  // The file covers a few days; a match outside them is not a name that failed to match.
+  const from = Math.min(...fixtures.map((f) => f.start)) - 864e5, to = Math.max(...fixtures.map((f) => f.start)) + 864e5;
   for (const e of events) {
     if (!leagues.has(e.leaguePath) || e.live || !(e.start > now) || e.markets?.length || !countryOf(e.leaguePath)) continue;
     const f = idx.find(e);
-    if (!f) { out.unmatched.push(`${e.home} v ${e.away} [${e.leaguePath.split('/')[1]}]`); continue; }
+    if (!f) { if (e.start >= from && e.start <= to) out.unmatched.push(`${e.home} v ${e.away} [${e.leaguePath.split('/')[1]}]`); continue; }
     e.markets = [{ name: 'Match Result', outcomes: [{ name: e.home, odds: f.res[0] }, { name: 'Draw', odds: f.res[1] }, { name: e.away, odds: f.res[2] }] }];
     if (f.ou) e.markets.push({ name: 'Total 2.5', outcomes: [{ name: 'Over 2.5', odds: f.ou[0] }, { name: 'Under 2.5', odds: f.ou[1] }] });
     e.bookmaker = `${f.book} via football-data.co.uk`;

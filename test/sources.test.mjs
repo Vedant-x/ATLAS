@@ -66,7 +66,9 @@ test('World Football Elo: ratings by code, names by alias; senior men only', () 
   const w = winProbs(e);
   assert.equal(w.confidence, 'medium');
   assert.ok(w.home > 0.7, `Spain strong favourites (${w.home})`);
-  assert.ok(isInternational('soccer/uefa.nations') && !isInternational('soccer/fifa.wwc'));
+  assert.ok(isInternational('soccer/uefa.nations') && isInternational('soccer/fifa.worldq.uefa') && !isInternational('soccer/fifa.wwc'));
+  // The live build's first run rated club matches as internationals: "uefa.euro" caught "uefa.europa".
+  assert.ok(!isInternational('soccer/uefa.europa') && !isInternational('soccer/uefa.europa.conf') && !isInternational('soccer/uefa.champions'));
   assert.equal(eloratingsIndex('garbage', 'garbage').size, 0, 'an unreadable file gives no ratings');
 });
 
