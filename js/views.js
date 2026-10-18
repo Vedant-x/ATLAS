@@ -301,7 +301,7 @@ export const views = {
       html: `<section class="hero small"><p class="kicker reveal"><a href="#/sports">ALL SPORTS</a> / <a href="#/sport/${sp.id}">${esc(sp.name)}</a> / ${esc(l.group)}</p><h1>${split(l.name.toUpperCase())}</h1></section>
         ${notice()}
         ${(l.sport === 'tennis' && tennisBoard(list)) || [...days.entries()].map(([d, evs]) => `<h2 class="sec reveal"><span>${evs.length}</span>${esc(d)}</h2><section class="list">${evs.map(eventRow).join('')}</section>`).join('') || `<p class="muted reveal">${emptyText([l.path])}.</p>`}
-        <section class="sec-block" id="league-standings"></section>`,
+        <section class="sec-block" id="league-standings">${standingsHtml(l)}</section>`,
     };
   },
 
@@ -608,18 +608,32 @@ function countBy() {
   return out;
 }
 
-// League table (ESPN standings endpoint); NPB/KBO have none in the feed.
+// League table (ESPN standings endpoint); NPB/KBO have none in the feed. Kept per league for 10
+// minutes and drawn straight into the page, so a redraw (new fixtures, a live score) shows the same
+// table at once instead of blanking it and asking ESPN again.
+const standingsCache = new Map(); // path -> { at, html, pending }
+const standingsHtml = (l) => standingsCache.get(l.path)?.html || '';
 async function loadStandings(l) {
-  const box = document.getElementById('league-standings');
-  if (!box || l.path.startsWith('atlas/')) return;
-  try {
-    const r = await fetch(`https://site.api.espn.com/apis/v2/sports/${l.path}/standings`);
-    const j = await r.json();
-    const groups = (j.children?.length ? j.children : [j]).map((c) => ({ name: c.name || c.abbreviation || l.name, entries: c.standings?.entries || [] })).filter((g) => g.entries.length);
-    if (!groups.length) return;
-    const goals = /^(soccer|hockey)\//.test(l.path);
-    box.innerHTML = `<h2 class="sec">Standings</h2>${groups.map((g) => `<div class="panel"><h3 class="ph">${esc(g.name)}</h3>${standingsTable(g.entries.map((en) => ({ team: en.team?.displayName || en.team?.name || '', stats: canonStats(en.stats || []) })), { goals })}</div>`).join('')}`;
-  } catch { /* standings optional */ }
+  if (l.path.startsWith('atlas/')) return;
+  const paint = (html) => { const box = document.getElementById('league-standings'); if (box && html && box.innerHTML !== html) box.innerHTML = html; };
+  const c = standingsCache.get(l.path);
+  if (c?.pending) return c.pending.then(paint);
+  if (c && Date.now() - c.at < 10 * 6e4) return paint(c.html);
+  const pending = (async () => {
+    try {
+      const r = await fetch(`https://site.api.espn.com/apis/v2/sports/${l.path}/standings`);
+      const j = await r.json();
+      const groups = (j.children?.length ? j.children : [j]).map((g) => ({ name: g.name || g.abbreviation || l.name, entries: g.standings?.entries || [] })).filter((g) => g.entries.length);
+      if (!groups.length) return '';
+      const goals = /^(soccer|hockey)\//.test(l.path);
+      return `<h2 class="sec">Standings</h2>${groups.map((g) => `<div class="panel"><h3 class="ph">${esc(g.name)}</h3>${standingsTable(g.entries.map((en) => ({ team: en.team?.displayName || en.team?.name || '', stats: canonStats(en.stats || []) })), { goals })}</div>`).join('')}`;
+    } catch { return ''; } // standings optional
+  })();
+  standingsCache.set(l.path, { ...c, pending });
+  const html = await pending;
+  // A failed fetch keeps any older table and is tried again on the next visit.
+  standingsCache.set(l.path, html ? { at: Date.now(), html } : { at: 0, html: c?.html || '' });
+  paint(html || c?.html);
 }
 
 export { buildSlips };

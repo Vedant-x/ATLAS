@@ -152,6 +152,7 @@ test('league table: GP, W, D, L, GD, Pts in rank order, whatever order the feed 
   const feed = { children: [{ name: "Women's Super League", standings: { entries: [row('Chelsea', [5, 0, '+11', 13, 1, 4, 2]), row('Manchester City', [5, 0, '+10', 15, 0, 5, 1]), row('Arsenal', [6, 2, '-2', 6, 3, 1, 3])] } }] };
   const { page, ctx, errors } = await open('#/league/soccer~eng.w.1', { feeds: [['**/apis/v2/sports/soccer/eng.w.1/standings*', feed]], viewport: PHONE });
   await page.waitForSelector('.tbl.standings');
+  await page.waitForTimeout(1000); // past the redraw once the league's fixtures load: the table must stay
   assert.deepEqual(await page.$$eval('.tbl.standings th', (ths) => ths.map((t) => t.textContent.trim())), ['#', 'Team', 'GP', 'W', 'D', 'L', 'GD', 'Pts']);
   assert.deepEqual(await page.$$eval('.tbl.standings tbody tr', (trs) => trs.map((t) => [...t.cells].map((c) => c.textContent.trim()).join(' '))),
     ['1 Manchester City 5 5 0 0 +10 15', '2 Chelsea 5 4 1 0 +11 13', '3 Arsenal 6 1 3 2 -2 6']);
