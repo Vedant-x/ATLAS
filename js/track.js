@@ -290,7 +290,7 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
   const cal = calibration(history);
   // The calibration a forecast was shown with: the number of settled forecasts it was fitted on.
   const calVersion = `cal-${observations(history).list.filter((o) => o.status !== 'pending').length}`;
-  const quote = (e) => ({ book: e.bookmaker || null, oddsSource: e.oddsSource || null, priceAt: e.priceAt ?? null });
+  const quote = (e) => ({ book: e.bookmaker || null, oddsSource: e.oddsSource || null, quoteType: e.quoteType || (e.markets?.length ? 'bookmaker' : null), priceAt: e.priceAt ?? null });
   const row = (type) => (b) => ({ sel: selectionId({ eventId: b.event.id, market: b.market, pick: b.pick, prop: b.prop }), ...quote(b.event), calVersion,
     // The surest list keeps its own record, so its key differs from the same pick on the shortlist.
     key: `${type === 'safe' ? 'safe|' : type === 'best' ? 'best|' : ''}${b.event.id}|${b.market}|${b.pick}`, type, eventId: b.event.id, leaguePath: b.event.leaguePath, compId: b.event.compId,

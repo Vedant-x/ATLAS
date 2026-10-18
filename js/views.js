@@ -165,7 +165,7 @@ function eventRow(e, compact = false) {
     <div class="teams"><b>${esc(e.home)}${seedTag(e.tennis?.home)}</b><b>${esc(e.away)}${seedTag(e.tennis?.away)}</b><small>${e.tennis ? esc(compact === true ? e.tennis.court || e.tennis.round : tennisLine(e.tennis)) : esc(e.league)} · ${when(e)}</small>${starterLine(e)}</div>
     <div class="row-prob">${probBar([{ label: e.home, p: w.home, color: hc }, ...(w.draw ? [{ label: 'Draw', p: w.draw, color: DRAW_COLOR }] : []), { label: e.away, p: w.away, color: ac }])}
       <small><span>${pc(w.home, 0)}</span>${w.draw ? `<span>${pc(w.draw, 0)}</span>` : ''}<span>${pc(w.away, 0)}</span></small></div>
-    <div class="odds">${main ? main.outcomes.map((o, i) => legButton(bookLeg(e, main, o, o.model ?? d.outcomes[i].fair), `<small>${esc(o.name === 'Draw' ? 'X' : o.name.split(' ').pop().slice(0, 4))}</small>${odd(o.odds)}`)).join('') : `<span class="nobook">model line</span>`}${main && e.bookmaker ? `<small class="odds-src">odds via ${esc(e.bookmaker.replace(/^Bookmaker price via /, '').split(' (')[0])}</small>` : ''}</div>
+    <div class="odds">${main ? main.outcomes.map((o, i) => legButton(bookLeg(e, main, o, o.model ?? d.outcomes[i].fair), `<small>${esc(o.name === 'Draw' ? 'X' : o.name.split(' ').pop().slice(0, 4))}</small>${odd(o.odds)}`)).join('') : `<span class="nobook">model line</span>`}${main && e.bookmaker ? `<small class="odds-src">${e.quoteType === 'reference' ? 'reference average, not a price on offer' : `odds via ${esc(e.bookmaker.replace(/^Bookmaker price via /, '').split(' (')[0])}`}</small>` : ''}</div>
     ${confBadge(w.confidence)}
   </article>`;
 }
@@ -564,7 +564,7 @@ function bookPanel(e) {
     <div class="table-wrap"><table class="tbl"><thead><tr><th>Market</th><th>Pick</th><th>Odds</th><th>Implied</th><th>Fair</th><th>Model</th><th>Value</th><th>Edge</th><th>Kelly ¼</th><th></th></tr></thead><tbody>
     ${e.markets.map((m) => { const d = devig(m); return m.outcomes.map((o, i) => {
       const fair = d.outcomes[i].fair, p = o.model ?? fair, ev = p * o.odds - 1;
-      return `<tr><td>${i ? '' : `${esc(m.name)}<small> margin ${(d.margin * 100).toFixed(1)}%</small>`}</td><td>${esc(o.name)}</td><td class="num">${odd(o.odds)}</td><td class="num">${pc(1 / o.odds)}</td><td class="num">${pc(fair)}</td><td class="num">${o.model != null ? pc(o.model) : '—'}</td>
+      return `<tr><td>${i ? '' : `${esc(m.name)}<small> margin ${(d.margin * 100).toFixed(1)}%${m.consensusFrom ? ` · fair from ${esc(m.consensusFrom)}` : ''}</small>`}</td><td>${esc(o.name)}</td><td class="num">${odd(o.odds)}${o.book ? `<small>${esc(o.book)}</small>` : ''}</td><td class="num">${pc(1 / o.odds)}</td><td class="num">${pc(fair)}</td><td class="num">${o.model != null ? pc(o.model) : '—'}</td>
         <td>${valueTrack(fair, o.model, o.odds)}</td><td class="num ${ev >= 0 ? 'pos' : 'neg'}">${(ev * 100).toFixed(1)}%</td><td class="num">${ev > 0 ? pc(kelly(p, o.odds) / 4) : '—'}</td><td>${legButton(bookLeg(e, m, o, p), '+')}</td></tr>`;
     }).join(''); }).join('')}</tbody></table></div>`;
 }

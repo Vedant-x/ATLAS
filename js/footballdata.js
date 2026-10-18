@@ -101,7 +101,9 @@ export function applyFixtures(events, fixtures, { now = Date.now(), fileAt = nul
     if (!f) { if (e.start >= from && e.start <= to) out.unmatched.push(`${e.home} v ${e.away} [${e.leaguePath.split('/')[1]}]`); continue; }
     e.markets = [{ name: 'Match Result', outcomes: [{ name: e.home, odds: f.res[0] }, { name: 'Draw', odds: f.res[1] }, { name: e.away, odds: f.res[2] }] }];
     if (f.ou) e.markets.push({ name: 'Total 2.5', outcomes: [{ name: 'Over 2.5', odds: f.ou[0] }, { name: 'Under 2.5', odds: f.ou[1] }] });
-    e.bookmaker = `${f.book} via football-data.co.uk`;
+    // An average across books is a reference, not a price any one bookmaker offers: labelled so.
+    e.bookmaker = f.book === 'bookmaker average' ? 'Average of several bookmakers via football-data.co.uk (reference, not a price on offer)' : `${f.book} via football-data.co.uk`;
+    e.quoteType = f.book === 'bookmaker average' ? 'reference' : 'bookmaker';
     e.oddsSource = 'football-data';
     e.priceAt = fileAt ?? null; // the file's own date; unknown if the server gives none
     out.priced++;

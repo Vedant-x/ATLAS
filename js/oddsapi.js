@@ -148,7 +148,7 @@ export function matchOdds(events, oddsEvents, { now = Date.now(), window = 6 * 3
       // The feed's winner market may be named either way: the shopped one replaces it.
       const same = (m) => names.has(m.name) || (['Winner', 'Match Result', 'Moneyline'].includes(m.name) && markets.some((x) => ['Winner', 'Match Result'].includes(x.name)));
       e.markets = [...markets, ...(e.markets || []).filter((m) => !same(m))];
-      e.bookmaker = `best of ${books} bookmaker${books === 1 ? '' : 's'}; fair chance from ${markets[0].consensusFrom}`; e.oddsSource = 'the-odds-api';
+      e.bookmaker = `best of ${books} bookmaker${books === 1 ? '' : 's'}; fair chance from ${markets[0].consensusFrom}`; e.oddsSource = 'the-odds-api'; e.quoteType = 'best-available';
       e.priceAt = at; // when the quotes were taken, kept through to readiness and the sources line
       priced++;
     }
