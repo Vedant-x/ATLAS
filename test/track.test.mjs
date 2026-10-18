@@ -66,3 +66,30 @@ test('official picks: shortlist bankers (1.30 to 1.80) and the surest list (1.20
   assert.ok(picks.every((p) => (p.type === 'banker' && p.odds >= 1.3 && p.odds <= 1.8) || (p.type === 'safe' && p.odds >= 1.2 && p.odds <= 1.4)), JSON.stringify(picks.map((p) => [p.type, p.odds])));
   assert.equal(new Set(picks.map((p) => p.key)).size, picks.length, 'a pick on both lists keeps two records');
 });
+
+test('settlement: legs of a slip that already lost keep being graded', async () => {
+  const { duePicks } = await import('../js/track.js');
+  const now = Date.parse('2026-10-18T00:00:00Z'), old = now - 2 * 864e5;
+  const leg = (id, status) => ({ eventId: id, market: 'Winner', pick: id, status, start: old, leaguePath: 'soccer/eng.1', compId: id });
+  const history = [
+    { type: 'multi', status: 'lost', start: old, legs: [leg('a', 'lost'), leg('b', 'pending'), leg('c', 'won')] },
+    { type: 'multi', status: 'pending', start: old, legs: [leg('d', 'pending')] },
+    { type: 'banker', status: 'pending', start: old, eventId: 'e', market: 'Winner', pick: 'e' },
+    { type: 'banker', status: 'pending', start: now, eventId: 'f', market: 'Winner', pick: 'f' }, // not over yet
+  ];
+  assert.deepEqual(duePicks(history, now).map((x) => x.eventId).sort(), ['b', 'd', 'e']);
+});
+
+test('calibration: a settled copy of a pick counts even when an earlier copy is still pending', async () => {
+  const { calibration, observations } = await import('../js/track.js');
+  const single = (status, p = 0.7) => ({ type: 'banker', eventId: 'x1', market: 'Winner', pick: 'Arsenal', sport: 'football', odds: 1.5, p, status });
+  // The reviewer's case: first copy pending, later copy won. Before, neither counted.
+  const cal = calibration([single('pending', 0.7), { type: 'multi', status: 'lost', legs: [{ ...single('won', 0.75) }] }]);
+  assert.equal(cal.winner?.n, 1);
+  assert.equal(cal.winner.won, 1);
+  assert.equal(cal.winner.exp, 0.7, 'the forecast is the first record\'s');
+  // Copies that disagree are left out and reported.
+  const o = observations([single('won'), single('lost')]);
+  assert.equal(o.list.length, 0);
+  assert.deepEqual(o.conflicts, ['x1|Winner|Arsenal']);
+});

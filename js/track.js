@@ -98,6 +98,45 @@ function fitBlend(obs) {
   };
 }
 
+// One observation per forecast: the same pick recorded as a single and again as a slip leg (or in
+// several slips) is one prediction with one result. Its forecast is the first record's, always the
+// model's own (uncalibrated) estimate so the correction never feeds on itself; its result comes from
+// whichever copy has been settled, so a copy still pending (a leg the grader had not reached) never
+// hides a settled one. Copies that disagree (one won, one lost) are left out and listed in
+// `conflicts` for a look.
+export function observations(history = []) {
+  const by = new Map(), list = [], conflicts = [];
+  const take = (r, p) => {
+    const k = r.eventId ? `${r.eventId}|${r.market}|${r.pick}` : null;
+    const o = k && by.get(k);
+    if (!o) { const n = { key: k, market: r.market, p, sport: r.sport, odds: r.odds, results: new Set() }; if (k) by.set(k, n); list.push(n); }
+    const t = o || list[list.length - 1];
+    if (r.status === 'won' || r.status === 'lost') t.results.add(r.status);
+  };
+  for (const h of history) {
+    if (h.type === 'multi') for (const l of h.legs || []) take(l, l.pRaw ?? l.p);
+    else take(h, h.p);
+  }
+  const out = [];
+  for (const o of list) {
+    if (o.results.size > 1) { conflicts.push(o.key); continue; }
+    out.push({ ...o, status: [...o.results][0] || 'pending' });
+  }
+  return { list: out, conflicts };
+}
+
+// Everything waiting on a result whose match should be over (2h+ after its start): singles, and every
+// pending leg of every multiplier slip, whatever the slip's own status. A slip is lost as soon as one
+// leg loses, but its other legs are still forecasts with results of their own (the calibration and
+// the per-market record learn from them), so they keep being graded.
+export function duePicks(history, now = Date.now()) {
+  const ended = (x) => x.status === 'pending' && x.start < now - 2 * 36e5;
+  return [
+    ...history.filter((h) => h.type !== 'multi' && ended(h)),
+    ...history.filter((h) => h.type === 'multi').flatMap((m) => (m.legs || []).filter(ended)),
+  ];
+}
+
 export function calibration(history = []) {
   const out = {}, obs = {};
   const add = (market, p, status, sport, odds) => {
@@ -108,15 +147,7 @@ export function calibration(history = []) {
       (obs[key] ||= []).push({ p, odds, y: status === 'won' ? 1 : 0 });
     }
   };
-  // One observation per forecast: the same pick recorded as a single and again as a slip leg (or in
-  // several slips) is one prediction with one result, so it counts once (its first record).
-  const seen = new Set();
-  const once = (r) => { const k = `${r.eventId}|${r.market}|${r.pick}`; if (!r.eventId || !seen.has(k)) { seen.add(k); return true; } return false; };
-  for (const h of history) {
-    // Always the model's own (uncalibrated) estimate, so the correction never feeds on itself.
-    if (h.type === 'multi') { for (const l of h.legs || []) if (once(l)) add(l.market, l.pRaw ?? l.p, l.status, l.sport, l.odds); }
-    else if (once(h)) add(h.market, h.p, h.status, h.sport, h.odds);
-  }
+  for (const o of observations(history).list) add(o.market, o.p, o.status, o.sport, o.odds);
   for (const [key, r] of Object.entries(out)) {
     r.hit = r.won / r.n; r.expected = r.exp / r.n;
     r.factor = factorOf(r.n, r.won, r.exp);

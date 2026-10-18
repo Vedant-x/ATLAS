@@ -4,7 +4,7 @@
 // scores, saves the history file (kept on the track-record branch) and writes the public copy.
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { selectPicks, addPicks, updateClosing, gradePick, resultFromSummary, resultFromBo3, settleMulti } from '../js/track.js';
+import { selectPicks, addPicks, updateClosing, gradePick, resultFromSummary, resultFromBo3, settleMulti, duePicks } from '../js/track.js';
 import { BO3 } from '../js/esports.js';
 
 const [historyPath = 'track/picks.json', eventsPath = 'dist/pages/data/index.json', outPath = 'dist/pages/data/track.json'] = process.argv.slice(2);
@@ -31,12 +31,13 @@ log(`Track record: ${history.length - before} new pick(s), ${history.length} tot
 log(`Track record: closing prices updated for ${updateClosing(history, events, now)} pending pick(s)/leg(s)`);
 
 // Grade picks whose match should be over (2h+ after start). One summary request per match.
-// Singles plus the legs of pending multiplier slips are graded the same way.
-const due = [
-  ...history.filter((h) => h.status === 'pending' && h.type !== 'multi' && h.start < now - 2 * 36e5),
-  ...history.filter((h) => h.status === 'pending' && h.type === 'multi').flatMap((m) => m.legs.filter((l) => l.status === 'pending' && l.start < now - 2 * 36e5)),
-];
-const byMatch = Object.groupBy ? Object.groupBy(due, (h) => `${h.leaguePath}|${h.compId}`) : due.reduce((m, h) => ((m[`${h.leaguePath}|${h.compId}`] ||= []).push(h), m), {});
+const due = duePicks(history, now);
+// At most MAX_LOOKUPS matches per run, the oldest first: a backlog (legs of slips that had already
+// lost, which were once left ungraded) clears over a few runs instead of flooding ESPN at once.
+const MAX_LOOKUPS = 150;
+const grouped = Object.groupBy ? Object.groupBy(due, (h) => `${h.leaguePath}|${h.compId}`) : due.reduce((m, h) => ((m[`${h.leaguePath}|${h.compId}`] ||= []).push(h), m), {});
+const byMatch = Object.fromEntries(Object.entries(grouped).sort((a, b) => Math.min(...a[1].map((p) => p.start)) - Math.min(...b[1].map((p) => p.start))).slice(0, MAX_LOOKUPS));
+if (Object.keys(grouped).length > MAX_LOOKUPS) log(`Track record: ${Object.keys(grouped).length - MAX_LOOKUPS} match(es) left for the next run`);
 let graded = 0, voided = 0, failed = 0, unresolved = 0, retrying = 0;
 // Esports series are graded from bo3.gg in one request for all of them.
 const bo3 = new Map();
