@@ -1,6 +1,7 @@
 // Record page: every official ATLAS pick (locked before kick-off) and how it turned out.
 import { esc, sportOf, ist } from './views.js';
 import { summarize, MIN_ODDS, MAX_ODDS, calibration, marketChance, SAFE, BEST, potdDay, walkForward } from './track.js';
+import { serviceStats } from './compare.js';
 import { localDay } from './engine.js';
 import { modelRecord } from './modelpicks.js';
 
@@ -129,6 +130,18 @@ function modesPanel(s) {
     <tbody>${rows.map(([name, r, priced]) => `<tr><td>${name}</td><td class="num">${r.won + r.lost}</td><td class="num">${pct(r.hitRate)}</td><td class="num">${pct(r.expected)}</td><td class="num ${priced ? (r.profit >= 0 ? 'pos' : 'neg') : ''}">${priced ? units(r.profit) : 'no price'}</td><td class="num">${r.brier == null ? '—' : r.brier.toFixed(3)}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
+// ATLAS's own ledger in the format a fair comparison with another service would use (compare.js), and
+// the honest state of any comparison: none has been run.
+function comparisonPanel(picks) {
+  const rows = [['Best bets (singles)', 'best'], ['Singles near 2.00', 'two'], ['Shortlist bankers', 'banker']].map(([label, type]) => [label, serviceStats({ service: 'ATLAS', evidence: 'ledger', selections: picks.filter((h) => h.type === type && ['won', 'lost', 'push', 'void'].includes(h.status)).map((h) => ({ date: new Date(h.start).toISOString(), odds: h.odds, status: h.status, p: h.shown ?? h.p, close: h.close })) })]).filter(([, st]) => st.selections);
+  if (!rows.length) return '';
+  const f = (x, d = 2) => (x == null ? '—' : x.toFixed(d));
+  return `<div class="panel reveal"><h3 class="ph">ATLAS in the comparison format <small>reproduced from its complete ledger · no comparison with another service has been run</small></h3>
+    <div class="table-wrap"><table class="tbl tight"><thead><tr><th>Record</th><th class="num">Settled</th><th class="num">Odds (avg · middle half)</th><th class="num">ROI (95% interval)</th><th class="num">Max drawdown</th><th class="num">Brier</th></tr></thead><tbody>
+    ${rows.map(([label, st]) => `<tr><td>${label}</td><td class="num">${st.won + st.lost}</td><td class="num">${f(st.avgOdds)} · ${f(st.oddsQuartiles[0])}–${f(st.oddsQuartiles[2])}</td><td class="num">${pct(st.roi)}${st.roiCI ? ` (${pct(st.roiCI[0])} to ${pct(st.roiCI[1])})` : ''}</td><td class="num">${f(st.maxDrawdown)}u</td><td class="num">${f(st.brier, 3)}</td></tr>`).join('')}</tbody></table></div>
+    <p class="muted">Any claim against another service needs the same sports, dates, odds band, deadline and prices for both, every selection and abstention kept, and is ranked only when the evidence separates them (protocol in docs/comparison-protocol.md).</p></div>`;
+}
+
 // Settlement audit: results under dispute (two reads disagreed; out of every total until they
 // agree), copies of one selection that disagree, and every change to a result that was already
 // final, with the old and new result, the source and the reason (the log is append-only).
@@ -188,6 +201,7 @@ function body(data) {
     ${modesPanel(s)}
     ${modelPanel(s.model)}
     ${correctionsPanel(data)}
+    ${comparisonPanel(data.picks || [])}
     ${priceBandPanel(data.picks || [])}
     ${trustPanel(data.picks || [])}
     <div class="panel reveal"><h3 class="ph">Latest results</h3><ul class="tr-list">${s.recent.map(pickRow).join('')}</ul></div>
