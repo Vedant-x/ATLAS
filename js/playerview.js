@@ -13,7 +13,7 @@
 import { esc, legButton, ist } from './views.js';
 import { pc, odd } from './charts.js';
 import { PROP_STATS, GAMELOG_KEYS, propLabel, propMarket, propChance, chanceRange, splitByTeammate, withoutTeammate } from './props.js';
-import { calibrated } from './track.js';
+import { shownProp } from './track.js';
 import { trackCalibration } from './trackview.js';
 import { split } from './ui.js';
 import { propReadiness, analysisPanel } from './propcheck.js';
@@ -43,7 +43,7 @@ function offers(events, league, id) {
   for (const e of events) {
     if (e.live || !(e.start > now) || e.leaguePath?.split('/')[1] !== league) continue;
     const mine = (e.props || []).filter((x) => String(x.id) === String(id));
-    if (mine.length) return { e, lines: mine.map((x) => ({ ...x, p: calibrated(x.p, propMarket(x), cal, e.sport, x.odds) })) };
+    if (mine.length) return { e, lines: mine.map((x) => shownProp(x, propMarket(x), cal, e.sport)) };
   }
   return { e: null, lines: [] };
 }

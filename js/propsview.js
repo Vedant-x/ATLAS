@@ -6,7 +6,7 @@ import { esc, legButton, ist } from './views.js';
 import { pc, odd } from './charts.js';
 import { propLabel, propMarket, propOver, propLadder } from './props.js';
 import { playersData, rowsOf, loadPlayers } from './playerdata.js';
-import { calibrated } from './track.js';
+import { shownProp } from './track.js';
 import { trackCalibration, trackStats, recordLine, ensureTrack } from './trackview.js';
 import { split } from './ui.js';
 import { playerPanel } from './playerview.js';
@@ -118,7 +118,7 @@ export function allProps(events, now = Date.now(), { any = false } = {}) {
     if (!e.props?.length || (!any && (e.live || !(e.start > now)))) continue;
     for (const x of e.props) {
       if (!(x.odds >= 1.2)) continue;
-      out.push({ e, x: { ...x, p: calibrated(x.p, propMarket(x), cal, e.sport, x.odds) } });
+      out.push({ e, x: shownProp(x, propMarket(x), cal, e.sport) });
     }
   }
   return out;

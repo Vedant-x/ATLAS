@@ -181,6 +181,11 @@ export const calibrated = (p, market, cal, sport, odds) => {
   return Math.min(0.99, p * (r?.factor ?? 1));
 };
 
+// A player prop with the chance the site shows (the props pages, player research, the assistant and
+// slips): the model's estimate after the same track-record check, keeping the raw one as pRaw.
+// market: the prop's market name (props.js propMarket).
+export const shownProp = (x, market, cal, sport) => ({ ...x, pRaw: x.pRaw ?? x.p, p: calibrated(x.pRaw ?? x.p, market, cal, sport, x.odds) });
+
 // One probability per selection, everywhere: the model estimate after the track-record check
 // (calibrated). Cards, slips, the assistant and the official record all use these two functions, so a
 // pick shows the same chance wherever it appears. Each row keeps the market's margin-free chance

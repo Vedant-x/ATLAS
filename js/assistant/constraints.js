@@ -86,3 +86,24 @@ export function constraintChips(c, names = {}) {
 export const passes = (c, e) => (!c.sport || e.sport === c.sport) && (!c.league || e.leaguePath === c.league)
   && !(c.exclude?.sports || []).includes(e.sport) && !(c.exclude?.leagues || []).includes(e.leaguePath)
   && (!c.from || e.start >= c.from) && (!c.to || e.start < c.to);
+
+// Does one leg or pick keep the odds limits and "positive return only"? Every answer is checked with
+// this after it is built, so a chip on screen is always a rule that was applied.
+export const legOk = (c, l) => (c.minOdds == null || l.odds >= c.minOdds - 1e-9) && (c.maxOdds == null || l.odds <= c.maxOdds + 1e-9)
+  && (!c.positiveOnly || l.p * l.odds - 1 > 0);
+
+// The one slip request for a question: the dashboard's slip builder takes it as it is, from the
+// built-in assistant and the AI's context alike. Scope (sport, league, day, exclusions) becomes the
+// event filter; the odds limits and positive-return rule go to the leg pool as hard rules; `key`
+// names the whole request for the slip cache.
+export function slipRequest(c) {
+  const scoped = Boolean(c.sport || c.league || c.from || c.exclude?.sports?.length || c.exclude?.leagues?.length);
+  return {
+    filter: scoped ? (e) => passes(c, e) : null,
+    key: JSON.stringify([c.sport, c.league, c.from, c.to, c.exclude, c.minOdds, c.maxOdds, Boolean(c.positiveOnly)]),
+    minOdds: c.minOdds ?? null, maxOdds: c.maxOdds ?? null, positiveOnly: Boolean(c.positiveOnly),
+  };
+}
+
+// Slips that keep every rule: any slip with a leg outside them is dropped, never shown.
+export const slipsOk = (c, slips) => slips.filter((s) => s.legs.every((l) => legOk(c, l)));

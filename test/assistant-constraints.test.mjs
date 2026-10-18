@@ -86,3 +86,29 @@ test('assistant remembers the list: "the second one", "explain the risk", "what 
   assert.equal(calls.at(-1)[1].from, day(1), 'tomorrow, with the earlier constraints kept');
   assert.deepEqual(t.cards.map((c) => c.pick), ['NHL fav']);
 });
+
+test('assistant: a slip keeps every chip it shows (league, max odds, positive return only)', async () => {
+  const a = await createBrain(K).answer('NBA-only 3x slip with odds at most 1.50 and positive edge only');
+  const [, t, opts] = calls.filter((c) => c[0] === 'slips').at(-1);
+  assert.equal(t, 3);
+  assert.equal(opts.maxOdds, 1.5);
+  assert.equal(opts.positiveOnly, true);
+  assert.equal(opts.filter(E[1]), false, 'EPL is out');
+  assert.equal(opts.filter(E[0]), true);
+  // The stub's legs (1.50 at 60%) lose on average: the slip is dropped, never shown.
+  assert.match(a.text, /No 3x slip can be built/);
+  for (const chip of ['Odds ≤ 1.50', 'Positive return only', '3x']) assert.ok(a.chips.includes(chip), chip);
+});
+
+test('answer check: a real number stuck to the wrong pick is flagged', async () => {
+  const { verifyAnswer } = await import('../js/assistant/verify.js');
+  const A = { pick: 'Team A', e: { home: 'Team A', away: 'Rivals A' } }, B = { pick: 'Team B', e: { home: 'Team B', away: 'Rivals B' } };
+  const context = { tags: { P1: A, P2: B }, text: 'PICKS:\n  - [P1] Team A · Winner · odds 1.50 · ATLAS 80%\n  - [P2] Team B · Winner · odds 2.50 · ATLAS 40%' };
+  const wrong = verifyAnswer('Team B has 80% chance at 1.50.', context);
+  assert.deepEqual(wrong.misplaced.map((m) => m.number), ['80%', '1.50']);
+  assert.match(wrong.text, /belongs to another pick/);
+  const right = verifyAnswer('[P2] has 40% at 2.50. [P1] is 80% at 1.50.', context);
+  assert.deepEqual(right.misplaced, []);
+  assert.deepEqual(right.unverified, []);
+  assert.deepEqual(verifyAnswer('Team A is 91% to win.', context).unverified, ['91%']);
+});

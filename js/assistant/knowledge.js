@@ -7,7 +7,7 @@ import { loadDetail, detailFor } from '../detail.js';
 import { CATALOG, ALL_LEAGUES, sportById } from '../catalog.js';
 import { prefs, prefEvents } from '../prefs.js';
 import { liveWin } from '../live.js';
-import { calibrated } from '../track.js';
+import { calibrated, shownProp } from '../track.js';
 import { bankers } from '../intel.js';
 import { trackCalibration } from '../trackview.js';
 import { researchRow, caseFor } from '../research.js';
@@ -18,7 +18,7 @@ import { playersData, playersMeta, loadPlayers, rowsOf, valueOf } from '../playe
 import { analyseSlip } from '../slipcheck.js';
 import { slip } from '../slip.js';
 import { propReadiness } from '../propcheck.js';
-import { PROP_STATS } from '../props.js';
+import { PROP_STATS, propMarket } from '../props.js';
 
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const words = (s) => norm(s).split(/[^a-z0-9]+/).filter((w) => w.length >= 3);
@@ -192,7 +192,7 @@ export function createKnowledge(S) {
   const freshness = () => ({ pricesAt: S.fetchedAt || null, changesAt: timelineUpdatedAt() });
   // Slips, optionally limited to the events a question allows (sport, dates, exclusions) and a minimum
   // leg price; a filtered set is built fresh rather than read from the page's cache.
-  const slips = (target, today = true, { filter = null, key = '', minOdds = null } = {}) => S.slips(target, { count: 5, today: today && target < 100, filter, key, minOdds });
+  const slips = (target, today = true, { filter = null, key = '', minOdds = null, maxOdds = null, positiveOnly = false } = {}) => S.slips(target, { count: 5, today: today && target < 100, filter, key, minOdds, maxOdds, positiveOnly });
   const pickId = (x) => `${x.e.id}|${x.market}|${x.pick}`;
 
   // Player research for the assistant: a player named in the question, with every line he has and
@@ -206,9 +206,10 @@ export function createKnowledge(S) {
     const [key, p] = hit;
     const [league, id] = key.split('|');
     const lines = [];
+    const cal = trackCalibration(); // the same calibrated chance as the props pages, never the raw one
     for (const e of S.events) {
       if (e.leaguePath?.split('/')[1] !== league) continue;
-      for (const x of e.props || []) if (String(x.id) === id) lines.push({ e, x, r: propReadiness(e, x, { logsAt: playersMeta().updatedAt }) });
+      for (const raw of e.props || []) if (String(raw.id) === id) { const x = shownProp(raw, propMarket(raw), cal, e.sport); lines.push({ e, x, r: propReadiness(e, x, { logsAt: playersMeta().updatedAt }) }); }
     }
     const rows = rowsOf(p);
     return { key, name: p.n, team: p.t, sport: p.s, games: rows.length, logsAt: playersMeta().updatedAt, lines, injury: p.inj || null,

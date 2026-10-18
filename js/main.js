@@ -123,12 +123,13 @@ const state = {
     // Personal filters (min odds per leg, preferred sports) shape every slip.
     // Same window and tolerance as the official record (track.js slipPolicy), plus the viewer's filters.
     // opts.filter (the assistant's constraints: a sport, dates, exclusions) narrows the pool; opts.key
-    // names that filter for the cache, and opts.minOdds can raise the minimum leg price.
-    const key = `${target}|${prefs.sig()}|${opts.key || ''}|${opts.minOdds || ''}`;
+    // names that filter for the cache; opts.minOdds can raise the minimum leg price, opts.maxOdds caps
+    // it, and opts.positiveOnly keeps only legs ATLAS rates above their price (assistant slipRequest).
+    const key = `${target}|${prefs.sig()}|${opts.key || ''}|${opts.minOdds || ''}|${opts.maxOdds || ''}|${opts.positiveOnly ? 1 : 0}`;
     let pool = prefEvents(slipWindow(this.events, target));
     if (opts.filter) pool = pool.filter(opts.filter);
     // Built from bankers: many short-priced favourites, never a few long shots (picks.js).
-    if (!this.slipCache.has(key)) this.slipCache.set(key, bankerSlips(pool, target, { count: opts.count || 5, tolerance: slipPolicy(target).tolerance, cal: trackCalibration(), minOdds: Math.max(prefs.get().minOdds, opts.minOdds || 0) }));
+    if (!this.slipCache.has(key)) this.slipCache.set(key, bankerSlips(pool, target, { count: opts.count || 5, tolerance: slipPolicy(target).tolerance, cal: trackCalibration(), minOdds: Math.max(prefs.get().minOdds, opts.minOdds || 0), maxOdds: opts.maxOdds ?? null, positiveOnly: Boolean(opts.positiveOnly) }));
     return this.slipCache.get(key);
   },
   async detail(e) {

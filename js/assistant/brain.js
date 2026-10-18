@@ -8,7 +8,7 @@
 // "Nothing qualifies" is a valid answer. The conversation keeps a structured memory (the last list of
 // picks, the pick or match in focus, the constraints in force), so "the second one", "what about
 // tomorrow?" and "explain the risk" work.
-import { parseConstraints, constraintChips, passes } from './constraints.js';
+import { parseConstraints, constraintChips, slipRequest, slipsOk, legOk } from './constraints.js';
 const pc = (p) => `${(p * 100).toFixed(p < 0.1 ? 1 : 0)}%`;
 const od = (o) => (Number.isFinite(o) ? o.toFixed(2) : '—');
 const NUM = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, few: 4, couple: 2, some: 4 };
@@ -125,6 +125,7 @@ export function createBrain(K) {
       list = K.picks({ ...base, today: true }); window = 'the next 12 hours';
       if (!list.length) { list = K.picks({ ...base, today: false }); window = 'the next few days'; }
     }
+    list = list.filter((x) => legOk(c, x)); // every chip shown is a rule applied
     const chips = chipsOf(c);
     if (!list.length) {
       const why = mode === 'value' ? 'No pick has a positive estimated return (forecast x odds above 1)' : 'No pick passes these filters';
@@ -157,9 +158,8 @@ export function createBrain(K) {
     const c = parseConstraints(q, K);
     const t = c.target || (/mega|long ?shot/.test(q) ? 100 : 3);
     const mega = t >= 100;
-    const filtered = c.sport || c.league || c.from || c.exclude.sports.length || c.exclude.leagues.length;
-    const key = filtered ? JSON.stringify([c.sport, c.league, c.from, c.to, c.exclude]) : '';
-    const list = K.slips(t, !mega && !c.from, filtered ? { filter: (e) => passes(c, e), key, minOdds: c.minOdds } : { minOdds: c.minOdds });
+    // One request for every rule shown in the chips; the result is checked against them again.
+    const list = slipsOk(c, K.slips(t, !mega && !c.from, slipRequest(c)));
     const chips = chipsOf({ ...c, target: t });
     if (!list.length) return { text: `**No ${t}x slip can be built** ${chips.length > 1 ? `with ${chips.filter((x) => x !== `${t}x`).join(' · ')}` : 'from the current picks'}: not enough qualifying legs. I won't loosen the filters on my own; try a smaller multiplier or a wider window.`, chips };
     const s = list[0];
