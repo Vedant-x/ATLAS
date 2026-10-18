@@ -72,7 +72,11 @@ function formRate(f) {
 export function tennisRankWin(t) {
   const ph = Number(t.home?.points), pa = Number(t.away?.points), rh = Number(t.home?.rank), ra = Number(t.away?.rank);
   let p = null, note = null;
-  if (ph > 0 && pa > 0) { p = ph ** 0.9 / (ph ** 0.9 + pa ** 0.9); note = `ranking #${rh || '?'} (${ph} pts) vs #${ra || '?'} (${pa} pts)`; }
+  // Elo (Tennis Abstract, blended with the surface's) rates how well a player plays, not how much:
+  // a better guide than ranking points when both players have one.
+  const eh = Number(t.home?.elo), ea = Number(t.away?.elo);
+  if (eh > 0 && ea > 0) { p = 1 / (1 + 10 ** ((ea - eh) / 400)); note = `Elo ${eh} vs ${ea}${t.surface ? ` (${t.surface} court${t.surfaceInferred ? ', from the tournament' : ''})` : ''}`; }
+  else if (ph > 0 && pa > 0) { p = ph ** 0.9 / (ph ** 0.9 + pa ** 0.9); note = `ranking #${rh || '?'} (${ph} pts) vs #${ra || '?'} (${pa} pts)`; }
   else if (rh > 0 && ra > 0) { p = 1 / (1 + (rh / ra) ** 0.5); note = `world ranking #${rh} vs #${ra}`; }
   else if (rh > 0 || ra > 0) { p = rh > 0 ? 0.66 : 0.34; note = `only ${rh > 0 ? 'the first' : 'the second'} player is ranked (#${rh || ra})`; }
   return p == null ? null : { p: Math.min(0.97, Math.max(0.03, p)), note };

@@ -25,6 +25,7 @@ import { CLUBELO, parseClubElo, eloIndex, isEuropean } from '../js/clubelo.js';
 import { FD_FIXTURES, parseFixtures, applyFixtures } from '../js/footballdata.js';
 import { ELO_WORLD, ELO_TEAMS, eloratingsIndex, applyEloratings, isInternational } from '../js/eloratings.js';
 import { SLEEPER_NFL, injuredByTeam, applyNflInjuries } from '../js/sleeper.js';
+import { TA_ELO, parseEloPage, eloIndex as tennisEloIndex, applyTennisElo } from '../js/tennisabstract.js';
 import { parseGolf, golfForm, golfChances, parseStandings, raceChances, raceResult } from '../js/fields.js';
 import { EUROLEAGUE, LIIGA, SWISS, euroSeason, euroRecords, euroEvent, liigaRecords, liigaEvent, swissRecords, swissEvent } from '../js/europe.js';
 import { ODDS_API, ODDS_SPORT_KEYS, matchOdds } from '../js/oddsapi.js';
@@ -1165,6 +1166,17 @@ try {
   if (r.unmatched.length) log(`  World Football Elo unmatched (first 30): ${r.unmatched.slice(0, 30).join(' · ')}`);
   noteSource('World Football Elo', 'eloratings.net', 'National-team ratings for the model', idx.size > 0, r.rated, idx.size ? `${r.rated} of ${intl.length} internationals rated` : 'files read but no ratings found');
 } catch (err) { log('World Football Elo failed', err.message); noteSource('World Football Elo', 'eloratings.net', 'National-team ratings for the model', false, null, err.message); }
+
+// Tennis Elo (Tennis Abstract): overall and per-surface ratings for singles matches with no price.
+try {
+  const [atpHtml, wtaHtml] = await Promise.all([get(TA_ELO.atp).catch((e) => { log(`Tennis Abstract ATP: ${e.message}`); return ''; }), get(TA_ELO.wta).catch((e) => { log(`Tennis Abstract WTA: ${e.message}`); return ''; })]);
+  const atp = tennisEloIndex(parseEloPage(atpHtml)), wta = tennisEloIndex(parseEloPage(wtaHtml));
+  const singles = events.filter((e) => e.sport === 'tennis' && e.tennis?.draw === 'Singles' && !e.markets?.length);
+  const r = applyTennisElo(events, { atp, wta });
+  log(`Tennis Abstract Elo: ${atp.size} ATP and ${wta.size} WTA players; ${r.rated}/${singles.length} unpriced singles matches rated`);
+  if (r.unmatched.length) log(`  Tennis Elo unmatched (first 30): ${r.unmatched.slice(0, 30).join(' · ')}`);
+  noteSource('Tennis Abstract', 'tennisabstract.com', 'Tennis Elo (overall and by surface) for the model', atp.size + wta.size > 0, r.rated, atp.size + wta.size ? `${r.rated} of ${singles.length} unpriced singles matches rated` : 'pages read but no ratings found');
+} catch (err) { log('Tennis Abstract failed', err.message); noteSource('Tennis Abstract', 'tennisabstract.com', 'Tennis Elo (overall and by surface) for the model', false, null, err.message); }
 
 // NFL injury report (Sleeper): the injured players only, kept in data/nfl-injuries.json and refreshed
 // when over 6 hours old (the full list is ~5 MB and Sleeper asks for it about once a day).

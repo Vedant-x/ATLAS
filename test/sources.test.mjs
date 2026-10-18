@@ -89,3 +89,26 @@ test('Sleeper: the NFL injury report, injured players only, onto NFL matches wit
   assert.equal(inj.ok, true);
   assert.match(inj.note, /Sleeper: 2 listed, read 2 h ago/);
 });
+
+test('Tennis Abstract Elo: table read by its headers, surface from the tournament, used by the model', async () => {
+  const { parseEloPage, eloIndex, applyTennisElo, surfaceOf } = await import('../js/tennisabstract.js');
+  const html = `<table id="reportable"><thead><tr><th>Rank</th><th>Player</th><th>Age</th><th>Elo</th><th></th><th>hElo Rank</th><th>hElo</th><th>cElo Rank</th><th>cElo</th><th>gElo Rank</th><th>gElo</th></tr></thead>
+    <tbody><tr><td>1</td><td><a href="x">Jannik&nbsp;Sinner</a></td><td>25.2</td><td>2240.5</td><td></td><td>1</td><td>2200.0</td><td>2</td><td>2100.0</td><td>3</td><td>2050.0</td></tr>
+    <tr><td>40</td><td>Casper Ruud</td><td>27.8</td><td>1950.0</td><td></td><td>50</td><td>1900.0</td><td>5</td><td>2050.0</td><td>60</td><td>1800.0</td></tr></tbody></table>`;
+  const map = parseEloPage(html);
+  assert.equal(map.size, 2);
+  const atp = eloIndex(map);
+  assert.equal(atp.find('J. Sinner')?.elo, 2240.5, 'surname and initial');
+  assert.equal(surfaceOf({ tournament: 'Roland Garros' }), 'clay');
+  assert.equal(surfaceOf({ tournament: 'Stuttgart Open' }, Date.parse('2026-06-10')), 'grass');
+  assert.equal(surfaceOf({ tournament: 'Paris Masters' }), 'hard');
+  const { winProbs } = await import('../js/models.js');
+  const e = { id: 't', sport: 'tennis', leaguePath: 'tennis/atp', league: 'ATP', home: 'Casper Ruud', away: 'Jannik Sinner', start: Date.parse('2026-05-30'), tennis: { tournament: 'Roland Garros', draw: 'Singles', home: {}, away: {} } };
+  assert.equal(applyTennisElo([e], { atp, wta: eloIndex(new Map()) }).rated, 1);
+  assert.equal(e.tennis.surface, 'clay');
+  assert.equal(e.tennis.home.elo, 2000, 'Ruud: (1950 + 2050) / 2 on clay');
+  const w = winProbs(e);
+  assert.equal(w.confidence, 'medium');
+  assert.ok(w.away > 0.6 && w.away < 0.75, `Sinner favoured on clay, not overwhelmingly (${w.away.toFixed(3)})`);
+  assert.equal(parseEloPage('<table><tr><td>nothing</td></tr></table>').size, 0);
+});
