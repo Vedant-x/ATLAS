@@ -42,7 +42,12 @@ export function propReadiness(e, x, { now = Date.now(), priceAt = null, logsAt =
   if (me) add('status', 'His status', OUT.test(me.status) ? false : QUESTIONABLE.test(me.status) ? false : true, me.status, OUT.test(me.status) ? 'conflict' : QUESTIONABLE.test(me.status) ? 'wait' : null);
   const unsure = (x.adj || []).filter((a) => !a.applied && QUESTIONABLE.test(a.status || ''));
   if (unsure.length) add('teammates', 'Teammate status', false, `${unsure.map((a) => a.name).join(', ')} questionable`, 'wait');
-  if (e.sport === 'hockey') add('goalies', 'Starting goalies', null, 'no confirmed-goalie feed');
+  if (e.sport === 'hockey') {
+    const g = e.goalies, sure = (x) => /confirm/i.test(x?.status || '');
+    if (g && sure(g.home) && sure(g.away)) add('goalies', 'Starting goalies', true, `${g.home.name} v ${g.away.name}, confirmed`);
+    else if (g) add('goalies', 'Starting goalies', false, `${g.home.name} v ${g.away.name}, not both confirmed`, 'wait');
+    else add('goalies', 'Starting goalies', null, 'not reported yet');
+  }
 
   let state;
   if (list.some((c) => c.flag === 'conflict')) state = 'conflict';

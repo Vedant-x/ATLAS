@@ -135,6 +135,8 @@ export function parseScoreboard(json, league, finished = null) {
         colors: { home: homeC.team?.color ? `#${homeC.team.color}` : null, away: awayC.team?.color ? `#${awayC.team.color}` : null },
         leaguePath: league.path, compId: String(comp.id || ev.id), eventId: String(ev.id), group: league.group,
         venue: comp.venue?.fullName || null,
+        // Where it is played, for the weather (Open-Meteo): city, state/region, country, and whether indoors.
+        place: comp.venue?.address?.city ? { city: comp.venue.address.city, region: comp.venue.address.state || null, country: comp.venue.address.country || null, indoor: comp.venue.indoor === true } : null,
         broadcast: comp.broadcast || (comp.broadcasts || []).flatMap((b) => b.names || []).join(', ') || null,
         note: comp.notes?.[0]?.headline || ev.season?.slug || null,
         records: { home: recs(homeC), away: recs(awayC) },

@@ -28,6 +28,9 @@ import { SLEEPER_NFL, injuredByTeam, applyNflInjuries } from '../js/sleeper.js';
 import { TA_ELO, parseEloPage, eloIndex as tennisEloIndex, applyTennisElo } from '../js/tennisabstract.js';
 import { encode as encodeResults, decode as decodeResults, merge as mergeResults, BACKFILL_DAYS } from '../js/results.js';
 import { rate as rateResults, annotate as annotateRatings } from '../js/ratings.js';
+import { GEOCODE, FORECAST, OUTDOOR, placeKey, geoFrom, atKickoff } from '../js/weather.js';
+import { DF_GOALIES, nextData, goalieGames, applyGoalies } from '../js/goalies.js';
+import { UNDERSTAT, understatUrl, teamsData, xgTable, applyXg } from '../js/understat.js';
 import { parseGolf, golfForm, golfChances, parseStandings, raceChances, raceResult } from '../js/fields.js';
 import { EUROLEAGUE, LIIGA, SWISS, euroSeason, euroRecords, euroEvent, liigaRecords, liigaEvent, swissRecords, swissEvent } from '../js/europe.js';
 import { ODDS_API, ODDS_SPORT_KEYS, matchOdds } from '../js/oddsapi.js';
@@ -1237,6 +1240,67 @@ try {
   noteSource('ATLAS results history', 'built from the feeds above', 'Ratings for every team and player, rest days, last meetings, form', history.length > 0, rated, `${history.length} results over ${back} days; ${rated} upcoming matches rated`);
   await writeFile(`${out}/data/results.json`, JSON.stringify({ meta: { backfilledTo: back, at: Date.now() }, ...encodeResults(history) }));
 } catch (err) { log('Results history failed', err.message); noteSource('ATLAS results history', 'built from the feeds above', 'Ratings for every team and player', false, null, err.message); }
+
+// NHL starting goalies (Daily Faceoff).
+{
+  const nhl = events.filter((e) => e.leaguePath === 'hockey/nhl' && e.start > Date.now() - 36e5 && e.start < Date.now() + 36 * 36e5).length;
+  if (nhl) {
+    try {
+      const data = nextData(await get(DF_GOALIES));
+      const games = goalieGames(data);
+      const n = applyGoalies(events, games);
+      log(`Daily Faceoff goalies: ${data ? 'page data read' : 'NO page data'}; ${games.length} games listed; ${n}/${nhl} NHL matches${games[0] ? ` (e.g. ${games[0].awayGoalie} @ ${games[0].homeGoalie}, ${games[0].homeStatus})` : ''}`);
+      noteSource('Daily Faceoff', 'dailyfaceoff.com', 'NHL starting goalies (confirmed / likely)', games.length > 0, n, `${n} of ${nhl} NHL matches in the next 36 hours`);
+    } catch (err) { log('Daily Faceoff failed', err.message); noteSource('Daily Faceoff', 'dailyfaceoff.com', 'NHL starting goalies (confirmed / likely)', false, null, err.message); }
+  } else noteSource('Daily Faceoff', 'dailyfaceoff.com', 'NHL starting goalies (confirmed / likely)', true, 0, 'no NHL matches in the next 36 hours');
+}
+
+// Expected goals (Understat) for the five big European leagues.
+try {
+  // The season is named by the year it starts (2026 = 2026/27): from July on, this year.
+  const now = new Date(), season = now.getUTCMonth() >= 6 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+  const tables = new Map();
+  for (const [path, lg] of Object.entries(UNDERSTAT)) {
+    try { const t = xgTable(teamsData(await get(understatUrl(lg, season)))); if (t.size) tables.set(path, t); else log(`Understat ${lg}: no team data on the page`); } catch (err) { log(`Understat ${lg}: ${err.message}`); }
+  }
+  const big = events.filter((e) => UNDERSTAT[e.leaguePath] && !e.live && e.start > Date.now()).length;
+  const n = applyXg(events, tables);
+  log(`Understat xG: ${tables.size}/5 leagues read (${[...tables.values()].reduce((a, t) => a + t.size, 0)} teams); ${n}/${big} upcoming matches`);
+  noteSource('Understat', 'understat.com', 'Expected goals (xG / xGA) for the big five leagues', tables.size > 0, n, `${tables.size} of 5 leagues; ${n} of ${big} upcoming matches`);
+} catch (err) { log('Understat failed', err.message); noteSource('Understat', 'understat.com', 'Expected goals for the big five leagues', false, null, err.message); }
+
+// Match-day weather (Open-Meteo) for outdoor matches in the next 48 hours. Cities are geocoded once
+// and kept in data/geo.json; forecasts are fetched for up to 50 places per request.
+try {
+  let geo = {};
+  try { const r = await fetch((process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json').replace('index.json', 'geo.json'), { signal: AbortSignal.timeout(15000) }); if (r.ok) geo = await r.json(); } catch { /* first run */ }
+  const due = events.filter((e) => OUTDOOR.has(e.sport) && e.place && !e.place.indoor && e.start > Date.now() - 3 * 36e5 && e.start < Date.now() + 48 * 36e5);
+  const places = [...new Map(due.map((e) => [placeKey(e.place), e.place])).entries()];
+  let looked = 0;
+  for (const [key, p] of places) {
+    if (key in geo || looked >= 150) continue; // new cities only, 150 per build at most
+    looked++;
+    try { geo[key] = geoFrom(JSON.parse(await get(GEOCODE(p.city))), p); } catch { /* try again next build */ }
+  }
+  const located = places.filter(([k]) => geo[k]);
+  const fc = new Map();
+  for (let i = 0; i < located.length; i += 50) {
+    const batch = located.slice(i, i + 50);
+    try {
+      const j = JSON.parse(await get(FORECAST(batch.map(([k]) => geo[k].lat), batch.map(([k]) => geo[k].lon))));
+      (Array.isArray(j) ? j : [j]).forEach((x, n) => fc.set(batch[n][0], x.hourly));
+    } catch (err) { log(`Open-Meteo forecast batch failed: ${err.message}`); }
+  }
+  let withWeather = 0;
+  for (const e of due) {
+    const h = fc.get(placeKey(e.place));
+    const w = h && atKickoff(h, e.start);
+    if (w) { e.weather = { ...w, city: e.place.city, at: Date.now(), source: 'Open-Meteo' }; withWeather++; }
+  }
+  log(`Weather (Open-Meteo): ${withWeather}/${due.length} outdoor matches in the next 48h; ${located.length}/${places.length} places located (${looked} new lookups)`);
+  noteSource('Open-Meteo', 'open-meteo.com', 'Kick-off weather for outdoor matches', !due.length || withWeather > 0, withWeather, `${withWeather} of ${due.length} outdoor matches in the next 48 hours`);
+  await writeFile(`${out}/data/geo.json`, JSON.stringify(geo));
+} catch (err) { log('Weather failed', err.message); noteSource('Open-Meteo', 'open-meteo.com', 'Kick-off weather for outdoor matches', false, null, err.message); }
 
 // Soccer absences: ESPN's soccer injury feed is empty, FotMob lists who is injured or suspended.
 const soccer = events.filter((e) => e.leaguePath?.startsWith('soccer/') && e.start < Date.now() + 5 * 864e5).sort((a, b) => a.start - b.start).slice(0, 400);

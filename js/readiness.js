@@ -40,9 +40,13 @@ function checks(e, now) {
       add('absences', 'Injuries and suspensions', e.absences ? true : null, e.absences ? `${(e.absences.home?.length || 0) + (e.absences.away?.length || 0)} listed` : 'no team-news feed for this league');
       break;
     }
-    case 'hockey':
-      add('goalies', 'Starting goalies', null, 'no confirmed-goalie feed yet');
+    case 'hockey': {
+      // Daily Faceoff's starters (goalies.js): confirmed for both, or waiting on the confirmation.
+      const g = e.goalies, sure = (x) => /confirm/i.test(x?.status || '');
+      if (g) add('goalies', 'Starting goalies', sure(g.home) && sure(g.away) ? true : false, `${g.home.name} (${(g.home.status || 'unconfirmed').toLowerCase()}) v ${g.away.name} (${(g.away.status || 'unconfirmed').toLowerCase()})`, true);
+      else add('goalies', 'Starting goalies', null, e.leaguePath === 'hockey/nhl' ? 'not reported yet' : 'no starting-goalie feed for this league');
       break;
+    }
     case 'basketball': case 'americanfootball': {
       // A dated injury list from the build (ESPN for prop leagues, Sleeper for the NFL), else the
       // match page checks it live.

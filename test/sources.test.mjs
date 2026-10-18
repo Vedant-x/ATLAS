@@ -118,3 +118,50 @@ test('Tennis Abstract Elo: table read by its headers, surface from the tournamen
   assert.ok(w.away > 0.6 && w.away < 0.75, `Sinner favoured on clay, not overwhelmingly (${w.away.toFixed(3)})`);
   assert.equal(parseEloPage('<table><tr><td>nothing</td></tr></table>').size, 0);
 });
+
+test('weather: the right city, the hour nearest kick-off, and a flag for wind and rain', async () => {
+  const { geoFrom, atKickoff, weatherLine, weatherFlag } = await import('../js/weather.js');
+  const geo = { results: [{ name: 'Columbus', admin1: 'Georgia', country: 'United States', latitude: 32.46, longitude: -84.99 }, { name: 'Columbus', admin1: 'Ohio', country: 'United States', latitude: 39.96, longitude: -83.0 }] };
+  assert.deepEqual(geoFrom(geo, { city: 'Columbus', region: 'Ohio', country: 'USA' }), { lat: 39.96, lon: -83 });
+  assert.equal(geoFrom({ results: [] }), null);
+  const hourly = { time: ['2026-10-18T18:00', '2026-10-18T19:00', '2026-10-18T20:00'], temperature_2m: [12, 11.4, 10], precipitation_probability: [40, 70, 80], precipitation: [0, 2.4, 3], wind_speed_10m: [20, 34, 40], wind_gusts_10m: [30, 55, 60] };
+  const w = atKickoff(hourly, Date.parse('2026-10-18T19:10:00Z'));
+  assert.deepEqual(w, { tempC: 11.4, rainProb: 70, rainMm: 2.4, windKmh: 34, gustKmh: 55 });
+  assert.equal(weatherLine(w), '11°C, 70% chance of rain, 2.4 mm, wind 34 km/h (gusts 55)');
+  assert.equal(weatherFlag(w), true);
+  assert.equal(atKickoff(hourly, Date.parse('2026-10-19T12:00:00Z')), null, 'outside the forecast');
+});
+
+test('Daily Faceoff: starting goalies from the page data, onto NHL matches, into readiness', async () => {
+  const { nextData, goalieGames, applyGoalies } = await import('../js/goalies.js');
+  const { readiness } = await import('../js/readiness.js');
+  const page = `<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify({ props: { pageProps: { data: [
+    { homeTeamName: 'Toronto Maple Leafs', awayTeamName: 'Montreal Canadiens', homeGoalieName: 'Joseph Woll', awayGoalieName: 'Sam Montembeault', homeNewsStrengthName: 'Confirmed', awayNewsStrengthName: 'Likely' },
+    { homeTeamName: 'Boston Bruins', awayTeamName: 'Florida Panthers', homeGoalieName: 'Jeremy Swayman', awayGoalieName: 'Sergei Bobrovsky', homeNewsStrengthName: 'Confirmed', awayNewsStrengthName: 'Confirmed' },
+  ] } } })}</script></html>`;
+  const games = goalieGames(nextData(page));
+  assert.equal(games.length, 2);
+  const now = Date.now();
+  const ev = (id, home, away) => ({ id, sport: 'hockey', leaguePath: 'hockey/nhl', home, away, start: now + 5 * 36e5, markets: [{ name: 'Winner', outcomes: [] }] });
+  const tor = ev('t', 'Toronto Maple Leafs', 'Montreal Canadiens'), bos = ev('b', 'Boston Bruins', 'Florida Panthers');
+  assert.equal(applyGoalies([tor, bos], games, now), 2);
+  assert.equal(tor.goalies.away.status, 'Likely');
+  assert.equal(readiness(tor, { now, priceAt: now }).state, 'waiting', 'one goalie only likely');
+  assert.equal(readiness(bos, { now, priceAt: now }).checks.find((c) => c.key === 'goalies').ok, true);
+  assert.deepEqual(goalieGames(nextData('<html>nothing</html>')), []);
+});
+
+test('Understat: xG table from the hex-escaped page data, onto big-five matches', async () => {
+  const { teamsData, xgTable, applyXg } = await import('../js/understat.js');
+  const data = { 83: { id: '83', title: 'Arsenal', history: [{ xG: '2.1', xGA: '0.6', scored: '3', missed: '0' }, { xG: '1.5', xGA: '1.0', scored: '1', missed: '1' }] },
+    71: { id: '71', title: 'Leeds', history: [{ xG: '0.8', xGA: '1.9', scored: '0', missed: '2' }] } };
+  const hex = JSON.stringify(data).replace(/[{}"\[\]:,]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`);
+  const page = `<script>var teamsData = JSON.parse('${hex}');</script>`;
+  const t = xgTable(teamsData(page));
+  assert.equal(t.get('arsenal').xgf.toFixed(2), '1.80');
+  assert.equal(t.get('arsenal').ga, 0.5);
+  const e = { id: 'm', leaguePath: 'soccer/eng.1', home: 'Arsenal', away: 'Leeds United', start: Date.now() + 36e5 };
+  assert.equal(applyXg([e], new Map([['soccer/eng.1', t]])), 1);
+  assert.equal(e.xg.away.xga, 1.9);
+  assert.equal(teamsData('<html>no data</html>'), null);
+});

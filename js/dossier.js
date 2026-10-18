@@ -1,5 +1,6 @@
 // Match-dossier sections built from js/detail.js output (ESPN) or native NPB/KBO starter data.
 import { standingsTable } from './standings.js';
+import { weatherLine, weatherFlag } from './weather.js';
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const safeHref = (u) => (/^https?:\/\//i.test(String(u || '')) ? esc(u) : '#');
 const dt = (v) => { const t = Date.parse(v); return Number.isFinite(t) ? new Date(t).toLocaleDateString([], { day: 'numeric', month: 'short' }) : esc(v || ''); };
@@ -81,6 +82,24 @@ export function dossierSections(e, d, hc, ac) {
   const S = [];
   const H = e.home, A = e.away;
   const side = (s) => (s === 'home' ? [H, hc] : [A, ac]);
+
+  // NHL starting goalies (Daily Faceoff), with how sure the report is.
+  if (e.goalies) {
+    const g = e.goalies, row = (s) => `<div><small>${esc(side(s)[0])}</small><b>${esc(g[s].name)}</b><em>${esc(g[s].status || 'unconfirmed')}</em></div>`;
+    S.push({ id: 'goalies-df', label: 'Starting goalies', html: `<div class="panel reveal"><h3 class="ph">Starting goalies <small>Daily Faceoff · ${esc(new Date(g.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</small></h3><div class="pl-nums hist-nums">${row('home')}${row('away')}</div></div>` });
+  }
+
+  // Expected goals (Understat): chances made and conceded, season and last six, against actual goals.
+  if (e.xg) {
+    const f = (x) => x.toFixed(2);
+    const rows = ['home', 'away'].map((s) => { const x = e.xg[s]; return `<tr><td><b>${esc(side(s)[0])}</b></td><td class="num">${f(x.xgf)}</td><td class="num">${f(x.xga)}</td><td class="num">${f(x.xgf6)}</td><td class="num">${f(x.xga6)}</td><td class="num">${f(x.gf)} / ${f(x.ga)}</td><td class="num">${x.n}</td></tr>`; });
+    S.push({ id: 'xg', label: 'Expected goals', html: `<div class="panel reveal"><h3 class="ph">Expected goals <small>Understat · per match · chances made (xG) and conceded (xGA), against actual goals</small></h3>${table(['Team', 'xG', 'xGA', 'xG last 6', 'xGA last 6', 'Goals for / against', 'Games'], rows, 'tight')}</div>` });
+  }
+
+  // Kick-off weather (Open-Meteo), for outdoor matches.
+  if (e.weather) {
+    S.push({ id: 'weather', label: 'Weather', html: `<div class="panel reveal weather${weatherFlag(e.weather) ? ' warn-weather' : ''}"><h3 class="ph">Weather at kick-off <small>${esc(e.weather.city)} · Open-Meteo forecast</small></h3><p>${esc(weatherLine(e.weather))}${weatherFlag(e.weather) ? ' · <b>conditions that can change how the game is played</b> (kicking, passing, fly balls, serving)' : ''}</p></div>` });
+  } else if (e.place?.indoor) S.push({ id: 'weather', label: 'Weather', html: '<div class="panel reveal"><p class="muted">Indoor venue: weather plays no part.</p></div>' });
 
   // From ATLAS's results history (ratings.js): ratings, rest, form, last meetings. In the snapshot, so
   // it shows at once, for every sport ESPN covers.
