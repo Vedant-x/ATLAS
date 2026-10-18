@@ -29,6 +29,7 @@
 .ready-waiting { border-color: #ffb54766; color: #ffb547; }
 .ready-stale, .ready-conflict { border-color: #ff6b6b66; color: #ff8a8a; }
 .ready-limited, .ready-none { color: #9aa3ad; }
+.ready-unknown { border-color: #ffb54744; color: #e0b070; }
 
 /* Research candidate table. */
 

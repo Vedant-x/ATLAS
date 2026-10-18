@@ -404,10 +404,10 @@ function renderSlip() {
   document.querySelectorAll('[data-slip-count]').forEach((el) => { el.textContent = s.n; el.classList.toggle('has', s.n > 0); });
   drawer.querySelector('.slip-body').innerHTML = s.n ? `
     <ul class="slip-legs">${slip.legs.map((l) => `<li><span>${sportOf(l.sport).icon}</span><div><b>${esc(l.pick)}</b><small>${esc(l.market)} · ${esc(l.match)}</small>${(() => { const ev = state.events.find((x) => x.id === l.eventId); return ev?.live ? '<small class="live">LIVE</small>' : ev?.start ? `<time class="ist">🕒 ${ist(ev.start)}</time>` : ''; })()}${l.derived ? '<small class="warn">ATLAS fair price, not a bookmaker quote</small>' : ''}${staleNote(l)}</div><em>${odd(l.odds)}</em><button data-unleg="${esc(l.key)}" aria-label="Remove">×</button></li>`).join('')}</ul>
-    ${s.correlated ? '<p class="warn">Two legs from the same match: bookmakers may refuse the combination, and the combined chance is not a simple product (see the slip check).</p>' : ''}
+    ${s.correlated ? '<p class="warn">Legs from the same match: bookmakers price that combination themselves (usually lower) or refuse it, so the total odds and returns below are hypothetical, and the combined chance is not a simple product (see the slip check).</p>' : ''}
     ${slip.legs.length > 1 ? slipCheck(slip.legs, { logs: slip.legs.some((l) => l.prop) ? playersData() || loadPlayers(refreshSlip) : null, esc }) : ''}
     <div class="slip-sum">
-      <div><small>Total odds</small><b>${s.odds.toFixed(2)}x</b></div>
+      <div><small>Total odds${s.correlated ? ' · hypothetical' : ''}</small><b>${s.odds.toFixed(2)}x</b></div>
       <div><small>Est. chance</small><b>${pc(s.p, s.p < 0.01 ? 2 : 1)}</b></div>
       <div><small>Edge</small><b class="${s.ev >= 0 ? 'pos' : 'neg'}">${(s.ev * 100).toFixed(1)}%</b></div>
       <label><small>Stake</small><input type="number" min="0" step="1" value="${Number(slip.stake) || 0}" data-slip-stake></label>

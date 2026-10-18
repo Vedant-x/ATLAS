@@ -6,6 +6,8 @@
 //   conflict  the line is offered but the player is listed out or doubtful
 //   stale     the price or the game logs are old
 //   waiting   his own status, or a key teammate's, is still questionable
+//   unknown   the price, the game logs or the injury report has no time on it: its freshness can't
+//             be checked, so it is never passed as fresh
 //   limited   thin or no game history, or no injury report for the match
 //   ready     everything the forecast uses is in and current
 //
@@ -21,14 +23,21 @@ const mins = (t, now) => (t ? Math.max(0, Math.round((now - t) / 6e4)) : null);
 export function propReadiness(e, x, { now = Date.now(), priceAt = null, logsAt = null } = {}) {
   const list = [];
   const add = (key, label, ok, note, flag) => list.push({ key, label, ok, note, flag });
+  // `fresh: 'unknown'` marks a check whose time is missing.
   const pAge = mins(priceAt ?? e.fetchedAt, now);
-  add('price', 'Price', pAge == null || pAge <= 60, pAge == null ? 'available' : `checked ${pAge < 1 ? 'just now' : `${pAge} min ago`}`);
+  if (pAge == null) add('price', 'Price', null, 'offered, but the time it was checked is unknown', 'unknown');
+  else add('price', 'Price', pAge <= 60, `checked ${pAge < 1 ? 'just now' : `${pAge} min ago`}`);
   const n = x.hist?.l20?.[1] || 0;
   add('history', 'Game history', n >= 8 ? true : n ? false : null, n ? `${n} recent games` : 'no games on record: the price alone');
   const lAge = mins(logsAt, now);
   if (lAge != null) add('logs', 'Game logs', lAge <= 45, `built ${lAge} min ago`);
-  const covered = Boolean(e.injuryChecked || e.injuries);
-  add('injuries', 'Injury report', covered ? true : null, covered ? `ESPN${e.injuries ? `, ${(e.injuries.home?.length || 0) + (e.injuries.away?.length || 0)} listed` : ', nobody listed'}` : 'no injury report for this match');
+  else if (n) add('logs', 'Game logs', null, 'the time they were built is unknown', 'unknown');
+  // The injury report counts only with the time it was read, and only while it is under 12 hours old.
+  const injAt = Number.isFinite(e.injuryChecked) ? e.injuryChecked : Number.isFinite(e.injuries?.at) ? e.injuries.at : null;
+  const listed = e.injuries ? `, ${(e.injuries.home?.length || 0) + (e.injuries.away?.length || 0)} listed` : ', nobody listed';
+  if (!(e.injuryChecked || e.injuries)) add('injuries', 'Injury report', null, 'no injury report for this match');
+  else if (injAt == null) add('injuries', 'Injury report', null, `ESPN${listed}, time read unknown`, 'unknown');
+  else { const h = (now - injAt) / 36e5; add('injuries', 'Injury report', h <= 12, `ESPN${listed}, read ${h < 1 ? `${Math.max(0, Math.round(h * 60))} min` : `${Math.round(h)} h`} ago`); }
   const me = x.side ? (e.injuries?.[x.side] || []).find((i) => String(i.id) === String(x.id)) : null;
   if (me) add('status', 'His status', OUT.test(me.status) ? false : QUESTIONABLE.test(me.status) ? false : true, me.status, OUT.test(me.status) ? 'conflict' : QUESTIONABLE.test(me.status) ? 'wait' : null);
   const unsure = (x.adj || []).filter((a) => !a.applied && QUESTIONABLE.test(a.status || ''));
@@ -37,8 +46,9 @@ export function propReadiness(e, x, { now = Date.now(), priceAt = null, logsAt =
 
   let state;
   if (list.some((c) => c.flag === 'conflict')) state = 'conflict';
-  else if (list.some((c) => (c.key === 'price' || c.key === 'logs') && c.ok === false)) state = 'stale';
+  else if (list.some((c) => ['price', 'logs', 'injuries'].includes(c.key) && c.ok === false)) state = 'stale';
   else if (list.some((c) => c.flag === 'wait')) state = 'waiting';
+  else if (list.some((c) => c.flag === 'unknown')) state = 'unknown';
   else if (list.some((c) => c.ok === false || c.ok === null)) state = 'limited';
   else state = 'ready';
   const label = state === 'conflict' ? 'Conflicting reports' : state === 'waiting' ? `Waiting on ${list.find((c) => c.flag === 'wait').key === 'status' ? 'his status' : 'a teammate'}` : READY_LABEL[state];
@@ -62,7 +72,7 @@ export function analysisPanel(a) {
     <div class="pl-nums">
       <div><small>Hit rate · ${a.n} game${a.n === 1 ? '' : 's'} selected</small><b>${a.n ? pc(a.hits / a.n) : '–'}</b><em>${a.hits}/${a.n}${a.avg != null ? ` · avg ${a.avg.toFixed(1)}` : ''}${a.filtersNote ? ` · ${a.filtersNote}` : ''}</em></div>
       <div class="pl-fc"><small>ATLAS forecast · next game</small><b>${pc(a.forecast)}</b><em>${a.priced ? '' : 'model only, no price at this line'}${a.why ? `${a.priced ? '' : ' · '}${escAttr(a.why)}` : ''}</em></div>
-      <div title="The price's implied chance less an assumed 5% margin: one price is offered, so the true margin cannot be calculated"><small>Market estimate · assumed 5% margin</small><b>${a.priced ? pc(a.marketEst) : '–'}</b><em>${gap != null ? `forecast ${sign(gap)} pts vs it` : '–'}</em></div>
+      <div title="The price's implied chance less an assumed 5% margin: one price is offered, so the true margin cannot be calculated"><small>Market estimate · assumed 5% margin</small><b>${a.priced ? pc(a.marketEst) : '–'}</b><em>${gap != null ? `forecast ${sign(gap)} pts vs it${gap > 0 && ret < 0 ? ', still below break-even' : ''}` : '–'}</em></div>
       <div><small>Break-even · return at this price</small><b>${a.priced ? pc(be) : '–'}</b><em>${ret != null ? `estimated return <span class="${ret >= 0 ? 'pos' : 'neg'}">${sign(ret, 1)}%</span>` : '–'}</em></div>
     </div>
     <dl class="an-strip">

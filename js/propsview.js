@@ -5,7 +5,7 @@
 import { esc, legButton, ist } from './views.js';
 import { pc, odd } from './charts.js';
 import { propLabel, propMarket, propOver, propLadder } from './props.js';
-import { playersData, rowsOf, loadPlayers } from './playerdata.js';
+import { playersData, playersMeta, rowsOf, loadPlayers } from './playerdata.js';
 import { shownProp } from './track.js';
 import { trackCalibration, trackStats, recordLine, ensureTrack } from './trackview.js';
 import { split } from './ui.js';
@@ -104,13 +104,19 @@ export function propRow(e, x, { withMatch = false, sel = '' } = {}) {
   const rates = h ? [hr('L5', h.l5), hr('L10', h.l10), hr('L20', h.l20), h.season ? hr('Season', h.season, 'this season\'s games among the last 20 stored') : '', h.vs ? hr(`vs ${opp.split(' ').at(-1)}`, h.vs) : '', h.venue ? hr(h.home ? 'Home' : 'Away', h.venue) : ''].join('') : '<span class="muted">No recent games on record: the price alone</span>';
   return `<div class="pp2${sel && sel === pkey ? ' sel' : ''}">
     <div class="pp2-head"><div><b>${esc(propLabel(x))}</b>${propOver(x) ? ` <span class="pp2-over">${esc(propOver(x))}</span>` : ''}<small>${x.hist ? `<a class="pp2-who" href="#/props/${esc(`${league}~${x.id}~${encodeURIComponent(x.type)}~${x.target}`)}">Research ›</a> ` : ''}${esc(team)} · ${esc(where)}${withMatch ? ` · <a href="#/match/${encodeURIComponent(e.id)}">${esc(ist(e.start).replace(/ IST$/, ''))}</a>` : ''}</small></div>${legButton(leg, odd(x.odds))}</div>
-    <div class="pp2-num">${readinessBadge(propReadiness(e, x))}<span class="pp2-p" title="ATLAS forecast for this game"><i>ATLAS</i> ${pc(x.p, 0)}</span><span class="muted" title="Break-even: the chance this price needs to pay off">break-even ${pc(1 / x.odds, 0)}</span><span class="${ret >= 0 ? 'pos' : 'neg'}" title="Estimated return at this price: forecast x odds - 1">return ${ret >= 0 ? '+' : '−'}${Math.abs(ret * 100).toFixed(0)}%</span><span class="muted" title="${MARGIN_NOTE}">vs market est. ${gap >= 0 ? '+' : '−'}${Math.abs(gap * 100).toFixed(0)} pts</span>${h ? `<span class="muted">avg ${h.avg}</span>` : ''}${x.why ? `<span class="pp2-why" title="ATLAS before this: ${pc(x.pBase, 0)}">${esc(x.why)}</span>` : ''}</div>
+    <div class="pp2-num">${readinessBadge(propReadiness(e, x, { logsAt: playersMeta().updatedAt }))}<span class="pp2-p" title="ATLAS forecast for this game"><i>ATLAS</i> ${pc(x.p, 0)}</span><span class="muted" title="Break-even: the chance this price needs to pay off">break-even ${pc(1 / x.odds, 0)}</span><span class="${ret >= 0 ? 'pos' : 'neg'}" title="Estimated return at this price: forecast x odds - 1">return ${ret >= 0 ? '+' : '−'}${Math.abs(ret * 100).toFixed(0)}%</span><span class="muted" title="${MARGIN_NOTE}">${edgeWords(gap, ret)}</span>${h ? `<span class="muted">avg ${h.avg}</span>` : ''}${x.why ? `<span class="pp2-why" title="ATLAS before this: ${pc(x.pBase, 0)}">${esc(x.why)}</span>` : ''}</div>
     <div class="pp2-hist"><div class="pp2-rates">${rates}</div>${h ? propBars(h, x.target) : ''}</div>
     ${otherLines(e, x)}
   </div>`;
 }
 
 // Every prop in the next 36 hours, with the calibrated chance the rest of the site shows.
+// The forecast against the market's estimate and against break-even, in words, so a positive gap
+// next to a negative return reads as what it is rather than a contradiction.
+export const edgeWords = (gap, ret) => (gap > 0 && ret < 0 ? `above the market estimate (+${Math.round(gap * 100)} pts), still below break-even at this price`
+  : gap > 0 ? `above the market estimate (+${Math.round(gap * 100)} pts) and above break-even`
+    : `${Math.abs(Math.round(gap * 100))} pts below the market estimate`);
+
 export function allProps(events, now = Date.now(), { any = false } = {}) {
   const cal = trackCalibration();
   const out = [];

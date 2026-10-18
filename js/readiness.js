@@ -7,13 +7,14 @@
 //   conflict  two sources disagree on something that matters
 //   stale     the price is older than an hour
 //   waiting   a confirmation that normally arrives before the start is not in yet
+//   unknown   there is a price but no time on it, so its freshness can't be checked
 //   limited   our feeds do not cover something the sport needs (said plainly, never hidden)
 //   ready     everything the sport needs is in
 //   none      no price and nothing else to go on
 
 const H = 36e5;
 export const READY_LABEL = {
-  ready: 'Ready to assess', waiting: 'Waiting', stale: 'Stale price', conflict: 'Conflicting reports', limited: 'Limited coverage', none: 'Insufficient data',
+  ready: 'Ready to assess', waiting: 'Waiting', stale: 'Stale price', conflict: 'Conflicting reports', unknown: 'Freshness unknown', limited: 'Limited coverage', none: 'Insufficient data',
 };
 
 const starterName = (p) => p?.report?.name || p?.name || (p?.npbId || p?.kboId ? 'announced' : '');
@@ -71,7 +72,7 @@ export function readiness(e, { now = Date.now(), priceAt = null } = {}) {
   const priced = Boolean(e.markets?.length);
   const list = checks(e, now);
   const ageMin = priced && priceAt ? Math.round((now - priceAt) / 6e4) : null;
-  list.unshift({ key: 'price', label: 'Bookmaker price', ok: priced ? (ageMin == null || ageMin <= 60) : false, note: priced ? (ageMin == null ? 'available' : `checked ${ageMin < 1 ? 'just now' : `${ageMin} min ago`}`) : 'no price for this match' });
+  list.unshift({ key: 'price', label: 'Bookmaker price', ok: priced ? (ageMin == null ? null : ageMin <= 60) : false, note: priced ? (ageMin == null ? 'offered, but the time it was checked is unknown' : `checked ${ageMin < 1 ? 'just now' : `${ageMin} min ago`}`) : 'no price for this match' });
   // Two sides announced with the same starter name, or a starter also listed as out: reports disagree.
   const outNames = new Set(['home', 'away'].flatMap((s) => (e.absences?.[s] || []).map((x) => String(x.name).toLowerCase())));
   const conflict = (e.probables || []).some((p) => outNames.has(String(starterName(p)).toLowerCase()));
@@ -80,6 +81,7 @@ export function readiness(e, { now = Date.now(), priceAt = null } = {}) {
   if (conflict) state = 'conflict';
   else if (priced && ageMin != null && ageMin > 60) state = 'stale';
   else if (list.some((c) => c.ok === false && c.waitable && soon > -H)) state = 'waiting';
+  else if (priced && ageMin == null) state = 'unknown';
   else if (!priced && !list.some((c) => c.ok)) state = 'none';
   else if (list.some((c) => c.ok === null) || !priced) state = 'limited';
   else state = 'ready';
@@ -88,6 +90,6 @@ export function readiness(e, { now = Date.now(), priceAt = null } = {}) {
   return { state, label, checks: list, missing: list.filter((c) => c.ok === false).map((c) => c.label), uncovered: list.filter((c) => c.ok === null).map((c) => c.label) };
 }
 
-// Sort weight: ready first, then waiting, limited, stale, conflict, none.
-export const READY_ORDER = { ready: 0, waiting: 1, limited: 2, stale: 3, conflict: 4, none: 5 };
+// Sort weight: ready first, then waiting, freshness unknown, limited, stale, conflict, none.
+export const READY_ORDER = { ready: 0, waiting: 1, unknown: 2, limited: 3, stale: 4, conflict: 5, none: 6 };
 export const readyBadge = (r) => `<span class="ready ready-${r.state}" title="${r.checks.map((c) => `${c.ok === true ? '✓' : c.ok === false ? '✗' : '–'} ${c.label}: ${c.note}`).join('\n').replace(/"/g, '&quot;')}">${r.label}</span>`;
