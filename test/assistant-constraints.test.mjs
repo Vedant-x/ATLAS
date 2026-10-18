@@ -28,7 +28,7 @@ const K = {
       && (!o.from || x.e.start >= o.from) && (!o.to || x.e.start < o.to) && (o.mode !== 'value' || x.ev > 0)
       && !(o.skip || []).includes(`${x.e.id}|${x.market}|${x.pick}`)).slice(0, o.limit);
   },
-  candidates: (list) => C.filter((x) => list.includes(x.e)),
+  candidates: (list) => C.filter((x) => list.includes(x.e)), pickId: (x) => `${x.e.id}|${x.market}|${x.pick}`,
   caseOf: () => ({ pro: [], con: ['Away side in form'], invalid: ['A late scratch'] }),
   readinessOf: () => ({ label: 'Ready to assess', missing: [], uncovered: [], checks: [] }),
   matchSummary: (e) => ({ winProbability: { home: 0.6, away: 0.4 }, basis: 'Bookmaker price', recommended: [], starters: [] }),
@@ -151,4 +151,32 @@ test('answer check binds every number to its pick: swaps, pronouns, two picks in
   // A percentage never matches a price or a time.
   assert.deepEqual(verifyAnswer('Arsenal are 15% to win.', context).unverified, ['15%']);
   assert.deepEqual(verifyAnswer('Arsenal are 80 percent to win at 1.50.', context).misplaced, []);
+});
+
+
+test('follow-ups keep the exact list: the second one, remove the weakest leg, same filters tomorrow, moved prices', async () => {
+  const b = createBrain(K);
+  // E[2] starts tomorrow (outside the 12 h window), so ask for the week to get all three.
+  const first = await b.answer('Best bets this week');
+  assert.equal(first.cards.length, 3);
+  const two = await b.answer('explain the second one');
+  assert.match(two.text, /#2: /);
+  assert.equal(b.memory().list.length, 3, 'asking about one pick keeps the list');
+  const cut = await b.answer('remove the weakest leg');
+  assert.equal(b.memory().list.length, 2);
+  assert.ok(!cut.cards.some((c) => c.pick === 'EPL fav'), 'the 52% leg went');
+  // Same filters, tomorrow: the earlier exclusions stay, the day changes.
+  await b.answer('Best bets excluding NBA');
+  await b.answer('same filters, tomorrow');
+  const o = calls.filter((c) => c[0] === 'picks').at(-1)[1];
+  assert.deepEqual(o.exclude.leagues, ['basketball/nba']);
+  assert.equal(o.from, day(1));
+  // A price that moved since the answer is said before anything else.
+  await b.answer('Best bets this week');
+  const saved = C[0];
+  C[0] = { ...saved, odds: 1.62 }; // the board's price now, a new quote
+  try {
+    const r = await b.answer('explain the risk');
+    assert.match(r.text, /now \*\*1\.62\*\* \(it was 1\.50/);
+  } finally { C[0] = saved; }
 });
