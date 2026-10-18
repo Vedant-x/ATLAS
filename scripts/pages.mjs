@@ -1223,18 +1223,19 @@ try {
   } catch { /* first run */ }
   let back = Number(prev.meta.backfilledTo) || 1;
   if (back < BACKFILL_DAYS) {
-    // Two more days back per build, every league, best effort (never marks a league as failed).
-    const from = -(back + 2), to = -(back + 1);
+    // Four more days back per build, every league, best effort (never marks a league as failed):
+    // 120 days of history in about 30 builds.
+    const from = -(back + 4), to = -(back + 1);
     const before = finished.length;
-    await fetchAll(AbortSignal.timeout(180000), ordered, { from, days: to, extra: true, concurrency: 3, finished }).catch(() => []);
-    log(`Results backfill: days ${-from} to ${-to} ago, ${finished.length - before} finished games`);
-    back += 2;
+    await fetchAll(AbortSignal.timeout(240000), ordered, { from, days: to, extra: true, concurrency: 3, finished }).catch(() => []);
+    log(`Results backfill: ${-to} to ${-from} days ago, ${finished.length - before} finished games`);
+    back += 4;
   }
   const history = mergeResults(prev.list, finished);
   const R = rateResults(history);
   const rated = annotateRatings(events, R);
   const bySport = Object.entries(history.reduce((m, g) => ((m[g.sport] = (m[g.sport] || 0) + 1), m), {})).sort((a, b) => b[1] - a[1]);
-  log(`ATLAS ratings: ${history.length} results (${finished.length} new this build, backfilled to ${back} days); ${R.r.size} teams/players rated; ${rated} upcoming matches with trusted ratings`);
+  log(`ATLAS ratings: ${history.length} results (${finished.length} read this build, history back ${back} days); ${R.r.size} teams/players rated; ${rated} upcoming matches with trusted ratings`);
   log(`  results by sport: ${bySport.map(([k, v]) => `${k} ${v}`).join(' · ')}`);
   log(`  how well the ratings called results (trusted sides): ${Object.entries(R.quality).map(([k, q]) => `${k} ${q.n} games, ${(q.right * 100).toFixed(0)}% right, Brier ${q.brier.toFixed(3)}`).join(' · ') || 'not enough yet'}`);
   noteSource('ATLAS results history', 'built from the feeds above', 'Ratings for every team and player, rest days, last meetings, form', history.length > 0, rated, `${history.length} results over ${back} days; ${rated} upcoming matches rated`);
