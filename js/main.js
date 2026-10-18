@@ -17,8 +17,8 @@ import { loadPlayers, playersData } from './playerdata.js';
 // The Research area: one tab bar across its pages (props and player research, Picks, compare,
 // and sports and leagues).
 const PICKS = ['bankers', 'every', 'edge', 'x', 'target', 'mega'];
-const RESEARCH = new Set(['props', 'player', 'bankers', 'every', 'x', 'target', 'mega', 'edge', 'compare', 'sports', 'sport', 'league']);
-const R_TABS = [['props', '#/props', 'Props', ['props', 'player']], ['picks', '#/bankers', 'Picks', PICKS], ['compare', '#/compare', 'Compare', ['compare']], ['sports', '#/sports', 'Sports', ['sports', 'sport', 'league']]];
+const RESEARCH = new Set(['props', 'player', 'bankers', 'every', 'x', 'target', 'mega', 'edge', 'compare', 'sports', 'sport', 'league', 'live']);
+const R_TABS = [['sports', '#/sports', 'Sports', ['sports', 'sport', 'league']], ['live', '#/live', 'Live', ['live']], ['props', '#/props', 'Props', ['props', 'player']], ['compare', '#/compare', 'Compare', ['compare']], ['picks', '#/bankers', 'Build a slip', PICKS]];
 // Picks pages carry their own tab row (Bankers, Edge board, Multipliers, Target, Mega) instead.
 const withTabs = (name, html) => { if (!RESEARCH.has(name) || PICKS.includes(name)) return html; const i = html.indexOf('</section>'); return i < 0 ? researchTabs(name) + html : html.slice(0, i + 10) + researchTabs(name) + html.slice(i + 10); };
 const researchTabs = (name) => `<nav class="research-tabs" aria-label="Research">${R_TABS.map(([k, h, l, on]) => `<a class="${on.includes(name) ? 'on' : ''}" href="${h}"${on.includes(name) ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>`;
@@ -270,7 +270,8 @@ function render(animate) {
   document.documentElement.style.setProperty('--accent', readable(v.accent)); // selected chips carry black text on it
   scene.setMode(v.mode, v.sceneOpts);
   // Deeper pages keep their section lit: matches and leagues under Sports, player research under Props, the builder and edge board under Picks.
-  const tab = ['sport', 'league', 'match'].includes(name) ? 'sports' : name === 'player' ? 'props' : PICKS.includes(name) ? 'bankers' : name;
+  // Research (Sports, Props, Compare, Live and the pages under them) lights the Research entry.
+  const tab = ['sport', 'league', 'match', 'player', 'props', 'compare', 'live'].includes(name) ? 'sports' : PICKS.includes(name) ? 'bankers' : name;
   document.querySelectorAll('nav.top a').forEach((a) => { const h = a.getAttribute('href'); a.classList.toggle('on', h.startsWith('#/') && (h.split('/')[1] || 'home') === tab); });
   // On phones and tablets, More is lit when the page's own menu item is folded into it.
   const lit = document.querySelector('nav.top a.on:not([data-more])');

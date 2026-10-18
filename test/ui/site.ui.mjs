@@ -257,3 +257,17 @@ test('home: multiplier cards fit their text on desktop and phone', async () => {
     await ctx.close();
   }
 });
+
+test('navigation: five destinations, Research lit across its pages, Live and Props one tap away', async () => {
+  for (const viewport of [DESK, PHONE]) {
+    const { page, ctx, errors } = await open('#/props', { viewport });
+    await page.waitForSelector('.research-tabs');
+    const shown = await page.$$eval('nav.top a', (as) => as.filter((a) => getComputedStyle(a).display !== 'none').map((a) => a.dataset.m));
+    assert.deepEqual(shown, ['Today', 'Research', 'Build a slip', 'Watchlist', 'Results', ...(viewport === PHONE ? ['More'] : [])]);
+    assert.equal(await page.getAttribute('nav.top a[href="#/sports"]', 'class'), 'on');
+    assert.deepEqual(await page.$$eval('.research-tabs a', (as) => as.map((a) => a.textContent)), ['Sports', 'Live', 'Props', 'Compare', 'Build a slip']);
+    await shot(page, `nav-${viewport === PHONE ? 'phone' : 'desk'}`);
+    assert.deepEqual(errors, []);
+    await ctx.close();
+  }
+});
