@@ -11,6 +11,33 @@ export const normName = (s) => String(s || '').toLowerCase().normalize('NFD').re
   .replace(/\b(fc|cf|afc|sc|ac|as|ss|ssc|sv|if|bk|sk|hc|hk|cd|ud|rc|club|calcio|basketball|hockey|united|city|the)\b/g, ' ')
   .replace(/\s+/g, ' ').trim();
 
+// The same team or player under two spellings: the same name, every word of the shorter name in the
+// longer (at least 4 letters in all: "Valencia" / "Valencia Basket"), or one the start of the other
+// ("Kocaeli" / "Kocaelispor").
+export function sameSide(x, y) {
+  const a = normName(x), b = normName(y);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const wa = a.split(' '), wb = b.split(' ');
+  const [sh, lo] = wa.length <= wb.length ? [wa, new Set(wb)] : [wb, new Set(wa)];
+  if (sh.join('').length >= 4 && sh.every((w) => lo.has(w))) return true;
+  const [p, q] = a.length <= b.length ? [a, b] : [b, a];
+  return p.length >= 5 && q.startsWith(p);
+}
+
+// How an API event lines up with one of ours: { orient: 'same' | 'swapped', score } or null. Both
+// sides matching scores 2; one side alone (1) only within three hours, as no team or player plays
+// twice in that time.
+export function lineUp(o, e, { window = 6 * 36e5 } = {}) {
+  const dt = Math.abs(Date.parse(o.commence_time) - e.start);
+  if (!(dt <= window)) return null;
+  const hh = sameSide(o.home_team, e.home), aa = sameSide(o.away_team, e.away), ha = sameSide(o.home_team, e.away), ah = sameSide(o.away_team, e.home);
+  if (hh && aa) return { orient: 'same', score: 2, dt };
+  if (ha && ah) return { orient: 'swapped', score: 2, dt };
+  if (dt <= 3 * 36e5 && (hh || aa) !== (ha || ah)) return { orient: hh || aa ? 'same' : 'swapped', score: 1, dt };
+  return null;
+}
+
 const median = (xs) => { const a = [...xs].sort((x, y) => x - y); const n = a.length; return n ? (n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2) : null; };
 
 // Every bookmaker's price per outcome, per market, for one event: { p, book } lists.
@@ -60,11 +87,13 @@ function shopped(name, lists, names) {
 }
 
 // Markets in the site's own shape (espn.js marketsFrom), from one matched Odds API event.
-export function marketsFromOdds(oddsEvent, { home, away }) {
+// api: the API's names for our home and away sides (default: the same names).
+export function marketsFromOdds(oddsEvent, { home, away, api = null }) {
+  const apiHome = api?.home ?? home, apiAway = api?.away ?? away;
   const c = consensus(oddsEvent);
   const markets = [];
   const list = (team) => { const hit = Object.keys(c.h2h).find((n) => normName(n) === normName(team)); return hit ? c.h2h[hit] : null; };
-  const h = list(home), a = list(away);
+  const h = list(apiHome), a = list(apiAway);
   const drawKey = Object.keys(c.h2h).find((n) => /^draw$/i.test(n));
   const d = drawKey ? c.h2h[drawKey] : null;
   if (h && a) {
@@ -75,7 +104,7 @@ export function marketsFromOdds(oddsEvent, { home, away }) {
   if (tot && tot.over.length && tot.under.length) markets.push(shopped(`Total ${tot.point}`, [tot.over, tot.under], [`Over ${tot.point}`, `Under ${tot.point}`]));
   // Spread from the home side's line (the away line is its mirror).
   const spreadsBy = {};
-  for (const s of Object.values(c.spreads)) { const side = normName(s.name) === normName(home) ? 'home' : normName(s.name) === normName(away) ? 'away' : null; if (side) (spreadsBy[Math.abs(s.point)] ||= {})[side] = s; }
+  for (const s of Object.values(c.spreads)) { const side = normName(s.name) === normName(apiHome) ? 'home' : normName(s.name) === normName(apiAway) ? 'away' : null; if (side) (spreadsBy[Math.abs(s.point)] ||= {})[side] = s; }
   const line = mainBy(Object.entries(spreadsBy).filter(([, v]) => v.home && v.away).map(([k, v]) => ({ point: +k, ...v })), (e) => Math.min(e.home.p.length, e.away.p.length));
   if (line) {
     const sp = line.home.point; // signed from the home side
@@ -96,9 +125,12 @@ export function matchOdds(events, oddsEvents, { now = Date.now(), window = 6 * 3
   for (const e of events) {
     if (e.live || !(e.start > now) || (!force && e.markets?.length)) continue;
     const eh = normName(e.home), ea = normName(e.away);
-    const hit = parsed.find((x) => Math.abs(x.t - e.start) <= window && ((x.h === eh && x.a === ea) || (x.h === ea && x.a === eh)));
+    // The event the build paired with this one (pairEvents), else the same names either way round.
+    const hit = (e.oddsId && parsed.find((x) => x.o.id === e.oddsId)) || parsed.find((x) => Math.abs(x.t - e.start) <= window && ((x.h === eh && x.a === ea) || (x.h === ea && x.a === eh)));
     if (!hit) continue;
-    const { markets, books, quotedAt } = marketsFromOdds(hit.o, e);
+    const swapped = hit.h === eh && hit.a === ea ? false : hit.h === ea && hit.a === eh ? true : lineUp(hit.o, e, { window: Infinity })?.orient === 'swapped';
+    const api = swapped ? { home: hit.o.away_team, away: hit.o.home_team } : { home: hit.o.home_team, away: hit.o.away_team };
+    const { markets, books, quotedAt } = marketsFromOdds(hit.o, { home: e.home, away: e.away, api });
     const at = quotedAt ?? fetchedAt;
     if (at != null && now - at > maxAge) continue;
     if (markets.length) {
@@ -128,16 +160,15 @@ export const sportOfKey = (key) => KEY_SPORT.find(([re]) => re.test(key))?.[1] |
 export const LISTED_SPORTS = [...new Set(KEY_SPORT.map(([, s]) => s))];
 export const listedPath = (sport) => `atlas/odds-${sport}`;
 
-// Pair the API's events with ours (same two names either way round, start within `window`).
+// Pair the API's events with ours (lineUp: the best-matching of ours, nearest in time on a tie).
 // Returns { pairs: [[apiEvent, ourEvent]], extra: [apiEvents with no match here] }.
 export function pairEvents(ours, apiEvents, { window = 6 * 36e5 } = {}) {
-  const idx = ours.map((e) => ({ e, h: normName(e.home), a: normName(e.away) }));
   const pairs = [], extra = [];
   for (const o of apiEvents) {
-    const t = Date.parse(o.commence_time), h = normName(o.home_team), a = normName(o.away_team);
-    if (!Number.isFinite(t) || !h || !a) continue;
-    const hit = idx.find((x) => Math.abs(x.e.start - t) <= window && ((x.h === h && x.a === a) || (x.h === a && x.a === h)));
-    if (hit) pairs.push([o, hit.e]); else extra.push(o);
+    if (!Number.isFinite(Date.parse(o.commence_time)) || !normName(o.home_team) || !normName(o.away_team)) continue;
+    let best = null;
+    for (const e of ours) { const m = lineUp(o, e, { window }); if (m && (!best || m.score > best.m.score || (m.score === best.m.score && m.dt < best.m.dt))) best = { e, m }; }
+    if (best) pairs.push([o, best.e]); else extra.push(o);
   }
   return { pairs, extra };
 }
@@ -148,6 +179,6 @@ export function fixtureFromApi(o, { key, title, sport, at = Date.now() }) {
     id: `atlas_odds-${o.id}`, sport, league: title || key, leaguePath: listedPath(sport), group: 'Bookmaker listings',
     home: o.home_team, away: o.away_team, start: Date.parse(o.commence_time), live: false, final: false, score: null, clock: '',
     venue: null, neutral: false, markets: [], lineups: null, probables: [], stats: {}, logos: { home: null, away: null },
-    note: title || null, source: "The Odds API (the bookmakers' fixture list)", fetchedAt: at, oddsKey: key,
+    note: title || null, source: "The Odds API (the bookmakers' fixture list)", fetchedAt: at, oddsKey: key, oddsId: o.id,
   };
 }

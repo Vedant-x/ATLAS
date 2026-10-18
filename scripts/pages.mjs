@@ -1387,8 +1387,8 @@ try {
 // 500 credits a month, so paid odds are only fetched for matches no other source prices.
 //  1. The in-season sports list and each sport key's fixture list cost no credits. The fixture lists
 //     (kept in data/odds-extra.json, each refreshed every 6 hours) tie every key to the matches here it
-//     covers, and add the matches the bookmakers list that no feed here does (catalog: "Other
-//     competitions"), so nothing they offer is missing from the board.
+//     covers, and add the matches in the next 3 days the bookmakers list that no feed here does
+//     (catalog: "Other competitions"), so nothing they offer is missing from the board.
 //  2. A key is due for odds only if it has matches in the next 3 days with no price from ESPN,
 //     football-data.co.uk or the other feeds, and its last odds are older than ODDS_HOURS (default
 //     12). The most such matches first; credits spent at an even pace to the end of the month.
@@ -1427,10 +1427,12 @@ if (process.env.ODDS_API_KEY) {
     for (const [k, list] of Object.entries(lists)) {
       const sport = sportOfKey(k);
       const upcoming = list.filter((o) => { const t = Date.parse(o.commence_time); return t > Date.now() && t < Date.now() + 7 * 864e5; });
-      const { pairs, extra } = pairEvents(events.filter((e) => e.sport === sport && !e.live && e.start > Date.now()), upcoming);
-      byKey[k] = pairs.map(([, e]) => e);
-      for (const o of extra) { const ev = fixtureFromApi(o, { key: k, title: titles[k], sport, at: listAt[k] }); events.push(ev); byKey[k].push(ev); }
-      if (extra.length) addedBy[titles[k] || k] = extra.length;
+      const { pairs, extra } = pairEvents(events.filter((e) => e.sport === sport && !e.live && e.start > Date.now() - 36e5), upcoming);
+      byKey[k] = pairs.map(([o, e]) => { e.oddsId = o.id; return e; });
+      // Added only within 3 days: further out, our own feeds may simply not have loaded the match yet.
+      for (const o of extra.filter((x) => Date.parse(x.commence_time) < Date.now() + 72 * 36e5)) { const ev = fixtureFromApi(o, { key: k, title: titles[k], sport, at: listAt[k] }); events.push(ev); byKey[k].push(ev); }
+      const n = extra.filter((x) => Date.parse(x.commence_time) < Date.now() + 72 * 36e5).length;
+      if (n) addedBy[titles[k] || k] = n;
     }
     // Matches each key covers in the next 3 days that no other source prices (before any Odds API odds).
     const need = (k) => (byKey[k] || []).filter((e) => e.start < Date.now() + 72 * 36e5 && !e.markets?.length).length;

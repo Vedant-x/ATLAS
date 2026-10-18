@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { consensus, marketsFromOdds, matchOdds, normName, sportOfKey, pairEvents, fixtureFromApi } from '../js/oddsapi.js';
+import { consensus, marketsFromOdds, matchOdds, normName, sportOfKey, pairEvents, fixtureFromApi, sameSide } from '../js/oddsapi.js';
 
 const bk = (title, markets) => ({ key: title, title, markets });
 const h2h = (a, pa, b, pb, d = null) => bk('b', [{ key: 'h2h', outcomes: [{ name: a, price: pa }, { name: b, price: pb }, ...(d ? [{ name: 'Draw', price: d }] : [])] }]);
@@ -122,4 +122,26 @@ test('a draw the books price makes a three-way market in any sport', () => {
   const { markets } = marketsFromOdds(ev, { home: 'Leinster', away: 'Munster' });
   assert.equal(markets[0].name, 'Match Result');
   assert.deepEqual(markets[0].outcomes.map((o) => o.name), ['Leinster', 'Draw', 'Munster']);
+});
+
+test('pairing tolerates different spellings and reads prices by the API\'s own names', () => {
+  assert.ok(sameSide('Valencia Basket', 'Valencia'));
+  assert.ok(sameSide('Kocaelispor', 'Kocaeli'));
+  assert.ok(!sameSide('Real Madrid', 'Real Betis'));
+  const t = Date.parse('2026-10-20T18:00:00Z');
+  const ours = [{ id: 'v', home: 'Paris Basketball', away: 'Valencia Basket', start: t, markets: [] },
+    { id: 'w', home: 'Gremio', away: 'Vasco da Gama', start: t, markets: [] }];
+  const list = [
+    { id: 'p1', commence_time: new Date(t).toISOString(), home_team: 'Valencia', away_team: 'Paris' }, // swapped, both shortened
+    { id: 'p2', commence_time: new Date(t + 36e5).toISOString(), home_team: 'Gremio FBPA', away_team: 'CR Vasco' }, // one side matches, within 3 h
+  ];
+  const { pairs, extra } = pairEvents(ours, list);
+  assert.deepEqual(pairs.map(([o, e]) => [o.id, e.id]), [['p1', 'v'], ['p2', 'w']]);
+  assert.equal(extra.length, 0);
+  // Prices land on the right side even though the API has the teams the other way round.
+  ours[0].oddsId = 'p1';
+  const odds = [{ ...list[0], bookmakers: [h2h('Valencia', 2.4, 'Paris', 1.6)] }];
+  assert.equal(matchOdds([ours[0]], odds, { now: t - 36e5, force: true }), 1);
+  const w = ours[0].markets.find((m) => m.name === 'Winner');
+  assert.deepEqual(w.outcomes.map((o) => [o.name, o.odds]), [['Paris Basketball', 1.6], ['Valencia Basket', 2.4]]);
 });
