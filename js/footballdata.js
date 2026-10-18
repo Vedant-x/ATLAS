@@ -103,7 +103,7 @@ export function applyFixtures(events, fixtures, { now = Date.now(), fileAt = nul
     if (f.ou) e.markets.push({ name: 'Total 2.5', outcomes: [{ name: 'Over 2.5', odds: f.ou[0] }, { name: 'Under 2.5', odds: f.ou[1] }] });
     e.bookmaker = `${f.book} via football-data.co.uk`;
     e.oddsSource = 'football-data';
-    e.priceAt = fileAt ?? now;
+    e.priceAt = fileAt ?? null; // the file's own date; unknown if the server gives none
     out.priced++;
   }
   return out;

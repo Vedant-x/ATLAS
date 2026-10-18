@@ -9,7 +9,7 @@ import { ico, kindIco, watchLabel, pinLabel } from './icons.js';
 import { esc, sportOf, ist, analysisFor } from './views.js';
 import { coherentBets } from './picks.js';
 import { trackCalibration } from './trackview.js';
-import { readiness, readyBadge } from './readiness.js';
+import { readiness, readyBadge, priceTime } from './readiness.js';
 import { changesFor, latestChange, needsReview, changesSince, lastVisit, timelineUpdatedAt } from './timeline.js';
 import { FORECAST_NOTE } from './changelog.js';
 import { ORDERS, orderByTime } from './engine.js';
@@ -29,7 +29,7 @@ export function researchRow(e) {
   const a = analysisFor(e);
   const { lean, picks } = coherentBets(e, a, { cal: trackCalibration(), preferBook: true }); // a real price first, where one exists
   const main = picks.find((p) => p.book) || picks[0] || null;
-  const r = readiness(e, { priceAt: e.fetchedAt || S?.fetchedAt });
+  const r = readiness(e, { priceAt: priceTime(e) });
   return { e, a, lean, main, picks, r, change: latestChange(e.id), review: watch.has(e.id) ? needsReview(e.id) : [] };
 }
 

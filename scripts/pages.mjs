@@ -1342,7 +1342,7 @@ noteSource('MLB Stats API', 'statsapi.mlb.com', 'Probable starters, pitcher repo
 // recent form is recomputed from the rows that survived.
 let dropped = 0;
 for (const e of events) for (const p of (e.probables || []).filter((x) => x.report)) {
-  p.report.fetchedAt ??= e.fetchedAt || Date.now();
+  p.report.fetchedAt ??= e.fetchedAt ?? null; // never the build time: unknown stays unknown
   validateReport(p.report, (msg) => { dropped++; if (dropped <= 25) log('  VALIDATION', msg); });
   const starts = (p.report.recent || []).filter((g) => g.start);
   p.report.form3 = formOf(starts.slice(0, 3)); p.report.form5 = formOf(starts.slice(0, 5));

@@ -25,7 +25,7 @@ import { propRow, allProps } from './propsview.js';
 import { coherentBets } from './picks.js';
 import { mergeEvent } from './merge.js';
 import { casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips, changesPanel, orderBets, orderChips, orderLabel } from './research.js';
-import { readiness } from './readiness.js';
+import { readiness, priceTime } from './readiness.js';
 import { lastVisit } from './timeline.js';
 import { whyLine } from './why.js';
 import { canonStats, standingsTable } from './standings.js';
@@ -393,7 +393,7 @@ function dashboard(ev, live) {
   // Matches starting within the chosen window (3 to 48 hours; 12 by default).
   const hrs = researchPrefs().shortHours;
   const mode = researchPrefs().shortMode || 'best';
-  const ready = (e) => readiness(e, { priceAt: e.fetchedAt || S.fetchedAt }).state === 'ready';
+  const ready = (e) => readiness(e, { priceAt: priceTime(e) }).state === 'ready';
   // Surest: 1.20-1.40 where ATLAS does not claim to beat the price (its own record).
   const safest = mode === 'safest', best = mode === 'best';
   // Best bets: the likeliest winners across every sport at a price no shorter than the market's fair
@@ -479,9 +479,9 @@ function sourcesLine(e) {
   const d = detailFor(e.id);
   const st = (e.probables || []).find((p) => p.report)?.report;
   const parts = [
-    ...(e.priceAt && e.bookmaker ? [[e.source || (e.leaguePath?.startsWith('atlas/') ? 'League site' : 'ESPN'), e.fetchedAt || S.fetchedAt, 'fixture'], [e.bookmaker, e.priceAt, 'price']]
-      : [[e.source || (e.leaguePath?.startsWith('atlas/') ? 'League site' : 'ESPN'), e.fetchedAt || S.fetchedAt, 'fixture & price']]),
-    st ? [st.sourceLabel?.replace(/ profile$/, '') || st.league, st.fetchedAt || e.fetchedAt || S.fetchedAt, 'starters'] : null,
+    ...(e.priceAt && e.bookmaker ? [[e.source || (e.leaguePath?.startsWith('atlas/') ? 'League site' : 'ESPN'), e.fetchedAt ?? null, 'fixture'], [e.bookmaker, e.priceAt, 'price']]
+      : [[e.source || (e.leaguePath?.startsWith('atlas/') ? 'League site' : 'ESPN'), e.fetchedAt ?? null, 'fixture & price']]),
+    st ? [st.sourceLabel?.replace(/ profile$/, '') || st.league, st.fetchedAt ?? null, 'starters'] : null,
     e.absences ? ['FotMob', e.absences.fetchedAt, 'absences'] : null,
     d?.ok && !d.native ? ['ESPN summary', d.fetchedAt, 'stats, injuries, form'] : null,
   ].filter(Boolean);
@@ -520,7 +520,7 @@ function bestBetsPanel(e, a) {
 // every input its sport needs is in.
 function pendingInputs(e) {
   if (e.live) return '';
-  const r = readiness(e, { priceAt: e.fetchedAt || S.fetchedAt });
+  const r = readiness(e, { priceAt: priceTime(e) });
   if (r.state === 'ready' || (r.state === 'limited' && !e.stale)) return ''; // limited = the sport's coverage, not a missing input
   const missing = r.checks.filter((c) => c.ok === false).slice(0, 2).map((c) => (c.key === 'price' ? `price ${c.note}` : c.label.toLowerCase()));
   return `<small class="mini-wait ready-${r.state}">${e.stale ? 'Feed down · ' : ''}${missing.length ? `Check: ${esc(missing.join(', '))}` : esc(r.label)}</small>`;

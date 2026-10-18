@@ -13,7 +13,7 @@ import { trackCalibration } from '../trackview.js';
 import { researchRow, caseFor } from '../research.js';
 import { changesSince, lastVisit, needsReview, timelineUpdatedAt } from '../timeline.js';
 import { watch } from '../alerts.js';
-import { readiness } from '../readiness.js';
+import { readiness, priceTime } from '../readiness.js';
 import { playersData, playersMeta, loadPlayers, rowsOf, valueOf } from '../playerdata.js';
 import { analyseSlip } from '../slipcheck.js';
 import { slip } from '../slip.js';
@@ -186,10 +186,10 @@ export function createKnowledge(S) {
   // Research: the case for one match (supports / against / unknown / would change the call), the
   // evidence readiness, and the change timeline. Same functions the pages use.
   const caseOf = (e) => { const x = researchRow(e); return { row: x, ...(caseFor(x) || { pro: [], con: [], unknown: [], invalid: [] }) }; };
-  const readinessOf = (e) => readiness(e, { priceAt: e.fetchedAt || S.fetchedAt });
+  const readinessOf = (e) => readiness(e, { priceAt: priceTime(e) });
   const changes = ({ since = lastVisit(), watchedOnly = false } = {}) => changesSince(since).filter((c) => !watchedOnly || watch.has(c.eventId));
   const reviewList = () => watch.ids().map((id) => S.events.find((e) => e.id === id)).filter(Boolean).map((e) => ({ e, changes: needsReview(e.id) })).filter((x) => x.changes.length);
-  const freshness = () => ({ pricesAt: S.fetchedAt || null, changesAt: timelineUpdatedAt() });
+  const freshness = () => ({ pricesAt: S.events?.reduce((t, e) => Math.max(t, priceTime(e) || 0), 0) || null, changesAt: timelineUpdatedAt() });
   // Slips, optionally limited to the events a question allows (sport, dates, exclusions) and a minimum
   // leg price; a filtered set is built fresh rather than read from the page's cache.
   const slips = (target, today = true, { filter = null, key = '', minOdds = null, maxOdds = null, positiveOnly = false } = {}) => S.slips(target, { count: 5, today: today && target < 100, filter, key, minOdds, maxOdds, positiveOnly });
@@ -221,12 +221,12 @@ export function createKnowledge(S) {
   function sourcesFor(e) {
     const age = (t) => (t ? `${Math.max(0, Math.round((Date.now() - t) / 6e4))} min ago` : 'time unknown');
     const out = [];
-    if (e.markets?.length) out.push({ what: 'Prices', from: e.bookmaker || 'bookmaker feed', at: age(e.priceAt || e.fetchedAt || S.fetchedAt) });
-    out.push({ what: 'Fixture and scores', from: e.source || 'league feed', at: age(e.fetchedAt || S.fetchedAt) });
-    if (e.props?.length) out.push({ what: 'Player props', from: 'DraftKings via ESPN', at: age(e.fetchedAt || S.fetchedAt) });
+    if (e.markets?.length) out.push({ what: 'Prices', from: e.bookmaker || 'bookmaker feed', at: age(priceTime(e)) });
+    out.push({ what: 'Fixture and scores', from: e.source || 'league feed', at: age(e.fetchedAt ?? null) });
+    if (e.props?.length) out.push({ what: 'Player props', from: 'DraftKings via ESPN', at: age(e.fetchedAt ?? null) });
     if (e.injuries || e.injuryChecked) out.push({ what: 'Injury report', from: 'ESPN', at: age(e.injuryChecked || e.injuries?.at) });
     if (e.absences) out.push({ what: 'Absences and lineups', from: e.absences.source || 'FotMob', at: age(e.absences.at) });
-    if ((e.probables || []).some((x) => x.report)) out.push({ what: 'Starting pitchers', from: 'MLB / NPB / KBO feeds', at: age(e.fetchedAt || S.fetchedAt) });
+    if ((e.probables || []).some((x) => x.report)) out.push({ what: 'Starting pitchers', from: 'MLB / NPB / KBO feeds', at: age((e.probables || []).find((x) => x.report)?.report?.fetchedAt ?? null) });
     if (playersMeta().updatedAt && e.props?.some((x) => x.hist)) out.push({ what: 'Player game logs', from: 'ESPN game logs', at: age(playersMeta().updatedAt) });
     return out;
   }

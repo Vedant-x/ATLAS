@@ -145,3 +145,21 @@ test('pairing tolerates different spellings and reads prices by the API\'s own n
   const w = ours[0].markets.find((m) => m.name === 'Winner');
   assert.deepEqual(w.outcomes.map((o) => [o.name, o.odds]), [['Paris Basketball', 1.6], ['Valencia Basket', 2.4]]);
 });
+
+test('spreads pair a home line only with its mirror; a soccer match never loses its draw to a two-way price', () => {
+  const sp = (name, point, price) => ({ name, point, price });
+  const ev = { home_team: 'A', away_team: 'B', bookmakers: [
+    bk('x', [{ key: 'spreads', outcomes: [sp('A', -1.5, 2.1), sp('B', 1.5, 1.75)] }]),
+    bk('y', [{ key: 'spreads', outcomes: [sp('A', -1.5, 2.05), sp('B', 1.5, 1.8), sp('A', 1.5, 1.3), sp('B', -1.5, 3.4)] }]),
+  ] };
+  const { markets } = marketsFromOdds(ev, { home: 'A', away: 'B' });
+  const s = markets.find((m) => m.name === 'Spread');
+  assert.equal(s.line, -1.5);
+  assert.deepEqual(s.outcomes.map((o) => [o.name, o.odds]), [['A -1.5', 2.1], ['B +1.5', 1.8]]);
+  // Soccer with no draw quoted: the feed's three-way market is kept, the two-way one left out.
+  const start = Date.now() + 864e5;
+  const e = { id: 's', sport: 'football', home: 'Arsenal', away: 'Chelsea', start, markets: [{ name: 'Match Result', outcomes: [{ name: 'Arsenal', odds: 1.9 }, { name: 'Draw', odds: 3.6 }, { name: 'Chelsea', odds: 4.2 }] }] };
+  matchOdds([e], [{ id: 'o', commence_time: new Date(start).toISOString(), home_team: 'Arsenal', away_team: 'Chelsea', bookmakers: [h2h('Arsenal', 1.5, 'Chelsea', 2.6)] }], { force: true });
+  assert.deepEqual(e.markets.map((m) => m.name), ['Match Result']);
+  assert.ok(e.markets[0].outcomes.some((o) => o.name === 'Draw'));
+});

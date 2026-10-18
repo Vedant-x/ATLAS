@@ -104,3 +104,7 @@ export function readiness(e, { now = Date.now(), priceAt = null } = {}) {
 // Sort weight: ready first, then waiting, freshness unknown, limited, stale, conflict, none.
 export const READY_ORDER = { ready: 0, waiting: 1, unknown: 2, limited: 3, stale: 4, conflict: 5, none: 6 };
 export const readyBadge = (r) => `<span class="ready ready-${r.state}" title="${r.checks.map((c) => `${c.ok === true ? '✓' : c.ok === false ? '✗' : '–'} ${c.label}: ${c.note}`).join('\n').replace(/"/g, '&quot;')}">${r.label}</span>`;
+
+// When a match's price was quoted: the quote's own time (Odds API, football-data.co.uk), else the
+// time the feed carrying it was read. Never the site's build time: null means freshness unknown.
+export const priceTime = (e) => e?.priceAt ?? (e?.markets?.length ? e.fetchedAt ?? null : null);

@@ -102,12 +102,18 @@ export function marketsFromOdds(oddsEvent, { home, away, api = null }) {
   }
   const tot = mainBy(Object.values(c.totals), (e) => Math.min(e.over.length, e.under.length));
   if (tot && tot.over.length && tot.under.length) markets.push(shopped(`Total ${tot.point}`, [tot.over, tot.under], [`Over ${tot.point}`, `Under ${tot.point}`]));
-  // Spread from the home side's line (the away line is its mirror).
-  const spreadsBy = {};
-  for (const s of Object.values(c.spreads)) { const side = normName(s.name) === normName(apiHome) ? 'home' : normName(s.name) === normName(apiAway) ? 'away' : null; if (side) (spreadsBy[Math.abs(s.point)] ||= {})[side] = s; }
-  const line = mainBy(Object.entries(spreadsBy).filter(([, v]) => v.home && v.away).map(([k, v]) => ({ point: +k, ...v })), (e) => Math.min(e.home.p.length, e.away.p.length));
+  // Spreads keyed by the line from the home side: a home -1.5 pairs only with an away +1.5, so an
+  // alternate line (home +1.5 / away -1.5) is a different market, never mixed in.
+  const lines = {};
+  for (const s of Object.values(c.spreads)) {
+    const isH = normName(s.name) === normName(apiHome), isA = normName(s.name) === normName(apiAway);
+    if (!isH && !isA) continue;
+    const hp = isH ? s.point : -s.point;
+    (lines[hp] ||= {})[isH ? 'home' : 'away'] = s;
+  }
+  const line = mainBy(Object.entries(lines).filter(([, v]) => v.home && v.away).map(([k, v]) => ({ point: +k, ...v })), (e) => Math.min(e.home.p.length, e.away.p.length));
   if (line) {
-    const sp = line.home.point; // signed from the home side
+    const sp = line.point; // signed from the home side; the away side's own point is -sp
     markets.push({ ...shopped('Spread', [line.home.p, line.away.p], [`${home} ${sp > 0 ? '+' : ''}${sp}`, `${away} ${-sp > 0 ? '+' : ''}${-sp}`]), line: sp });
   }
   return { markets, books: c.books, quotedAt: c.quotedAt };
@@ -130,9 +136,13 @@ export function matchOdds(events, oddsEvents, { now = Date.now(), window = 6 * 3
     if (!hit) continue;
     const swapped = hit.h === eh && hit.a === ea ? false : hit.h === ea && hit.a === eh ? true : lineUp(hit.o, e, { window: Infinity })?.orient === 'swapped';
     const api = swapped ? { home: hit.o.away_team, away: hit.o.home_team } : { home: hit.o.home_team, away: hit.o.away_team };
-    const { markets, books, quotedAt } = marketsFromOdds(hit.o, { home: e.home, away: e.away, api });
+    const { markets: got, books, quotedAt } = marketsFromOdds(hit.o, { home: e.home, away: e.away, api });
     const at = quotedAt ?? fetchedAt;
     if (at != null && now - at > maxAge) continue;
+    // A two-way winner for a match that can end in a draw (soccer, or a feed that already prices a
+    // draw) is the wrong market: kept out, so the three-way market and its draw stay.
+    const drawable = e.sport === 'football' || (e.markets || []).some((m) => m.name === 'Match Result' || m.outcomes?.some((o) => o.name === 'Draw'));
+    const markets = got.filter((m) => !(m.name === 'Winner' && drawable));
     if (markets.length) {
       const names = new Set(markets.map((m) => m.name));
       // The feed's winner market may be named either way: the shopped one replaces it.
