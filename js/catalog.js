@@ -130,6 +130,12 @@ export const CATALOG = [
   { id: 'gaelic', name: 'Gaelic Games', icon: '☘️', color: '#4ce07a', model: 'binary', groups: [{ name: 'GAA', leagues: [L('atlas/gaelic', 'Gaelic football & hurling', 'GAA')] }] },
 ];
 
+// Matches the bookmakers list that no feed above carries (The Odds API's free fixture lists, added by
+// scripts/pages.mjs): one catch-all league per sport, each match named by its real competition.
+for (const id of ['football', 'basketball', 'americanfootball', 'hockey', 'baseball', 'tennis', 'mma', 'boxing', 'rugby', 'aussierules', 'cricket', 'handball']) {
+  CATALOG.find((s) => s.id === id)?.groups.push({ name: 'Bookmaker listings', leagues: [L(`atlas/odds-${id}`, "Other competitions on the bookmakers' boards", 'Other competitions')] });
+}
+
 export const ALL_LEAGUES = CATALOG.flatMap((s) => s.groups.flatMap((g) => g.leagues.map((l) => ({ ...l, sport: s.id, group: g.name }))));
 export const sportById = (id) => CATALOG.find((s) => s.id === id);
 export const leagueByPath = (path) => ALL_LEAGUES.find((l) => l.path === path);

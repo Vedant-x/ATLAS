@@ -1,34 +1,10 @@
-// Optional real bookmaker odds from The Odds API (the-odds-api.com). Nothing here runs unless the
-// build has an ODDS_API_KEY — a free key the site owner registers in their own name (free tier about
-// 500 credits a month; one credit per market per region per request). Prices are merged onto matches
-// that have no bookmaker price yet, matched by team names and start time, as the consensus (median)
-// across the books the key returns. Pure matching (consensus, marketsFromOdds, matchOdds) so it can
-// be tested; the build does the fetching, caching and budgeting.
+// Bookmaker odds and fixtures from The Odds API (the-odds-api.com). Nothing here runs unless the
+// build has an ODDS_API_KEY (the free plan: 500 credits a month; one credit per market per region per
+// odds request; the sports list and fixture lists are free). Matches are tied by team names and start
+// time; each market takes the best price on offer and the consensus fair chance. Pure functions here
+// so they can be tested; the build (scripts/pages.mjs) does the fetching, caching and budgeting.
 
 export const ODDS_API = 'https://api.the-odds-api.com/v4';
-
-// Our leaguePath -> The Odds API sport key. Only mapped leagues are fetched; unmapped ones are
-// skipped (ESPN already prices most US leagues). The build also skips any key the API reports as not
-// in season. Keys that do not exist on the API simply return nothing.
-export const ODDS_SPORT_KEYS = {
-  'basketball/nba': 'basketball_nba', 'basketball/wnba': 'basketball_wnba', 'basketball/mens-college-basketball': 'basketball_ncaab',
-  'atlas/euroleague': 'basketball_euroleague',
-  'football/nfl': 'americanfootball_nfl', 'football/college-football': 'americanfootball_ncaaf', 'football/cfl': 'americanfootball_cfl', 'football/ufl': 'americanfootball_ufl',
-  'baseball/mlb': 'baseball_mlb', 'atlas/npb': 'baseball_npb', 'atlas/kbo': 'baseball_kbo',
-  'hockey/nhl': 'icehockey_nhl', 'atlas/liiga': 'icehockey_sweden_hockey_league', 'atlas/swissnl': 'icehockey_switzerland_nl',
-  'mma/ufc': 'mma_mixed_martial_arts',
-  'australian-football/afl': 'aussierules_afl', 'rugby-league/3': 'rugbyleague_nrl',
-  'soccer/eng.1': 'soccer_epl', 'soccer/eng.2': 'soccer_efl_champ', 'soccer/esp.1': 'soccer_spain_la_liga', 'soccer/esp.2': 'soccer_spain_segunda_division',
-  'soccer/ger.1': 'soccer_germany_bundesliga', 'soccer/ger.2': 'soccer_germany_bundesliga2', 'soccer/ita.1': 'soccer_italy_serie_a', 'soccer/ita.2': 'soccer_italy_serie_b',
-  'soccer/fra.1': 'soccer_france_ligue_one', 'soccer/fra.2': 'soccer_france_ligue_two', 'soccer/ned.1': 'soccer_netherlands_eredivisie', 'soccer/por.1': 'soccer_portugal_primeira_liga',
-  'soccer/bel.1': 'soccer_belgium_first_div', 'soccer/tur.1': 'soccer_turkey_super_league', 'soccer/sco.1': 'soccer_spl', 'soccer/gre.1': 'soccer_greece_super_league',
-  'soccer/uefa.champions': 'soccer_uefa_champs_league', 'soccer/uefa.europa': 'soccer_uefa_europa_league', 'soccer/uefa.europa.conf': 'soccer_uefa_europa_conference_league',
-  'soccer/usa.1': 'soccer_usa_mls', 'soccer/mex.1': 'soccer_mexico_ligamx', 'soccer/bra.1': 'soccer_brazil_campeonato', 'soccer/arg.1': 'soccer_argentina_primera_division',
-  'soccer/jpn.1': 'soccer_japan_j_league', 'soccer/chn.1': 'soccer_china_superleague', 'soccer/aus.1': 'soccer_australia_aleague', 'soccer/ksa.1': 'soccer_saudi_pro_league',
-};
-
-// Three-way result markets (a draw is possible): soccer only, among the mapped leagues.
-const THREE_WAY = (leaguePath) => leaguePath.startsWith('soccer/');
 
 export const normName = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
   .replace(/&/g, ' and ').replace(/[^a-z0-9 ]/g, ' ')
@@ -84,7 +60,7 @@ function shopped(name, lists, names) {
 }
 
 // Markets in the site's own shape (espn.js marketsFrom), from one matched Odds API event.
-export function marketsFromOdds(oddsEvent, { home, away, leaguePath }) {
+export function marketsFromOdds(oddsEvent, { home, away }) {
   const c = consensus(oddsEvent);
   const markets = [];
   const list = (team) => { const hit = Object.keys(c.h2h).find((n) => normName(n) === normName(team)); return hit ? c.h2h[hit] : null; };
@@ -92,7 +68,8 @@ export function marketsFromOdds(oddsEvent, { home, away, leaguePath }) {
   const drawKey = Object.keys(c.h2h).find((n) => /^draw$/i.test(n));
   const d = drawKey ? c.h2h[drawKey] : null;
   if (h && a) {
-    markets.push(THREE_WAY(leaguePath) && d ? shopped('Match Result', [h, d, a], [home, 'Draw', away]) : shopped('Winner', [h, a], [home, away]));
+    // A draw the books price makes it a three-way market (soccer, rugby, handball, Test cricket).
+    markets.push(d ? shopped('Match Result', [h, d, a], [home, 'Draw', away]) : shopped('Winner', [h, a], [home, away]));
   }
   const tot = mainBy(Object.values(c.totals), (e) => Math.min(e.over.length, e.under.length));
   if (tot && tot.over.length && tot.under.length) markets.push(shopped(`Total ${tot.point}`, [tot.over, tot.under], [`Over ${tot.point}`, `Under ${tot.point}`]));
@@ -135,4 +112,42 @@ export function matchOdds(events, oddsEvents, { now = Date.now(), window = 6 * 3
     }
   }
   return priced;
+}
+
+// ---------- Fixtures from the bookmakers' own lists ----------
+// The API's event list for a sport key (GET /sports/{key}/events) costs no credits and has no odds:
+// it says which matches the bookmakers price. It is used to (1) tie each key to the matches here it
+// covers, so paid odds are only fetched for keys with matches no other source prices, and (2) add the
+// matches no feed here lists at all, so nothing the bookmakers offer is missing from the board.
+
+// The site's sport for an API key (by its prefix); null for sports the site has no model for.
+const KEY_SPORT = [[/^soccer_/, 'football'], [/^basketball_/, 'basketball'], [/^americanfootball_/, 'americanfootball'], [/^icehockey_/, 'hockey'],
+  [/^baseball_/, 'baseball'], [/^tennis_/, 'tennis'], [/^mma_/, 'mma'], [/^boxing_/, 'boxing'], [/^rugbyunion_/, 'rugby'], [/^rugbyleague_/, 'rugby'],
+  [/^aussierules_/, 'aussierules'], [/^cricket_/, 'cricket'], [/^handball_/, 'handball']];
+export const sportOfKey = (key) => KEY_SPORT.find(([re]) => re.test(key))?.[1] || null;
+export const LISTED_SPORTS = [...new Set(KEY_SPORT.map(([, s]) => s))];
+export const listedPath = (sport) => `atlas/odds-${sport}`;
+
+// Pair the API's events with ours (same two names either way round, start within `window`).
+// Returns { pairs: [[apiEvent, ourEvent]], extra: [apiEvents with no match here] }.
+export function pairEvents(ours, apiEvents, { window = 6 * 36e5 } = {}) {
+  const idx = ours.map((e) => ({ e, h: normName(e.home), a: normName(e.away) }));
+  const pairs = [], extra = [];
+  for (const o of apiEvents) {
+    const t = Date.parse(o.commence_time), h = normName(o.home_team), a = normName(o.away_team);
+    if (!Number.isFinite(t) || !h || !a) continue;
+    const hit = idx.find((x) => Math.abs(x.e.start - t) <= window && ((x.h === h && x.a === a) || (x.h === a && x.a === h)));
+    if (hit) pairs.push([o, hit.e]); else extra.push(o);
+  }
+  return { pairs, extra };
+}
+
+// A match the bookmakers list and no feed here does, in the site's event shape (no odds yet).
+export function fixtureFromApi(o, { key, title, sport, at = Date.now() }) {
+  return {
+    id: `atlas_odds-${o.id}`, sport, league: title || key, leaguePath: listedPath(sport), group: 'Bookmaker listings',
+    home: o.home_team, away: o.away_team, start: Date.parse(o.commence_time), live: false, final: false, score: null, clock: '',
+    venue: null, neutral: false, markets: [], lineups: null, probables: [], stats: {}, logos: { home: null, away: null },
+    note: title || null, source: "The Odds API (the bookmakers' fixture list)", fetchedAt: at, oddsKey: key,
+  };
 }

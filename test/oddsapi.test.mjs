@@ -1,14 +1,33 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { consensus, marketsFromOdds, matchOdds, normName, ODDS_SPORT_KEYS } from '../js/oddsapi.js';
+import { consensus, marketsFromOdds, matchOdds, normName, sportOfKey, pairEvents, fixtureFromApi } from '../js/oddsapi.js';
 
 const bk = (title, markets) => ({ key: title, title, markets });
 const h2h = (a, pa, b, pb, d = null) => bk('b', [{ key: 'h2h', outcomes: [{ name: a, price: pa }, { name: b, price: pb }, ...(d ? [{ name: 'Draw', price: d }] : [])] }]);
 
-test('sport key map points at real The Odds API keys', () => {
-  assert.equal(ODDS_SPORT_KEYS['basketball/nba'], 'basketball_nba');
-  assert.equal(ODDS_SPORT_KEYS['soccer/eng.1'], 'soccer_epl');
-  assert.equal(ODDS_SPORT_KEYS['atlas/euroleague'], 'basketball_euroleague');
+test('sport keys map to the site\'s sports by prefix; unmodelled sports are left out', () => {
+  assert.equal(sportOfKey('soccer_sweden_allsvenskan'), 'football');
+  assert.equal(sportOfKey('tennis_atp_paris'), 'tennis');
+  assert.equal(sportOfKey('rugbyleague_nrl'), 'rugby');
+  assert.equal(sportOfKey('icehockey_sweden_allsvenskan'), 'hockey');
+  assert.equal(sportOfKey('politics_us_presidential_election_winner'), null);
+});
+
+test('fixture lists: our matches are paired either way round, the rest become new matches', () => {
+  const t = Date.parse('2026-10-20T18:00:00Z');
+  const ours = [{ id: 'x', home: 'AIK', away: 'Hammarby IF', start: t + 30 * 6e4 }];
+  const list = [
+    { id: 'a1', commence_time: new Date(t).toISOString(), home_team: 'Hammarby', away_team: 'AIK' }, // reversed, IF dropped
+    { id: 'a2', commence_time: new Date(t).toISOString(), home_team: 'Mjallby AIF', away_team: 'Degerfors IF' },
+  ];
+  const { pairs, extra } = pairEvents(ours, list);
+  assert.deepEqual(pairs.map(([o, e]) => [o.id, e.id]), [['a1', 'x']]);
+  assert.deepEqual(extra.map((o) => o.id), ['a2']);
+  const ev = fixtureFromApi(extra[0], { key: 'soccer_sweden_allsvenskan', title: 'Allsvenskan', sport: 'football', at: t - 864e5 });
+  assert.equal(ev.leaguePath, 'atlas/odds-football');
+  assert.equal(ev.league, 'Allsvenskan');
+  assert.equal(ev.start, t);
+  assert.deepEqual(ev.markets, []);
 });
 
 test('every book\'s price is kept; markets take the best price and the median as consensus', () => {
@@ -96,4 +115,11 @@ test('Pinnacle is the consensus where it quotes; the shopped market replaces the
   const f = devig(win).outcomes[0].fair;
   assert.equal(f, +((1 / 1.62) / (1 / 1.62 + 1 / 2.38)).toFixed(4));
   assert.ok(f * 1.7 > 1, 'the best price is longer than the fair odds');
+});
+
+test('a draw the books price makes a three-way market in any sport', () => {
+  const ev = { home_team: 'Leinster', away_team: 'Munster', bookmakers: [h2h('Leinster', 1.4, 'Munster', 3.6, 21)] };
+  const { markets } = marketsFromOdds(ev, { home: 'Leinster', away: 'Munster' });
+  assert.equal(markets[0].name, 'Match Result');
+  assert.deepEqual(markets[0].outcomes.map((o) => o.name), ['Leinster', 'Draw', 'Munster']);
 });
