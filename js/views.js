@@ -520,7 +520,7 @@ function sourcesLine(e) {
     ...(e.priceAt && e.bookmaker ? [[e.source || (e.leaguePath?.startsWith('atlas/') ? 'League site' : 'ESPN'), e.fetchedAt ?? null, 'fixture'], [e.bookmaker, e.priceAt, 'price']]
       : [[e.source || (e.leaguePath?.startsWith('atlas/') ? 'League site' : 'ESPN'), e.fetchedAt ?? null, 'fixture & price']]),
     st ? [st.sourceLabel?.replace(/ profile$/, '') || st.league, st.fetchedAt ?? null, 'starters'] : null,
-    e.absences ? ['FotMob', e.absences.fetchedAt, 'absences'] : null,
+    e.absences ? ['FotMob', e.absences.fetchedAt, e.absences.carried ? 'absences (kept from an earlier read)' : 'absences'] : null,
     d?.ok && !d.native ? ['ESPN summary', d.fetchedAt, 'stats, injuries, form'] : null,
   ].filter(Boolean);
   const down = e.stale ? `<span class="stale"><i></i>Feed down: not updated since ${ago(e.staleSince || e.fetchedAt)}</span>` : '';

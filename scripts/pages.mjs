@@ -1087,12 +1087,15 @@ const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents, ...esport
   for (const e of events) {
     const o = old.get(e.id);
     if (!o || e.start < Date.now() - 6 * 36e5) continue;
-    const kept = (o.probables || []).filter((p) => p.report || p.npbId || p.kboId || p.name);
+    // Carried items keep the time they were last read (never this build's), marked carried, so their
+    // age shows and the freshness checks judge them by it.
+    const kept = (o.probables || []).filter((p) => p.report || p.npbId || p.kboId || p.name)
+      .map((p) => ({ ...p, carried: true, ...(p.report ? { report: { ...p.report, fetchedAt: p.report.fetchedAt ?? o.fetchedAt ?? null } } : {}) }));
     if (!(e.probables || []).length && kept.length) { e.probables = kept; starters++; }
     else if (kept.length) {
       for (const p of kept) if (!e.probables.some((x) => x.side === p.side)) { e.probables.push(p); starters++; }
     }
-    if (!e.absences && o.absences) { e.absences = o.absences; news++; }
+    if (!e.absences && o.absences) { e.absences = { ...o.absences, carried: true, fetchedAt: o.absences.fetchedAt ?? o.fetchedAt ?? null }; news++; }
   }
   log(`Carry-forward: ${prev.length ? `restored starters for ${starters} side(s), team news for ${news} match(es)` : 'nothing to carry (no previous snapshot)'}`);
 }
