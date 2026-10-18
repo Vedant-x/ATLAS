@@ -1483,6 +1483,23 @@ if (process.env.ODDS_API_KEY) {
 const byLeague = {};
 for (const e of events) byLeague[e.leaguePath] = (byLeague[e.leaguePath] || 0) + 1;
 if (tsdbFile) await writeFile(`${out}/data/sportsdb.json`, JSON.stringify(tsdbFile));
+// Per-provider status across builds: when it was last tried, when it last worked (carried from the
+// previous published report), and what kind of failure it was. A source that worked but found
+// nothing (ok true, count 0) is an empty result, not a failure.
+{
+  let prev = [];
+  try { const r = await fetch((process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json').replace('index.json', 'sources.json'), { signal: AbortSignal.timeout(15000) }); if (r.ok) prev = (await r.json()).sources || []; } catch { /* first run */ }
+  const before = new Map(prev.map((x) => [x.name, x]));
+  const category = (note) => (/\b40[13]\b|forbidden|unauthori/i.test(note) ? 'blocked' : /\b429\b|rate/i.test(note) ? 'rate limited' : /\b5\d\d\b/.test(note) ? 'provider error'
+    : /timeout|abort/i.test(note) ? 'timeout' : /fetch failed|ENOTFOUND|ECONN|network/i.test(note) ? 'network' : /\b404\b/.test(note) ? 'not found' : 'unreadable response');
+  for (const x of sources) {
+    const p = before.get(x.name);
+    x.lastAttemptAt = x.at;
+    x.lastSuccessAt = x.ok === true ? x.at : p?.lastSuccessAt ?? (p?.ok === true ? p.at : null);
+    x.status = x.ok === true ? (x.count === 0 ? 'empty' : 'ok') : x.ok === false ? 'failed' : 'off';
+    x.errorCategory = x.ok === false ? category(String(x.note || '')) : null;
+  }
+}
 await writeFile(`${out}/data/sources.json`, JSON.stringify({ at: Date.now(), sources }));
 await writeFile(`${out}/data/index.json`, JSON.stringify({ source: 'ATLAS snapshot', fetchedAt: Date.now(), leagueStatus: Object.fromEntries(leagueStatus), events }));
 // Back-compat file name used by older builds of the front end.
