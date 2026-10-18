@@ -57,13 +57,13 @@ test('summary: hit rate, flat-stake profit and calibration (shortlist picks only
   assert.equal(s.outside.won, 1); assert.equal(s.outside.lost, 1);
 });
 
-test('official picks: shortlist bankers (1.30 to 1.80) and the surest list (1.20 to 1.40), no value spots', async () => {
+test('official picks: shortlist bankers (1.30 to 1.80), the surest list (1.20 to 1.40) and best bets (1.20 to 2.50), no value spots', async () => {
   const { selectPicks } = await import('../js/track.js');
   const now = Date.parse('2026-10-07T08:00:00Z');
   const ev = (id, a, b) => ({ id, compId: id, sport: 'basketball', league: 'NBA', home: `H${id}`, away: `A${id}`, start: now + 36e5, markets: [{ name: 'Winner', outcomes: [{ name: `H${id}`, odds: a }, { name: `A${id}`, odds: b }] }] });
   const picks = selectPicks([ev('1', 1.35, 3.3), ev('2', 1.25, 4.1), ev('3', 1.62, 2.35), ev('4', 1.9, 1.95)], now, 12, []).filter((p) => p.type !== 'multi');
   assert.ok(picks.length > 0);
-  assert.ok(picks.every((p) => (p.type === 'banker' && p.odds >= 1.3 && p.odds <= 1.8) || (p.type === 'safe' && p.odds >= 1.2 && p.odds <= 1.4)), JSON.stringify(picks.map((p) => [p.type, p.odds])));
+  assert.ok(picks.every((p) => (p.type === 'banker' && p.odds >= 1.3 && p.odds <= 1.8) || (p.type === 'safe' && p.odds >= 1.2 && p.odds <= 1.4) || (p.type === 'best' && p.odds >= 1.2 && p.odds <= 2.5)), JSON.stringify(picks.map((p) => [p.type, p.odds])));
   assert.equal(new Set(picks.map((p) => p.key)).size, picks.length, 'a pick on both lists keeps two records');
 });
 
@@ -92,4 +92,20 @@ test('calibration: a settled copy of a pick counts even when an earlier copy is 
   const o = observations([single('won'), single('lost')]);
   assert.equal(o.list.length, 0);
   assert.deepEqual(o.conflicts, ['x1|Winner|Arsenal']);
+});
+
+test('best bets: likeliest first, and only at a price at least the market\'s fair odds', async () => {
+  const { bestBets } = await import('../js/track.js');
+  const now = Date.parse('2026-10-07T08:00:00Z');
+  // Many bookmakers: best price and consensus chance (oddsapi.js) on each outcome.
+  const ev = (id, sport, odds, cons, oddsB, consB) => ({ id, compId: id, sport, league: 'L', leaguePath: `${sport}/l`, home: `H${id}`, away: `A${id}`, start: now + 36e5,
+    markets: [{ name: 'Winner', outcomes: [{ name: `H${id}`, odds, cons, book: 'fanduel' }, { name: `A${id}`, odds: oddsB, cons: consB, book: 'pinnacle' }] }] });
+  const list = bestBets([
+    ev('1', 'basketball', 1.27, 0.80, 4.2, 0.20), // 1.27 x 0.80 = 1.016: longer than fair, likeliest
+    ev('2', 'hockey', 1.55, 0.66, 2.5, 0.34), // 1.55 x 0.66 = 1.023: longer than fair
+    ev('3', 'baseball', 1.40, 0.68, 3.0, 0.32), // 1.40 x 0.68 = 0.952: shorter than fair, left out
+  ]);
+  assert.deepEqual(list.map((b) => b.event.id), ['1', '2']);
+  assert.ok(list[0].p >= list[1].p);
+  assert.equal(list[0].book, 'fanduel');
 });

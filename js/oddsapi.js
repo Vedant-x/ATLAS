@@ -37,7 +37,7 @@ export const normName = (s) => String(s || '').toLowerCase().normalize('NFD').re
 
 const median = (xs) => { const a = [...xs].sort((x, y) => x - y); const n = a.length; return n ? (n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2) : null; };
 
-// Consensus (median) decimal odds per outcome, per market, across the event's bookmakers.
+// Every bookmaker's price per outcome, per market, for one event: { p, book } lists.
 export function consensus(oddsEvent) {
   const h2h = {}, totals = {}, spreads = {};
   let books = 0;
@@ -45,10 +45,11 @@ export function consensus(oddsEvent) {
   for (const bk of oddsEvent.bookmakers || []) {
     let used = false;
     const t = Date.parse(bk.last_update || '');
+    const q = (o) => ({ p: o.price, book: bk.title || bk.key || '?', key: bk.key || '' });
     for (const m of bk.markets || []) {
-      if (m.key === 'h2h') { for (const o of m.outcomes || []) if (o.price > 1) { (h2h[o.name] ||= []).push(o.price); used = true; } }
-      else if (m.key === 'totals') { for (const o of m.outcomes || []) if (o.price > 1 && Number.isFinite(o.point)) { const k = `${o.point}`; (totals[k] ||= { point: o.point, over: [], under: [] })[/^over$/i.test(o.name) ? 'over' : 'under'].push(o.price); used = true; } }
-      else if (m.key === 'spreads') { for (const o of m.outcomes || []) if (o.price > 1 && Number.isFinite(o.point)) { const k = `${o.name}|${o.point}`; (spreads[k] ||= { name: o.name, point: o.point, p: [] }).p.push(o.price); used = true; } }
+      if (m.key === 'h2h') { for (const o of m.outcomes || []) if (o.price > 1) { (h2h[o.name] ||= []).push(q(o)); used = true; } }
+      else if (m.key === 'totals') { for (const o of m.outcomes || []) if (o.price > 1 && Number.isFinite(o.point)) { const k = `${o.point}`; (totals[k] ||= { point: o.point, over: [], under: [] })[/^over$/i.test(o.name) ? 'over' : 'under'].push(q(o)); used = true; } }
+      else if (m.key === 'spreads') { for (const o of m.outcomes || []) if (o.price > 1 && Number.isFinite(o.point)) { const k = `${o.name}|${o.point}`; (spreads[k] ||= { name: o.name, point: o.point, p: [] }).p.push(q(o)); used = true; } }
     }
     if (used) { books++; if (Number.isFinite(t)) updated.push(t); }
   }
@@ -65,37 +66,51 @@ const mainBy = (entries, count) => {
   return top[Math.floor((top.length - 1) / 2)];
 };
 
+// One market from every book's prices for its outcomes (lists of { p, book, key }):
+// - odds: the best price on offer, and the bookmaker offering it (line shopping: the same
+//   selection at the longest odds);
+// - cons: the consensus chance, margin removed: Pinnacle's prices where Pinnacle quotes every
+//   outcome (the sharpest book, the market's reference), otherwise the median of all books.
+// A selection whose best price is longer than 1 / cons is a price the market as a whole thinks
+// is too long: the same odds, a better chance.
+const SHARP = /^pinnacle$/i;
+function shopped(name, lists, names) {
+  const best = lists.map((l) => l.reduce((a, b) => (b.p > a.p ? b : a)));
+  const sharp = lists.map((l) => l.find((x) => SHARP.test(x.key) || SHARP.test(x.book)));
+  const ref = sharp.every(Boolean) ? sharp.map((x) => x.p) : lists.map((l) => median(l.map((x) => x.p)));
+  const inv = ref.map((p) => 1 / p), book = inv.reduce((a, b) => a + b, 0);
+  return { name, consensusFrom: sharp.every(Boolean) ? 'Pinnacle' : `median of ${Math.min(...lists.map((l) => l.length))}+ books`,
+    outcomes: names.map((n, i) => ({ name: n, odds: +best[i].p.toFixed(2), book: best[i].book, cons: +(inv[i] / book).toFixed(4) })) };
+}
+
 // Markets in the site's own shape (espn.js marketsFrom), from one matched Odds API event.
 export function marketsFromOdds(oddsEvent, { home, away, leaguePath }) {
   const c = consensus(oddsEvent);
   const markets = [];
-  const pick = (team) => { const hit = Object.keys(c.h2h).find((n) => normName(n) === normName(team)); return hit ? median(c.h2h[hit]) : null; };
-  const h = pick(home), a = pick(away);
+  const list = (team) => { const hit = Object.keys(c.h2h).find((n) => normName(n) === normName(team)); return hit ? c.h2h[hit] : null; };
+  const h = list(home), a = list(away);
   const drawKey = Object.keys(c.h2h).find((n) => /^draw$/i.test(n));
-  const d = drawKey ? median(c.h2h[drawKey]) : null;
+  const d = drawKey ? c.h2h[drawKey] : null;
   if (h && a) {
-    markets.push(THREE_WAY(leaguePath) && d
-      ? { name: 'Match Result', outcomes: [{ name: home, odds: +h.toFixed(2) }, { name: 'Draw', odds: +d.toFixed(2) }, { name: away, odds: +a.toFixed(2) }] }
-      : { name: 'Winner', outcomes: [{ name: home, odds: +h.toFixed(2) }, { name: away, odds: +a.toFixed(2) }] });
+    markets.push(THREE_WAY(leaguePath) && d ? shopped('Match Result', [h, d, a], [home, 'Draw', away]) : shopped('Winner', [h, a], [home, away]));
   }
   const tot = mainBy(Object.values(c.totals), (e) => Math.min(e.over.length, e.under.length));
-  if (tot && tot.over.length && tot.under.length) {
-    markets.push({ name: `Total ${tot.point}`, outcomes: [{ name: `Over ${tot.point}`, odds: +median(tot.over).toFixed(2) }, { name: `Under ${tot.point}`, odds: +median(tot.under).toFixed(2) }] });
-  }
+  if (tot && tot.over.length && tot.under.length) markets.push(shopped(`Total ${tot.point}`, [tot.over, tot.under], [`Over ${tot.point}`, `Under ${tot.point}`]));
   // Spread from the home side's line (the away line is its mirror).
   const spreadsBy = {};
   for (const s of Object.values(c.spreads)) { const side = normName(s.name) === normName(home) ? 'home' : normName(s.name) === normName(away) ? 'away' : null; if (side) (spreadsBy[Math.abs(s.point)] ||= {})[side] = s; }
   const line = mainBy(Object.entries(spreadsBy).filter(([, v]) => v.home && v.away).map(([k, v]) => ({ point: +k, ...v })), (e) => Math.min(e.home.p.length, e.away.p.length));
   if (line) {
     const sp = line.home.point; // signed from the home side
-    markets.push({ name: 'Spread', line: sp, outcomes: [{ name: `${home} ${sp > 0 ? '+' : ''}${sp}`, odds: +median(line.home.p).toFixed(2) }, { name: `${away} ${-sp > 0 ? '+' : ''}${-sp}`, odds: +median(line.away.p).toFixed(2) }] });
+    markets.push({ ...shopped('Spread', [line.home.p, line.away.p], [`${home} ${sp > 0 ? '+' : ''}${sp}`, `${away} ${-sp > 0 ? '+' : ''}${-sp}`]), line: sp });
   }
   return { markets, books: c.books, quotedAt: c.quotedAt };
 }
 
-// Match our events to the API's events for one sport key, and merge prices onto the ones that have no
-// bookmaker price. Both orientations are tried (the API's home/away can differ from ours). Returns
-// how many events were priced.
+// Match our events to the API's events for one sport key and merge the shopped markets: onto every
+// upcoming match (force), replacing a market of the same name and keeping the feed's others, or only
+// onto matches with no price. Both orientations are tried (the API's home/away can differ from ours).
+// Returns how many events were priced.
 // fetchedAt: when these odds were downloaded, the quote time if the books give none. Quotes older than
 // maxAge are not applied: an old consensus is no price at all.
 export function matchOdds(events, oddsEvents, { now = Date.now(), window = 6 * 36e5, force = false, fetchedAt = null, maxAge = 24 * 36e5 } = {}) {
@@ -110,9 +125,12 @@ export function matchOdds(events, oddsEvents, { now = Date.now(), window = 6 * 3
     const at = quotedAt ?? fetchedAt;
     if (at != null && now - at > maxAge) continue;
     if (markets.length) {
-      // A median across books is a reference price: it may not be on offer at any one bookmaker.
-      e.markets = markets; e.bookmaker = `median of ${books} book${books === 1 ? '' : 's'} (reference, not a quote from one bookmaker)`; e.oddsSource = 'the-odds-api';
-      e.priceAt = at; // when the quote was taken, kept through to readiness and the sources line
+      const names = new Set(markets.map((m) => m.name));
+      // The feed's winner market may be named either way: the shopped one replaces it.
+      const same = (m) => names.has(m.name) || (['Winner', 'Match Result', 'Moneyline'].includes(m.name) && markets.some((x) => ['Winner', 'Match Result'].includes(x.name)));
+      e.markets = [...markets, ...(e.markets || []).filter((m) => !same(m))];
+      e.bookmaker = `best of ${books} bookmaker${books === 1 ? '' : 's'}; fair chance from ${markets[0].consensusFrom}`; e.oddsSource = 'the-odds-api';
+      e.priceAt = at; // when the quotes were taken, kept through to readiness and the sources line
       priced++;
     }
   }

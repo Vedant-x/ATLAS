@@ -1,6 +1,6 @@
 // Record page: every official ATLAS pick (locked before kick-off) and how it turned out.
 import { esc, sportOf, ist } from './views.js';
-import { summarize, MIN_ODDS, MAX_ODDS, calibration, marketChance, SAFE } from './track.js';
+import { summarize, MIN_ODDS, MAX_ODDS, calibration, marketChance, SAFE, BEST } from './track.js';
 import { localDay } from './engine.js';
 import { modelRecord } from './modelpicks.js';
 
@@ -100,7 +100,7 @@ function verdict(a) {
 
 // Bankers, Surest and the unpriced model picks side by side: each is its own way of recommending.
 function modesPanel(s) {
-  const rows = [['Bankers (shortlist)', s.all, true], ['Surest', s.safe, true], ['Model only (no price)', s.model, false]].filter(([, r]) => r && r.won + r.lost);
+  const rows = [['Bankers (shortlist)', s.all, true], ['Surest', s.safe, true], ['Best bets', s.best, true], ['Model only (no price)', s.model, false]].filter(([, r]) => r && r.won + r.lost);
   if (rows.length < 2) return '';
   return `<div class="panel reveal"><h3 class="ph">By recommendation type <small>each kept as its own record</small></h3>
     <table class="tbl tight"><thead><tr><th>Type</th><th class="num">Settled</th><th class="num">Hit rate</th><th class="num">Estimated</th><th class="num">Profit</th><th class="num" title="Mean squared error of the chance shown; lower is better">Brier</th></tr></thead>
@@ -149,6 +149,7 @@ function body(data) {
       <p class="muted">When ATLAS says 65%, it should land about 65% of the time. Small samples swing a lot.</p>
       <div class="tr-cal">${s.buckets.map((b) => `<div><small>Estimated ${b.label}</small>${b.n ? `<div class="tr-bars"><i style="--w:${((b.predicted || 0) * 100).toFixed(0)}%"></i><i class="act" style="--w:${((b.actual || 0) * 100).toFixed(0)}%"></i></div>` : ''}<span>${b.n ? `${pct(b.predicted, 0)} estimated · ${pct(b.actual, 0)} actual · ${b.n} picks` : 'no picks yet'}</span></div>`).join('')}</div></div>
     ${s.safe?.won + s.safe?.lost ? `<div class="panel reveal"><h3 class="ph">Surest picks <small>odds ${SAFE.minOdds.toFixed(2)}–${SAFE.maxOdds.toFixed(2)}, ATLAS not above the price · its own record</small></h3><p>${recordLine(s.safe)}</p></div>` : ''}
+    ${s.best?.won + s.best?.lost ? `<div class="panel reveal"><h3 class="ph">Best bets <small>odds ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)}, best price across bookmakers, never shorter than the market's fair odds · its own record</small></h3><p>${recordLine(s.best)}</p></div>` : ''}
     ${modesPanel(s)}
     ${modelPanel(s.model)}
     ${priceBandPanel(data.picks || [])}

@@ -140,7 +140,9 @@ export function bankers(events, { min = 0.7, limit = 24, minOdds = 1, cushions =
         if (p < min || o.odds < minOdds) return;
         if (!cushions && underdogCushion(e, m.name, o.name)) return; // never "the losing side +1.5"
         out.push({ event: e, market: m.name, pick: o.name, odds: o.odds, p, fair: o.fair, ev: p * o.odds - 1,
-          agree: m.outcomes[i].model == null ? null : m.outcomes[i].model >= o.fair });
+          agree: m.outcomes[i].model == null ? null : m.outcomes[i].model >= o.fair,
+          // Many bookmakers: the best price's bookmaker, and a fair chance that is the market consensus.
+          ...(Number.isFinite(m.outcomes[i].cons) ? { consensus: true, book: m.outcomes[i].book || null } : {}) });
       });
     }
     // Player props (milestones, anytime scorers): one-way prices, chance net of the margin.

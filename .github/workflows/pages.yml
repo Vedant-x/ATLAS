@@ -37,8 +37,9 @@ jobs:
       - run: npm install --no-save esbuild@0.24.2 || true # bundler for the speed step; the build works without it
       - run: node scripts/pages.mjs
         env:
-          # Optional real bookmaker odds (The Odds API): add an ODDS_API_KEY repository secret to turn
-          # them on; ODDS_* repository variables tune the budget. Empty values leave the build as it is.
+          # Bookmaker odds (The Odds API): the ODDS_API_KEY repository secret turns them on; ODDS_*
+          # repository variables tune them (default: every in-season sport within the month's credits,
+          # regions us,uk,eu, refreshed every 12 hours). Empty values leave the defaults.
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           ODDS_HOURS: ${{ vars.ODDS_HOURS }}
           ODDS_MARKETS: ${{ vars.ODDS_MARKETS }}
