@@ -1,6 +1,6 @@
 // Record page: every official ATLAS pick (locked before kick-off) and how it turned out.
 import { esc, sportOf, ist } from './views.js';
-import { summarize, MIN_ODDS, MAX_ODDS, calibration, marketChance, SAFE, BEST, potdDay } from './track.js';
+import { summarize, MIN_ODDS, MAX_ODDS, calibration, marketChance, SAFE, BEST, potdDay, walkForward } from './track.js';
 import { localDay } from './engine.js';
 import { modelRecord } from './modelpicks.js';
 
@@ -92,6 +92,23 @@ function priceBandPanel(picks) {
 
 // The plain answer to "does ATLAS beat the market?": its forecasts against the bookmaker's own
 // margin-free chance on the same picks (Brier, lower is better), and profit at the prices taken.
+// The fair test: forecasts scored on results the calibration had not seen (track.js walkForward), next
+// to the market's own forecast, and the ROI with its 95% interval. Small samples say so.
+function outOfSample(picks, all) {
+  const w = walkForward(picks);
+  const t = w?.total;
+  const roi = all?.roiCI ? `ROI ${pct(all.roi)} (95% interval ${pct(all.roiCI[0])} to ${pct(all.roiCI[1])})` : '';
+  if (!t) return roi ? `<div class="panel reveal"><h3 class="ph">Out-of-sample check</h3><p>${roi}. Not enough history yet for a week-by-week test.</p></div>` : '';
+  const f = (x) => x.toFixed(4);
+  const better = t.brier.shown < t.brier.market;
+  const close = Math.abs(t.brier.shown - t.brier.market) < 0.002;
+  return `<div class="panel reveal"><h3 class="ph">Out-of-sample check <small>fitted on earlier results only, scored on the next week · ${w.weeks.length} week${w.weeks.length === 1 ? '' : 's'} · ${t.n} forecasts</small></h3>
+    <table class="tbl tight"><thead><tr><th></th><th class="num">Brier</th><th class="num">Log loss</th></tr></thead><tbody>
+    <tr><td>ATLAS as shown (calibrated)</td><td class="num">${f(t.brier.shown)}</td><td class="num">${f(t.logLoss.shown)}</td></tr>
+    <tr><td>ATLAS model alone</td><td class="num">${f(t.brier.raw)}</td><td class="num">${f(t.logLoss.raw)}</td></tr>
+    <tr><td>Market price (less an assumed ${(w.margin * 100).toFixed(1)}% margin)</td><td class="num">${f(t.brier.market)}</td><td class="num">${f(t.logLoss.market)}</td></tr></tbody></table>
+    <p>${close ? 'On results it had not seen, ATLAS and the market forecast about equally well: no measurable edge yet.' : better ? 'On results it had not seen, ATLAS forecast slightly better than the market.' : 'On results it had not seen, the market forecast better than ATLAS.'} ${t.n < 1000 ? 'The sample is small: treat this as provisional.' : ''} ${roi}.</p></div>`;
+}
 function verdict(a) {
   if (!(a.won + a.lost)) return '';
   const beats = a.brierN >= 20 ? a.brierModel <= a.brierMarket : null;
@@ -155,7 +172,7 @@ function body(data) {
       ${s.pending.length ? `<div class="panel reveal"><h3 class="ph">Waiting on results <small>${s.pending.length}</small></h3><ul class="tr-list">${s.pending.slice(0, 30).map(pickRow).join('')}</ul></div>` : ''}`;
   }
   const famName = { winner: 'Winner / moneyline', result: '1X2 result', spread: 'Spread / handicap', total: 'Totals (over/under)' };
-  return `${verdict(s.all)}${statCards(s.all, data.updatedAt)}${s.outside.won + s.outside.lost ? `<p class="note reveal">Shortlist picks only (rated 60%+, odds ${MIN_ODDS.toFixed(2)} to ${MAX_ODDS.toFixed(2)}). ${s.outside.won + s.outside.lost} earlier picks outside these rules (value spots and longer prices, ${s.outside.won} won, ${s.outside.lost} lost) are not counted.</p>` : ''}${s.unresolved ? `<p class="note reveal">${s.unresolved} pick${s.unresolved > 1 ? 's' : ''} could not be graded (no final result found) and ${s.unresolved > 1 ? 'are' : 'is'} left out rather than counted as void.</p>` : ''}
+  return `${verdict(s.all)}${outOfSample(data.picks || [], s.all)}${statCards(s.all, data.updatedAt)}${s.outside.won + s.outside.lost ? `<p class="note reveal">Shortlist picks only (rated 60%+, odds ${MIN_ODDS.toFixed(2)} to ${MAX_ODDS.toFixed(2)}). ${s.outside.won + s.outside.lost} earlier picks outside these rules (value spots and longer prices, ${s.outside.won} won, ${s.outside.lost} lost) are not counted.</p>` : ''}${s.unresolved ? `<p class="note reveal">${s.unresolved} pick${s.unresolved > 1 ? 's' : ''} could not be graded (no final result found) and ${s.unresolved > 1 ? 'are' : 'is'} left out rather than counted as void.</p>` : ''}
     <div class="grid two">
       <div class="panel reveal"><h3 class="ph">By sport</h3>${table(s.bySport.map((r) => ({ ...r, name: `${sportOf(r.key).icon} ${sportOf(r.key).name}` })), 'Sport')}</div>
       <div class="panel reveal"><h3 class="ph">By market <small>the model needs more confidence where a market has underperformed</small></h3>${table(s.byFamily.map((r) => ({ ...r, name: famName[r.key] || r.key })), 'Market')}</div>

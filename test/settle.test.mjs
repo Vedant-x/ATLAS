@@ -86,3 +86,19 @@ test('copies of one selection that disagree (won vs push) are flagged, not count
   const o = observations([pick({ status: 'won' }), pick({ key: 'best|e1|Winner|Arsenal', type: 'best', status: 'push' })]);
   assert.deepEqual(o.conflicts, ['e1|winner|arsenal']);
 });
+
+test('out-of-sample check: each week is scored with a calibration fitted only on earlier results', async () => {
+  const { walkForward } = await import('../js/track.js');
+  const h = [];
+  for (let i = 0; i < 300; i++) {
+    const at = T0 + i * 4 * H;
+    h.push(pick({ key: `w${i}|Winner|A`, eventId: `w${i}`, pick: 'A', odds: 1.6, p: 0.7, status: i % 5 < 3 ? 'won' : 'lost', recordedAt: at, start: at + 2 * H }));
+  }
+  const w = walkForward(h);
+  assert.ok(w.weeks.length >= 3);
+  // Training sets only grow week by week and never include the week being scored.
+  for (let i = 1; i < w.weeks.length; i++) assert.ok(w.weeks[i].train > w.weeks[i - 1].train);
+  for (const wk of w.weeks) assert.ok(wk.train <= h.filter((x) => x.start < wk.from).length);
+  assert.ok(w.total.brier.raw > 0 && w.total.logLoss.market > 0);
+  assert.equal(walkForward([]), null);
+});

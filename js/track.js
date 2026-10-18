@@ -122,7 +122,7 @@ export function observations(history = []) {
   const take = (r, p) => {
     const k = r.sel || selectionId(r);
     const o = k && by.get(k);
-    if (!o) { const n = { key: k, market: r.market, p, sport: r.sport, odds: r.odds, results: new Set() }; if (k) by.set(k, n); list.push(n); }
+    if (!o) { const n = { key: k, market: r.market, p, sport: r.sport, odds: r.odds, at: r.at, start: r.start, results: new Set() }; if (k) by.set(k, n); list.push(n); }
     const t = o || list[list.length - 1];
     if (r.status === 'won' || r.status === 'lost' || r.status === 'push') t.results.add(r.status);
   };
@@ -134,7 +134,7 @@ export function observations(history = []) {
     else rows.push([h.recordedAt ?? 0, h, h.p]);
   }
   rows.sort((a, b) => a[0] - b[0]);
-  for (const [, r, p] of rows) take(r, p);
+  for (const [at, r, p] of rows) take({ ...r, at }, p);
   const out = [];
   for (const o of list) {
     if (o.results.size > 1) { conflicts.push(o.key); continue; }
@@ -157,7 +157,11 @@ export function duePicks(history, now = Date.now()) {
 }
 
 export function calibration(history = []) {
-  history = canonicalOrder(history);
+  return calibrationFrom(observations(canonicalOrder(history)).list);
+}
+// The calibration fitted on a list of observations (observations().list), so the out-of-sample check
+// below can fit it on earlier results only.
+function calibrationFrom(list) {
   const out = {}, obs = {};
   const add = (market, p, status, sport, odds) => {
     if (status !== 'won' && status !== 'lost') return;
@@ -167,7 +171,7 @@ export function calibration(history = []) {
       (obs[key] ||= []).push({ p, odds, y: status === 'won' ? 1 : 0 });
     }
   };
-  for (const o of observations(history).list) add(o.market, o.p, o.status, o.sport, o.odds);
+  for (const o of list) add(o.market, o.p, o.status, o.sport, o.odds);
   for (const [key, r] of Object.entries(out)) {
     r.hit = r.won / r.n; r.expected = r.exp / r.n;
     r.factor = factorOf(r.n, r.won, r.exp);
@@ -188,6 +192,35 @@ export function calibration(history = []) {
   return out;
 }
 const GUARD_MIN = 25, GUARD_Z = -2;
+// Out-of-sample check (walk-forward): the calibration is fitted only on results known before a week
+// starts (matches that started at least 6 hours before it), then scored on that week's forecasts;
+// repeated week by week. Nothing from a week (results, closing prices) is used to fit the forecasts
+// that week is scored on. Brier score and log loss (lower is better) for ATLAS's own estimate, the
+// calibrated chance the site showed, and the price's chance less an assumed MARGIN. Weeks with fewer
+// than `minTrain` earlier results are skipped.
+export function walkForward(history, { step = 7 * 864e5, minTrain = 50 } = {}) {
+  const obs = observations(canonicalOrder(history)).list.filter((o) => (o.status === 'won' || o.status === 'lost') && Number.isFinite(o.at) && o.odds > 1).sort((a, b) => a.at - b.at);
+  if (!obs.length) return null;
+  const clip = (q) => Math.min(0.99, Math.max(0.01, q));
+  const score = () => ({ n: 0, raw: 0, shown: 0, market: 0, llRaw: 0, llShown: 0, llMarket: 0 });
+  const add = (t, o, cal) => {
+    const y = o.status === 'won' ? 1 : 0, f = { raw: clip(o.p), shown: clip(calibrated(o.p, o.market, cal, o.sport, o.odds)), market: clip(marketChance(o.odds)) };
+    t.n++;
+    for (const k of ['raw', 'shown', 'market']) { t[k] += (f[k] - y) ** 2; t[`ll${k[0].toUpperCase()}${k.slice(1)}`] += -Math.log(y ? f[k] : 1 - f[k]); }
+  };
+  const total = score(), weeks = [];
+  for (let w0 = obs[0].at + step; w0 <= obs.at(-1).at; w0 += step) {
+    const train = obs.filter((o) => (o.start ?? o.at) < w0 - 6 * 36e5);
+    const test = obs.filter((o) => o.at >= w0 && o.at < w0 + step);
+    if (train.length < minTrain || !test.length) continue;
+    const cal = calibrationFrom(train), wk = score();
+    for (const o of test) { add(wk, o, cal); add(total, o, cal); }
+    weeks.push({ from: w0, train: train.length, ...wk });
+  }
+  const avg = (t) => (t.n ? { n: t.n, brier: { raw: t.raw / t.n, shown: t.shown / t.n, market: t.market / t.n }, logLoss: { raw: t.llRaw / t.n, shown: t.llShown / t.n, market: t.llMarket / t.n } } : null);
+  return { total: avg(total), weeks: weeks.map((w) => ({ from: w.from, train: w.train, ...avg(w) })), margin: MARGIN };
+}
+
 // Is this sport's bet type held back by the guard above?
 export const blockedSegment = (cal, sport, market) => Boolean(sport && cal?.[`${sport}:${familyOf(market)}`]?.blocked);
 const SPORT_MIN = 30; // settled forecasts before a sport's own record replaces the all-sports one
@@ -506,6 +539,8 @@ export function summarize(history) {
       hitRate: settled ? won.length / settled : null,
       expected: settled ? [...won, ...lost].reduce((s, h) => s + (h.shown ?? h.p), 0) / settled : null,
       profit: +profit.toFixed(2), roi: settled ? profit / settled : null,
+      // 95% interval of the ROI from the spread of the per-pick returns (normal approximation).
+      roiCI: settled >= 10 ? (() => { const r = [...won.map((h) => (h.settledOdds ?? h.odds) - 1), ...lost.map(() => -1)], m = profit / settled; const sd = Math.sqrt(r.reduce((a, x) => a + (x - m) ** 2, 0) / (settled - 1)); return [m - 1.96 * sd / Math.sqrt(settled), m + 1.96 * sd / Math.sqrt(settled)]; })() : null,
       avgOdds: settled ? [...won, ...lost].reduce((s, h) => s + h.odds, 0) / settled : null,
       ...brier([...won, ...lost]),
       ...closing([...won, ...lost]),
