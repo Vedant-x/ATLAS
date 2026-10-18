@@ -10,7 +10,8 @@ const ev = (id, sport, league, leaguePath, home, away, inHours, winner, extra = 
 export function siteData(now = Date.now()) {
   const list = [
     ev('fx-ars-lee', 'football', 'Premier League', 'soccer/eng.1', 'Arsenal', 'Leeds', 3, [['Arsenal', 1.36], ['Draw', 5.2], ['Leeds', 9.5]],
-      { stats: { homeForm: ['W', 'D', 'W', 'W', 'W'], awayForm: ['L', 'L', 'D', 'W', 'L'], homeRecord: '7-2-1', awayRecord: '2-3-5' }, absences: { home: [], away: [{ name: 'A. Player' }, { name: 'B. Player' }] } }),
+      { stats: { homeForm: ['W', 'D', 'W', 'W', 'W'], awayForm: ['L', 'L', 'D', 'W', 'L'], homeRecord: '7-2-1', awayRecord: '2-3-5' }, absences: { home: [], away: [{ name: 'A. Player' }, { name: 'B. Player' }] },
+        atlas: { home: { r: 1712, n: 34 }, away: { r: 1488, n: 31 } }, h2hRecent: [{ t: Date.parse('2026-03-01'), h: 'Leeds', a: 'Arsenal', hs: 0, as: 2, w: 'away' }] }),
     ev('fx-rma-get', 'football', 'LaLiga', 'soccer/esp.1', 'Real Madrid', 'Getafe', 5, [['Real Madrid', 1.42], ['Draw', 4.6], ['Getafe', 8.0]]),
     ev('fx-nyy-tb', 'baseball', 'MLB', 'baseball/mlb', 'Yankees', 'Rays', 6, [['Yankees', 1.55], ['Rays', 2.5]],
       { probables: [{ side: 'home', name: 'G. Cole', report: { season: { era: 2.9 } } }, { side: 'away', name: 'Z. Eflin', report: { season: { era: 4.4 } } }] }),

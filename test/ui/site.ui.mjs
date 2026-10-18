@@ -197,3 +197,15 @@ test('Sources: every feed with its last result, failures first', async () => {
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('match page: the results history (ratings, rest, last meetings)', async () => {
+  const { page, ctx, errors } = await open('#/match/fx-ars-lee');
+  await page.waitForSelector('.hist-nums');
+  const txt = await page.textContent('.hist-nums');
+  assert.match(txt, /1712/);
+  assert.match(txt, /ATLAS rating · 34 results/);
+  assert.match(await page.textContent('#app'), /Last meetings[\s\S]*Leeds[\s\S]*0 – 2/);
+  await shot(page, 'match-history');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

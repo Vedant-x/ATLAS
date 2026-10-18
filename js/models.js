@@ -6,6 +6,7 @@
 // Every derived number is a model fair price, not a bookmaker quote, and the UI labels it so.
 import { devig } from './engine.js';
 import { eloWin } from './clubelo.js';
+import { ratingWin, TRUST_GAMES } from './ratings.js';
 
 // ---------- maths ----------
 const LN_FACT = [0];
@@ -109,8 +110,15 @@ function baselineWin(event) {
       starterNote = `starter ERA ${eh.toFixed(2)} vs ${ea.toFixed(2)}`;
     }
   }
-  // Tennis has no bookmaker price in the feed: use the official rankings (points when we have them).
+  // ATLAS's own ratings, from every result in its history (ratings.js): used once both sides have
+  // TRUST_GAMES results, after the published ratings below (Tennis Abstract, ClubElo, World Elo).
+  const at = event.atlas;
+  const atlasOk = at && at.home.n >= TRUST_GAMES && at.away.n >= TRUST_GAMES;
+  const atlasNote = atlasOk ? `ATLAS rating ${at.home.r} vs ${at.away.r} (from ${at.home.n} and ${at.away.n} results${at.surface ? `, ${at.surface} court` : ''})` : null;
+  // Tennis has no bookmaker price in the feed: Elo where there is one, else the official rankings.
   if (event.sport === 'tennis' && event.tennis) {
+    const hasTa = Number(event.tennis.home?.elo) > 0 && Number(event.tennis.away?.elo) > 0;
+    if (!hasTa && atlasOk) { const w = ratingWin('tennis', at.home.r, at.away.r); return { win: { home: w.home, draw: 0, away: w.away }, confidence: 'medium', starterNote: atlasNote }; }
     const t = tennisRankWin(event.tennis);
     if (t) return { win: { home: t.p, draw: 0, away: 1 - t.p }, confidence: 'medium', starterNote: t.note };
   }
@@ -126,6 +134,11 @@ function baselineWin(event) {
   if (soccer && Number(st.homeElo) && Number(st.awayElo)) {
     const w = eloWin(Number(st.homeElo), Number(st.awayElo), { neutral: event.neutral });
     return { win: w, confidence: 'medium', starterNote: `${st.eloSource || 'ClubElo'} ${Math.round(st.homeElo)} vs ${Math.round(st.awayElo)}` };
+  }
+  // Any other sport (and soccer without a published rating): ATLAS's own ratings ahead of records and form.
+  if (atlasOk && event.sport !== 'efootball' && event.sport !== 'esports') {
+    const w = ratingWin(event.sport, at.home.r, at.away.r, { neutral: event.neutral });
+    return { win: w, confidence: 'medium', starterNote: atlasNote };
   }
   // eSoccer: each player's recent goals for and against.
   if (event.sport === 'efootball') {

@@ -26,6 +26,8 @@ import { FD_FIXTURES, parseFixtures, applyFixtures } from '../js/footballdata.js
 import { ELO_WORLD, ELO_TEAMS, eloratingsIndex, applyEloratings, isInternational } from '../js/eloratings.js';
 import { SLEEPER_NFL, injuredByTeam, applyNflInjuries } from '../js/sleeper.js';
 import { TA_ELO, parseEloPage, eloIndex as tennisEloIndex, applyTennisElo } from '../js/tennisabstract.js';
+import { encode as encodeResults, decode as decodeResults, merge as mergeResults, BACKFILL_DAYS } from '../js/results.js';
+import { rate as rateResults, annotate as annotateRatings } from '../js/ratings.js';
 import { parseGolf, golfForm, golfChances, parseStandings, raceChances, raceResult } from '../js/fields.js';
 import { EUROLEAGUE, LIIGA, SWISS, euroSeason, euroRecords, euroEvent, liigaRecords, liigaEvent, swissRecords, swissEvent } from '../js/europe.js';
 import { ODDS_API, ODDS_SPORT_KEYS, matchOdds } from '../js/oddsapi.js';
@@ -1023,8 +1025,10 @@ const cricket = async () => {
 // Sources that failed this build: their fixtures are carried over from the last good snapshot below.
 const failedSources = new Set();
 const fail = (src, msg) => (e) => { failedSources.add(src); log(`${msg} failed`, e.message); problems.push(`${msg} failed: ${e.message}`); return []; };
+// Finished games seen on the scoreboards (yesterday's, and the backfill below), for the results history.
+const finished = [];
 const [espn, npbEvents, kboEvents, cricketEvents, esportsEvents, esoccerEvents, khlEvents, tsdbEvents, euroEvents] = await Promise.all([
-  fetchAll(AbortSignal.timeout(720000), ordered, { days: 4, concurrency: 3 }).catch((e) => { log('ESPN failed', e.message); problems.push(`ESPN scoreboards failed entirely: ${e.message}`); return []; }),
+  fetchAll(AbortSignal.timeout(720000), ordered, { days: 4, concurrency: 3, finished }).catch((e) => { log('ESPN failed', e.message); problems.push(`ESPN scoreboards failed entirely: ${e.message}`); return []; }),
   npb().catch(fail('atlas/npb', 'NPB (Japan) schedule')),
   kbo().catch(fail('atlas/kbo', 'KBO (Korea) schedule')),
   cricket().catch(fail('atlas/cricket', 'Cricket feed')),
@@ -1203,6 +1207,36 @@ try {
   noteSource('Sleeper', 'api.sleeper.app', 'NFL injury report', Boolean(nflReport) || !nflGames, n, nflGames ? `${listed} injured players; ${n} of ${nflGames} NFL matches` : 'no NFL matches coming up');
   if (nflReport) await writeFile(`${out}/data/nfl-injuries.json`, JSON.stringify(nflReport));
 } catch (err) { log('Sleeper NFL injuries failed', err.message); noteSource('Sleeper', 'api.sleeper.app', 'NFL injury report', false, null, err.message); }
+
+// Results history and ATLAS ratings (js/results.js, js/ratings.js): every finished game seen, kept
+// 180 days in data/results.json and carried from build to build; a few older days are backfilled per
+// build (up to BACKFILL_DAYS). Every team and player gets a rating, and upcoming matches their
+// ratings, rest days, last meetings and, where the feed has none, recent form.
+try {
+  let prev = { meta: {}, list: [] };
+  try {
+    const r = await fetch((process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json').replace('index.json', 'results.json'), { signal: AbortSignal.timeout(30000) });
+    if (r.ok) { const j = await r.json(); prev = { meta: j.meta || {}, list: decodeResults(j) }; }
+  } catch { /* first run */ }
+  let back = Number(prev.meta.backfilledTo) || 1;
+  if (back < BACKFILL_DAYS) {
+    // Two more days back per build, every league, best effort (never marks a league as failed).
+    const from = -(back + 2), to = -(back + 1);
+    const before = finished.length;
+    await fetchAll(AbortSignal.timeout(180000), ordered, { from, days: to, extra: true, concurrency: 3, finished }).catch(() => []);
+    log(`Results backfill: days ${-from} to ${-to} ago, ${finished.length - before} finished games`);
+    back += 2;
+  }
+  const history = mergeResults(prev.list, finished);
+  const R = rateResults(history);
+  const rated = annotateRatings(events, R);
+  const bySport = Object.entries(history.reduce((m, g) => ((m[g.sport] = (m[g.sport] || 0) + 1), m), {})).sort((a, b) => b[1] - a[1]);
+  log(`ATLAS ratings: ${history.length} results (${finished.length} new this build, backfilled to ${back} days); ${R.r.size} teams/players rated; ${rated} upcoming matches with trusted ratings`);
+  log(`  results by sport: ${bySport.map(([k, v]) => `${k} ${v}`).join(' · ')}`);
+  log(`  how well the ratings called results (trusted sides): ${Object.entries(R.quality).map(([k, q]) => `${k} ${q.n} games, ${(q.right * 100).toFixed(0)}% right, Brier ${q.brier.toFixed(3)}`).join(' · ') || 'not enough yet'}`);
+  noteSource('ATLAS results history', 'built from the feeds above', 'Ratings for every team and player, rest days, last meetings, form', history.length > 0, rated, `${history.length} results over ${back} days; ${rated} upcoming matches rated`);
+  await writeFile(`${out}/data/results.json`, JSON.stringify({ meta: { backfilledTo: back, at: Date.now() }, ...encodeResults(history) }));
+} catch (err) { log('Results history failed', err.message); noteSource('ATLAS results history', 'built from the feeds above', 'Ratings for every team and player', false, null, err.message); }
 
 // Soccer absences: ESPN's soccer injury feed is empty, FotMob lists who is injured or suspended.
 const soccer = events.filter((e) => e.leaguePath?.startsWith('soccer/') && e.start < Date.now() + 5 * 864e5).sort((a, b) => a.start - b.start).slice(0, 400);

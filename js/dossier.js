@@ -82,6 +82,20 @@ export function dossierSections(e, d, hc, ac) {
   const H = e.home, A = e.away;
   const side = (s) => (s === 'home' ? [H, hc] : [A, ac]);
 
+  // From ATLAS's results history (ratings.js): ratings, rest, form, last meetings. In the snapshot, so
+  // it shows at once, for every sport ESPN covers.
+  const st = e.stats || {};
+  if (e.atlas || st.homeRest != null || st.awayRest != null || e.h2hRecent?.length) {
+    const cell = (s) => {
+      const a = e.atlas?.[s], rest = st[`${s}Rest`], form = st[`${s}Form`];
+      return `<div><small>${esc(side(s)[0])}</small>${a ? `<b>${a.r}</b><em>ATLAS rating · ${a.n} result${a.n === 1 ? '' : 's'}${a.n < 10 ? ' (too few to use yet)' : ''}</em>` : '<b>—</b><em>no results on record</em>'}${rest != null ? `<em>${rest === 0 ? 'played today' : rest === 1 ? 'played yesterday (back-to-back)' : `${rest} days' rest`}</em>` : ''}${form?.length ? `<em>form ${form.map(res).join('')}</em>` : ''}</div>`;
+    };
+    const meets = (e.h2hRecent || []).map((m) => `<tr><td>${dt(m.t)}</td><td class="${m.w === 'home' ? 'win' : ''}">${esc(m.h)}</td><td class="num">${m.hs != null ? `${esc(m.hs)} – ${esc(m.as)}` : esc(m.w === 'draw' ? 'draw' : '')}</td><td class="${m.w === 'away' ? 'win' : ''}">${esc(m.a)}</td></tr>`);
+    S.push({ id: 'history', label: 'Results history', html: `<div class="panel reveal"><h3 class="ph">From ATLAS's results history <small>every finished game ATLAS has seen, last 180 days${e.atlas?.surface ? ` · ratings blended with the ${esc(e.atlas.surface)}-court rating` : ''}</small></h3>
+      <div class="pl-nums hist-nums">${cell('home')}${cell('away')}</div>
+      ${meets.length ? `<h4>Last meetings</h4>${table(['Date', 'Home', 'Score', 'Away'], meets, 'tight')}` : ''}</div>` });
+  }
+
   // Starters (pitchers / goalies)
   const reports = (e.probables || []).filter((p) => p.report).sort((a, b) => (a.side === 'home' ? 0 : 1) - (b.side === 'home' ? 0 : 1));
   const native = reports.length > 0;

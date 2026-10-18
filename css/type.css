@@ -368,3 +368,4 @@ details.more-picks summary { cursor: pointer; color: var(--accent); font-weight:
 .sources-tbl .src-ok .src-state { color: var(--pos); }
 .sources-tbl .src-failed .src-state { color: var(--neg); }
 .sources-tbl .src-off .src-state { color: var(--muted); }
+.hist-nums em { display: block; font-style: normal; color: var(--muted); font-size: 12px; }
