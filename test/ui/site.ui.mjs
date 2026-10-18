@@ -271,3 +271,22 @@ test('navigation: five destinations, Research lit across its pages, Live and Pro
     await ctx.close();
   }
 });
+
+test('home: panels can be hidden and reordered, and the layout is kept', async () => {
+  const { page, ctx, errors } = await open('#/');
+  await page.waitForSelector('.dash-potd');
+  const order = () => page.$$eval('.dash > .panel:not(.dash-layout)', (ps) => ps.map((p) => p.className.match(/dash-(potd|short|live|health)|every|changes|track/)?.[0]).filter(Boolean));
+  await page.click('.dash-layout summary');
+  await page.click('[data-lay="toggle"][data-lay-key="potd"]');
+  await page.waitForFunction(() => !document.querySelector('.dash-potd'));
+  assert.ok(await page.$('.dash-layout[open]'), 'still open after a change');
+  await page.click('[data-lay="up"][data-lay-key="live"]');
+  await page.waitForFunction(() => { const ps = [...document.querySelectorAll('.dash > .panel')]; return ps.findIndex((p) => p.classList.contains('dash-live')) < ps.findIndex((p) => p.classList.contains('dash-short')); });
+  await page.reload();
+  await page.waitForSelector('.dash-live');
+  assert.equal(await page.$('.dash-potd'), null, 'hidden after a reload');
+  const o = await order();
+  assert.ok(o.indexOf('dash-live') < o.indexOf('dash-short'), JSON.stringify(o));
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

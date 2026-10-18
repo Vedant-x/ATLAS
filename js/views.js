@@ -410,22 +410,57 @@ function dashboard(ev, live) {
     best: `No best bet in the next ${hrs} hours: no ${Math.round(BEST.min * 100)}%+ pick at odds ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)} is priced at or above the market's fair odds.${hrs < 48 ? ' Try a longer window.' : ''}`,
     safest: `No surest pick at odds ${SAFE.minOdds.toFixed(2)}–${SAFE.maxOdds.toFixed(2)} in the next ${hrs} hours.${hrs < 48 ? ' Try a longer window.' : ''}` }[mode];
   const rec = safest ? recordLine(trackStats()?.safe) : best ? recordLine(trackStats()?.best) : recordLine(trackStats()?.byType.find((r) => r.key === 'banker'));
-  return `<section class="dash">
-    ${potdPanel(pool)}
-    <div class="panel dash-short reveal"><h2 class="ph">Shortlist <small>${when2} · ${MODES.find((m) => m[0] === mode)[2]} · ${orderLabel()}</small></h2>
+  // Every panel by name, shown in the visitor's saved order with hidden ones left out (Customise).
+  const panels = {
+    potd: () => potdPanel(pool),
+    shortlist: () => `<div class="panel dash-short reveal"><h2 class="ph">Shortlist <small>${when2} · ${MODES.find((m) => m[0] === mode)[2]} · ${orderLabel()}</small></h2>
       <div class="win-chips" role="group" aria-label="Rank by">${MODES.map(([k, l]) => `<button class="chip ${mode === k ? 'on' : ''}" data-smode="${k}" aria-pressed="${mode === k}">${l}</button>`).join('')}</div>
       ${windowChips('shours', hrs)}
       ${orderChips()}
       ${safest ? `<p class="rec-line">${rec ? `Surest so far: ${rec}` : 'Surest: tracked from today'} · picks where ATLAS does not claim to beat the bookmaker: in the record these landed most often</p>`
     : best ? `<p class="rec-line">${rec ? `Best bets so far: ${rec}` : 'Best bets: tracked from today'} · the price is the best across bookmakers, never shorter than the market's own fair odds · <a href="#/track">full record</a></p>` : rec ? `<p class="rec-line">Bankers so far: ${rec} · <a href="#/track">full record</a></p>` : ''}
-      <div class="minilist">${S.loading ? skelRows(4) : short.map((b) => miniPick(b)).join('') || `<p class="muted">${empty}</p>`}</div>${prefsBar()}</div>
-    <div class="panel dash-live reveal"><h2 class="ph">Live now <small>${S.loading ? '' : live.length}</small></h2>
-      ${S.loading ? skelRows(3) : live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${esc(e.score || '')}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>
-    ${everyTeaser()}
-    ${changesPanel(ev, { title: lastVisit() ? 'Since your last visit' : 'What changed', limit: 6, hideEmpty: true })}
-    ${trackCard(() => S.refresh?.())}
-    <div class="panel dash-health reveal"><h2 class="ph">Source health <small><a href="#/sources">every source →</a></small></h2>${sourceHealth(ev)}</div>
-  </section>`;
+      <div class="minilist">${S.loading ? skelRows(4) : short.map((b) => miniPick(b)).join('') || `<p class="muted">${empty}</p>`}</div>${prefsBar()}</div>`,
+    live: () => `<div class="panel dash-live reveal"><h2 class="ph">Live now <small>${S.loading ? '' : live.length}</small></h2>
+      ${S.loading ? skelRows(3) : live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${esc(e.score || '')}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>`,
+    every: () => everyTeaser(),
+    changes: () => `${changesPanel(ev, { title: lastVisit() ? 'Since your last visit' : 'What changed', limit: 6, hideEmpty: true })}`,
+    record: () => `${trackCard(() => S.refresh?.())}`,
+    health: () => `<div class="panel dash-health reveal"><h2 class="ph">Source health <small><a href="#/sources">every source →</a></small></h2>${sourceHealth(ev)}</div>`,
+  };
+  return `<section class="dash">${homeLayout().filter((k) => panels[k]).map((k) => panels[k]()).join('')}${layoutPanel()}</section>`;
+}
+
+// Home panels: order and visibility, saved per visitor (localStorage, best effort). Unknown or missing
+// names fall back to the default order, so a new panel always appears.
+const HOME_PANELS = [['potd', 'Parlay of the day'], ['shortlist', 'Shortlist'], ['live', 'Live now'], ['every', 'Every sport'], ['changes', 'What changed'], ['record', 'Track record'], ['health', 'Source health']];
+const LAYOUT_KEY = 'atlas-home-layout';
+const readLayout = () => { try { return JSON.parse(localStorage.getItem(LAYOUT_KEY)) || {}; } catch { return {}; } };
+export function homeLayout(saved = readLayout()) {
+  const known = HOME_PANELS.map(([k]) => k);
+  const order = [...(saved.order || []).filter((k) => known.includes(k)), ...known.filter((k) => !(saved.order || []).includes(k))];
+  return order.filter((k) => !(saved.hidden || []).includes(k));
+}
+// Stays open after a change, so several panels can be moved in a row.
+let layoutOpen = false;
+export function setHomeLayout(action, key) {
+  layoutOpen = true;
+  const saved = readLayout(), known = HOME_PANELS.map(([k]) => k);
+  const order = [...(saved.order || []).filter((k) => known.includes(k)), ...known.filter((k) => !(saved.order || []).includes(k))];
+  let hidden = saved.hidden || [];
+  const i = order.indexOf(key);
+  if (action === 'up' && i > 0) [order[i - 1], order[i]] = [order[i], order[i - 1]];
+  if (action === 'down' && i >= 0 && i < order.length - 1) [order[i + 1], order[i]] = [order[i], order[i + 1]];
+  if (action === 'toggle') hidden = hidden.includes(key) ? hidden.filter((k) => k !== key) : [...hidden, key];
+  if (action === 'reset') { try { localStorage.removeItem(LAYOUT_KEY); } catch { /* storage blocked */ } return; }
+  try { localStorage.setItem(LAYOUT_KEY, JSON.stringify({ order, hidden })); } catch { /* storage blocked: this visit only */ }
+}
+function layoutPanel() {
+  const saved = readLayout(), known = HOME_PANELS.map(([k]) => k);
+  const order = [...(saved.order || []).filter((k) => known.includes(k)), ...known.filter((k) => !(saved.order || []).includes(k))];
+  const name = Object.fromEntries(HOME_PANELS);
+  return `<details class="panel dash-layout reveal"${layoutOpen ? ' open' : ''}><summary>Customise this page</summary><ul class="lay-list">${order.map((k, i) => { const off = (saved.hidden || []).includes(k); return `<li class="${off ? 'off' : ''}"><span>${name[k]}</span>
+    <button class="chip" data-lay="up" data-lay-key="${k}" aria-label="Move ${name[k]} up"${i === 0 ? ' disabled' : ''}>↑</button><button class="chip" data-lay="down" data-lay-key="${k}" aria-label="Move ${name[k]} down"${i === order.length - 1 ? ' disabled' : ''}>↓</button>
+    <button class="chip ${off ? '' : 'on'}" data-lay="toggle" data-lay-key="${k}" aria-pressed="${!off}">${off ? 'Hidden' : 'Shown'}</button></li>`; }).join('')}</ul><button class="btn-ghost" data-lay="reset" data-lay-key="">Reset layout</button></details>`;
 }
 
 // Parlay of the day: one slip at 1.70 to 2.00 for the day (12:00 to 12:00 in the chosen time zone).

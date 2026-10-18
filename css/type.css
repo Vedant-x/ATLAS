@@ -384,3 +384,11 @@ details.more-picks summary { cursor: pointer; color: var(--accent); font-weight:
 /* Five destinations in the bar (Today, Research, Build a slip, Watchlist, Results); Live, Props and
    Compare live in the Research tabs and the More sheet. */
 nav.top a[data-extra] { display: none; }
+
+/* Customise this page: the home panels' order and visibility. */
+.dash-layout { grid-column: 1 / -1; }
+.dash-layout summary { cursor: pointer; font-weight: 600; }
+.lay-list { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 6px; }
+.lay-list li { display: flex; align-items: center; gap: 8px; }
+.lay-list li span { flex: 1; }
+.lay-list li.off span { opacity: .5; text-decoration: line-through; }

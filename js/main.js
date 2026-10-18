@@ -76,7 +76,7 @@ import { applyModel } from './intel.js';
 import { fetchLineups, fetchSummary } from './espn.js';
 import { startLiveAlerts, alertPrefs } from './livealerts.js';
 import { morph } from './morph.js';
-import { views, bind, legIndex, edgeTable, countdown, esc, sportOf, ist } from './views.js';
+import { views, bind, legIndex, edgeTable, countdown, esc, sportOf, ist, setHomeLayout } from './views.js';
 import { slip } from './slip.js';
 import { preloader, cursor, wipe, magnetic, tilt, countUp, reveal, fitTitles } from './ui.js';
 import { pc, odd } from './charts.js';
@@ -513,6 +513,7 @@ document.addEventListener('click', (e) => {
   }
   else if (d.shours) { setResearchPrefs({ shortHours: Number(d.shours) }); softRender(); }
   else if (d.smode) { setResearchPrefs({ shortMode: d.smode }); softRender(); }
+  else if (d.lay) { setHomeLayout(d.lay, d.layKey); softRender(); }
   else if (d.pzone) { setResearchPrefs({ potdZone: d.pzone }); softRender(); }
   else if (d.border) { setResearchPrefs({ betOrder2: d.border }); softRender(); }
   else if ('qvClose' in d) closeQv();
