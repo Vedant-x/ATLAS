@@ -1,4 +1,5 @@
 // Match-dossier sections built from js/detail.js output (ESPN) or native NPB/KBO starter data.
+import { standingsTable } from './standings.js';
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const safeHref = (u) => (/^https?:\/\//i.test(String(u || '')) ? esc(u) : '#');
 const dt = (v) => { const t = Date.parse(v); return Number.isFinite(t) ? new Date(t).toLocaleDateString([], { day: 'numeric', month: 'short' }) : esc(v || ''); };
@@ -142,11 +143,8 @@ export function dossierSections(e, d, hc, ac) {
 
   // Standings
   if (d.standings.length) {
-    const cols = (en) => Object.keys(en.stats).filter((k) => !/^(OTL?|PPG|OPP PPG|DIFF|L10|HOME|AWAY|CONF|DIV|VS.*|RS|RA|PCT)$/i.test(k) || ['PCT', 'L10'].includes(k)).slice(0, 9);
-    S.push({ id: 'standings', label: 'Standings', html: d.standings.map((g) => {
-      const c = cols(g.entries[0] || { stats: {} });
-      return `<div class="panel reveal"><h3 class="ph">${esc(g.name || 'Standings')}</h3>${table(['#', 'Team', ...c], g.entries.map((en, i) => `<tr class="${en.ours ? 'ours' : ''}"><td class="num">${i + 1}</td><td><b>${esc(en.team)}</b></td>${c.map((k) => `<td class="num">${esc(en.stats[k] ?? '')}</td>`).join('')}</tr>`), 'tight')}</div>`;
-    }).join('') });
+    const goals = ['football', 'hockey'].includes(e.sport);
+    S.push({ id: 'standings', label: 'Standings', html: d.standings.map((g) => `<div class="panel reveal"><h3 class="ph">${esc(g.name || 'Standings')}</h3>${standingsTable(g.entries, { goals })}</div>`).join('') });
   }
 
   // Leaders

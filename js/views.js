@@ -28,6 +28,7 @@ import { casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips,
 import { readiness } from './readiness.js';
 import { lastVisit } from './timeline.js';
 import { whyLine } from './why.js';
+import { canonStats, standingsTable } from './standings.js';
 // Picks pages (bankers, edge board, multipliers): picksview.js, which also uses the helpers here.
 import { picksViews, bindPicks, edgeTable } from './picksview.js';
 export { edgeTable };
@@ -616,12 +617,8 @@ async function loadStandings(l) {
     const j = await r.json();
     const groups = (j.children?.length ? j.children : [j]).map((c) => ({ name: c.name || c.abbreviation || l.name, entries: c.standings?.entries || [] })).filter((g) => g.entries.length);
     if (!groups.length) return;
-    const cols = ['GP', 'W', 'D', 'T', 'L', 'OTL', 'PTS', 'GD', 'PF', 'PA', 'PCT', 'GB', 'STRK', 'L10'];
-    box.innerHTML = `<h2 class="sec">Standings</h2>${groups.map((g) => {
-      const stat = (en, k) => en.stats?.find((x) => x.abbreviation === k || x.shortDisplayName === k)?.displayValue;
-      const used = cols.filter((k) => g.entries.some((en) => stat(en, k) != null));
-      return `<div class="panel"><h3 class="ph">${esc(g.name)}</h3><div class="table-wrap"><table class="tbl tight"><thead><tr><th>#</th><th>Team</th>${used.map((k) => `<th>${k}</th>`).join('')}</tr></thead><tbody>${g.entries.map((en, i) => `<tr><td class="num">${i + 1}</td><td><b>${esc(en.team?.displayName || en.team?.name || '')}</b></td>${used.map((k) => `<td class="num">${esc(stat(en, k) ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`;
-    }).join('')}`;
+    const goals = /^(soccer|hockey)\//.test(l.path);
+    box.innerHTML = `<h2 class="sec">Standings</h2>${groups.map((g) => `<div class="panel"><h3 class="ph">${esc(g.name)}</h3>${standingsTable(g.entries.map((en) => ({ team: en.team?.displayName || en.team?.name || '', stats: canonStats(en.stats || []) })), { goals })}</div>`).join('')}`;
   } catch { /* standings optional */ }
 }
 

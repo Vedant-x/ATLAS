@@ -323,3 +323,17 @@ body.scrolled .bar { height: 52px; padding-block: 0; }
 .pp2-lines .tbl th.num, .pp2-lines .tbl th { white-space: normal; letter-spacing: .5px; }
 .pp2-lines .tbl .num { font-size: 12px; }
 .pp2-lines .tbl td, .pp2-lines .tbl th { padding: 6px 5px; }
+
+/* ---------- League tables: # · Team · GP W D L · GF GA GD · Pts, numbers under their headings ---------- */
+.tbl.standings th abbr { text-decoration: none; cursor: help; }
+.tbl.standings td.pts { font-weight: 700; color: var(--fg); }
+.tbl.standings th:nth-child(2), .tbl.standings td:nth-child(2) { width: 100%; min-width: 140px; }
+.tbl.standings th.num, .tbl.standings td.num { padding-left: 10px; padding-right: 10px; }
+@media (max-width: 600px) {
+  .tbl.standings th, .tbl.standings td { padding: 6px 4px; }
+  .tbl.standings th.num, .tbl.standings td.num { padding-left: 4px; padding-right: 4px; letter-spacing: 0; }
+  .tbl.standings td.num { font-size: 12px; }
+  .tbl.standings th:nth-child(2), .tbl.standings td:nth-child(2) { min-width: 0; }
+  .tbl.standings td:nth-child(2) { font-size: 13px; }
+  .tbl.standings td:nth-child(2) b { display: block; overflow-wrap: anywhere; line-height: 1.25; }
+}

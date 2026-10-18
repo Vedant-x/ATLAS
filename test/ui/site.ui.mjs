@@ -22,7 +22,7 @@ before(async () => {
 after(async () => { await browser?.close(); server?.kill(); });
 
 // A page with the fixture board. `hold` keeps data/index.json waiting until released (loading state).
-async function open(route, { viewport = DESK, adult = true, hold = false } = {}) {
+async function open(route, { viewport = DESK, adult = true, hold = false, feeds = [] } = {}) {
   const ctx = await browser.newContext({ viewport, serviceWorkers: 'block' }); // feeds come only from the fixtures
   if (adult) await ctx.addInitScript(() => { try { localStorage.setItem('atlas-age-ok', '1'); } catch { /* ignore */ } });
   const page = await ctx.newPage();
@@ -34,6 +34,7 @@ async function open(route, { viewport = DESK, adult = true, hold = false } = {})
   await page.route('**/data/index.json*', async (r) => { if (held) await held; r.fulfill({ json: siteData() }); });
   await page.route('**/data/track.json*', (r) => r.fulfill({ json: trackData() }));
   await page.route(/\/data\/(?!index|track)[^/]+\.json/, (r) => r.fulfill({ status: 404, body: '' }));
+  for (const [url, json] of feeds) await page.route(url, (r) => r.fulfill({ json })); // outside feeds a test stands in for
   await page.goto(BASE + route, { waitUntil: 'commit' });
   return { page, ctx, errors, release };
 }
@@ -141,6 +142,23 @@ test('watchlist: alerts can be set for one match only', async () => {
   assert.match(await page.textContent('.list .al-kinds'), /this match/);
   assert.equal(await page.getAttribute('.alerts-panel [data-alert-kind="cards"]', 'aria-pressed'), 'true', 'other matches keep cards');
   await shot(page, 'watchlist-alerts');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('league table: GP, W, D, L, GD, Pts in rank order, whatever order the feed sends', async () => {
+  // ESPN lists the stats as GP, L, GD, P, D, W, R plus a Total record (the order that used to show).
+  const row = (team, [gp, l, gd, p, d, w, r]) => ({ team: { displayName: team }, stats: [['GP', gp], ['L', l], ['GD', gd], ['P', p], ['D', d], ['W', w], ['R', r]].map(([abbreviation, v]) => ({ abbreviation, displayValue: String(v) })).concat({ name: 'Total', summary: `${w}-${d}-${l}` }) });
+  const feed = { children: [{ name: "Women's Super League", standings: { entries: [row('Chelsea', [5, 0, '+11', 13, 1, 4, 2]), row('Manchester City', [5, 0, '+10', 15, 0, 5, 1]), row('Arsenal', [6, 2, '-2', 6, 3, 1, 3])] } }] };
+  const { page, ctx, errors } = await open('#/league/soccer~eng.w.1', { feeds: [['**/apis/v2/sports/soccer/eng.w.1/standings*', feed]], viewport: PHONE });
+  await page.waitForSelector('.tbl.standings');
+  assert.deepEqual(await page.$$eval('.tbl.standings th', (ths) => ths.map((t) => t.textContent.trim())), ['#', 'Team', 'GP', 'W', 'D', 'L', 'GD', 'Pts']);
+  assert.deepEqual(await page.$$eval('.tbl.standings tbody tr', (trs) => trs.map((t) => [...t.cells].map((c) => c.textContent.trim()).join(' '))),
+    ['1 Manchester City 5 5 0 0 +10 15', '2 Chelsea 5 4 1 0 +11 13', '3 Arsenal 6 1 3 2 -2 6']);
+  // Every column visible on a phone: the table does not scroll sideways.
+  assert.ok(await page.$eval('.tbl.standings', (t) => t.parentElement.scrollWidth <= t.parentElement.clientWidth + 1));
+  await page.locator('#league-standings').scrollIntoViewIfNeeded();
+  await shot(page, 'standings-phone');
   assert.deepEqual(errors, []);
   await ctx.close();
 });
