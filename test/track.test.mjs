@@ -18,12 +18,13 @@ test('winner, totals and spreads are graded from the final score', () => {
   assert.equal(gradePick({ home: 'Sinner', away: 'Alcaraz', market: 'Winner', pick: 'Alcaraz' }, { homeScore: '2', awayScore: '1', winner: 'away' }), 'won');
 });
 
-test('ESPN summaries become results; postponed games are void', () => {
+test('ESPN summaries become results; postponed games wait, cancelled games are void', () => {
   const sm = (type, h, a) => ({ header: { competitions: [{ status: { type }, competitors: [{ homeAway: 'home', score: h.s, winner: h.w }, { homeAway: 'away', score: a.s, winner: a.w }] }] } });
   assert.deepEqual(resultFromSummary(sm({ completed: true, name: 'STATUS_FINAL' }, { s: '3', w: true }, { s: '0', w: false })), { done: true, homeScore: '3', awayScore: '0', winner: 'home' });
   assert.equal(resultFromSummary(sm({ completed: true, name: 'STATUS_FULL_TIME' }, { s: '1' }, { s: '1' })).winner, 'draw');
   assert.equal(resultFromSummary(sm({ completed: false, name: 'STATUS_IN_PROGRESS' }, { s: '1' }, { s: '0' })).done, false);
-  assert.equal(resultFromSummary(sm({ completed: false, name: 'STATUS_POSTPONED' }, {}, {})).void, true);
+  assert.equal(resultFromSummary(sm({ completed: false, name: 'STATUS_POSTPONED' }, {}, {})).postponed, true);
+  assert.equal(resultFromSummary(sm({ completed: false, name: 'STATUS_CANCELED' }, {}, {})).void, true);
 });
 
 test('picks are recorded once, at the first price, only before kick-off', () => {
@@ -91,7 +92,7 @@ test('calibration: a settled copy of a pick counts even when an earlier copy is 
   // Copies that disagree are left out and reported.
   const o = observations([single('won'), single('lost')]);
   assert.equal(o.list.length, 0);
-  assert.deepEqual(o.conflicts, ['x1|Winner|Arsenal']);
+  assert.deepEqual(o.conflicts, ['x1|winner|arsenal']);
 });
 
 test('best bets: likeliest first, and only at a price at least the market\'s fair odds', async () => {

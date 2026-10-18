@@ -112,6 +112,19 @@ function modesPanel(s) {
     <tbody>${rows.map(([name, r, priced]) => `<tr><td>${name}</td><td class="num">${r.won + r.lost}</td><td class="num">${pct(r.hitRate)}</td><td class="num">${pct(r.expected)}</td><td class="num ${priced ? (r.profit >= 0 ? 'pos' : 'neg') : ''}">${priced ? units(r.profit) : 'no price'}</td><td class="num">${r.brier == null ? '—' : r.brier.toFixed(3)}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
+// Settlement audit: results under dispute (two reads disagreed; out of every total until they
+// agree), copies of one selection that disagree, and every change to a result that was already
+// final, with the old and new result, the source and the reason (the log is append-only).
+function correctionsPanel(data) {
+  const picks = data.picks || [], log = data.corrections || [], conflicts = data.conflicts || [];
+  const disputed = picks.flatMap((h) => [h, ...(h.legs || [])]).filter((x) => x.status === 'disputed');
+  if (!log.length && !disputed.length && !conflicts.length) return '';
+  const when = (t) => new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return `<div class="panel reveal"><h3 class="ph">Settlement audit <small>${disputed.length} disputed · ${conflicts.length} copies disagreeing · ${log.length} correction${log.length === 1 ? '' : 's'} logged</small></h3>
+    <p class="muted">A result is read twice before it is trusted. If the reads disagree it is held out of every total until two reads in a row agree. A changed result is never overwritten silently: the log keeps the old one.</p>
+    ${log.length ? `<table class="tbl tight"><thead><tr><th>When</th><th>Selection</th><th>From</th><th>To</th><th>Why</th></tr></thead><tbody>${log.slice(-20).reverse().map((c) => `<tr><td>${when(c.at)}</td><td>${esc(c.key || c.sel || '')}</td><td>${esc(c.from)}${c.prevScore ? ` <small>${esc(c.prevScore)}</small>` : ''}</td><td>${esc(c.to)}${c.score ? ` <small>${esc(c.score)}</small>` : ''}</td><td>${esc(c.reason || '')} <small>${esc(c.source || '')}</small></td></tr>`).join('')}</tbody></table>` : ''}</div>`;
+}
+
 // Picks on matches no bookmaker priced: hit rate against their own forecasts, by sport. No profit:
 // there was no price to take.
 function modelPanel(m) {
@@ -157,6 +170,7 @@ function body(data) {
     ${s.best?.won + s.best?.lost ? `<div class="panel reveal"><h3 class="ph">Best bets <small>odds ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)}, best price across bookmakers, never shorter than the market's fair odds · its own record</small></h3><p>${recordLine(s.best)}</p></div>` : ''}
     ${modesPanel(s)}
     ${modelPanel(s.model)}
+    ${correctionsPanel(data)}
     ${priceBandPanel(data.picks || [])}
     ${trustPanel(data.picks || [])}
     <div class="panel reveal"><h3 class="ph">Latest results</h3><ul class="tr-list">${s.recent.map(pickRow).join('')}</ul></div>

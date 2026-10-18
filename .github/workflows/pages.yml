@@ -58,7 +58,7 @@ jobs:
         continue-on-error: true
       - name: Update track record
         env: { TRACK_REQUIRED: '${{ steps.trackbranch.outputs.exists }}' }
-        run: node scripts/record.mjs track/picks.json dist/pages/data/index.json dist/pages/data/track.json
+        run: node scripts/record.mjs track/picks.json dist/pages/data/index.json dist/pages/data/track.json track/audit.json
       # Evidence timeline: what changed since the previous build (kept on the track-record branch).
       - name: Update change timeline
         continue-on-error: true
@@ -100,7 +100,7 @@ jobs:
             git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           fi
           git config user.name "atlas-bot" && git config user.email "atlas-bot@users.noreply.github.com"
-          for f in picks.json snapshot.json changes.json alert-state.json; do [ -f "$f" ] && git add "$f"; done
+          for f in picks.json audit.json snapshot.json changes.json alert-state.json; do [ -f "$f" ] && git add "$f"; done
           git commit -qm "Track record $(date -u +%FT%TZ)" || exit 0
           git push -q origin HEAD:track-record
       - uses: actions/configure-pages@v5

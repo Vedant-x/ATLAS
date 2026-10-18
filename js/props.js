@@ -81,7 +81,9 @@ export function boxStats(sm) {
         const id = String(a.athlete?.id || '');
         if (!id) continue;
         listed.add(id);
-        if (!a.stats?.length || a.didNotPlay) { dnp.add(id); continue; }
+        // Did not play only when the feed says so; an empty stat row is missing data, not a DNP.
+        if (a.didNotPlay === true) { dnp.add(id); continue; }
+        if (!a.stats?.length) continue;
         played.add(id);
         const s = (stats[id] ||= {});
         (g.keys || []).forEach((k, i) => { const v = parseFloat(String(a.stats[i] ?? '').split(/[-/]/)[0]); if (Number.isFinite(v)) s[`${grp}.${k}`] = v; });
@@ -111,12 +113,12 @@ export function boxStats(sm) {
   return { stats, played, listed, dnp, events };
 }
 
-// 'won' | 'lost' | 'void' (confirmed did not play) | null (not known yet: retried, never guessed).
+// 'won' | 'lost' | 'dnp' (the feed says the player did not play) | null (not known yet: retried, never guessed).
 export function gradeProp(prop, sport, box) {
   const def = PROP_STATS[sport]?.[prop.type];
   if (!def || !box?.listed) return null;
   const id = String(prop.id);
-  if (box.dnp.has(id)) return 'void';
+  if (box.dnp.has(id)) return 'dnp';
   if (!box.played.has(id)) return null; // not in the box score: incomplete data, not a result
   const s = box.stats[id] || {};
   let v = 0;

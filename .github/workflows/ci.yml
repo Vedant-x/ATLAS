@@ -23,7 +23,7 @@ jobs:
           ODDS_MAX_SPORTS: '0'
           ODDS_REGIONS: eu
       - name: Track record dry run (empty history, live results)
-        run: node scripts/record.mjs /tmp/track/picks.json dist/pages/data/index.json /tmp/track/track.json
+        run: node scripts/record.mjs /tmp/track/picks.json dist/pages/data/index.json /tmp/track/track.json /tmp/track/audit.json
       - name: Browser tests (fixed board, the built pages in Chromium)
         run: |
           npm install --no-save playwright@1.56.1

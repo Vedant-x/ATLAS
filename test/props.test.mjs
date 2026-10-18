@@ -26,20 +26,21 @@ test('props: milestones and anytime scorers parse; ungradeable, team and silly-s
   assert.equal(propLabel(s[0]), 'Bukayo Saka to score'); assert.equal(s[0].target, 1);
 });
 
-test('props grade from the box score: over the line wins, under loses, sat out is void', () => {
+test('props grade from the box score: over the line wins, under loses, a flagged DNP is dnp, an empty row is unknown', () => {
   const sm = { header: { competitions: [{ status: { type: { completed: true } }, competitors: [{ homeAway: 'home', score: '110', winner: true }, { homeAway: 'away', score: '101' }] }] },
     boxscore: { players: [{ statistics: [{ keys: ['minutes', 'points', 'threePointFieldGoalsMade-threePointFieldGoalsAttempted', 'rebounds'], athletes: [
-      { athlete: { id: '4017837' }, stats: ['30', '12', '0-0', '9'] }, { athlete: { id: '4396993' }, stats: ['25', '9', '1-6', '3'] }, { athlete: { id: '77' }, stats: [] }] }] }] } };
+      { athlete: { id: '4017837' }, stats: ['30', '12', '0-0', '9'] }, { athlete: { id: '4396993' }, stats: ['25', '9', '1-6', '3'] }, { athlete: { id: '77' }, stats: [], didNotPlay: true }, { athlete: { id: '78' }, stats: [] }] }] }] } };
   const r = resultFromSummary(sm);
   const pick = (id, type, target) => ({ leaguePath: 'basketball/nba', market: 'Player x', pick: 'x', prop: { id, type, target } });
   assert.equal(gradePick(pick('4017837', 'Points', 8), r), 'won');
   assert.equal(gradePick(pick('4396993', '3-Point Field Goals', 2), r), 'lost');
-  assert.equal(gradePick(pick('77', 'Points', 5), r), 'void');
+  assert.equal(gradePick(pick('77', 'Points', 5), r), 'dnp'); // the feed flags him as did not play
+  assert.equal(gradePick(pick('78', 'Points', 5), r), null); // an empty row is missing data, not a DNP
   // Soccer anytime scorer from the key events (own goals don't count).
   const box = boxStats({ rosters: [{ roster: [{ athlete: { id: '5' }, starter: true }, { athlete: { id: '6' }, starter: true }, { athlete: { id: '8' }, starter: false }] }], keyEvents: [{ type: { text: 'Goal' }, scoringPlay: true, participants: [{ athlete: { id: '5' } }] }, { type: { text: 'Own Goal' }, participants: [{ athlete: { id: '6' } }] }] });
   assert.equal(gradeProp({ id: '5', type: 'Anytime Goalscorer', target: 1 }, 'soccer', box), 'won');
   assert.equal(gradeProp({ id: '6', type: 'Anytime Goalscorer', target: 1 }, 'soccer', box), 'lost');
-  assert.equal(gradeProp({ id: '8', type: 'Anytime Goalscorer', target: 1 }, 'soccer', box), 'void'); // unused substitute
+  assert.equal(gradeProp({ id: '8', type: 'Anytime Goalscorer', target: 1 }, 'soccer', box), 'dnp'); // unused substitute (the squad list says so)
   assert.equal(gradeProp({ id: '9', type: 'Anytime Goalscorer', target: 1 }, 'soccer', box), null); // not in the squad list: unknown, retried
 });
 
