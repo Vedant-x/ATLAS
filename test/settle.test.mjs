@@ -102,3 +102,13 @@ test('out-of-sample check: each week is scored with a calibration fitted only on
   assert.ok(w.total.brier.raw > 0 && w.total.logLoss.market > 0);
   assert.equal(walkForward([]), null);
 });
+
+test('quiet hours: no system notifications inside the window, including one past midnight', async () => {
+  const { quietNow } = await import('../js/livealerts.js');
+  const at = (h) => new Date(2026, 9, 18, h, 30);
+  assert.equal(quietNow({ quiet: [22, 7] }, at(23)), true);
+  assert.equal(quietNow({ quiet: [22, 7] }, at(3)), true);
+  assert.equal(quietNow({ quiet: [22, 7] }, at(12)), false);
+  assert.equal(quietNow({ quiet: [0, 9] }, at(8)), true);
+  assert.equal(quietNow({}, at(3)), false);
+});

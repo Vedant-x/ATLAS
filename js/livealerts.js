@@ -26,6 +26,15 @@ export const alertPrefs = {
   },
 };
 export const wants = (prefs, m) => Boolean(prefs[KIND_PREF[m.kind]]);
+// Quiet hours: no system notifications from `quiet[0]` to `quiet[1]` o'clock (local time, may run past
+// midnight, e.g. 23 to 7); moments still show in the page. Off when unset.
+export const QUIET_CHOICES = [null, [22, 7], [23, 8], [0, 9]];
+export function quietNow(prefs, d = new Date()) {
+  const q = prefs?.quiet;
+  if (!Array.isArray(q) || q[0] === q[1]) return false;
+  const h = d.getHours();
+  return q[0] < q[1] ? h >= q[0] && h < q[1] : h >= q[0] || h < q[1];
+}
 
 const ord = (n) => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
 const short = (s, n = 110) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);

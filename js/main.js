@@ -522,6 +522,7 @@ document.addEventListener('click', (e) => {
     else if (d.pref === 'sport') prefs.set({ sports: v === 'all' ? [] : p.sports.includes(v) ? p.sports.filter((x) => x !== v) : [...p.sports, v] });
     else if (d.pref === 'priced') prefs.set({ pricedOnly: !p.pricedOnly });
     state.slipCache.clear(); softRender(); }
+  else if (d.quiet) { alertPrefs.set({ quiet: d.quiet === 'off' ? null : d.quiet.split('-').map(Number) }); softRender(); }
   else if (d.alertKind) { const on = t.getAttribute('aria-pressed') !== 'true';
     if (d.alertMatch) alertPrefs.setMatch(d.alertMatch, { [d.alertKind]: on }); else alertPrefs.set({ [d.alertKind]: on });
     softRender(); }
