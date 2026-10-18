@@ -305,7 +305,7 @@ export function parlayOfDay(events, { now = Date.now(), zone = 'IST', cal = null
     const teams = (l) => String(l.match || '').split(' vs ').map((t) => t.trim().toLowerCase());
     let best = null;
     const walk = (from, picked, odds, p) => {
-      if (picked.length >= 2 && odds >= POTD.min && odds <= POTD.max && (!best || p > best.p)) best = { legs: picked, odds, p, ev: p * odds - 1 };
+      if (picked.length >= 2 && odds >= POTD.min && odds <= POTD.max && (!best || p > best.p)) best = { legs: picked, odds, p, ev: p * odds - 1, fairOnly: positiveOnly };
       if (picked.length === 4 || odds > POTD.max) return;
       for (let i = from; i < legs.length; i++) {
         const l = legs[i];
@@ -329,7 +329,7 @@ export function potdPicks(events, now = Date.now(), history = []) {
     out.push({
       key: `multi|${potdDay(now, zone).key}|potd-${zone}`, type: 'multi', target: 'potd', zone, legs, eventId: legs[0].eventId, sport: 'multi', league: 'Parlay of the day',
       home: `${legs.length}-leg parlay of the day`, away: '', start: Math.max(...legs.map((l) => l.start)), market: 'Parlay of the day',
-      pick: legs.map((l) => l.pick).join(' + '), odds: +slip.odds.toFixed(2), p: +slip.p.toFixed(4), recordedAt: now, status: 'pending', model: MODEL_VERSION,
+      pick: legs.map((l) => l.pick).join(' + '), odds: +slip.odds.toFixed(2), p: +slip.p.toFixed(4), recordedAt: now, status: 'pending', model: MODEL_VERSION, fairOnly: slip.fairOnly,
     });
   }
   return out;

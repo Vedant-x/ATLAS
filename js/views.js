@@ -442,7 +442,8 @@ function potdPanel(ev) {
   const chips = `<div class="win-chips" role="group" aria-label="Time zone">${Object.keys(POTD_ZONES).map((z) => `<button class="chip ${z === zone ? 'on' : ''}" data-pzone="${z}" aria-pressed="${z === zone}">${z}</button>`).join('')}</div>`;
   const rec = recordLine(trackStats()?.potd);
   const body = legs.length ? `<ul class="potd-legs">${legs.map((l) => `<li class="leg-${esc(l.status || 'pending')}"><a href="#/match/${esc(l.eventId)}"><b>${esc(l.pick)}</b><small>${esc(l.home || '')} v ${esc(l.away || '')} · ${esc(when(l.start))} ${zone}</small></a>${legButton({ key: `${l.eventId}|${l.market}|${l.pick}`, eventId: l.eventId, sport: l.sport, match: `${l.home} vs ${l.away}`, market: l.market, pick: l.pick, odds: l.odds, p: l.p }, odd(l.odds))}</li>`).join('')}</ul>
-    <div class="potd-sum"><span><small>Total odds</small><b>${odd(odds)}</b></span><span><small>ATLAS chance</small><b>${pc(p, 0)}</b></span><span><small>Next parlay in</small><b>${next}</b></span></div>`
+    <div class="potd-sum"><span><small>Total odds</small><b>${odd(odds)}</b></span><span><small>ATLAS chance</small><b>${pc(p, 0)}</b></span><span><small>Next parlay in</small><b>${next}</b></span></div>
+    <p class="muted">${(saved || live)?.fairOnly ? 'Every leg priced at or above its fair odds.' : 'No slip in the band had every leg at its fair odds or better today: some legs are priced below fair.'} Legs treated as independent.</p>`
     : `<p class="muted">${S.loading ? 'Loading…' : `No parlay yet for this day: not enough strong legs before 12:00 ${zone}. Next one in ${next}.`}</p>`;
   return `<div class="panel dash-potd reveal"><h2 class="ph">Parlay of the day <small>${legs.length ? `${legs.length} legs · ` : ''}12:00 to 12:00 ${zone}${saved ? '' : legs.length ? ' · not saved yet' : ''}</small></h2>${chips}${body}${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}</div>`;
 }

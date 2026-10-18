@@ -111,7 +111,10 @@ export function bankerSlips(events, target, { count = 5, tolerance = 0.1, cal = 
   // margin. The chance floor follows the price (a 2.2 leg can't be a 70% leg). If the board is thin,
   // a slightly wider band.
   const cap = Math.min(2.6, Math.max(1.5, Math.sqrt(target) * 1.1));
-  for (const [minP, bandMax, tol] of [[0.4, cap, tolerance], [0.4, cap, Math.max(tolerance, 0.15)], [0.35, Math.max(cap, 2.2), 0.2]]) {
+  // Three searches, the strict one first. A slip from a wider search says so (slip.search), with the
+  // band it used, so the page can show it: the rules are widened in the open, never quietly.
+  const passes = [[0.4, cap, tolerance], [0.4, cap, Math.max(tolerance, 0.15)], [0.35, Math.max(cap, 2.2), 0.2]];
+  for (const [pass, [minP, bandMax, tol]] of passes.entries()) {
     // The user's minimum odds per leg is a hard rule: never relaxed by the fallbacks.
     const lo = Math.max(1.04, minOdds);
     const hi = Math.min(Math.max(bandMax, lo + 0.15), maxOdds ?? Infinity);
@@ -119,10 +122,11 @@ export function bankerSlips(events, target, { count = 5, tolerance = 0.1, cal = 
     const pool = legPool(events, { minP, maxOdds: hi, cal, minOdds: lo, positiveOnly });
     // Mixed bet types first (no market family over half the legs); one type only if that is all
     // the board allows.
+    const search = { pass, wider: pass > 0, minP, maxLegOdds: +hi.toFixed(2), tolerance: tol };
     const out = buildFrom(pool, target, count, tol, true);
-    if (out.length) return out;
+    if (out.length) return out.map((x) => ({ ...x, search }));
     const any = buildFrom(pool, target, count, tol, false);
-    if (any.length) return any;
+    if (any.length) return any.map((x) => ({ ...x, search: { ...search, oneType: true } }));
   }
   return [];
 }
