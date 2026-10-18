@@ -122,7 +122,7 @@ function verdict(a) {
 
 // Bankers, Surest and the unpriced model picks side by side: each is its own way of recommending.
 function modesPanel(s) {
-  const rows = [['Bankers (shortlist)', s.all, true], ['Surest', s.safe, true], ['Best bets', s.best, true], ['Model only (no price)', s.model, false]].filter(([, r]) => r && r.won + r.lost);
+  const rows = [['Bankers (shortlist)', s.all, true], ['Surest', s.safe, true], ['Best bets', s.best, true], ['Singles near 2.00', s.two, true], ['Model only (no price)', s.model, false]].filter(([, r]) => r && r.won + r.lost);
   if (rows.length < 2) return '';
   return `<div class="panel reveal"><h3 class="ph">By recommendation type <small>each kept as its own record</small></h3>
     <table class="tbl tight"><thead><tr><th>Type</th><th class="num">Settled</th><th class="num">Hit rate</th><th class="num">Estimated</th><th class="num">Profit</th><th class="num" title="Mean squared error of the chance shown; lower is better">Brier</th></tr></thead>

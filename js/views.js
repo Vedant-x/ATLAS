@@ -19,7 +19,7 @@ import { prefs, prefEvents } from './prefs.js';
 import { liveWin } from './live.js';
 import { watch } from './alerts.js';
 import { trackCard, trackStrip, trackStats, trackCalibration, recordLine, ensureTrack, officialParlay } from './trackview.js';
-import { rankedBankers, calibrated, SAFE, surestPicks, bestBets, BEST, POTD_ZONES, potdDay, parlayOfDay, recommendationFor } from './track.js';
+import { rankedBankers, calibrated, SAFE, surestPicks, bestBets, BEST, POTD_ZONES, potdDay, parlayOfDay, recommendationFor, nearTwo } from './track.js';
 import { propLabel, propMarket } from './props.js';
 import { propRow, allProps } from './propsview.js';
 import { coherentBets } from './picks.js';
@@ -400,11 +400,13 @@ function dashboard(ev, live) {
   // odds (best price across bookmakers where the Odds API gives several), 1.20 to 2.50.
   const short = orderBets(safest ? surestPicks(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration(), limit: 10 })
     : best ? bestBets(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration(), limit: 10 })
+    : mode === 'two' ? nearTwo(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration(), limit: 10 })
     : rankedBankers(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration(), min: 0.6, minOdds, limit: 10, mode, ready })), when2 = `next ${hrs} hours`;
-  const MODES = [['best', 'Best bets', `likeliest winners at a fair price or better, odds ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)}, every sport`], ['likely', 'Most likely', '60%+ win chance'], ['safest', 'Surest', `odds ${SAFE.minOdds.toFixed(2)}–${SAFE.maxOdds.toFixed(2)}, the bets that land most often`], ['value', 'Best value', 'ATLAS chance above the price'], ['evidence', 'Best evidence', '60%+ with every key input confirmed']];
+  const MODES = [['best', 'Best bets', `likeliest winners at a fair price or better, odds ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)}, every sport`], ['likely', 'Most likely', '60%+ win chance'], ['two', 'Near 2.00', 'singles at odds 1.70–2.30, likeliest first, at a fair price or better (recorded apart from slips)'], ['safest', 'Surest', `odds ${SAFE.minOdds.toFixed(2)}–${SAFE.maxOdds.toFixed(2)}, the bets that land most often`], ['value', 'Best value', 'ATLAS chance above the price'], ['evidence', 'Best evidence', '60%+ with every key input confirmed']];
   const empty = { likely: `No strong picks in the next ${hrs} hours right now.${hrs < 48 ? ' Try a longer window, or' : ''} lower the minimum odds / add sports.`,
     value: `No qualifying selection: every price in the next ${hrs} hours is at or below ATLAS's estimate.`,
     evidence: `No qualifying selection: no 60%+ pick in the next ${hrs} hours has all its inputs confirmed yet (starters, lineups, a fresh price).`,
+    two: `No single at odds 1.70–2.30 in the next ${hrs} hours is priced at or above its fair odds. No qualifying selection.`,
     best: `No best bet in the next ${hrs} hours: no ${Math.round(BEST.min * 100)}%+ pick at odds ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)} is priced at or above the market's fair odds.${hrs < 48 ? ' Try a longer window.' : ''}`,
     safest: `No surest pick at odds ${SAFE.minOdds.toFixed(2)}–${SAFE.maxOdds.toFixed(2)} in the next ${hrs} hours.${hrs < 48 ? ' Try a longer window.' : ''}` }[mode];
   const rec = safest ? recordLine(trackStats()?.safe) : best ? recordLine(trackStats()?.best) : recordLine(trackStats()?.byType.find((r) => r.key === 'banker'));
