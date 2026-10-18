@@ -17,6 +17,11 @@ export const TSDB_SPORTS = [
   { sport: 'boxing', tsdb: 'Fighting', path: 'atlas/boxing', only: /boxing|\bwb[aco]\b|\bibf\b|\bwbo\b/i },
   { sport: 'netball', tsdb: 'Netball', path: 'atlas/netball' },
   { sport: 'gaelic', tsdb: 'Gaelic', path: 'atlas/gaelic' },
+  // Leagues of sports ESPN covers, that ESPN itself does not carry (named, so nothing is doubled).
+  { sport: 'basketball', tsdb: 'Basketball', path: 'atlas/basketball-more', only: /liga acb|\bacb\b|greek basket|basket league|lega basket|betclic elite|\blnb\b|pro ?a\b|new zealand nbl|nz nbl|basketbol super|korean basketball|basketball champions league|basketball bundesliga|polish basketball|\bvtb\b|aba league|adriatic|chinese basketball|\bcba\b|b\.league|japan b/i },
+  { sport: 'rugby', tsdb: 'Rugby', path: 'atlas/rugbyleague-more', only: /super league|rugby league|nrlw|nrl ?women|state of origin/i },
+  { sport: 'aussierules', tsdb: 'Australian Football', path: 'atlas/aussie-more', only: /afl ?women|aflw|\bvfl\b|sanfl|wafl/i },
+  { sport: 'baseball', tsdb: 'Baseball', path: 'atlas/mexican-baseball', only: /mexican/i },
 ];
 
 const num = (x) => (x === null || x === undefined || x === '' ? null : Number.isFinite(Number(x)) ? Number(x) : null);

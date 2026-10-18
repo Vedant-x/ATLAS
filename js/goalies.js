@@ -29,8 +29,9 @@ export function goalieGames(data) {
   return out;
 }
 
-// Same team: the full names match, or one ends with the other's last word ("Maple Leafs" / "Toronto Maple Leafs").
-const sameTeam = (a, b) => { const x = normClub(a), y = normClub(b); return x === y || x.endsWith(y) || y.endsWith(x) || x.split(' ').at(-1) === y.split(' ').at(-1); };
+// Same team: the full names match, one starts or ends with the other ("Washington" / "Washington
+// Capitals", "Maple Leafs" / "Toronto Maple Leafs"), or the nicknames (last words) match.
+const sameTeam = (a, b) => { const x = normClub(a), y = normClub(b); if (!x || !y) return false; return x === y || x.endsWith(y) || y.endsWith(x) || x.startsWith(y) || y.startsWith(x) || x.split(' ').at(-1) === y.split(' ').at(-1); };
 
 // Starters onto upcoming NHL matches. Returns how many got them.
 export function applyGoalies(events, games, at = Date.now()) {

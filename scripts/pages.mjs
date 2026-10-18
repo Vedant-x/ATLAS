@@ -30,7 +30,7 @@ import { encode as encodeResults, decode as decodeResults, merge as mergeResults
 import { rate as rateResults, annotate as annotateRatings } from '../js/ratings.js';
 import { GEOCODE, FORECAST, OUTDOOR, placeKey, geoFrom, atKickoff } from '../js/weather.js';
 import { DF_GOALIES, nextData, goalieGames, applyGoalies } from '../js/goalies.js';
-import { UNDERSTAT, understatUrl, teamsData, xgTable, applyXg } from '../js/understat.js';
+import { UNDERSTAT, understatUrl, understatData, teamsFromJson, teamsData, xgTable, applyXg } from '../js/understat.js';
 import { parseGolf, golfForm, golfChances, parseStandings, raceChances, raceResult } from '../js/fields.js';
 import { EUROLEAGUE, LIIGA, SWISS, euroSeason, euroRecords, euroEvent, liigaRecords, liigaEvent, swissRecords, swissEvent } from '../js/europe.js';
 import { ODDS_API, ODDS_SPORT_KEYS, matchOdds } from '../js/oddsapi.js';
@@ -1250,7 +1250,8 @@ try {
       const data = nextData(await get(DF_GOALIES));
       const games = goalieGames(data);
       const n = applyGoalies(events, games);
-      log(`Daily Faceoff goalies: ${data ? 'page data read' : 'NO page data'}; ${games.length} games listed; ${n}/${nhl} NHL matches${games[0] ? ` (e.g. ${games[0].awayGoalie} @ ${games[0].homeGoalie}, ${games[0].homeStatus})` : ''}`);
+      log(`Daily Faceoff goalies: ${data ? 'page data read' : 'NO page data'}; ${games.length} games listed; ${n}/${nhl} NHL matches${games[0] ? ` (e.g. ${games[0].away} @ ${games[0].home}: ${games[0].awayGoalie} / ${games[0].homeGoalie}, ${games[0].homeStatus}, ${games[0].date})` : ''}`);
+      if (games.length && n < nhl) log(`  NHL matches here: ${events.filter((e) => e.leaguePath === 'hockey/nhl' && e.start > Date.now() - 36e5 && e.start < Date.now() + 36 * 36e5).map((e) => `${e.away} @ ${e.home}`).join(' · ')} | listed: ${games.slice(0, 16).map((g) => `${g.away} @ ${g.home}`).join(' · ')}`);
       noteSource('Daily Faceoff', 'dailyfaceoff.com', 'NHL starting goalies (confirmed / likely)', games.length > 0, n, `${n} of ${nhl} NHL matches in the next 36 hours`);
     } catch (err) { log('Daily Faceoff failed', err.message); noteSource('Daily Faceoff', 'dailyfaceoff.com', 'NHL starting goalies (confirmed / likely)', false, null, err.message); }
   } else noteSource('Daily Faceoff', 'dailyfaceoff.com', 'NHL starting goalies (confirmed / likely)', true, 0, 'no NHL matches in the next 36 hours');
@@ -1262,7 +1263,14 @@ try {
   const now = new Date(), season = now.getUTCMonth() >= 6 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
   const tables = new Map();
   for (const [path, lg] of Object.entries(UNDERSTAT)) {
-    try { const t = xgTable(teamsData(await get(understatUrl(lg, season)))); if (t.size) tables.set(path, t); else log(`Understat ${lg}: no team data on the page`); } catch (err) { log(`Understat ${lg}: ${err.message}`); }
+    try {
+      // The data request the page itself makes, then the page (older layout: data inline).
+      let data = null;
+      try { data = teamsFromJson(JSON.parse(await get(understatData(lg, season), { headers: { 'X-Requested-With': 'XMLHttpRequest', Referer: understatUrl(lg, season) } }))); } catch (err) { log(`Understat ${lg} data request: ${err.message}`); }
+      if (!data) { const html = await get(understatUrl(lg, season)); data = teamsData(html); if (!data) log(`Understat ${lg}: no team data (page starts: ${html.replace(/\s+/g, ' ').slice(0, 120)})`); }
+      const t = xgTable(data);
+      if (t.size) tables.set(path, t);
+    } catch (err) { log(`Understat ${lg}: ${err.message}`); }
   }
   const big = events.filter((e) => UNDERSTAT[e.leaguePath] && !e.live && e.start > Date.now()).length;
   const n = applyXg(events, tables);

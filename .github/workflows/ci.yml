@@ -14,8 +14,6 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm test
-      - name: Probe feeds for missing leagues (temporary)
-        run: node scripts/probe-leagues.mjs || true
       - name: Build Pages site against live sources
         run: node scripts/pages.mjs
       - name: Track record dry run (empty history, live results)

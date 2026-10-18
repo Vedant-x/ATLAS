@@ -7,6 +7,10 @@ import { normClub } from './clubelo.js';
 
 export const UNDERSTAT = { 'soccer/eng.1': 'EPL', 'soccer/esp.1': 'La_liga', 'soccer/ger.1': 'Bundesliga', 'soccer/ita.1': 'Serie_A', 'soccer/fra.1': 'Ligue_1' };
 export const understatUrl = (league, season) => `https://understat.com/league/${league}/${season}`;
+// The site now loads its data separately; this is the request its league page makes.
+export const understatData = (league, season) => `https://understat.com/getLeagueData/${league}/${season}`;
+// The JSON answer: { teams: { id: { title, history } }, ... } (the same shape teamsData has).
+export const teamsFromJson = (j) => (j && typeof j === 'object' && j.teams && typeof j.teams === 'object' ? j.teams : null);
 
 export function teamsData(html) {
   const m = /var\s+teamsData\s*=\s*JSON\.parse\('([^']*)'\)/.exec(String(html || ''));
