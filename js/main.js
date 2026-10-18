@@ -15,8 +15,8 @@ import { sharedSlipView } from './shareview.js';
 import { loadPlayers, playersData } from './playerdata.js';
 // The Research area: one tab bar across its pages (props and player research, Picks, compare,
 // and sports and leagues).
-const PICKS = ['bankers', 'edge', 'x', 'target', 'mega'];
-const RESEARCH = new Set(['props', 'player', 'bankers', 'x', 'target', 'mega', 'edge', 'compare', 'sports', 'sport', 'league']);
+const PICKS = ['bankers', 'every', 'edge', 'x', 'target', 'mega'];
+const RESEARCH = new Set(['props', 'player', 'bankers', 'every', 'x', 'target', 'mega', 'edge', 'compare', 'sports', 'sport', 'league']);
 const R_TABS = [['props', '#/props', 'Props', ['props', 'player']], ['picks', '#/bankers', 'Picks', PICKS], ['compare', '#/compare', 'Compare', ['compare']], ['sports', '#/sports', 'Sports', ['sports', 'sport', 'league']]];
 // Picks pages carry their own tab row (Bankers, Edge board, Multipliers, Target, Mega) instead.
 const withTabs = (name, html) => { if (!RESEARCH.has(name) || PICKS.includes(name)) return html; const i = html.indexOf('</section>'); return i < 0 ? researchTabs(name) + html : html.slice(0, i + 10) + researchTabs(name) + html.slice(i + 10); };

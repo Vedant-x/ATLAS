@@ -6,7 +6,9 @@ import { kelly } from './models.js';
 import { pc, odd } from './charts.js';
 import { split } from './ui.js';
 import { prefs } from './prefs.js';
-import { trackStats, trackCalibration, recordLine, ensureTrack, slipHistory, officialSlip } from './trackview.js';
+import { trackStats, trackCalibration, trackModelRecord, recordLine, ensureTrack, slipHistory, officialSlip } from './trackview.js';
+import { modelPicks } from './modelpicks.js';
+import { coverage, COVERAGE_FIELDS } from './coverage.js';
 import { rankedBankers, slipPolicy, MAX_ODDS } from './track.js';
 import { orderBets, orderChips } from './research.js';
 import { views, esc, sportOf, notice, when, istTag, legButton, legIndex, whyTag, prefsBar, prefFilter, bookLeg } from './views.js';
@@ -60,7 +62,7 @@ function slipCard(s, i, target, all) {
 }
 
 // Picks: one menu entry, these pages as its tabs.
-const builderNav = (on) => `<nav class="builder-nav reveal" aria-label="Picks">${[['bankers', '#/bankers', 'Bankers'], ['edge', '#/edge', 'Edge board'], ['x', '#/x/2', 'Multipliers'], ['target', '#/target', 'Target'], ['mega', '#/mega', 'Mega']].map(([k, h, l]) => `<a class="chip ${k === on ? 'on' : ''}" href="${h}"${k === on ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>`;
+const builderNav = (on) => `<nav class="builder-nav reveal" aria-label="Picks">${[['bankers', '#/bankers', 'Bankers'], ['every', '#/every', 'Every sport'], ['edge', '#/edge', 'Edge board'], ['x', '#/x/2', 'Multipliers'], ['target', '#/target', 'Target'], ['mega', '#/mega', 'Mega']].map(([k, h, l]) => `<a class="chip ${k === on ? 'on' : ''}" href="${h}"${k === on ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>`;
 
 // Today's official slip for a tracked target, exactly as saved to the record (legs, odds, chance).
 // Where a builder's legs come from, for the page kicker (track.js slipPolicy).
@@ -129,7 +131,98 @@ export function edgeTable(f) {
     </tbody></table>`;
 }
 
+// ---------- every sport ----------
+// A model-only pick: no price in our feeds, so its fair odds and "worth it at X or better".
+function modelCard(b) {
+  const e = b.event, s = sportOf(e.sport);
+  const leg = { key: `${e.id}|fair|${b.market}|${b.pick}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: b.market, pick: b.pick, odds: b.fairOdds, p: b.p, derived: true };
+  return `<article class="row tilt reveal model-pick" style="--c:${s.color}">
+    <a class="row-link" href="#/match/${esc(e.id)}" data-cursor="OPEN" aria-label="${esc(b.pick)}"></a>
+    <span class="ico">${s.icon}</span>
+    <div class="teams"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(e.home)} v ${esc(e.away)} · ${esc(e.league)} · ${when(e)}</small>
+      <small class="pcheck">ATLAS ${pc(b.p, 0)} · no bookmaker price in our feeds · <b>worth it at ${odd(b.fairOdds)} or better</b></small>${whyTag(b)}<small class="basis">${esc(String(b.basis).replace(/ \(no bookmaker price\)$/, ''))}</small></div>
+    <div class="row-prob">${gaugeMini(b.p)}</div>
+    <div class="odds"><span class="stat"><small>chance</small>${pc(b.p, 1)}</span><span class="stat"><small>fair odds</small>${odd(b.fairOdds)}</span>${legButton(leg, '<small>add at fair</small>+')}</div>
+    <span class="conf conf-low" title="Rated by ATLAS's model from the evidence named, with no bookmaker price to check it against">MODEL</span>
+  </article>`;
+}
+const covDot = (state) => `<i class="cov-dot" aria-hidden="true"></i><span class="sr-only">${state}: </span>`;
+function coverageTable(cov) {
+  const sports = SPORTS.filter((s) => cov[s.id]);
+  if (!sports.length) return '';
+  return `<div class="panel reveal"><h2 class="ph">What ATLAS knows, by sport <small>matches live or in the next 48 hours</small></h2>
+    <p class="cov-key"><span class="cov-available">${covDot('available')}available</span><span class="cov-partial">${covDot('partial')}partial</span><span class="cov-stale">${covDot('stale')}stale</span><span class="cov-unavailable">${covDot('unavailable')}unavailable</span></p>
+    <div class="table-wrap"><table class="tbl tight coverage"><thead><tr><th>Sport</th>${COVERAGE_FIELDS.map(([, l]) => `<th>${l}</th>`).join('')}</tr></thead>
+    <tbody>${sports.map((s) => `<tr><td><b>${s.icon} ${esc(s.name)}</b></td>${COVERAGE_FIELDS.map(([k]) => { const f = cov[s.id].fields[k]; return `<td class="cov-${f.state}" title="${esc(f.state)}">${covDot(f.state)}${esc(f.note)}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div></div>`;
+}
+// Every sport's best picks for the next 48 hours: priced picks through the shortlist's own rules,
+// and, for matches no bookmaker prices, the model's pick from real evidence.
+// Worked out once a minute (or when the board changes), not on every redraw: live scores redraw the
+// page every few seconds and the model picks are not free on a board of a thousand-plus matches.
+let everyMemo = null;
+export function everyData() {
+  const now = Date.now(), H = 48;
+  const sig = `${S.events.length}|${S.fetchedAt}|${trackModelRecord() ? Object.keys(trackModelRecord()).length : 0}`;
+  if (everyMemo && everyMemo.sig === sig && now - everyMemo.at < 6e4) return everyMemo.data;
+  const soon = S.events.filter((e) => !e.live && e.start > now && e.start < now + H * 36e5);
+  const cal = trackCalibration(), record = trackModelRecord();
+  const cov = coverage(S.events, { now, hours: H, fetchedAt: S.fetchedAt });
+  const sections = SPORTS.map((s) => {
+    const evs = soon.filter((e) => e.sport === s.id);
+    if (!evs.length) return null;
+    const priced = rankedBankers(evs, { cal, min: 0.6, limit: 12, mix: true });
+    const model = modelPicks(evs, { now, hours: H, record });
+    const all = [...priced.map((b) => ({ b, kind: 'priced' })), ...model.map((b) => ({ b, kind: 'model' }))].sort((x, y) => y.b.p - x.b.p);
+    return { s, evs, all, priced: priced.length, model: model.length };
+  }).filter(Boolean);
+  const data = { H, cov, sections, total: sections.reduce((n, x) => n + x.all.length, 0) };
+  everyMemo = { sig, at: now, data };
+  return data;
+}
+
+// Home: one line per sport with picks, linking into the Every sport page.
+export function everyTeaser() {
+  if (S.loading) return '';
+  const { sections, total } = everyData();
+  const withPicks = sections.filter((x) => x.all.length);
+  if (!withPicks.length) return '';
+  return `<div class="panel every-teaser reveal"><h2 class="ph">Every sport <small>${total} picks across ${withPicks.length} sport${withPicks.length === 1 ? '' : 's'} · next 48 hours, priced and model-rated</small></h2>
+    <nav class="win-chips" aria-label="Picks by sport">${withPicks.map((x) => `<a class="chip" href="#/every" data-every="${x.s.id}">${x.s.icon} ${esc(x.s.name)} <b>${x.all.length}</b></a>`).join('')}<a class="chip on" href="#/every">See them all →</a></nav></div>`;
+}
+
+function everySport() {
+  const { H, cov, sections, total } = everyData();
+  const card = (y) => (y.kind === 'model' ? modelCard(y.b) : bigPick(y.b));
+  const jump = sections.filter((x) => x.all.length).map((x) => `<a class="chip" href="#sec-every-${x.s.id}" data-jump="sec-every-${x.s.id}">${x.s.icon} ${esc(x.s.name)} <b>${x.all.length}</b></a>`).join('');
+  const block = (x) => {
+    const head = `<h2 class="sec reveal" id="sec-every-${x.s.id}"><span>${x.all.length}</span>${x.s.icon} ${esc(x.s.name)} <small>${x.evs.length} match${x.evs.length === 1 ? '' : 'es'} · ${x.priced} priced pick${x.priced === 1 ? '' : 's'} · ${x.model} model pick${x.model === 1 ? '' : 's'}</small></h2>`;
+    if (!x.all.length) {
+      const f = cov[x.s.id]?.fields;
+      const unpriced = x.evs.filter((e) => !e.markets?.length).length;
+      const why = [
+        unpriced < x.evs.length ? 'no priced selection reaches 60%' : 'no bookmaker prices in our feeds',
+        unpriced ? (f?.model.state === 'unavailable' ? 'not enough evidence (rankings, ratings, records, form) for the model to rate the unpriced matches' : 'the model rates none of the unpriced matches at 60% or more') : null,
+      ].filter(Boolean).join(', and ');
+      return `${head}<p class="muted reveal">No pick: ${why}. ATLAS doesn't invent a favourite.</p>`;
+    }
+    const top = x.all.slice(0, 6), rest = x.all.slice(6);
+    return `${head}<div class="list">${top.map(card).join('')}</div>${rest.length ? `<details class="more-picks reveal"><summary>${rest.length} more ${esc(x.s.name)} pick${rest.length === 1 ? '' : 's'}</summary><div class="list">${rest.map(card).join('')}</div></details>` : ''}`;
+  };
+  return {
+    mode: 'bankers', accent: '#00ffc3', title: 'Every sport',
+    html: `<section class="hero small"><p class="kicker reveal">EVERY SPORT · NEXT ${H} HOURS · ${total} PICKS</p><h1>${split('EVERY SPORT')}</h1>${builderNav('every')}
+      <p class="lede reveal">The strongest pick ATLAS can make for each match, sport by sport. <b>Priced</b> picks are rated against a bookmaker's price (BANKER). <b>Model</b> picks are for matches no bookmaker in our feeds prices: ATLAS rates them from rankings, ratings, records, form and starters, shows the fair odds, and they are worth taking only at that price or better. Model picks keep their own track record.</p></section>
+      ${notice()}
+      ${jump ? `<nav class="win-chips every-jump reveal" aria-label="Sports">${jump}</nav>` : ''}
+      ${coverageTable(cov)}
+      ${sections.map(block).join('')}
+      ${sections.length ? '' : '<p class="muted reveal">Nothing scheduled in the next 48 hours.</p>'}`,
+  };
+}
+
 export const picksViews = {
+  every: everySport,
+
   edge() {
     return {
       mode: 'edge', accent: '#4fd1ff', title: 'Edge board',

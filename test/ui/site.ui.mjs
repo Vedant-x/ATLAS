@@ -163,3 +163,20 @@ test('league table: GP, W, D, L, GD, Pts in rank order, whatever order the feed 
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('Every sport: priced and model picks for each sport, and what ATLAS knows about each', async () => {
+  const { page, ctx, errors } = await open('#/every');
+  await page.waitForSelector('.tbl.coverage');
+  // A model pick for each unpriced match with evidence, with fair odds and its basis.
+  const model = await page.$$eval('.model-pick', (rows) => rows.map((r) => r.querySelector('.teams b').textContent));
+  assert.deepEqual(model.sort(), ['Alcaraz', 'India']);
+  assert.match(await page.textContent('.model-pick'), /worth it at \d\.\d\d or better/);
+  // Priced picks alongside, and every sport on the board has a section.
+  assert.ok(await page.locator('#sec-every-tennis').count());
+  assert.ok(await page.locator('#sec-every-cricket').count());
+  assert.match(await page.textContent('.tbl.coverage'), /Cricket[\s\S]*0 of 1 priced/);
+  assert.equal(await page.getAttribute('nav.top a[href="#/bankers"]', 'class'), 'on');
+  await shot(page, 'every-sport');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

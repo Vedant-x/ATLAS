@@ -2,6 +2,7 @@
 import { esc, sportOf, ist } from './views.js';
 import { summarize, MIN_ODDS, MAX_ODDS, calibration, marketChance, SAFE } from './track.js';
 import { localDay } from './engine.js';
+import { modelRecord } from './modelpicks.js';
 
 const pct = (x, d = 1) => (x == null ? '—' : `${(x * 100).toFixed(d)}%`);
 const units = (x) => `${x > 0 ? '+' : ''}${x.toFixed(2)}u`;
@@ -21,6 +22,8 @@ async function load() {
 // is re-fetched in the background every 5 minutes, so a page left open keeps up with new results.
 export const trackStats = () => (cache ? summarize(cache.data.picks || []) : null);
 export const trackCalibration = () => (cache ? calibration(cache.data.picks || []) : null);
+// How the unpriced model picks have done per sport (modelpicks.js trusts a sport after 30 results).
+export const trackModelRecord = () => (cache ? modelRecord(cache.data.picks || []) : {});
 let reloading = false;
 export function ensureTrack(refresh) {
   if (cache && Date.now() - cache.at < 5 * 6e4) return;

@@ -337,3 +337,23 @@ body.scrolled .bar { height: 52px; padding-block: 0; }
   .tbl.standings td:nth-child(2) { font-size: 13px; }
   .tbl.standings td:nth-child(2) b { display: block; overflow-wrap: anywhere; line-height: 1.25; }
 }
+
+/* ---------- Every sport: model picks and the coverage table ---------- */
+.model-pick { border-style: dashed; }
+.model-pick .pcheck b { color: var(--fg); }
+small.basis { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+.every-jump { margin: 8px 0 18px; }
+.every-jump .chip b { margin-left: 4px; opacity: .8; }
+.tbl.coverage td { font-size: 12px; white-space: nowrap; }
+.cov-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; border: 1.5px solid currentColor; }
+.cov-available .cov-dot { color: var(--pos); background: var(--pos); }
+.cov-partial .cov-dot { color: #ffb547; background: linear-gradient(90deg, #ffb547 50%, transparent 50%); }
+.cov-stale .cov-dot { color: var(--neg); background: var(--neg); }
+.cov-unavailable { color: var(--muted); }
+.cov-unavailable .cov-dot { background: transparent; }
+.cov-key { display: flex; flex-wrap: wrap; gap: 14px; margin: -2px 0 10px; font-size: 12px; color: var(--muted); }
+details.more-picks { margin: 6px 0 18px; }
+details.more-picks summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 6px 0; }
+.dash > .every-teaser { grid-column: span 2; }
+@media (max-width: 1000px) { .dash > .every-teaser { grid-column: 1 / -1; } }
+.every-teaser .chip b { margin-left: 4px; opacity: .8; }

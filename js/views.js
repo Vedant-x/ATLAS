@@ -30,7 +30,7 @@ import { lastVisit } from './timeline.js';
 import { whyLine } from './why.js';
 import { canonStats, standingsTable } from './standings.js';
 // Picks pages (bankers, edge board, multipliers): picksview.js, which also uses the helpers here.
-import { picksViews, bindPicks, edgeTable } from './picksview.js';
+import { picksViews, bindPicks, edgeTable, everyTeaser } from './picksview.js';
 export { edgeTable };
 // Golf and motor racing: a field of players or drivers, drawn by fieldview.js.
 const FIELD_SPORTS = new Set(['golf', 'motorsport']);
@@ -413,6 +413,7 @@ function dashboard(ev, live) {
       <div class="minilist">${S.loading ? skelRows(4) : short.map((b) => miniPick(b)).join('') || `<p class="muted">${empty}</p>`}</div>${prefsBar()}</div>
     <div class="panel dash-live reveal"><h2 class="ph">Live now <small>${S.loading ? '' : live.length}</small></h2>
       ${S.loading ? skelRows(3) : live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${esc(e.score || '')}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>
+    ${everyTeaser()}
     ${changesPanel(ev, { title: lastVisit() ? 'Since your last visit' : 'What changed', limit: 6, hideEmpty: true })}
     ${trackCard(() => S.refresh?.())}
     <div class="panel dash-health reveal"><h2 class="ph">Source health</h2>${sourceHealth(ev)}</div>

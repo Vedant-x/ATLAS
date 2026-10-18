@@ -1,6 +1,7 @@
 // Track record: which picks ATLAS publishes, how they are graded from final scores, and the summary
 // statistics shown on the Record page. Pure functions, shared by the build (scripts/record.mjs) and
 // the browser.
+import { modelPicks, modelRecord } from './modelpicks.js';
 import { applyModel, bankers } from './intel.js';
 import { boxStats, gradeProp } from './props.js';
 import { bankerSlips } from './picks.js';
@@ -114,6 +115,7 @@ export function observations(history = []) {
     if (r.status === 'won' || r.status === 'lost') t.results.add(r.status);
   };
   for (const h of history) {
+    if (h.type === 'model') continue; // unpriced model picks keep their own record (modelpicks.js)
     if (h.type === 'multi') for (const l of h.legs || []) take(l, l.pRaw ?? l.p);
     else take(h, h.p);
   }
@@ -242,9 +244,17 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
     market: b.market, pick: b.pick, odds: b.odds, p: +b.pRaw.toFixed(4), shown: +b.p.toFixed(4), fair: b.fair == null ? null : +b.fair.toFixed(4),
     recordedAt: now, status: 'pending', model: MODEL_VERSION, ...(b.prop ? { prop: b.prop } : {}),
   });
+  // Matches with no price: the model's pick, at fair odds, kept as its own record (modelpicks.js).
+  const modelRow = (b) => ({
+    key: `model|${b.event.id}|${b.market}|${b.pick}`, type: 'model', eventId: b.event.id, leaguePath: b.event.leaguePath, compId: b.event.compId,
+    sport: b.event.sport, league: b.event.league, home: b.event.home, away: b.event.away, start: b.event.start,
+    market: b.market, pick: b.pick, odds: b.fairOdds, priced: false, p: +b.pRaw.toFixed(4), shown: +b.p.toFixed(4), fair: null, basis: b.basis,
+    recordedAt: now, status: 'pending', model: MODEL_VERSION,
+  });
   return [
     ...rankedBankers(soon, { cal, min: 0.6, minOdds: MIN_ODDS, maxOdds: MAX_ODDS, limit: 40 }).map(row('banker')),
     ...surestPicks(soon, { cal, limit: 20 }).map(row('safe')),
+    ...modelPicks(soon, { now, hours, record: modelRecord(history) }).slice(0, 40).map(modelRow),
     ...multiPicks(events, now, history),
   ];
 }
@@ -388,7 +398,8 @@ function brier(list) {
 export function summarize(history) {
   const settledAll = history.filter((h) => h.status === 'won' || h.status === 'lost' || h.status === 'push');
   const graded = settledAll.filter(inRecord);
-  const outside = settledAll.filter((h) => h.type !== 'multi' && h.type !== 'safe' && !inRecord(h));
+  const outside = settledAll.filter((h) => h.type !== 'multi' && h.type !== 'safe' && h.type !== 'model' && !inRecord(h));
+  const models = settledAll.filter((h) => h.type === 'model');
   const safe = settledAll.filter((h) => h.type === 'safe');
   const multis = settledAll.filter((h) => h.type === 'multi');
   const slipsOf = (ts) => history.filter((h) => h.type === 'multi' && ts.includes(h.target)).sort((a, b) => b.start - a.start);
@@ -421,6 +432,9 @@ export function summarize(history) {
     pending: history.filter((h) => h.status === 'pending' && inRecord(h)).sort((a, b) => a.start - b.start),
     unresolved: history.filter((h) => h.status === 'unresolved' && inRecord(h)).length,
     outside: stat(outside), safe: stat(safe),
+    // Model-only picks (no price): hit rate against forecast and Brier only; their "odds" are fair
+    // odds, so profit means nothing for them and is not shown.
+    model: { ...stat(models), bySport: Object.entries(models.reduce((m, h) => ((m[h.sport] ||= []).push(h), m), {})).map(([k, l]) => ({ key: k, ...stat(l) })).sort((a, b) => b.picks - a.picks) },
     recent: graded.slice().sort((a, b) => b.start - a.start).slice(0, 40),
   };
 }
