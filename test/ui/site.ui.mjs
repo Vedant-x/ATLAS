@@ -240,3 +240,16 @@ test('assistant and dashboard agree: the same picks at the same chance', async (
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('home: multiplier cards fit their text on desktop and phone', async () => {
+  for (const viewport of [DESK, PHONE]) {
+    const { page, ctx, errors } = await open('#/', { viewport });
+    await page.waitForSelector('.grid.xs .xcard');
+    const overflow = await page.$$eval('.grid.xs .xcard b', (bs) => bs.filter((b) => b.scrollWidth > b.parentElement.clientWidth).map((b) => b.textContent));
+    assert.deepEqual(overflow, []);
+    await page.locator('.grid.xs').scrollIntoViewIfNeeded();
+    await shot(page, `multipliers-${viewport === PHONE ? 'phone' : 'desk'}`);
+    assert.deepEqual(errors, []);
+    await ctx.close();
+  }
+});

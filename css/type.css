@@ -370,3 +370,13 @@ details.more-picks summary { cursor: pointer; color: var(--accent); font-weight:
 .sources-tbl .src-off .src-state { color: var(--muted); }
 .hist-nums em { display: block; font-style: normal; color: var(--muted); font-size: 12px; }
 .panel.warn-weather { border-color: #ffb54766; }
+
+/* Multiplier cards: one row of six on wide screens, three on tablets, two on phones; the big number
+   scales with its card so "100x+" and "Any x" never spill out. */
+.grid.xs { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.xcard { container-type: inline-size; overflow: hidden; }
+.xcard b { font-size: clamp(40px, 48cqi, 110px); white-space: nowrap; }
+.xcard.mega b, .xcard.any b { font-size: clamp(30px, 30cqi, 80px); }
+.xcard.any b { color: var(--fg, #fff); }
+@media (max-width: 1100px) { .grid.xs { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .grid.xs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

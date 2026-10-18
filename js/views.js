@@ -209,9 +209,9 @@ export const views = {
             ${next ? `<small class="next">Next: ${esc(next.home)} v ${esc(next.away)}</small>` : ''}</a>`;
         }).join('')}</div></section>
       <section class="sec-block"><h2 class="sec reveal">Multipliers</h2>
-        <div class="grid xs">${[2, 3, 4, 5].map((x) => { const r = ts?.byTarget?.find((t) => t.target === x); return `<a class="xcard tilt reveal" href="#/x/${x}" data-cursor="BUILD"><b>${x}x</b><small>5 slips · ${pc(1 / x, 0)} break-even</small>${r && r.won + r.lost ? `<small class="xrec">record ${r.won}–${r.lost} · ${pc(r.hitRate, 0)}</small>` : ''}</a>`; }).join('')}
+        <div class="grid xs">${[2, 3, 4, 5].map((x) => { const r = ts?.byTarget?.find((t) => t.target === x); return `<a class="xcard tilt reveal" href="#/x/${x}" data-cursor="BUILD"><b>${x}x</b><small>5 slips<br>break-even ${pc(1 / x, 0)}</small>${r && r.won + r.lost ? `<small class="xrec">record ${r.won}–${r.lost} · ${pc(r.hitRate, 0)}</small>` : ''}</a>`; }).join('')}
         <a class="xcard mega tilt reveal" href="#/mega" data-cursor="DARE"><b>100x+</b><small>Mega accumulators from bankers</small></a>
-        <a class="xcard tilt reveal" href="#/target" data-cursor="BUILD"><b>Target</b><small>Pick any multiplier</small></a></div></section>
+        <a class="xcard any tilt reveal" href="#/target" data-cursor="BUILD"><b>Any x</b><small>Pick your own multiplier</small></a></div></section>
       <section class="sec-block"><h2 class="sec reveal">Up next</h2><div class="list">${upcoming.slice(0, 14).map(eventRow).join('')}</div></section>`,
     };
   },
