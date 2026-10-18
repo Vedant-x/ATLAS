@@ -112,3 +112,31 @@ test('answer check: a real number stuck to the wrong pick is flagged', async () 
   assert.deepEqual(right.unverified, []);
   assert.deepEqual(verifyAnswer('Team A is 91% to win.', context).unverified, ['91%']);
 });
+
+test('answer check binds every number to its pick: swaps, pronouns, two picks in one sentence, units', async () => {
+  const { verifyAnswer } = await import('../js/assistant/verify.js');
+  const A = { pick: 'Arsenal', market: 'Winner', odds: 1.5, p: 0.8, ev: 0.2, e: { home: 'Arsenal', away: 'Leeds' } };
+  const B = { pick: 'Chelsea', market: 'Winner', odds: 2.5, p: 0.4, ev: 0, e: { home: 'Chelsea', away: 'Spurs' } };
+  const context = { tags: { P1: A, P2: B }, text: [
+    'MATCH: [Arsenal vs Leeds](#/match/1) · Premier League · Sat 15:00',
+    '  Pre-match estimated win chance: Arsenal 80%, draw 12%, Leeds 8% (price)',
+    'PICKS (balanced, constraints applied):',
+    '  - [P1] Arsenal · Winner · odds 1.50 · ATLAS 80% · break-even 67% · return +20.0%',
+    '  - [P2] Chelsea · Winner · odds 2.50 · ATLAS 40% · break-even 40% · return +0.0%',
+  ].join('\n') };
+  const flagged = (a) => verifyAnswer(a, context).misplaced.map((m) => m.number);
+  // Correct claims pass, in any phrasing.
+  assert.deepEqual(flagged('[P1] is 80% at 1.50 and [P2] is 40% at 2.50.'), []);
+  assert.deepEqual(flagged('Arsenal are 80% to beat Leeds (8%). It pays 1.5.'), []);
+  // Two picks in one sentence with the numbers swapped.
+  assert.deepEqual(flagged('[P1] and [P2] are 40% and 80%.'), ['40%', '80%']);
+  assert.deepEqual(flagged('[P1] and [P2] are 80% and 40%.'), []);
+  assert.deepEqual(flagged('Chelsea at 1.50 and Arsenal at 2.50 are the picks.'), ['1.50', '2.50']);
+  // The opponent's number from the match line given to the pick.
+  assert.deepEqual(flagged('Arsenal only have an 8% chance.'), ['8%']);
+  // A pronoun carries the previous sentence's pick.
+  assert.deepEqual(flagged('Look at Chelsea. It is 80% to win.'), ['80%']);
+  // A percentage never matches a price or a time.
+  assert.deepEqual(verifyAnswer('Arsenal are 15% to win.', context).unverified, ['15%']);
+  assert.deepEqual(verifyAnswer('Arsenal are 80 percent to win at 1.50.', context).misplaced, []);
+});
