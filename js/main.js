@@ -12,6 +12,7 @@ import { slipCheck } from './slipcheck.js';
 import { suggestStake, overExposed } from './staking.js';
 import { encodeSlip } from './share.js';
 import { sharedSlipView } from './shareview.js';
+import { sourcesView } from './sourcesview.js';
 import { loadPlayers, playersData } from './playerdata.js';
 // The Research area: one tab bar across its pages (props and player research, Picks, compare,
 // and sports and leagues).
@@ -257,7 +258,7 @@ let current = null;
 function build() {
   const { name, args } = parse();
   legIndex.clear();
-  const research = { slip: (a) => sharedSlipView(a[0], state.events), watchlist: watchlistView, compare: compareView, props: (a) => propsView(state.events, softRender, a[0] || ''), player: (a) => playerView(a[0], state.events, softRender) };
+  const research = { sources: () => sourcesView(softRender), slip: (a) => sharedSlipView(a[0], state.events), watchlist: watchlistView, compare: compareView, props: (a) => propsView(state.events, softRender, a[0] || ''), player: (a) => playerView(a[0], state.events, softRender) };
   return { name, v: (views[name] || research[name] || legalViews[name] || trackViews[name] || views.notfound)(args.map(decodeURIComponent)) };
 }
 

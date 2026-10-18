@@ -180,3 +180,20 @@ test('Every sport: priced and model picks for each sport, and what ATLAS knows a
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('Sources: every feed with its last result, failures first', async () => {
+  const at = Date.now() - 5 * 6e4;
+  const report = { at, sources: [
+    { name: 'ESPN', site: 'espn.com', what: 'Fixtures', ok: true, count: 1700, note: '1700 events', at },
+    { name: 'football-data.co.uk', site: 'football-data.co.uk', what: 'Pinnacle odds', ok: false, count: null, note: 'HTTP 503', at },
+    { name: 'The Odds API', site: 'the-odds-api.com', what: 'Odds', ok: null, count: null, note: 'not switched on', at },
+  ] };
+  const { page, ctx, errors } = await open('#/sources', { feeds: [['**/data/sources.json*', report]] });
+  await page.waitForSelector('.sources-tbl');
+  const rows = await page.$$eval('.sources-tbl tbody tr', (trs) => trs.map((t) => t.querySelector('b').textContent + ' ' + t.querySelector('.src-state').textContent));
+  assert.deepEqual(rows, ['football-data.co.uk Failed', 'ESPN Working', 'The Odds API Not set up']);
+  assert.match(await page.textContent('#app'), /1 source failed on the last build/);
+  await shot(page, 'sources');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

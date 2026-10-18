@@ -121,7 +121,7 @@ function baselineWin(event) {
   // European club soccer: ClubElo ratings (set by the build).
   if (soccer && Number(st.homeElo) && Number(st.awayElo)) {
     const w = eloWin(Number(st.homeElo), Number(st.awayElo), { neutral: event.neutral });
-    return { win: w, confidence: 'medium', starterNote: `ClubElo ${Math.round(st.homeElo)} vs ${Math.round(st.awayElo)}` };
+    return { win: w, confidence: 'medium', starterNote: `${st.eloSource || 'ClubElo'} ${Math.round(st.homeElo)} vs ${Math.round(st.awayElo)}` };
   }
   // eSoccer: each player's recent goals for and against.
   if (event.sport === 'efootball') {

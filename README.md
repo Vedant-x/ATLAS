@@ -23,6 +23,8 @@ public track record. Static site on GitHub Pages; free to run, no keys.
 | `#/slip/<code>` | A shared slip: the legs packed into the link, with one button to add them to your own |
 | `#/compare` | Pinned matches side by side |
 | `#/track` | Track record of shortlist picks, saved before kick-off and graded after |
+| `#/every` | Every sport: priced picks plus model picks (fair odds) for unpriced matches, and what ATLAS knows per sport |
+| `#/sources` | Every data source and how it did on the last build |
 
 ## Data sources (free, no keys)
 
@@ -35,6 +37,13 @@ public track record. Static site on GitHub Pages; free to run, no keys.
 | FotMob | Soccer injuries, suspensions and line-ups |
 | bo3.gg, EsportsBattle | Esports (CS2, Valorant, LoL, Dota 2) and eFootball |
 | Jolpica, OpenF1 | F1 results, standings and live timing |
+| ClubElo | European club ratings: the model's estimate for unpriced club matches |
+| World Football Elo (eloratings.net) | National-team ratings: the model's estimate for unpriced internationals |
+| football-data.co.uk | Pinnacle (or average) odds for 20 European leagues ESPN leaves unpriced |
+| TheSportsDB, EuroLeague, Liiga, National League | Darts, snooker, handball, volleyball and more; EuroLeague/EuroCup; Finnish and Swiss hockey |
+| The Odds API (optional, own key) | Median bookmaker odds for unpriced matches; switched on by an `ODDS_API_KEY` repository secret |
+
+Every build publishes `data/sources.json`, shown on the Sources page (`#/sources`): each source, what it is used for, whether it worked on the last build and how much it gave.
 
 ## How it runs
 

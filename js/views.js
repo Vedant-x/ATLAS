@@ -416,7 +416,7 @@ function dashboard(ev, live) {
     ${everyTeaser()}
     ${changesPanel(ev, { title: lastVisit() ? 'Since your last visit' : 'What changed', limit: 6, hideEmpty: true })}
     ${trackCard(() => S.refresh?.())}
-    <div class="panel dash-health reveal"><h2 class="ph">Source health</h2>${sourceHealth(ev)}</div>
+    <div class="panel dash-health reveal"><h2 class="ph">Source health <small><a href="#/sources">every source →</a></small></h2>${sourceHealth(ev)}</div>
   </section>`;
 }
 

@@ -360,3 +360,11 @@ details.more-picks summary { cursor: pointer; color: var(--accent); font-weight:
 .panel.verdict.v-warn { border-color: #ffb54766; }
 .panel.verdict.v-ok { border-color: #3dff9a66; }
 .panel.verdict p { line-height: 1.55; }
+
+/* ---------- Sources ---------- */
+.sources-tbl td { vertical-align: top; }
+.sources-tbl td small { display: block; color: var(--muted); font-size: 11px; }
+.sources-tbl .src-state { font-weight: 700; }
+.sources-tbl .src-ok .src-state { color: var(--pos); }
+.sources-tbl .src-failed .src-state { color: var(--neg); }
+.sources-tbl .src-off .src-state { color: var(--muted); }
