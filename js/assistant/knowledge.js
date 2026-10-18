@@ -7,10 +7,10 @@ import { loadDetail, detailFor } from '../detail.js';
 import { CATALOG, ALL_LEAGUES, sportById } from '../catalog.js';
 import { prefs, prefEvents } from '../prefs.js';
 import { liveWin } from '../live.js';
-import { calibrated, shownProp } from '../track.js';
+import { calibrated, shownProp, rankedBankers, bestBets, MAX_ODDS } from '../track.js';
 import { bankers } from '../intel.js';
 import { trackCalibration } from '../trackview.js';
-import { researchRow, caseFor } from '../research.js';
+import { researchRow, caseFor, researchPrefs } from '../research.js';
 import { changesSince, lastVisit, needsReview, timelineUpdatedAt } from '../timeline.js';
 import { watch } from '../alerts.js';
 import { readiness, priceTime } from '../readiness.js';
@@ -124,18 +124,24 @@ export function createKnowledge(S) {
     return out;
   }
 
-  // mode: safe (highest win chance), value (model above the price), balanced (short-ish odds, high chance).
-  // The visitor's saved filters apply: minimum odds, and preferred sports when none is named.
+  // The same selection engine as the dashboard (track.js), so the assistant and the cards always
+  // agree: balanced = Best bets (the home shortlist's default), safe = Most likely (60%+), value =
+  // Best value (ATLAS above the price). Matches no bookmaker prices follow, at model fair odds,
+  // unless the visitor shows priced matches only. The visitor's saved filters apply: minimum odds,
+  // and preferred sports when none is named. Odds limits asked for are hard rules on every pick.
   function picks({ sport, league, today = false, mode = 'balanced', limit = 5, minOdds = prefs.get().minOdds, maxOdds, from, to, exclude, skip = [] } = {}) {
-    let list = filterEvents({ sport, league, today, from, to, exclude });
+    let list = filterEvents({ sport, league, today, from, to, exclude }).filter((e) => !e.live);
     if (!sport && !league) list = prefEvents(list);
-    let c = candidates(list);
-    if (prefs.get().pricedOnly) c = c.filter((x) => x.priced);
+    const cal = trackCalibration();
+    const lo = minOdds || 1;
+    const ranked = mode === 'value' ? rankedBankers(list, { cal, minOdds: lo, limit: 2000, mix: false, mode: 'value' })
+      : mode === 'safe' ? rankedBankers(list, { cal, min: 0.6, minOdds: lo, maxOdds: maxOdds ?? (lo > MAX_ODDS ? 50 : MAX_ODDS), limit: 2000, mix: false })
+        : bestBets(list, { cal, limit: 2000 });
+    let c = ranked.map((b) => ({ e: b.event, market: b.market, pick: b.pick, odds: b.odds, p: b.p, fair: b.fair, ev: b.p * b.odds - 1, priced: true, book: b.book || null,
+      ...(b.prop ? { prop: { ...b.prop, id: String(b.prop.id), league: b.event.leaguePath?.split('/')[1] } } : {}) }));
+    if (!prefs.get().pricedOnly && mode !== 'value') c = [...c, ...candidates(list).filter((x) => !x.priced && x.p >= (mode === 'safe' ? 0.6 : 0.55)).sort((a, b) => b.p - a.p)];
     if (minOdds) c = c.filter((x) => x.odds >= minOdds);
     if (maxOdds) c = c.filter((x) => x.odds <= maxOdds);
-    if (mode === 'safe') c = c.filter((x) => x.p >= 0.6).sort((a, b) => b.p - a.p || b.priced - a.priced);
-    else if (mode === 'value') c = c.filter((x) => x.priced && x.ev > 0 && x.odds <= 5).sort((a, b) => b.ev - a.ev);
-    else c = c.filter((x) => x.odds >= 1.3 && x.odds <= 2.6 && x.p >= 0.45).sort((a, b) => (b.priced - a.priced) || b.p - a.p);
     const seen = new Set(), out = [];
     const skipped = new Set(skip);
     for (const x of c) { if (seen.has(x.e.id) || skipped.has(pickId(x))) continue; seen.add(x.e.id); out.push(x); if (out.length >= limit) break; }
@@ -233,5 +239,5 @@ export function createKnowledge(S) {
 
   const catalog = () => CATALOG.map((s) => ({ id: s.id, name: s.name, matches: S.events.filter((e) => e.sport === s.id).length }));
 
-  return { route, currentEvent, currentScope, eventById, sportIn, leagueIn, eventsIn, filterEvents, picks, pickId, candidates, matchSummary, injuriesOf, startersOf, slips, catalog, norm, caseOf, readinessOf, changes, reviewList, freshness, lastVisit, minOdds: () => prefs.get().minOdds, playerResearch, slipSummary, sourcesFor, SPORT_WORDS, LEAGUE_WORDS };
+  return { route, currentEvent, currentScope, eventById, sportIn, leagueIn, eventsIn, filterEvents, picks, pickId, candidates, matchSummary, injuriesOf, startersOf, slips, catalog, norm, caseOf, readinessOf, changes, reviewList, freshness, lastVisit, minOdds: () => prefs.get().minOdds, zone: () => (researchPrefs().potdZone === 'GMT' ? 'GMT' : 'IST'), playerResearch, slipSummary, sourcesFor, SPORT_WORDS, LEAGUE_WORDS };
 }

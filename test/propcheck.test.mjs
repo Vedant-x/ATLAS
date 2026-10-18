@@ -31,7 +31,7 @@ test('analysis panel: forecast, break-even, return, range, sample, age, missing'
 
 test('constraints: odds, days, exclusions, sport-only, positive only, counts', () => {
   const K = { leagueIn: (t) => (/\bnba\b/.test(t) ? 'basketball/nba' : null), sportIn: (t) => (/tennis/.test(t) ? 'tennis' : /baseball/.test(t) ? 'baseball' : null) };
-  const day0 = new Date(now); day0.setHours(0, 0, 0, 0);
+  const day0 = { getTime: () => Math.floor((now + 330 * 6e4) / 864e5) * 864e5 - 330 * 6e4 }; // midnight IST, the default zone
   assert.equal(parseConstraints('one bet with odds at least 1.80', K, now).minOdds, 1.8);
   assert.equal(parseConstraints('one bet with odds at least 1.80', K, now).n, 1);
   assert.equal(parseConstraints('best bets tomorrow', K, now).from, day0.getTime() + 864e5);

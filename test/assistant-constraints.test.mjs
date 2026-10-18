@@ -4,7 +4,9 @@ import { createBrain } from '../js/assistant/brain.js';
 
 // A stub knowledge layer whose picks honour the options the brain passes (as knowledge.js does).
 const now = Date.now();
-const day = (d) => { const t = new Date(now); t.setHours(0, 0, 0, 0); return t.getTime() + d * 864e5; };
+// Midnight in IST (the default zone), d days from today.
+const IST = 330 * 6e4;
+const day = (d) => Math.floor((now + IST) / 864e5) * 864e5 - IST + d * 864e5;
 const ev = (id, sport, leaguePath, start) => ({ id, sport, leaguePath, league: leaguePath.split('/').pop().toUpperCase(), home: `${id} Home`, away: `${id} Away`, start });
 const E = [ev('nba1', 'basketball', 'basketball/nba', now + 2 * 36e5), ev('epl1', 'football', 'soccer/eng.1', now + 3 * 36e5), ev('nhl1', 'hockey', 'hockey/nhl', day(1) + 20 * 36e5)];
 const C = [
@@ -48,6 +50,16 @@ test('assistant: tomorrow means tomorrow', async () => {
   assert.equal(o.from, day(1));
   assert.equal(o.to, day(2));
   assert.deepEqual(a.cards.map((c) => c.pick), ['NHL fav']);
+});
+
+test('tomorrow is tomorrow in the chosen time zone, not the browser\'s', async () => {
+  const { parseConstraints } = await import('../js/assistant/constraints.js');
+  // 20:00 UTC on 18 Oct is already 19 Oct (01:30) in IST.
+  const t = Date.parse('2026-10-18T20:00:00Z');
+  const ist = parseConstraints('best bets tomorrow', K, t, 'IST'), gmt = parseConstraints('best bets tomorrow', K, t, 'GMT');
+  assert.equal(new Date(ist.from).toISOString(), '2026-10-19T18:30:00.000Z'); // 20 Oct 00:00 IST
+  assert.equal(new Date(gmt.from).toISOString(), '2026-10-19T00:00:00.000Z'); // 19 Oct 00:00 GMT
+  assert.equal(ist.to - ist.from, 864e5);
 });
 
 test('assistant: excluding NBA never returns NBA', async () => {

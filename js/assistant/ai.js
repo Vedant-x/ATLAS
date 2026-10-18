@@ -71,7 +71,8 @@ export async function buildContext(K, text, max = 6000, mem = null) {
   const mode = c.positiveOnly || /\b(value|edge|\+ev)\b/.test(q) ? 'value' : /\b(safe|safest|banker|lock)/.test(q) ? 'safe' : 'balanced';
   const sel = { ...(c.league ? { league: c.league } : c.sport ? { sport: c.sport } : scope), mode, limit: c.n || 6, exclude: c.exclude, ...(c.minOdds != null ? { minOdds: c.minOdds } : {}), ...(c.maxOdds != null ? { maxOdds: c.maxOdds } : {}) };
   let picks = c.from ? K.picks({ ...sel, from: c.from, to: c.to }) : K.picks({ ...sel, today: true });
-  if (!picks.length && !c.from) picks = K.picks({ ...sel, today: false });
+  // Nothing today and no day asked for: the next few days, said out loud (never a silent widening).
+  if (!picks.length && !c.from) { picks = K.picks({ ...sel, today: false }); if (picks.length) lines.push('WINDOW: nothing qualifies today, so these picks are from the next few days. Say so in the answer.'); }
   picks = picks.filter((x) => legOk(c, x));
   const tagged = [...(mem?.list || []).map((x) => ({ ...x, earlier: true })), ...picks.filter((x) => !(mem?.list || []).some((y) => K.pickId(y) === K.pickId(x)))].slice(0, 12);
   tagged.forEach((x, i) => { x.tag = `P${i + 1}`; });

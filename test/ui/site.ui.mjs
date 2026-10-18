@@ -223,3 +223,20 @@ test('home: parlay of the day at the top, with a time-zone switch', async () => 
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('assistant and dashboard agree: the same picks at the same chance', async () => {
+  const { page, ctx, errors } = await open('#/');
+  await page.waitForSelector('.dash-short .mini');
+  const board = await page.$$eval('.dash-short .mini', (rows) => rows.map((r) => [r.querySelector('.mini-main b').textContent.trim(), r.querySelector('.mini-nums b').textContent.trim()]));
+  await page.click('.ai-launch');
+  await page.fill('.ai-input', 'best bets');
+  await page.press('.ai-input', 'Enter');
+  await page.waitForSelector('.ai-msg.bot .ai-card.pick');
+  const said = await page.$$eval('.ai-msg.bot:last-child .ai-card.pick', (cards) => cards.map((c) => c.querySelector('b').textContent.trim()));
+  assert.ok(said.length > 0);
+  // Every pick the assistant gives is on the dashboard's Best bets list.
+  const names = board.map(([n]) => n);
+  assert.ok(said.every((n) => names.includes(n)), JSON.stringify({ said, names }));
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
