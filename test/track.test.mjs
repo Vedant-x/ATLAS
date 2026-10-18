@@ -109,3 +109,23 @@ test('best bets: likeliest first, and only at a price at least the market\'s fai
   assert.ok(list[0].p >= list[1].p);
   assert.equal(list[0].book, 'fanduel');
 });
+
+test('parlay of the day: a day runs 12:00 to 12:00 in the chosen zone; one slip at 1.70 to 2.00', async () => {
+  const { potdDay, parlayOfDay, selectPicks } = await import('../js/track.js');
+  // 13:00 IST on 18 Oct is the 18 Oct day; 11:00 IST on 19 Oct is still the 18 Oct day.
+  const ist = (d, h) => Date.parse(`2026-10-${d}T${String(h).padStart(2, '0')}:00:00+05:30`);
+  assert.equal(potdDay(ist(18, 13), 'IST').key, '2026-10-18');
+  assert.equal(potdDay(ist(19, 11), 'IST').key, '2026-10-18');
+  assert.equal(potdDay(ist(19, 12), 'IST').key, '2026-10-19');
+  assert.equal(potdDay(ist(18, 13), 'IST').end, ist(19, 12));
+  assert.equal(potdDay(Date.parse('2026-10-18T11:30:00Z'), 'GMT').key, '2026-10-17');
+  const now = ist(18, 13);
+  const ev = (id, h, a, start) => ({ id, compId: id, sport: 'basketball', league: 'L', leaguePath: 'basketball/l', home: `H${id}`, away: `A${id}`, start, markets: [{ name: 'Winner', outcomes: [{ name: `H${id}`, odds: h }, { name: `A${id}`, odds: a }] }] });
+  const board = [ev('1', 1.25, 4.2, now + 2 * 36e5), ev('2', 1.3, 3.7, now + 3 * 36e5), ev('3', 1.22, 4.6, now + 4 * 36e5), ev('4', 1.28, 3.9, now + 5 * 36e5), ev('5', 1.2, 4.8, now + 30 * 36e5)];
+  const slip = parlayOfDay(board, { now, zone: 'IST' });
+  assert.ok(slip, 'a slip from the day\'s matches');
+  assert.ok(slip.odds >= 1.7 && slip.odds <= 2.0, String(slip.odds));
+  assert.ok(slip.legs.every((l) => l.eventId !== '5'), 'nothing after the day ends');
+  const recorded = selectPicks(board, now, 12, []).filter((h) => h.target === 'potd');
+  assert.deepEqual(recorded.map((h) => h.key).sort(), ['multi|2026-10-17|potd-GMT', 'multi|2026-10-18|potd-IST']); // 13:00 IST is 07:30 GMT: still the 17 Oct GMT day
+});

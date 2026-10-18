@@ -1,6 +1,6 @@
 // Record page: every official ATLAS pick (locked before kick-off) and how it turned out.
 import { esc, sportOf, ist } from './views.js';
-import { summarize, MIN_ODDS, MAX_ODDS, calibration, marketChance, SAFE, BEST } from './track.js';
+import { summarize, MIN_ODDS, MAX_ODDS, calibration, marketChance, SAFE, BEST, potdDay } from './track.js';
 import { localDay } from './engine.js';
 import { modelRecord } from './modelpicks.js';
 
@@ -37,6 +37,11 @@ export function officialSlip(target) {
   const day = localDay();
   return (cache?.data.picks || []).filter((h) => h.type === 'multi' && h.target === target && h.key.split('|')[1] === day).at(-1) || null;
 }
+// Today's parlay of the day for a time zone, exactly as the record saved it: or null if none yet.
+export function officialParlay(zone) {
+  const key = `multi|${potdDay(Date.now(), zone).key}|potd-${zone}`;
+  return (cache?.data.picks || []).find((h) => h.key === key) || null;
+}
 // One line of record for a section: "41–16 · 72% hit rate · +4.9u".
 // A multiplier's own slip history: each daily official slip with its legs and result.
 export function slipHistory(slips = []) {
@@ -62,7 +67,7 @@ const vsMarket = (r) => (r.brierN >= 10 ? `<span class="${r.brierModel <= r.brie
 const table = (rows, label) => (rows.length ? `<div class="table-wrap"><table class="tr-table"><thead><tr><th>${label}</th><th>Picks</th><th>Hit rate</th><th>Estimated</th><th>Profit</th><th title="Brier score: mean squared error of the chance shown. Lower is better.">Brier</th><th title="Same score for the bookmaker's margin-free chance on the same picks">vs market</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${r.won + r.lost}</td><td>${pct(r.hitRate)}</td><td>${pct(r.expected)}</td><td class="${r.profit >= 0 ? 'pos' : 'neg'}">${units(r.profit)}</td><td>${r.brier == null ? '—' : r.brier.toFixed(3)}</td><td>${vsMarket(r)}</td></tr>`).join('')}</tbody></table></div>` : '');
 
 const pickRow = (h) => (h.type === 'multi' ? `<li class="tr-${h.status}"><span class="tr-badge">${h.status === 'pending' ? day(h.start) : h.status.toUpperCase()}</span>
-  <div><b>${esc(h.target)}x slip · ${h.legs.length} legs</b><details class="tr-legs"><summary>${h.legs.map((l) => `<i class="leg-dot leg-${esc(l.status)}" title="${esc(`${l.pick}: ${l.status}`)}"></i>`).join('')}<span>legs</span><span class="sr-only"> ${esc(h.key)}</span></summary><ul>${h.legs.map((l) => `<li><i class="leg-dot leg-${esc(l.status)}"></i><b>${esc(l.pick)}</b><small>${esc(l.home)} v ${esc(l.away)} · ${esc(ist(l.start))}</small></li>`).join('')}</ul></details></div>
+  <div><b>${h.target === 'potd' ? 'Parlay of the day' : `${esc(h.target)}x slip`} · ${h.legs.length} legs</b><details class="tr-legs"><summary>${h.legs.map((l) => `<i class="leg-dot leg-${esc(l.status)}" title="${esc(`${l.pick}: ${l.status}`)}"></i>`).join('')}<span>legs</span><span class="sr-only"> ${esc(h.key)}</span></summary><ul>${h.legs.map((l) => `<li><i class="leg-dot leg-${esc(l.status)}"></i><b>${esc(l.pick)}</b><small>${esc(l.home)} v ${esc(l.away)} · ${esc(ist(l.start))}</small></li>`).join('')}</ul></details></div>
   <em>${Number(h.odds).toFixed(2)}</em><i>${pct(h.p, 0)}</i></li>` : `<li class="tr-${h.status}"><span class="tr-badge">${h.status === 'pending' ? day(h.start) : h.status.toUpperCase()}</span>
   <div><b>${esc(h.pick)}</b><small>${sportOf(h.sport).icon} ${esc(h.home)} v ${esc(h.away)} · ${esc(ist(h.start))} · ${esc(h.market)}${h.score ? ` · final ${esc(h.score)}` : ''} · ${h.type === 'value' ? 'value spot' : 'banker'}</small></div>
   <em>${Number(h.odds).toFixed(2)}</em><i>${pct(h.shown ?? h.p, 0)}</i></li>`);

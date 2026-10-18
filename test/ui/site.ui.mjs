@@ -209,3 +209,17 @@ test('match page: the results history (ratings, rest, last meetings)', async () 
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('home: parlay of the day at the top, with a time-zone switch', async () => {
+  const { page, ctx, errors } = await open('#/');
+  await page.waitForSelector('.dash-potd');
+  assert.match(await page.textContent('.dash-potd'), /12:00 to 12:00 IST/);
+  await page.click('.dash-potd [data-pzone="GMT"]');
+  await page.waitForFunction(() => /12:00 to 12:00 GMT/.test(document.querySelector('.dash-potd')?.textContent || ''));
+  assert.equal(await page.getAttribute('.dash-potd [data-pzone="GMT"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('.dash-potd [data-pzone="IST"]', 'aria-pressed'), 'false');
+  await page.mouse.move(0, 0);
+  await shot(page, 'home-potd');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

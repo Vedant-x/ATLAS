@@ -4,7 +4,7 @@
 import { modelPicks, modelRecord } from './modelpicks.js';
 import { applyModel, bankers } from './intel.js';
 import { boxStats, gradeProp } from './props.js';
-import { bankerSlips } from './picks.js';
+import { bankerSlips, legPool } from './picks.js';
 import { localDay } from './engine.js';
 
 export const MIN_ODDS = 1.3;
@@ -268,7 +268,60 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
     ...bestBets(soon, { cal, limit: 20 }).map(row('best')),
     ...modelPicks(soon, { now, hours, record: modelRecord(history) }).slice(0, 40).map(modelRow),
     ...multiPicks(events, now, history),
+    ...potdPicks(events, now, history),
   ];
+}
+
+// Parlay of the day: one slip a day at total odds 1.70 to 2.00, built from the legs with the most
+// chance per unit of odds (the same leg ranking as the multipliers), each leg at a price no shorter
+// than its fair odds where the board allows. A day runs from 12:00 to 12:00 in the chosen time zone;
+// the record saves the first slip of each day and the pages show that saved slip all day.
+export const POTD = { min: 1.7, max: 2.0, minOdds: 1.04 };
+export const POTD_ZONES = { IST: { offset: 330, tz: 'Asia/Kolkata' }, GMT: { offset: 0, tz: 'UTC' } };
+export function potdDay(now = Date.now(), zone = 'IST') {
+  const off = (POTD_ZONES[zone] || POTD_ZONES.IST).offset * 6e4, noon = 12 * 36e5;
+  const startLocal = Math.floor((now + off - noon) / 864e5) * 864e5 + noon;
+  return { key: new Date(startLocal).toISOString().slice(0, 10), start: startLocal - off, end: startLocal - off + 864e5 };
+}
+export function parlayOfDay(events, { now = Date.now(), zone = 'IST', cal = null } = {}) {
+  const { end } = potdDay(now, zone);
+  const pool = applyModel(events.filter((e) => e.compId && e.markets?.length && !e.live && e.start > now + 30 * 6e4 && e.start < end));
+  // Every combination of 2 to 4 of the best legs (most chance per unit of odds, one per match, no
+  // team twice) whose total lands in 1.70 to 2.00; the one most likely to win. Legs at a price no
+  // shorter than their fair odds first; any banker legs only if no such slip exists.
+  for (const positiveOnly of [true, false]) {
+    const legs = legPool(pool, { minP: 0.55, minOdds: POTD.minOdds, maxOdds: 1.6, cal, positiveOnly }).slice(0, 24);
+    const teams = (l) => String(l.match || '').split(' vs ').map((t) => t.trim().toLowerCase());
+    let best = null;
+    const walk = (from, picked, odds, p) => {
+      if (picked.length >= 2 && odds >= POTD.min && odds <= POTD.max && (!best || p > best.p)) best = { legs: picked, odds, p, ev: p * odds - 1 };
+      if (picked.length === 4 || odds > POTD.max) return;
+      for (let i = from; i < legs.length; i++) {
+        const l = legs[i];
+        if (picked.some((x) => teams(x).some((t) => teams(l).includes(t)))) continue;
+        walk(i + 1, [...picked, l], odds * l.odds, p * l.p);
+      }
+    };
+    walk(0, [], 1, 1);
+    if (best) return best;
+  }
+  return null;
+}
+export function potdPicks(events, now = Date.now(), history = []) {
+  const cal = calibration(history);
+  const out = [];
+  for (const zone of Object.keys(POTD_ZONES)) {
+    const slip = parlayOfDay(events, { now, zone, cal });
+    if (!slip) continue;
+    const byId = new Map(events.map((e) => [e.id, e]));
+    const legs = slip.legs.map((l) => { const e = byId.get(l.eventId); return { eventId: e.id, leaguePath: e.leaguePath, compId: e.compId, sport: e.sport, league: e.league, home: e.home, away: e.away, start: e.start, market: l.market, pick: l.pick, odds: l.odds, p: +l.p.toFixed(4), pRaw: +(l.pRaw ?? l.p).toFixed(4), status: 'pending', ...(l.prop ? { prop: l.prop } : {}) }; });
+    out.push({
+      key: `multi|${potdDay(now, zone).key}|potd-${zone}`, type: 'multi', target: 'potd', zone, legs, eventId: legs[0].eventId, sport: 'multi', league: 'Parlay of the day',
+      home: `${legs.length}-leg parlay of the day`, away: '', start: Math.max(...legs.map((l) => l.start)), market: 'Parlay of the day',
+      pick: legs.map((l) => l.pick).join(' + '), odds: +slip.odds.toFixed(2), p: +slip.p.toFixed(4), recordedAt: now, status: 'pending', model: MODEL_VERSION,
+    });
+  }
+  return out;
 }
 
 // One slip policy for the pages and the official record: which matches a target may use and how
@@ -441,6 +494,7 @@ export function summarize(history) {
   return {
     since: Number.isFinite(firstAt) ? firstAt : null, all: stat(graded), multi: stat(multis), byTarget: MULTI_TARGETS.map((t) => ({ key: `${t}x`, target: t, ...stat(multis.filter((m) => m.target === t)), slips: slipsOf([t]).slice(0, 12) })),
     mega: { ...stat(multis.filter((m) => m.target >= 100)), slips: slipsOf([100, 1000]).slice(0, 12) },
+    potd: { ...stat(multis.filter((m) => m.target === 'potd')), slips: slipsOf(['potd']).slice(0, 14) },
     byType: group((h) => h.type), bySport: group((h) => h.sport), byFamily: group((h) => familyOf(h.market)), byModel: group((h) => h.model || 'before 2026.10.1'), buckets,
     pending: history.filter((h) => h.status === 'pending' && inRecord(h)).sort((a, b) => a.start - b.start),
     unresolved: history.filter((h) => h.status === 'unresolved' && inRecord(h)).length,

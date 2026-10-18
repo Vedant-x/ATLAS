@@ -512,6 +512,7 @@ document.addEventListener('click', (e) => {
   }
   else if (d.shours) { setResearchPrefs({ shortHours: Number(d.shours) }); softRender(); }
   else if (d.smode) { setResearchPrefs({ shortMode: d.smode }); softRender(); }
+  else if (d.pzone) { setResearchPrefs({ potdZone: d.pzone }); softRender(); }
   else if (d.border) { setResearchPrefs({ betOrder2: d.border }); softRender(); }
   else if ('qvClose' in d) closeQv();
   else if ('displayToggle' in d) { const p = document.getElementById('display-panel'); const open = !p.classList.contains('open'); p.innerHTML = displayPanel(); p.classList.toggle('open', open); t.setAttribute('aria-expanded', open); }

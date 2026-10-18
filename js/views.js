@@ -18,8 +18,8 @@ import { fetchAll, LEAGUES, leagueStatus } from './espn.js';
 import { prefs, prefEvents } from './prefs.js';
 import { liveWin } from './live.js';
 import { watch } from './alerts.js';
-import { trackCard, trackStrip, trackStats, trackCalibration, recordLine, ensureTrack } from './trackview.js';
-import { rankedBankers, calibrated, SAFE, surestPicks, bestBets, BEST } from './track.js';
+import { trackCard, trackStrip, trackStats, trackCalibration, recordLine, ensureTrack, officialParlay } from './trackview.js';
+import { rankedBankers, calibrated, SAFE, surestPicks, bestBets, BEST, POTD_ZONES, potdDay, parlayOfDay } from './track.js';
 import { propLabel, propMarket } from './props.js';
 import { propRow, allProps } from './propsview.js';
 import { coherentBets } from './picks.js';
@@ -409,6 +409,7 @@ function dashboard(ev, live) {
     safest: `No surest pick at odds ${SAFE.minOdds.toFixed(2)}–${SAFE.maxOdds.toFixed(2)} in the next ${hrs} hours.${hrs < 48 ? ' Try a longer window.' : ''}` }[mode];
   const rec = safest ? recordLine(trackStats()?.safe) : best ? recordLine(trackStats()?.best) : recordLine(trackStats()?.byType.find((r) => r.key === 'banker'));
   return `<section class="dash">
+    ${potdPanel(pool)}
     <div class="panel dash-short reveal"><h2 class="ph">Shortlist <small>${when2} · ${MODES.find((m) => m[0] === mode)[2]} · ${orderLabel()}</small></h2>
       <div class="win-chips" role="group" aria-label="Rank by">${MODES.map(([k, l]) => `<button class="chip ${mode === k ? 'on' : ''}" data-smode="${k}" aria-pressed="${mode === k}">${l}</button>`).join('')}</div>
       ${windowChips('shours', hrs)}
@@ -423,6 +424,27 @@ function dashboard(ev, live) {
     ${trackCard(() => S.refresh?.())}
     <div class="panel dash-health reveal"><h2 class="ph">Source health <small><a href="#/sources">every source →</a></small></h2>${sourceHealth(ev)}</div>
   </section>`;
+}
+
+// Parlay of the day: one slip at 1.70 to 2.00 for the day (12:00 to 12:00 in the chosen time zone).
+// The saved one (the record's) once the build has saved it; until then the same pick, live.
+function potdPanel(ev) {
+  const zone = POTD_ZONES[researchPrefs().potdZone] ? researchPrefs().potdZone : 'IST';
+  const { tz } = POTD_ZONES[zone];
+  const day = potdDay(Date.now(), zone);
+  const saved = officialParlay(zone);
+  const live = saved ? null : parlayOfDay(ev, { zone, cal: trackCalibration() });
+  const byId = new Map(ev.map((e) => [e.id, e]));
+  const legs = saved ? saved.legs : (live?.legs || []).map((l) => { const e = byId.get(l.eventId); return { ...l, home: e?.home, away: e?.away, status: 'pending' }; });
+  const odds = saved ? saved.odds : live?.odds, p = saved ? saved.p : live?.p;
+  const when = (t) => new Date(t).toLocaleString('en-GB', { timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit' });
+  const left = Math.max(0, day.end - Date.now()), next = `${Math.floor(left / 36e5)}h ${Math.floor((left % 36e5) / 6e4)}m`;
+  const chips = `<div class="win-chips" role="group" aria-label="Time zone">${Object.keys(POTD_ZONES).map((z) => `<button class="chip ${z === zone ? 'on' : ''}" data-pzone="${z}" aria-pressed="${z === zone}">${z}</button>`).join('')}</div>`;
+  const rec = recordLine(trackStats()?.potd);
+  const body = legs.length ? `<ul class="potd-legs">${legs.map((l) => `<li class="leg-${esc(l.status || 'pending')}"><a href="#/match/${esc(l.eventId)}"><b>${esc(l.pick)}</b><small>${esc(l.home || '')} v ${esc(l.away || '')} · ${esc(when(l.start))} ${zone}</small></a>${legButton({ key: `${l.eventId}|${l.market}|${l.pick}`, eventId: l.eventId, sport: l.sport, match: `${l.home} vs ${l.away}`, market: l.market, pick: l.pick, odds: l.odds, p: l.p }, odd(l.odds))}</li>`).join('')}</ul>
+    <div class="potd-sum"><span><small>Total odds</small><b>${odd(odds)}</b></span><span><small>ATLAS chance</small><b>${pc(p, 0)}</b></span><span><small>Next parlay in</small><b>${next}</b></span></div>`
+    : `<p class="muted">${S.loading ? 'Loading…' : `No parlay yet for this day: not enough strong legs before 12:00 ${zone}. Next one in ${next}.`}</p>`;
+  return `<div class="panel dash-potd reveal"><h2 class="ph">Parlay of the day <small>${legs.length ? `${legs.length} legs · ` : ''}12:00 to 12:00 ${zone}${saved ? '' : legs.length ? ' · not saved yet' : ''}</small></h2>${chips}${body}${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}</div>`;
 }
 
 function sourceHealth(ev) {
