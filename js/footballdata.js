@@ -73,7 +73,9 @@ export function fixtureIndex(fixtures) {
     if (a === b || (ALIAS[a] && normClub(ALIAS[a]) === b)) return true;
     const wa = a.split(' ').filter(Boolean), wb = b.split(' ').filter(Boolean);
     const [s, l] = wa.length <= wb.length ? [wa, new Set(wb)] : [wb, new Set(wa)];
-    return s.length > 0 && s.every((w) => l.has(w));
+    if (s.length > 0 && s.every((w) => l.has(w))) return true;
+    // One-word names where one is a shortening of the other ("Kocaeli" / "Kocaelispor"): 5+ letters.
+    return wa.length === 1 && wb.length === 1 && Math.min(a.length, b.length) >= 5 && (a.startsWith(b) || b.startsWith(a));
   };
   return {
     find(e) {

@@ -43,6 +43,10 @@ test('football-data.co.uk: prices onto unpriced matches only, names matched, fil
   assert.equal(events[1].markets[0].outcomes[0].odds, 3.15, "Nott'm Forest / Man United matched by alias");
   assert.equal(events[2].markets[0].outcomes.length, 0, 'an ESPN-priced match keeps its own price');
   assert.deepEqual(r.unmatched, ['Stockport County v Reading [eng.3]']);
+  // One-word names, one a shortening of the other.
+  const k = [ev('k', 'soccer/tur.1', 'Kocaelispor', 'Goztepe', '2026-10-25T14:00:00Z')];
+  const tur = parseFixtures('Div,Date,Time,HomeTeam,AwayTeam,AvgH,AvgD,AvgA\nT1,25/10/2026,17:00,Kocaeli,Goztepe,2.6,3.2,2.7\n');
+  assert.equal(applyFixtures(k, tur, { now, fileAt }).priced, 1);
   // A file over a week old is not used.
   const late = [ev('e', 'soccer/eng.3', 'Wycombe', 'Bolton', '2026-10-25T14:00:00Z')];
   assert.equal(applyFixtures(late, parseFixtures(CSV), { now, fileAt: now - 8 * 864e5 }).priced, 0);
