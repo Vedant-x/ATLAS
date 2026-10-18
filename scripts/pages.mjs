@@ -24,6 +24,7 @@ import { TSDB, TSDB_SPORTS, tsdbEvent, tsdbRecords } from '../js/sportsdb.js';
 import { CLUBELO, parseClubElo, eloIndex, isEuropean } from '../js/clubelo.js';
 import { FD_FIXTURES, parseFixtures, applyFixtures } from '../js/footballdata.js';
 import { ELO_WORLD, ELO_TEAMS, eloratingsIndex, applyEloratings, isInternational } from '../js/eloratings.js';
+import { SLEEPER_NFL, injuredByTeam, applyNflInjuries } from '../js/sleeper.js';
 import { parseGolf, golfForm, golfChances, parseStandings, raceChances, raceResult } from '../js/fields.js';
 import { EUROLEAGUE, LIIGA, SWISS, euroSeason, euroRecords, euroEvent, liigaRecords, liigaEvent, swissRecords, swissEvent } from '../js/europe.js';
 import { ODDS_API, ODDS_SPORT_KEYS, matchOdds } from '../js/oddsapi.js';
@@ -1164,6 +1165,24 @@ try {
   if (r.unmatched.length) log(`  World Football Elo unmatched (first 30): ${r.unmatched.slice(0, 30).join(' · ')}`);
   noteSource('World Football Elo', 'eloratings.net', 'National-team ratings for the model', idx.size > 0, r.rated, idx.size ? `${r.rated} of ${intl.length} internationals rated` : 'files read but no ratings found');
 } catch (err) { log('World Football Elo failed', err.message); noteSource('World Football Elo', 'eloratings.net', 'National-team ratings for the model', false, null, err.message); }
+
+// NFL injury report (Sleeper): the injured players only, kept in data/nfl-injuries.json and refreshed
+// when over 6 hours old (the full list is ~5 MB and Sleeper asks for it about once a day).
+let nflReport = null;
+try {
+  try { const r = await fetch((process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json').replace('index.json', 'nfl-injuries.json'), { signal: AbortSignal.timeout(15000) }); if (r.ok) nflReport = await r.json(); } catch { /* first run */ }
+  const nflGames = events.filter((e) => e.leaguePath === 'football/nfl' && e.start > Date.now() - 6 * 36e5).length;
+  if (nflGames && !(nflReport?.at > Date.now() - 6 * 36e5)) {
+    const players = await (await fetch(SLEEPER_NFL, { signal: AbortSignal.timeout(60000) })).json();
+    const teams = injuredByTeam(players);
+    if (Object.keys(teams).length) nflReport = { at: Date.now(), teams }; else log('Sleeper: no injured players in the list (format change?)');
+  }
+  const n = applyNflInjuries(events, nflReport);
+  const listed = Object.values(nflReport?.teams || {}).reduce((a, l) => a + l.length, 0);
+  log(`Sleeper NFL injuries: ${listed} players on ${Object.keys(nflReport?.teams || {}).length} teams (read ${nflReport?.at ? Math.round((Date.now() - nflReport.at) / 36e5) : '?'} h ago); ${n}/${nflGames} NFL matches`);
+  noteSource('Sleeper', 'api.sleeper.app', 'NFL injury report', Boolean(nflReport) || !nflGames, n, nflGames ? `${listed} injured players; ${n} of ${nflGames} NFL matches` : 'no NFL matches coming up');
+  if (nflReport) await writeFile(`${out}/data/nfl-injuries.json`, JSON.stringify(nflReport));
+} catch (err) { log('Sleeper NFL injuries failed', err.message); noteSource('Sleeper', 'api.sleeper.app', 'NFL injury report', false, null, err.message); }
 
 // Soccer absences: ESPN's soccer injury feed is empty, FotMob lists who is injured or suspended.
 const soccer = events.filter((e) => e.leaguePath?.startsWith('soccer/') && e.start < Date.now() + 5 * 864e5).sort((a, b) => a.start - b.start).slice(0, 400);

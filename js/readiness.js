@@ -43,9 +43,14 @@ function checks(e, now) {
     case 'hockey':
       add('goalies', 'Starting goalies', null, 'no confirmed-goalie feed yet');
       break;
-    case 'basketball': case 'americanfootball':
-      add('injuries', 'Injury report', null, 'checked live when the match page opens');
+    case 'basketball': case 'americanfootball': {
+      // A dated injury list from the build (ESPN for prop leagues, Sleeper for the NFL), else the
+      // match page checks it live.
+      const inj = e.injuries, at = Number.isFinite(inj?.at) ? inj.at : null;
+      if (inj && at) add('injuries', 'Injury report', now - at <= 12 * H, `${inj.source || 'feed'}: ${(inj.home?.length || 0) + (inj.away?.length || 0)} listed, read ${Math.max(0, Math.round((now - at) / 36e5))} h ago`);
+      else add('injuries', 'Injury report', null, 'checked live when the match page opens');
       break;
+    }
     case 'tennis': {
       const t = e.tennis, ranked = t?.home?.seed != null || t?.away?.seed != null || e.ranks;
       add('ranks', 'Rankings / seeds', ranked ? true : null, ranked ? 'known' : 'not in the feed');

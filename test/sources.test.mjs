@@ -69,3 +69,23 @@ test('World Football Elo: ratings by code, names by alias; senior men only', () 
   assert.ok(isInternational('soccer/uefa.nations') && !isInternational('soccer/fifa.wwc'));
   assert.equal(eloratingsIndex('garbage', 'garbage').size, 0, 'an unreadable file gives no ratings');
 });
+
+test('Sleeper: the NFL injury report, injured players only, onto NFL matches with its time', async () => {
+  const { injuredByTeam, applyNflInjuries } = await import('../js/sleeper.js');
+  const { readiness } = await import('../js/readiness.js');
+  const players = {
+    1: { full_name: 'Josh Allen', team: 'BUF', position: 'QB', injury_status: null, active: true },
+    2: { full_name: 'Von Miller', team: 'BUF', position: 'LB', injury_status: 'Questionable', injury_body_part: 'Knee', active: true },
+    3: { full_name: 'Tua Tagovailoa', team: 'MIA', position: 'QB', injury_status: 'Out', injury_body_part: 'Concussion', active: true },
+    4: { full_name: 'Free Agent', team: null, injury_status: 'Out' },
+  };
+  const teams = injuredByTeam(players);
+  assert.deepEqual(Object.keys(teams).sort(), ['BUF', 'MIA']);
+  const now = Date.now();
+  const e = { id: 'n1', sport: 'americanfootball', leaguePath: 'football/nfl', home: 'Buffalo Bills', away: 'Miami Dolphins', start: now + 36e5, markets: [{ name: 'Winner', outcomes: [] }] };
+  assert.equal(applyNflInjuries([e], { at: now - 2 * 36e5, teams }), 1);
+  assert.deepEqual(e.injuries.away.map((p) => [p.name, p.status]), [['Tua Tagovailoa', 'Out']]);
+  const inj = readiness(e, { now, priceAt: now }).checks.find((c) => c.key === 'injuries');
+  assert.equal(inj.ok, true);
+  assert.match(inj.note, /Sleeper: 2 listed, read 2 h ago/);
+});

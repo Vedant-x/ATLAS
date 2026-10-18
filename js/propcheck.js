@@ -36,8 +36,8 @@ export function propReadiness(e, x, { now = Date.now(), priceAt = null, logsAt =
   const injAt = Number.isFinite(e.injuryChecked) ? e.injuryChecked : Number.isFinite(e.injuries?.at) ? e.injuries.at : null;
   const listed = e.injuries ? `, ${(e.injuries.home?.length || 0) + (e.injuries.away?.length || 0)} listed` : ', nobody listed';
   if (!(e.injuryChecked || e.injuries)) add('injuries', 'Injury report', null, 'no injury report for this match');
-  else if (injAt == null) add('injuries', 'Injury report', null, `ESPN${listed}, time read unknown`, 'unknown');
-  else { const h = (now - injAt) / 36e5; add('injuries', 'Injury report', h <= 12, `ESPN${listed}, read ${h < 1 ? `${Math.max(0, Math.round(h * 60))} min` : `${Math.round(h)} h`} ago`); }
+  else if (injAt == null) add('injuries', 'Injury report', null, `${e.injuries?.source || 'ESPN'}${listed}, time read unknown`, 'unknown');
+  else { const h = (now - injAt) / 36e5; add('injuries', 'Injury report', h <= 12, `${e.injuries?.source || 'ESPN'}${listed}, read ${h < 1 ? `${Math.max(0, Math.round(h * 60))} min` : `${Math.round(h)} h`} ago`); }
   const me = x.side ? (e.injuries?.[x.side] || []).find((i) => String(i.id) === String(x.id)) : null;
   if (me) add('status', 'His status', OUT.test(me.status) ? false : QUESTIONABLE.test(me.status) ? false : true, me.status, OUT.test(me.status) ? 'conflict' : QUESTIONABLE.test(me.status) ? 'wait' : null);
   const unsure = (x.adj || []).filter((a) => !a.applied && QUESTIONABLE.test(a.status || ''));
