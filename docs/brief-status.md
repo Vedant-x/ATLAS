@@ -66,11 +66,31 @@ the live site and the live track record still run the code on `main`.
 7. **Evaluation**:
    - Walk-forward out-of-sample check (Brier and log loss for model, calibrated and market).
    - 95% ROI interval.
-8. **Alerts**: quiet hours.
+8. **Alerts**:
+   - Quiet hours, in the visitor's own time zone.
+   - Alerts while ATLAS is closed (`worker/atlas-alerts.js`, `js/pushalerts.js`, `sw.js`): Web Push for saved
+     matches from the build's change feed. Each change is sent once, only the chosen kinds, never during quiet
+     hours, and each message says whether the forecast moved. Off until the Worker is deployed
+     (`worker/README-alerts.md`) and `ALERTS_URL` is set.
+9. **Recommendation object** (`js/recommendation.js`): one versioned object (canonical id, line, settlement
+   rules, bookmaker, quote id and time, model and calibration versions, raw and calibrated chance, market
+   chance, uncertainty range, readiness, missing inputs, constraints, ranking mode). The dashboard cards, the
+   assistant's pick cards and recorded picks carry the same `recommendationId`.
+10. **Singles near 2.00**: a mode of its own (1.85–2.15), recorded and scored apart from slips and the parlay of
+    the day. "No qualifying selection" is shown when nothing qualifies.
+11. **Freshness limits** by sport and time to start: prices 6 h → 20 min as the start nears (halved for tennis,
+    esports and MMA), team news with its own limits. Starters and absences carried over from an earlier build
+    keep their own age and are marked carried.
+12. **Assistant follow-ups**: "the second one", "remove the weakest leg" / "drop leg 2", "same filters,
+    tomorrow". The remembered list is kept, constraints carry over, and a moved or vanished price is said.
+13. **Navigation**: five destinations (Today, Research, Build a slip, Watchlist, Results). Home panels can be
+    hidden and reordered, and the layout is kept.
+14. **Comparison protocol** (`docs/comparison-protocol.md`, `js/compare.js`): evidence labels, singles and
+    parlays apart, ranked only when the 95% ROI intervals separate, otherwise "insufficient evidence to rank".
 
 ## Tested
 
-- 209 unit tests and 13 browser tests pass.
+- 219 unit tests and 17 browser tests pass.
 - New unit tests:
   - Canonical ids.
   - Confirm and dispute, with the audit entries.
@@ -86,7 +106,12 @@ the live site and the live track record still run the code on `main`.
   - "Tomorrow" in IST vs GMT.
   - Walk-forward never trains on the week it scores.
   - Quiet hours.
-- New browser test: every pick the assistant gives is on the dashboard's list.
+- Also: recommendation ids stable across surfaces, uncertainty ranges, near-2.00 selection and its empty
+  case, freshness limits, follow-ups, comparison ranking and "insufficient evidence", the alerts Worker
+  (once-only sends, chosen kinds, quiet hours across midnight, no back-fill, VAPID token signature).
+- Browser tests: every pick the assistant gives is on the dashboard's list with the same recommendation id;
+  five-destination navigation; home layout hide/reorder kept after reload; multiplier cards fit on desktop and
+  phone; parlay-of-the-day zone switch; quiet hours kept and the alerts-server state shown.
 - Dry run of `record.mjs` on the baseline (offline): totals unchanged, 1,520 records given canonical ids, nothing disputed.
 
 ## Verified in production
@@ -95,20 +120,20 @@ Nothing from this list. The PR is not merged. CI runs every change against live 
 
 ## Unverified / remaining
 
-- **Recommendation object.** The full versioned object shared by every card, panel, assistant answer and slip is not done. Recorded picks carry most of its fields, but the pages still build their own views of a pick from the same functions.
-- **Second results provider.** Disputes come from a second read of the same provider, not from an independent second source.
-- **Freshness limits.** They are not yet set per sport and per input, and they do not tighten as the start time approaches.
-- **Retained data.** Odds, absences and starters carried over from earlier builds are not individually flagged as stale.
-- **Phase 3.** There is no singles-near-2.00 mode and no same-game parlay mode with real combined quotes. The ATLAS data has no same-game quotes.
-- **Phase 4.** The follow-ups "remove the weakest leg" and "same filters, tomorrow" are not implemented. "Explain the second one" replaces the remembered list.
-- **Phase 5.** The navigation is not reduced to five destinations. Panels cannot be resized, reordered or hidden. There is no monitoring while the browser is closed.
-- **Phase 6.** No competitor comparison protocol has been built.
-- **Hosted AI.** It is not configured: `AI_URL` is empty. The assistant runs on the built-in rules and an optional model inside the browser.
-- **Out-of-sample sample size.** The check covers 727 forecasts over 2 weeks: calibrated 0.2126 vs market 0.2131. That is a tie, not an edge.
+- **Second results provider.** Disputes come from a second read of the same provider, not from an independent
+  second source.
+- **Same-game parlays.** Not offered: ATLAS has no combined same-game quotes, and multiplying the legs of one
+  match would misprice them.
+- **Panels.** They can be hidden and reordered, not resized.
+- **Alerts while closed.** Code and tests only; not deployed. Push delivery has not been tested end to end.
+- **Hosted AI.** Not configured: `AI_URL` is empty. The assistant runs on the built-in rules and an optional
+  model inside the browser.
+- **Out-of-sample sample size.** 727 forecasts over 2 weeks: calibrated 0.2126 vs market 0.2131. That is a tie,
+  not an edge.
 
 ## Feeds and credentials still required
 
-- **Monitoring while the browser is closed:** a push service (for example a Cloudflare Worker with Web Push keys stored as secrets).
+- **Monitoring while the browser is closed:** deploy `worker/atlas-alerts.js` (`worker/README-alerts.md`: KV, VAPID keys as secrets, a 5-minute cron) and set `ALERTS_URL`.
 - **Hosted AI:** the Cloudflare Worker in `worker/` deployed, with `AI_URL` set.
 - **A second results source** for independent confirmation of results.
 - **The Odds API:** the free plan (500 credits a month) prices only the leagues no other feed covers. Line shopping across all sports needs a paid plan.

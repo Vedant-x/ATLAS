@@ -15,6 +15,7 @@ import { FORECAST_NOTE } from './changelog.js';
 import { ORDERS, orderByTime } from './engine.js';
 import { watch, notifyPermission } from './alerts.js';
 import { alertPrefs, ALERT_KINDS, QUIET_CHOICES } from './livealerts.js';
+import { pushState } from './pushalerts.js';
 import { pc, odd } from './charts.js';
 
 let S;
@@ -198,6 +199,10 @@ export function alertPanel() {
         : '<button class="btn-ghost" data-notify-on>Turn on notifications</button>';
   return `<div class="panel alerts-panel reveal"><h3 class="ph">Live alerts <small>for matches you watch or have in your slip</small></h3>
     <div class="al-row">${state}</div>${alertChips(alertPrefs.get(), '', 'For every match')}
+    <div class="al-row">${(() => { const ps = pushState(); return ps === 'on' ? '<span class="al-on">Alerts while ATLAS is closed: on</span> <button class="btn-ghost" data-push="off">Turn off</button>'
+      : ps === 'off' ? '<button class="btn-ghost" data-push="on">Alerts while ATLAS is closed</button><small> starters, lineups, absences, price and time changes for your saved matches</small>'
+        : ps === 'unsupported' ? '<span class="al-off">This browser can\'t receive alerts while ATLAS is closed</span>'
+          : '<span class="al-off">Alerts while ATLAS is closed need the alerts server (not set up yet); until then alerts come while the site is open</span>'; })()}</div>
     <div class="al-kinds" role="group" aria-label="Quiet hours"><span>Quiet hours</span>${QUIET_CHOICES.map((q) => { const on = JSON.stringify(alertPrefs.get().quiet ?? null) === JSON.stringify(q); return `<button class="chip ${on ? 'on' : ''}" data-quiet="${q ? q.join('-') : 'off'}" aria-pressed="${on}">${q ? `${String(q[0]).padStart(2, '0')}:00–${String(q[1]).padStart(2, '0')}:00` : 'Off'}</button>`; }).join('')}</div></div>`;
 }
 // Which moments to announce, for every match or one ("goals" in soccer, "scores" elsewhere).

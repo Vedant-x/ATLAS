@@ -290,3 +290,15 @@ test('home: panels can be hidden and reordered, and the layout is kept', async (
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('watchlist: quiet hours are kept, and alerts while closed say when the server is not set up', async () => {
+  const { page, ctx, errors } = await open('#/watchlist');
+  await page.waitForSelector('.alerts-panel');
+  assert.match(await page.textContent('.alerts-panel'), /need the alerts server/);
+  await page.click('[data-quiet="22-7"]');
+  await page.waitForSelector('[data-quiet="22-7"][aria-pressed="true"]');
+  await page.reload();
+  await page.waitForSelector('[data-quiet="22-7"][aria-pressed="true"]');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

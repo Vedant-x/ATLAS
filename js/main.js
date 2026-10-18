@@ -77,6 +77,7 @@ import { fetchLineups, fetchSummary } from './espn.js';
 import { startLiveAlerts, alertPrefs } from './livealerts.js';
 import { morph } from './morph.js';
 import { views, bind, legIndex, edgeTable, countdown, esc, sportOf, ist, setHomeLayout } from './views.js';
+import { enablePush, disablePush, syncPush } from './pushalerts.js';
 import { slip } from './slip.js';
 import { preloader, cursor, wipe, magnetic, tilt, countUp, reveal, fitTitles } from './ui.js';
 import { pc, odd } from './charts.js';
@@ -502,6 +503,7 @@ document.addEventListener('click', (e) => {
     e.preventDefault(); e.stopPropagation();
     const on = watch.toggle(d.watch);
     document.querySelectorAll(`[data-watch="${CSS.escape(d.watch)}"]`).forEach((b) => { b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); b.innerHTML = b.classList.contains('icon-btn') ? ico(on ? 'star-on' : 'star') : watchLabel(on, !b.closest('#qv')); });
+    syncPush();
     if (current === 'watchlist') softRender();
   }
   else if (d.pin) {
@@ -524,7 +526,8 @@ document.addEventListener('click', (e) => {
     else if (d.pref === 'sport') prefs.set({ sports: v === 'all' ? [] : p.sports.includes(v) ? p.sports.filter((x) => x !== v) : [...p.sports, v] });
     else if (d.pref === 'priced') prefs.set({ pricedOnly: !p.pricedOnly });
     state.slipCache.clear(); softRender(); }
-  else if (d.quiet) { alertPrefs.set({ quiet: d.quiet === 'off' ? null : d.quiet.split('-').map(Number) }); softRender(); }
+  else if (d.quiet) { alertPrefs.set({ quiet: d.quiet === 'off' ? null : d.quiet.split('-').map(Number) }); syncPush(); softRender(); }
+  else if (d.push) { (d.push === 'on' ? enablePush() : disablePush()).then((st) => { toast(st === 'on' ? 'Alerts while ATLAS is closed: on' : st === 'off' ? 'Alerts while ATLAS is closed: off' : `Not turned on (${st})`); softRender(); }).catch((err) => toast(`Alerts: ${err.message}`)); }
   else if (d.alertKind) { const on = t.getAttribute('aria-pressed') !== 'true';
     if (d.alertMatch) alertPrefs.setMatch(d.alertMatch, { [d.alertKind]: on }); else alertPrefs.set({ [d.alertKind]: on });
     softRender(); }
