@@ -51,7 +51,7 @@ function checks(e, now) {
       // A dated injury list from the build (ESPN for prop leagues, Sleeper for the NFL), else the
       // match page checks it live.
       const inj = e.injuries, at = Number.isFinite(inj?.at) ? inj.at : null;
-      if (inj && at) add('injuries', 'Injury report', now - at <= 12 * H, `${inj.source || 'feed'}: ${(inj.home?.length || 0) + (inj.away?.length || 0)} listed, read ${Math.max(0, Math.round((now - at) / 36e5))} h ago`);
+      if (inj && at) add('injuries', 'Injury report', now - at <= injuryLimit(e.start - now), `${inj.source || 'feed'}: ${(inj.home?.length || 0) + (inj.away?.length || 0)} listed, read ${Math.max(0, Math.round((now - at) / 36e5))} h ago`);
       else add('injuries', 'Injury report', null, 'checked live when the match page opens');
       break;
     }
@@ -77,20 +77,32 @@ function checks(e, now) {
   return out;
 }
 
+// How old a price may be before it is stale: tighter as the start nears (prices move most in the
+// last hours: team news, lineups, sharp money) and for sports whose markets move fast (tennis,
+// esports, small leagues priced by few books). Minutes.
+export function priceLimit(sport, msToStart) {
+  const h = msToStart / 36e5;
+  const base = h > 24 ? 360 : h > 6 ? 120 : h > 1 ? 60 : 20;
+  return ['tennis', 'esports', 'efootball', 'mma'].includes(sport) ? Math.round(base / 2) : base;
+}
+// How old an injury report may be: 12 hours, 2 hours on game day (inside 6 hours of the start).
+export const injuryLimit = (msToStart) => (msToStart < 6 * 36e5 ? 2 : 12) * 36e5;
+
 export function readiness(e, { now = Date.now(), priceAt = null } = {}) {
   const priced = Boolean(e.markets?.length);
   const list = checks(e, now);
   // The quote's own time when the feed gives one (Odds API), else when our prices were fetched.
   const at = e.priceAt ?? priceAt;
   const ageMin = priced && at ? Math.round((now - at) / 6e4) : null;
-  list.unshift({ key: 'price', label: 'Bookmaker price', ok: priced ? (ageMin == null ? null : ageMin <= 60) : false, note: priced ? (ageMin == null ? 'offered, but the time it was checked is unknown' : `checked ${ageMin < 1 ? 'just now' : `${ageMin} min ago`}`) : 'no price for this match' });
+  const limit = priceLimit(e.sport, e.start - now);
+  list.unshift({ key: 'price', label: 'Bookmaker price', ok: priced ? (ageMin == null ? null : ageMin <= limit) : false, note: priced ? (ageMin == null ? 'offered, but the time it was checked is unknown' : `checked ${ageMin < 1 ? 'just now' : `${ageMin} min ago`} (limit ${limit} min at this distance from the start)`) : 'no price for this match' });
   // Two sides announced with the same starter name, or a starter also listed as out: reports disagree.
   const outNames = new Set(['home', 'away'].flatMap((s) => (e.absences?.[s] || []).map((x) => String(x.name).toLowerCase())));
   const conflict = (e.probables || []).some((p) => outNames.has(String(starterName(p)).toLowerCase()));
   let state;
   const soon = e.start - now;
   if (conflict) state = 'conflict';
-  else if (priced && ageMin != null && ageMin > 60) state = 'stale';
+  else if (priced && ageMin != null && ageMin > limit) state = 'stale';
   else if (list.some((c) => c.ok === false && c.waitable && soon > -H)) state = 'waiting';
   else if (priced && ageMin == null) state = 'unknown';
   else if (!priced && !list.some((c) => c.ok)) state = 'none';
