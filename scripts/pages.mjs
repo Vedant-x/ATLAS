@@ -1373,15 +1373,15 @@ await playerProps(events).catch((e) => log('Player props failed', e.message));
 }
 // Bookmaker odds from The Odds API (ODDS_API_KEY repository secret). Every in-season sport key the
 // API lists is used (tennis tournaments, cricket, rugby, boxing as well as the mapped leagues), each
-// refreshed when older than ODDS_HOURS (default 12), the stalest first, as many per build as the
-// month's remaining credits allow (one credit per market per region per request). Raw odds are kept
+// refreshed when older than ODDS_HOURS (default 12), the stalest first, the month's remaining credits
+// spent at an even pace (one credit per market per region per request). Raw odds are kept
 // in data/odds-extra.json; every build merges them onto every upcoming match they match: the best
 // price on offer and the consensus fair chance (oddsapi.js).
 if (process.env.ODDS_API_KEY) {
   try {
     const key = process.env.ODDS_API_KEY;
     const markets = (process.env.ODDS_MARKETS || 'h2h').split(',').map((x) => x.trim()).filter(Boolean).join(',');
-    const regions = (process.env.ODDS_REGIONS || 'us,uk,eu').split(',').map((x) => x.trim()).filter(Boolean).join(',');
+    const regions = (process.env.ODDS_REGIONS || 'eu').split(',').map((x) => x.trim()).filter(Boolean).join(',');
     const maxAgeH = Number(process.env.ODDS_HOURS || 12);
     let cache = { fetchedAt: 0, sports: {}, at: {} };
     try { const r = await fetch((process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json').replace('index.json', 'odds-extra.json'), { signal: AbortSignal.timeout(15000) }); if (r.ok) cache = { at: {}, ...(await r.json()) }; } catch { /* first run */ }
@@ -1400,13 +1400,16 @@ if (process.env.ODDS_API_KEY) {
       if (Array.isArray(list)) active = list.filter((x) => x.active && !x.has_outrights && !/_winner$/.test(x.key)).map((x) => x.key);
       else log(`Odds API sports list: ${JSON.stringify(list).slice(0, 160)}`);
     } catch (e) { log(`Odds API sports list failed: ${e.message}`); }
-    // The month's budget: the credits left, spread over the refreshes left this month.
-    const now = new Date(), monthEnd = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1);
+    // The month's budget: the credits left, spent at an even pace over the time left this month (the
+    // free plan has 500 a month; the build runs every few minutes, so most builds fetch nothing). A new
+    // month resets the credits, so the last count is only trusted within the month it was read.
+    const now = new Date(), monthEnd = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1), monthStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
     const per = markets.split(',').length * regions.split(',').length;
-    const refreshesLeft = Math.max(1, Math.ceil((monthEnd - Date.now()) / (maxAgeH * 36e5)));
-    const remaining = Number(cache.credits);
-    const cap = Number(process.env.ODDS_MAX_SPORTS) || Infinity;
-    const allowance = Math.min(cap, Number.isFinite(remaining) ? Math.max(1, Math.floor(remaining / refreshesLeft / per)) : 6);
+    const remaining = cache.fetchedAt >= monthStart ? Number(cache.credits) : NaN;
+    const capEnv = process.env.ODDS_MAX_SPORTS;
+    const cap = capEnv != null && capEnv !== '' && Number.isFinite(Number(capEnv)) ? Number(capEnv) : Infinity;
+    const gap = per * (monthEnd - Date.now()) / Math.max(1, remaining);
+    const allowance = Math.min(cap, !Number.isFinite(remaining) ? 1 : remaining < per ? 0 : Math.min(6, Math.floor((Date.now() - (cache.spentAt || 0)) / gap)));
     // Due: in season, has matches here in the next 3 days, older than ODDS_HOURS; most matches first among the stalest.
     const soon = (k) => candidates(k).filter((e) => e.start < Date.now() + 72 * 36e5).length;
     const due = active.filter((k) => !(cache.at?.[k] > Date.now() - maxAgeH * 36e5)).map((k) => ({ k, n: soon(k), at: cache.at?.[k] || 0 })).filter((x) => x.n > 0)
@@ -1422,12 +1425,12 @@ if (process.env.ODDS_API_KEY) {
     }
     // Drop keys no longer in season or older than two days.
     for (const k of Object.keys(sports)) if ((active.length && !active.includes(k)) || !(at[k] > Date.now() - 48 * 36e5)) { delete sports[k]; delete at[k]; }
-    cache = { fetchedAt: Date.now(), markets, regions, sports, at, credits };
+    cache = { fetchedAt: Date.now(), markets, regions, sports, at, credits, spentAt: due.length ? Date.now() : cache.spentAt || 0 };
     let priced = 0;
     for (const [k, list] of Object.entries(sports)) priced += matchOdds(candidates(k), list, { force: true, fetchedAt: at[k] });
     const bySport = {};
     for (const e of events) if (e.oddsSource === 'the-odds-api') bySport[e.sport] = (bySport[e.sport] || 0) + 1;
-    log(`Odds API: ${active.length} sports in season; fetched ${due.length} (allowance ${allowance}, ${per} credit(s) each) [${markets} @ ${regions}]; credits used ${used}, remaining ${credits ?? '?'}; ${Object.keys(sports).length} sports held`);
+    log(`Odds API: ${active.length} sports in season; fetched ${due.length} (allowance ${allowance}, one fetch per ${Number.isFinite(gap) ? Math.round(gap / 6e4) : '?'} min, ${per} credit(s) each) [${markets} @ ${regions}]; credits used ${used}, remaining ${credits ?? '?'}; ${Object.keys(sports).length} sports held`);
     log(`  Odds API priced ${priced} matches: ${Object.entries(bySport).map(([k, v]) => `${k} ${v}`).join(' · ') || 'none'}`);
     await writeFile(`${out}/data/odds-extra.json`, JSON.stringify(cache));
     noteSource('The Odds API', 'the-odds-api.com', 'Best price across bookmakers and the consensus fair chance', true, priced, `${priced} matches priced from ${Object.keys(sports).length} sports; ${credits ?? '?'} credits left this month`);

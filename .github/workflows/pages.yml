@@ -38,8 +38,9 @@ jobs:
       - run: node scripts/pages.mjs
         env:
           # Bookmaker odds (The Odds API): the ODDS_API_KEY repository secret turns them on; ODDS_*
-          # repository variables tune them (default: every in-season sport within the month's credits,
-          # regions us,uk,eu, refreshed every 12 hours). Empty values leave the defaults.
+          # repository variables tune them (default: every in-season sport, the month's credits spent at
+          # an even pace, region eu (Pinnacle and a dozen books), each sport refreshed when 12 hours old).
+          # Empty values leave the defaults.
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           ODDS_HOURS: ${{ vars.ODDS_HOURS }}
           ODDS_MARKETS: ${{ vars.ODDS_MARKETS }}
