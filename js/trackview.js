@@ -73,7 +73,7 @@ const pickRow = (h) => (h.type === 'multi' ? `<li class="tr-${h.status}"><span c
 // Hit rate by price band against what the price itself implies (its chance less a typical margin):
 // the yardstick for a hit rate. 70% at 1.30 is above the price's ~74%? Below? This answers it.
 function priceBandPanel(picks) {
-  const singles = picks.filter((h) => h.type !== 'multi' && (h.status === 'won' || h.status === 'lost') && h.odds > 1);
+  const singles = picks.filter((h) => h.type !== 'multi' && h.type !== 'model' && (h.status === 'won' || h.status === 'lost') && h.odds > 1);
   const bands = [[1.01, 1.25], [1.25, 1.35], [1.35, 1.45], [1.45, 1.6], [1.6, 1.8], [1.8, 10]];
   const rows = bands.map(([lo, hi]) => {
     const l = singles.filter((h) => h.odds >= lo && h.odds < hi);
@@ -83,6 +83,38 @@ function priceBandPanel(picks) {
   return `<div class="panel reveal"><h3 class="ph">Hit rate by price <small>against what the price itself implies</small></h3>
     <p class="muted">A price is a chance: 1.30 means the bookmaker expects about 74% (after its margin), 1.10 about 87%. A hit rate is only good or bad against that. Picks where ATLAS claims to beat the price have landed least often; the Surest list leaves them out.</p>
     <table class="tbl tight"><thead><tr><th>Odds</th><th class="num">Picks</th><th class="num">Hit rate</th><th class="num">Price implies</th><th class="num">Difference</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${r.lo.toFixed(2)}–${r.hi >= 10 ? '+' : r.hi.toFixed(2)}</td><td class="num">${r.n}</td><td class="num">${pct(r.hit, 0)}</td><td class="num">${pct(r.implied, 0)}</td><td class="num ${r.hit >= r.implied ? 'pos' : 'neg'}">${r.hit >= r.implied ? '+' : '−'}${Math.abs((r.hit - r.implied) * 100).toFixed(0)} pts</td></tr>`).join('')}</tbody></table></div>`;
+}
+
+// The plain answer to "does ATLAS beat the market?": its forecasts against the bookmaker's own
+// margin-free chance on the same picks (Brier, lower is better), and profit at the prices taken.
+function verdict(a) {
+  if (!(a.won + a.lost)) return '';
+  const beats = a.brierN >= 20 ? a.brierModel <= a.brierMarket : null;
+  const head = beats == null ? 'Too few picks with a saved market chance to compare ATLAS with the market yet.'
+    : beats ? `On ${a.brierN} picks with a saved market chance, ATLAS's forecasts were closer to the results than the bookmaker's own (score ${a.brierModel.toFixed(4)} against ${a.brierMarket.toFixed(4)}; lower is better).`
+      : `On ${a.brierN} picks with a saved market chance, the bookmaker's own forecast was closer to the results than ATLAS's (score ${a.brierMarket.toFixed(4)} against ${a.brierModel.toFixed(4)}; lower is better).`;
+  const money = a.roi == null ? '' : a.roi >= 0 ? ` One unit on every pick would be ${units(a.profit)} up (ROI ${pct(a.roi)}).` : ` One unit on every pick would be ${units(a.profit)} down (ROI ${pct(a.roi)}): a high hit rate at short odds can still lose.`;
+  const take = beats && a.roi >= 0 ? 'That is evidence of an edge on this sample, not proof: results are by model version below.' : 'Until ATLAS both beats the market\'s forecast and shows a profit, treat the picks as research to check, not a proven edge.';
+  return `<div class="panel verdict reveal ${beats && a.roi >= 0 ? 'v-ok' : 'v-warn'}"><h3 class="ph">Does ATLAS beat the market?</h3><p>${head}${money} ${take}</p></div>`;
+}
+
+// Bankers, Surest and the unpriced model picks side by side: each is its own way of recommending.
+function modesPanel(s) {
+  const rows = [['Bankers (shortlist)', s.all, true], ['Surest', s.safe, true], ['Model only (no price)', s.model, false]].filter(([, r]) => r && r.won + r.lost);
+  if (rows.length < 2) return '';
+  return `<div class="panel reveal"><h3 class="ph">By recommendation type <small>each kept as its own record</small></h3>
+    <table class="tbl tight"><thead><tr><th>Type</th><th class="num">Settled</th><th class="num">Hit rate</th><th class="num">Estimated</th><th class="num">Profit</th><th class="num" title="Mean squared error of the chance shown; lower is better">Brier</th></tr></thead>
+    <tbody>${rows.map(([name, r, priced]) => `<tr><td>${name}</td><td class="num">${r.won + r.lost}</td><td class="num">${pct(r.hitRate)}</td><td class="num">${pct(r.expected)}</td><td class="num ${priced ? (r.profit >= 0 ? 'pos' : 'neg') : ''}">${priced ? units(r.profit) : 'no price'}</td><td class="num">${r.brier == null ? '—' : r.brier.toFixed(3)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
+// Picks on matches no bookmaker priced: hit rate against their own forecasts, by sport. No profit:
+// there was no price to take.
+function modelPanel(m) {
+  if (!m || !(m.won + m.lost)) return '';
+  return `<div class="panel reveal"><h3 class="ph">Model-only picks <small>matches with no bookmaker price · ${m.won}–${m.lost} · ${pct(m.hitRate, 0)} landed against ${pct(m.expected, 0)} forecast</small></h3>
+    <p class="muted">Rated by ATLAS from rankings, ratings, records and form, shown with fair odds on <a href="#/every">Every sport</a>. A sport's model picks are trusted fully only after 30 results; until then they are pulled toward 50/50.</p>
+    <table class="tbl tight"><thead><tr><th>Sport</th><th class="num">Settled</th><th class="num">Hit rate</th><th class="num">Forecast</th><th class="num">Brier</th></tr></thead>
+    <tbody>${m.bySport.map((r) => `<tr><td>${sportOf(r.key).icon} ${esc(sportOf(r.key).name)}</td><td class="num">${r.won + r.lost}</td><td class="num">${pct(r.hitRate)}</td><td class="num">${pct(r.expected)}</td><td class="num">${r.brier == null ? '—' : r.brier.toFixed(3)}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
 function trustPanel(picks) {
@@ -105,7 +137,7 @@ function body(data) {
       ${s.pending.length ? `<div class="panel reveal"><h3 class="ph">Waiting on results <small>${s.pending.length}</small></h3><ul class="tr-list">${s.pending.slice(0, 30).map(pickRow).join('')}</ul></div>` : ''}`;
   }
   const famName = { winner: 'Winner / moneyline', result: '1X2 result', spread: 'Spread / handicap', total: 'Totals (over/under)' };
-  return `${statCards(s.all, data.updatedAt)}${s.outside.won + s.outside.lost ? `<p class="note reveal">Shortlist picks only (rated 60%+, odds ${MIN_ODDS.toFixed(2)} to ${MAX_ODDS.toFixed(2)}). ${s.outside.won + s.outside.lost} earlier picks outside these rules (value spots and longer prices, ${s.outside.won} won, ${s.outside.lost} lost) are not counted.</p>` : ''}${s.unresolved ? `<p class="note reveal">${s.unresolved} pick${s.unresolved > 1 ? 's' : ''} could not be graded (no final result found) and ${s.unresolved > 1 ? 'are' : 'is'} left out rather than counted as void.</p>` : ''}
+  return `${verdict(s.all)}${statCards(s.all, data.updatedAt)}${s.outside.won + s.outside.lost ? `<p class="note reveal">Shortlist picks only (rated 60%+, odds ${MIN_ODDS.toFixed(2)} to ${MAX_ODDS.toFixed(2)}). ${s.outside.won + s.outside.lost} earlier picks outside these rules (value spots and longer prices, ${s.outside.won} won, ${s.outside.lost} lost) are not counted.</p>` : ''}${s.unresolved ? `<p class="note reveal">${s.unresolved} pick${s.unresolved > 1 ? 's' : ''} could not be graded (no final result found) and ${s.unresolved > 1 ? 'are' : 'is'} left out rather than counted as void.</p>` : ''}
     <div class="grid two">
       <div class="panel reveal"><h3 class="ph">By sport</h3>${table(s.bySport.map((r) => ({ ...r, name: `${sportOf(r.key).icon} ${sportOf(r.key).name}` })), 'Sport')}</div>
       <div class="panel reveal"><h3 class="ph">By market <small>the model needs more confidence where a market has underperformed</small></h3>${table(s.byFamily.map((r) => ({ ...r, name: famName[r.key] || r.key })), 'Market')}</div>
@@ -117,6 +149,8 @@ function body(data) {
       <p class="muted">When ATLAS says 65%, it should land about 65% of the time. Small samples swing a lot.</p>
       <div class="tr-cal">${s.buckets.map((b) => `<div><small>Estimated ${b.label}</small>${b.n ? `<div class="tr-bars"><i style="--w:${((b.predicted || 0) * 100).toFixed(0)}%"></i><i class="act" style="--w:${((b.actual || 0) * 100).toFixed(0)}%"></i></div>` : ''}<span>${b.n ? `${pct(b.predicted, 0)} estimated · ${pct(b.actual, 0)} actual · ${b.n} picks` : 'no picks yet'}</span></div>`).join('')}</div></div>
     ${s.safe?.won + s.safe?.lost ? `<div class="panel reveal"><h3 class="ph">Surest picks <small>odds ${SAFE.minOdds.toFixed(2)}–${SAFE.maxOdds.toFixed(2)}, ATLAS not above the price · its own record</small></h3><p>${recordLine(s.safe)}</p></div>` : ''}
+    ${modesPanel(s)}
+    ${modelPanel(s.model)}
     ${priceBandPanel(data.picks || [])}
     ${trustPanel(data.picks || [])}
     <div class="panel reveal"><h3 class="ph">Latest results</h3><ul class="tr-list">${s.recent.map(pickRow).join('')}</ul></div>

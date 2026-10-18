@@ -452,7 +452,8 @@ function sourcesLine(e) {
   const d = detailFor(e.id);
   const st = (e.probables || []).find((p) => p.report)?.report;
   const parts = [
-    [e.source || (e.leaguePath?.startsWith('atlas/') ? 'League site' : 'ESPN'), e.fetchedAt || S.fetchedAt, 'fixture & price'],
+    ...(e.priceAt && e.bookmaker ? [[e.source || (e.leaguePath?.startsWith('atlas/') ? 'League site' : 'ESPN'), e.fetchedAt || S.fetchedAt, 'fixture'], [e.bookmaker, e.priceAt, 'price']]
+      : [[e.source || (e.leaguePath?.startsWith('atlas/') ? 'League site' : 'ESPN'), e.fetchedAt || S.fetchedAt, 'fixture & price']]),
     st ? [st.sourceLabel?.replace(/ profile$/, '') || st.league, st.fetchedAt || e.fetchedAt || S.fetchedAt, 'starters'] : null,
     e.absences ? ['FotMob', e.absences.fetchedAt, 'absences'] : null,
     d?.ok && !d.native ? ['ESPN summary', d.fetchedAt, 'stats, injuries, form'] : null,

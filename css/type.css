@@ -357,3 +357,6 @@ details.more-picks summary { cursor: pointer; color: var(--accent); font-weight:
 .dash > .every-teaser { grid-column: span 2; }
 @media (max-width: 1000px) { .dash > .every-teaser { grid-column: 1 / -1; } }
 .every-teaser .chip b { margin-left: 4px; opacity: .8; }
+.panel.verdict.v-warn { border-color: #ffb54766; }
+.panel.verdict.v-ok { border-color: #3dff9a66; }
+.panel.verdict p { line-height: 1.55; }

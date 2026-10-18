@@ -1206,16 +1206,18 @@ if (process.env.ODDS_API_KEY) {
       let inSeason = new Set();
       try { const list = await (await fetch(`${ODDS_API}/sports?apiKey=${key}`, { signal: AbortSignal.timeout(20000) })).json(); if (Array.isArray(list)) inSeason = new Set(list.filter((x) => x.active).map((x) => x.key)); } catch (e) { log(`Odds API sports list failed: ${e.message}`); }
       const want = [...new Set(events.filter((e) => e.start > Date.now() && ODDS_SPORT_KEYS[e.leaguePath]).map((e) => ODDS_SPORT_KEYS[e.leaguePath]))].filter((k) => !inSeason.size || inSeason.has(k)).slice(0, maxSports);
-      const sports = {};
+      // A sport whose fetch fails keeps its last good odds, with their own (older) time, so they show
+      // as old instead of vanishing or passing as fresh.
+      const sports = { ...(cache.sports || {}) }, at = { ...(cache.at || {}) };
       let credits = null, used = 0;
       for (const sk of want) {
         try {
           const res = await fetch(`${ODDS_API}/sports/${sk}/odds?apiKey=${key}&regions=${regions}&markets=${markets}&oddsFormat=decimal`, { signal: AbortSignal.timeout(20000) });
           credits = res.headers.get('x-requests-remaining') ?? credits; used = res.headers.get('x-requests-used') ?? used;
-          if (res.ok) sports[sk] = await res.json(); else log(`Odds API ${sk}: HTTP ${res.status}`);
-        } catch (e) { log(`Odds API ${sk}: ${e.message}`); }
+          if (res.ok) { sports[sk] = await res.json(); at[sk] = Date.now(); } else log(`Odds API ${sk}: HTTP ${res.status} (keeping the last good odds)`);
+        } catch (e) { log(`Odds API ${sk}: ${e.message} (keeping the last good odds)`); }
       }
-      cache = { fetchedAt: Date.now(), markets, regions, sports };
+      cache = { fetchedAt: Date.now(), markets, regions, sports, at };
       log(`Odds API: fetched ${Object.keys(sports).length}/${want.length} sport(s) [${markets} @ ${regions}]; credits used ${used}, remaining ${credits ?? '?'}`);
     } else {
       log(`Odds API: reusing cached odds from ${Math.round((Date.now() - cache.fetchedAt) / 36e5)}h ago (refetch after ${maxAgeH}h)`);
@@ -1223,7 +1225,7 @@ if (process.env.ODDS_API_KEY) {
     let priced = 0;
     const byKey = {};
     for (const e of events) if (ODDS_SPORT_KEYS[e.leaguePath]) (byKey[ODDS_SPORT_KEYS[e.leaguePath]] ||= []).push(e);
-    for (const [sk, list] of Object.entries(cache.sports || {})) if (byKey[sk]) priced += matchOdds(byKey[sk], list, {});
+    for (const [sk, list] of Object.entries(cache.sports || {})) if (byKey[sk]) priced += matchOdds(byKey[sk], list, { fetchedAt: cache.at?.[sk] ?? cache.fetchedAt });
     await writeFile(`${out}/data/odds-extra.json`, JSON.stringify(cache));
     log(`Odds API: priced ${priced} previously unpriced match(es) from ${Object.keys(cache.sports || {}).length} sport(s)`);
   } catch (e) { log(`Odds API failed: ${e.message}`); }

@@ -36,6 +36,14 @@ jobs:
       - run: npm test
       - run: npm install --no-save esbuild@0.24.2 || true # bundler for the speed step; the build works without it
       - run: node scripts/pages.mjs
+        env:
+          # Optional real bookmaker odds (The Odds API): add an ODDS_API_KEY repository secret to turn
+          # them on; ODDS_* repository variables tune the budget. Empty values leave the build as it is.
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          ODDS_HOURS: ${{ vars.ODDS_HOURS }}
+          ODDS_MARKETS: ${{ vars.ODDS_MARKETS }}
+          ODDS_REGIONS: ${{ vars.ODDS_REGIONS }}
+          ODDS_MAX_SPORTS: ${{ vars.ODDS_MAX_SPORTS }}
       # Track record: history lives on the track-record branch (created on the first run). If the
       # branch exists, its history must load: record.mjs stops the build otherwise, so a failed
       # checkout can never restart the record from empty.

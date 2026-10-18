@@ -41,16 +41,19 @@ const median = (xs) => { const a = [...xs].sort((x, y) => x - y); const n = a.le
 export function consensus(oddsEvent) {
   const h2h = {}, totals = {}, spreads = {};
   let books = 0;
+  const updated = [];
   for (const bk of oddsEvent.bookmakers || []) {
     let used = false;
+    const t = Date.parse(bk.last_update || '');
     for (const m of bk.markets || []) {
       if (m.key === 'h2h') { for (const o of m.outcomes || []) if (o.price > 1) { (h2h[o.name] ||= []).push(o.price); used = true; } }
       else if (m.key === 'totals') { for (const o of m.outcomes || []) if (o.price > 1 && Number.isFinite(o.point)) { const k = `${o.point}`; (totals[k] ||= { point: o.point, over: [], under: [] })[/^over$/i.test(o.name) ? 'over' : 'under'].push(o.price); used = true; } }
       else if (m.key === 'spreads') { for (const o of m.outcomes || []) if (o.price > 1 && Number.isFinite(o.point)) { const k = `${o.name}|${o.point}`; (spreads[k] ||= { name: o.name, point: o.point, p: [] }).p.push(o.price); used = true; } }
     }
-    if (used) books++;
+    if (used) { books++; if (Number.isFinite(t)) updated.push(t); }
   }
-  return { h2h, totals, spreads, books };
+  // When the quotes were taken: the median of the books' own update times (null if none say).
+  return { h2h, totals, spreads, books, quotedAt: updated.length ? median(updated) : null };
 }
 
 // The main total / spread line is the one the most books offer (ties: the middle line).
@@ -87,13 +90,15 @@ export function marketsFromOdds(oddsEvent, { home, away, leaguePath }) {
     const sp = line.home.point; // signed from the home side
     markets.push({ name: 'Spread', line: sp, outcomes: [{ name: `${home} ${sp > 0 ? '+' : ''}${sp}`, odds: +median(line.home.p).toFixed(2) }, { name: `${away} ${-sp > 0 ? '+' : ''}${-sp}`, odds: +median(line.away.p).toFixed(2) }] });
   }
-  return { markets, books: c.books };
+  return { markets, books: c.books, quotedAt: c.quotedAt };
 }
 
 // Match our events to the API's events for one sport key, and merge prices onto the ones that have no
 // bookmaker price. Both orientations are tried (the API's home/away can differ from ours). Returns
 // how many events were priced.
-export function matchOdds(events, oddsEvents, { now = Date.now(), window = 6 * 36e5, force = false } = {}) {
+// fetchedAt: when these odds were downloaded, the quote time if the books give none. Quotes older than
+// maxAge are not applied: an old consensus is no price at all.
+export function matchOdds(events, oddsEvents, { now = Date.now(), window = 6 * 36e5, force = false, fetchedAt = null, maxAge = 24 * 36e5 } = {}) {
   const parsed = oddsEvents.map((o) => ({ o, h: normName(o.home_team), a: normName(o.away_team), t: Date.parse(o.commence_time) })).filter((x) => Number.isFinite(x.t));
   let priced = 0;
   for (const e of events) {
@@ -101,8 +106,15 @@ export function matchOdds(events, oddsEvents, { now = Date.now(), window = 6 * 3
     const eh = normName(e.home), ea = normName(e.away);
     const hit = parsed.find((x) => Math.abs(x.t - e.start) <= window && ((x.h === eh && x.a === ea) || (x.h === ea && x.a === eh)));
     if (!hit) continue;
-    const { markets, books } = marketsFromOdds(hit.o, e);
-    if (markets.length) { e.markets = markets; e.bookmaker = `consensus of ${books} book${books === 1 ? '' : 's'}`; e.oddsSource = 'the-odds-api'; priced++; }
+    const { markets, books, quotedAt } = marketsFromOdds(hit.o, e);
+    const at = quotedAt ?? fetchedAt;
+    if (at != null && now - at > maxAge) continue;
+    if (markets.length) {
+      // A median across books is a reference price: it may not be on offer at any one bookmaker.
+      e.markets = markets; e.bookmaker = `median of ${books} book${books === 1 ? '' : 's'} (reference, not a quote from one bookmaker)`; e.oddsSource = 'the-odds-api';
+      e.priceAt = at; // when the quote was taken, kept through to readiness and the sources line
+      priced++;
+    }
   }
   return priced;
 }

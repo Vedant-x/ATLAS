@@ -57,3 +57,17 @@ test('matchOdds merges by name and time, both orientations, only onto unpriced u
   assert.ok(!events[2].oddsSource, 'live: skipped');
   assert.equal(normName('Atlético Madrid CF'), 'atletico madrid');
 });
+
+test('odds keep their quote time; quotes over a day old are not applied', () => {
+  const now = Date.parse('2026-10-18T06:00:00Z');
+  const book = (t, h, a) => ({ key: 'b', last_update: new Date(t).toISOString(), markets: [{ key: 'h2h', outcomes: [{ name: 'A', price: h }, { name: 'B', price: a }] }] });
+  const odds = [{ home_team: 'A', away_team: 'B', commence_time: new Date(now + 36e5).toISOString(), bookmakers: [book(now - 30 * 6e4, 1.8, 2.0), book(now - 50 * 6e4, 1.9, 1.95), book(now - 40 * 6e4, 1.85, 2.0)] }];
+  const fresh = [{ id: 'x', home: 'A', away: 'B', start: now + 36e5, leaguePath: 'basketball/nba' }];
+  assert.equal(matchOdds(fresh, odds, { now }), 1);
+  assert.equal(fresh[0].priceAt, now - 40 * 6e4, 'median of the books\' update times');
+  assert.match(fresh[0].bookmaker, /median of 3 books \(reference/);
+  const old = [{ id: 'y', home: 'A', away: 'B', start: now + 36e5, leaguePath: 'basketball/nba' }];
+  const stale = odds.map((o) => ({ ...o, bookmakers: o.bookmakers.map((b) => ({ ...b, last_update: new Date(now - 30 * 36e5).toISOString() })) }));
+  assert.equal(matchOdds(old, stale, { now }), 0);
+  assert.equal(old[0].markets, undefined);
+});

@@ -71,7 +71,9 @@ function checks(e, now) {
 export function readiness(e, { now = Date.now(), priceAt = null } = {}) {
   const priced = Boolean(e.markets?.length);
   const list = checks(e, now);
-  const ageMin = priced && priceAt ? Math.round((now - priceAt) / 6e4) : null;
+  // The quote's own time when the feed gives one (Odds API), else when our prices were fetched.
+  const at = e.priceAt ?? priceAt;
+  const ageMin = priced && at ? Math.round((now - at) / 6e4) : null;
   list.unshift({ key: 'price', label: 'Bookmaker price', ok: priced ? (ageMin == null ? null : ageMin <= 60) : false, note: priced ? (ageMin == null ? 'offered, but the time it was checked is unknown' : `checked ${ageMin < 1 ? 'just now' : `${ageMin} min ago`}`) : 'no price for this match' });
   // Two sides announced with the same starter name, or a starter also listed as out: reports disagree.
   const outNames = new Set(['home', 'away'].flatMap((s) => (e.absences?.[s] || []).map((x) => String(x.name).toLowerCase())));

@@ -221,7 +221,7 @@ export function createKnowledge(S) {
   function sourcesFor(e) {
     const age = (t) => (t ? `${Math.max(0, Math.round((Date.now() - t) / 6e4))} min ago` : 'time unknown');
     const out = [];
-    if (e.markets?.length) out.push({ what: 'Prices', from: e.bookmaker || 'bookmaker feed', at: age(e.fetchedAt || S.fetchedAt) });
+    if (e.markets?.length) out.push({ what: 'Prices', from: e.bookmaker || 'bookmaker feed', at: age(e.priceAt || e.fetchedAt || S.fetchedAt) });
     out.push({ what: 'Fixture and scores', from: e.source || 'league feed', at: age(e.fetchedAt || S.fetchedAt) });
     if (e.props?.length) out.push({ what: 'Player props', from: 'DraftKings via ESPN', at: age(e.fetchedAt || S.fetchedAt) });
     if (e.injuries || e.injuryChecked) out.push({ what: 'Injury report', from: 'ESPN', at: age(e.injuryChecked || e.injuries?.at) });
