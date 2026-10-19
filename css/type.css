@@ -392,3 +392,9 @@ nav.top a[data-extra] { display: none; }
 .lay-list li { display: flex; align-items: center; gap: 8px; }
 .lay-list li span { flex: 1; }
 .lay-list li.off span { opacity: .5; text-decoration: line-through; }
+/* Chosen panel widths (Customise this page); phones keep one column. */
+@media (min-width: 681px) {
+  .dash > .panel.lay-third { grid-column: span 2; grid-row: auto; }
+  .dash > .panel.lay-half { grid-column: span 3; grid-row: auto; }
+  .dash > .panel.lay-full { grid-column: 1 / -1; grid-row: auto; }
+}

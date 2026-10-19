@@ -302,3 +302,21 @@ test('watchlist: quiet hours are kept, and alerts while closed say when the serv
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('home: a panel can be made full width, and every panel takes a size', async () => {
+  const { page, ctx, errors } = await open('#/');
+  await page.waitForSelector('.dash-live');
+  await page.click('.dash-layout summary');
+  for (let i = 0; i < 3; i++) await page.click('[data-lay="size"][data-lay-key="live"]'); // auto → third → half → full
+  await page.waitForSelector('.dash-live.lay-full');
+  const [panel, dash] = await page.$$eval('.dash-live, .dash', (els) => els.map((x) => x.getBoundingClientRect().width).reverse());
+  assert.ok(Math.abs(panel - dash) < 2, `${panel} vs ${dash}`);
+  assert.match(await page.textContent('[data-lay="size"][data-lay-key="live"]'), /Full/);
+  // Every panel's markup accepts a size (the class goes on its own element).
+  for (const k of ['potd', 'shortlist', 'every', 'changes', 'record', 'health']) await page.click(`[data-lay="size"][data-lay-key="${k}"]`);
+  const sized = await page.$$eval('.dash > .panel.lay-third', (ps) => ps.length);
+  const shown = await page.$$eval('.dash > .panel:not(.dash-layout):not(.lay-full)', (ps) => ps.length);
+  assert.equal(sized, shown);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

@@ -427,13 +427,18 @@ function dashboard(ev, live) {
     record: () => `${trackCard(() => S.refresh?.())}`,
     health: () => `<div class="panel dash-health reveal"><h2 class="ph">Source health <small><a href="#/sources">every source →</a></small></h2>${sourceHealth(ev)}</div>`,
   };
-  return `<section class="dash">${homeLayout().filter((k) => panels[k]).map((k) => panels[k]()).join('')}${layoutPanel()}</section>`;
+  // A chosen size goes on the panel's own element (the first class list of its markup).
+  const sized = (k, html) => { const z = readLayout().size?.[k]; return z && SIZES[z] ? html.replace(/class="panel /, `class="panel lay-${z} `) : html; };
+  return `<section class="dash">${homeLayout().filter((k) => panels[k]).map((k) => sized(k, panels[k]())).join('')}${layoutPanel()}</section>`;
 }
 
 // Home panels: order and visibility, saved per visitor (localStorage, best effort). Unknown or missing
 // names fall back to the default order, so a new panel always appears.
 const HOME_PANELS = [['potd', 'Parlay of the day'], ['shortlist', 'Shortlist'], ['live', 'Live now'], ['every', 'Every sport'], ['changes', 'What changed'], ['record', 'Track record'], ['health', 'Source health']];
 const LAYOUT_KEY = 'atlas-home-layout';
+// Panel widths on wide screens (phones always show one column): auto is the panel's own width.
+const SIZES = { third: 'Third', half: 'Half', full: 'Full' };
+const SIZE_CYCLE = ['auto', 'third', 'half', 'full'];
 const readLayout = () => { try { return JSON.parse(localStorage.getItem(LAYOUT_KEY)) || {}; } catch { return {}; } };
 export function homeLayout(saved = readLayout()) {
   const known = HOME_PANELS.map(([k]) => k);
@@ -451,8 +456,10 @@ export function setHomeLayout(action, key) {
   if (action === 'up' && i > 0) [order[i - 1], order[i]] = [order[i], order[i - 1]];
   if (action === 'down' && i >= 0 && i < order.length - 1) [order[i + 1], order[i]] = [order[i], order[i + 1]];
   if (action === 'toggle') hidden = hidden.includes(key) ? hidden.filter((k) => k !== key) : [...hidden, key];
+  const size = { ...(saved.size || {}) };
+  if (action === 'size') { const next = SIZE_CYCLE[(SIZE_CYCLE.indexOf(size[key] || 'auto') + 1) % SIZE_CYCLE.length]; if (next === 'auto') delete size[key]; else size[key] = next; }
   if (action === 'reset') { try { localStorage.removeItem(LAYOUT_KEY); } catch { /* storage blocked */ } return; }
-  try { localStorage.setItem(LAYOUT_KEY, JSON.stringify({ order, hidden })); } catch { /* storage blocked: this visit only */ }
+  try { localStorage.setItem(LAYOUT_KEY, JSON.stringify({ order, hidden, size })); } catch { /* storage blocked: this visit only */ }
 }
 function layoutPanel() {
   const saved = readLayout(), known = HOME_PANELS.map(([k]) => k);
@@ -460,6 +467,7 @@ function layoutPanel() {
   const name = Object.fromEntries(HOME_PANELS);
   return `<details class="panel dash-layout reveal"${layoutOpen ? ' open' : ''}><summary>Customise this page</summary><ul class="lay-list">${order.map((k, i) => { const off = (saved.hidden || []).includes(k); return `<li class="${off ? 'off' : ''}"><span>${name[k]}</span>
     <button class="chip" data-lay="up" data-lay-key="${k}" aria-label="Move ${name[k]} up"${i === 0 ? ' disabled' : ''}>↑</button><button class="chip" data-lay="down" data-lay-key="${k}" aria-label="Move ${name[k]} down"${i === order.length - 1 ? ' disabled' : ''}>↓</button>
+    <button class="chip" data-lay="size" data-lay-key="${k}" aria-label="Width of ${name[k]}: ${SIZES[saved.size?.[k]] || 'Auto'} (tap to change)">${SIZES[saved.size?.[k]] || 'Auto'}</button>
     <button class="chip ${off ? '' : 'on'}" data-lay="toggle" data-lay-key="${k}" aria-pressed="${!off}">${off ? 'Hidden' : 'Shown'}</button></li>`; }).join('')}</ul><button class="btn-ghost" data-lay="reset" data-lay-key="">Reset layout</button></details>`;
 }
 
