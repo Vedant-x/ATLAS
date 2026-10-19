@@ -87,10 +87,16 @@ the live site and the live track record still run the code on `main`.
     hidden and reordered, and the layout is kept.
 14. **Comparison protocol** (`docs/comparison-protocol.md`, `js/compare.js`): evidence labels, singles and
     parlays apart, ranked only when the 95% ROI intervals separate, otherwise "insufficient evidence to rank".
+15. **Second results source** (`js/results2.js`): the confirming read comes from the league's own feed
+    (NHL, MLB, NBA, WNBA) or FotMob for soccer, used only for a clearly matched game final after regular time;
+    otherwise ESPN is read again. A dispute settles only when both sources agree. The Results page shows how
+    many results were independently confirmed. CI check on the baseline's recent results (19 Oct): FotMob
+    agreed 61 of 61 matched, NHL 3 of 3, NBA feed not reachable in that run.
+16. **Panel widths**: each home panel can be Auto, Third, Half or Full on wide screens.
 
 ## Tested
 
-- 219 unit tests and 17 browser tests pass.
+- 226 unit tests and 18 browser tests pass.
 - New unit tests:
   - Canonical ids.
   - Confirm and dispute, with the audit entries.
@@ -120,11 +126,11 @@ Nothing from this list. The PR is not merged. CI runs every change against live 
 
 ## Unverified / remaining
 
-- **Second results provider.** Disputes come from a second read of the same provider, not from an independent
-  second source.
+- **Second results provider.** Covers NHL, MLB, NBA, WNBA and soccer. NFL, college football, tennis, MMA and
+  esports are still confirmed by a second read of the same provider.
 - **Same-game parlays.** Not offered: ATLAS has no combined same-game quotes, and multiplying the legs of one
   match would misprice them.
-- **Panels.** They can be hidden and reordered, not resized.
+- **Panels.** Hidden, reordered and resized in steps (third, half, full); not dragged to any width.
 - **Alerts while closed.** Code and tests only; not deployed. Push delivery has not been tested end to end.
 - **Hosted AI.** Not configured: `AI_URL` is empty. The assistant runs on the built-in rules and an optional
   model inside the browser.
