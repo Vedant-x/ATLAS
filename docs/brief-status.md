@@ -127,7 +127,19 @@ PR #102 was merged on 19 October 2026; later fixes are on branch `claude/trustin
 
 ## Verified in production
 
-Nothing from this list. The PR is not merged. CI runs every change against live feeds without paid odds credits.
+First live build after the merge (19 Oct, 10:03 UTC), from its log:
+- The new settlement ran on the real history: 325 won, 97 lost, 36 confirmed, 28 unresolved; nothing disputed.
+  557 older matches wait for the next runs (150 lookups a run).
+- Second source in production: FotMob confirmed 14 of 14.
+- Odds API: 70 sports in season, 25 free fixture lists read, 14 matches added that no other feed lists.
+- TheSportsDB: rate limited (55 of 71 requests refused); fixed on the branch below.
+
+Fixed on the branch after the merge, verified in CI against live feeds but **not live until merged**:
+- Dota 2, LoL, Valorant and UFC picks settle (they never had): in CI the baseline's 116 stuck picks all
+  settled (Dota 2 51–25 and 1 void, LoL 13–4, Valorant 6–4, UFC 6–6). OpenDota agreed with bo3.gg on 55 of
+  55 Dota 2 series it found.
+- TheSportsDB rate limits: wait and retry, keep the last good fixtures, CI no longer competes for the key.
+- Odds API free lists spaced one a second.
 
 ## Unverified / remaining
 
