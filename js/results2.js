@@ -78,16 +78,18 @@ export function findResult(p, games, { soccer = false } = {}) {
 // A reader for the build: getJson(url) -> parsed JSON (each address fetched once per run).
 export function secondReader(getJson) {
   const cache = new Map();
-  const load = (url, kind) => {
-    if (!cache.has(url)) cache.set(url, getJson(url).then((j) => parse[kind](j)).catch(() => null));
+  const load = (url, kind, name) => {
+    if (!cache.has(url)) cache.set(url, getJson(url).then((j) => parse[kind](j)).catch((e) => { reader.errors[name] = `${new URL(url).host}: ${e.message}`; return null; }));
     return cache.get(url);
   };
   // { source, result } for a pick, result null when not found; null when no second source covers it.
-  return async (p) => {
+  const reader = async (p) => {
     const s = secondSourceFor(p.leaguePath);
     if (!s || p.prop) return null;
-    const lists = await Promise.all(s.urls(p).map((u) => load(u, s.parse)));
+    const lists = await Promise.all(s.urls(p).map((u) => load(u, s.parse, s.name)));
     if (lists.every((l) => l == null)) return { source: s.name, result: null, failed: true };
     return { source: s.name, result: findResult(p, lists.flat().filter(Boolean), { soccer: s.parse === 'fotmob' }) };
   };
+  reader.errors = {}; // the last failure per source, for the build log
+  return reader;
 }

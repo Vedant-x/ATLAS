@@ -65,7 +65,10 @@ if (bo3Ids.length) {
 // The confirming read comes from an independent second source where one covers the league
 // (js/results2.js): the league's own feed, or FotMob for soccer. Not found there: ESPN again.
 const second = secondReader(async (url) => {
-  const res = await fetch(url, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', Accept: 'application/json' } });
+  // The NBA's and WNBA's CDN serves its files to its own site's pages.
+  const site = /cdn\.(w?nba)\.com/.exec(url)?.[1];
+  const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', Accept: 'application/json', ...(site ? { Referer: `https://www.${site}.com/`, Origin: `https://www.${site}.com` } : {}) };
+  const res = await fetch(url, { signal: AbortSignal.timeout(20000), headers });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 });
@@ -119,6 +122,7 @@ for (const m of history.filter((h) => h.type === 'multi' && h.status !== 'void')
 }
 if (multis) log(`Track record: ${multis} multiplier slip(s) settled or updated`);
 if (Object.keys(secondStats).length) log(`Track record: second source (confirming reads): ${Object.entries(secondStats).map(([k, v]) => `${k} agree ${v.agree}, disagree ${v.disagree}, not found ${v['not found']}, failed ${v.failed}`).join('; ')}`);
+for (const [name, err] of Object.entries(second.errors)) log(`Track record: second source ${name} failed: ${err}`);
 {
   const recs = [...history.filter((h) => h.type !== 'multi'), ...history.filter((h) => h.type === 'multi').flatMap((m) => m.legs || [])];
   const fin = recs.filter((h) => ['won', 'lost', 'push', 'void', 'dnp'].includes(h.status));
