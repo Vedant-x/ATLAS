@@ -173,8 +173,6 @@ body.scrolled .bar { height: 52px; padding-block: 0; }
 @media (min-width: 821px) { .install-card { bottom: 20px; } }
 
 /* What a pick is still waiting for (beside it on the shortlist) */
-.mini-main .mini-wait { display: block; margin-top: 3px; font: 600 11px var(--sans); color: #ffb547; }
-.mini-main .mini-wait.ready-stale, .mini-main .mini-wait.ready-conflict { color: var(--loss); }
 
 /* A value that just changed on a live update */
 .flash { animation: val-flash 1.2s ease-out; }

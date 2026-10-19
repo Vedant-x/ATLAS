@@ -8,7 +8,10 @@ const now = Date.now();
 const IST = 330 * 6e4;
 const day = (d) => Math.floor((now + IST) / 864e5) * 864e5 - IST + d * 864e5;
 const ev = (id, sport, leaguePath, start) => ({ id, sport, leaguePath, league: leaguePath.split('/').pop().toUpperCase(), home: `${id} Home`, away: `${id} Away`, start });
-const E = [ev('nba1', 'basketball', 'basketball/nba', now + 2 * 36e5), ev('epl1', 'football', 'soccer/eng.1', now + 3 * 36e5), ev('nhl1', 'hockey', 'hockey/nhl', day(1) + 20 * 36e5)];
+// Today's matches start before midnight IST whatever the time the tests run (late in the evening a
+// fixed "in 2 hours" would fall on tomorrow).
+const today = (h) => Math.min(now + h * 36e5, day(1) - (4 - h) * 6e4);
+const E = [ev('nba1', 'basketball', 'basketball/nba', today(2)), ev('epl1', 'football', 'soccer/eng.1', today(3)), ev('nhl1', 'hockey', 'hockey/nhl', day(1) + 20 * 36e5)];
 const C = [
   { e: E[0], market: 'Winner', pick: 'NBA fav', odds: 1.5, p: 0.7, ev: 0.05, priced: true },
   { e: E[1], market: 'Winner', pick: 'EPL fav', odds: 1.85, p: 0.52, ev: -0.038, priced: true },
