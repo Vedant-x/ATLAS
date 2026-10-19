@@ -562,23 +562,13 @@ function bestBetsPanel(e, a) {
     }).join('')}</div></section>`;
 }
 
-// What a pick is still waiting for (starters, lineups, a fresh price), shown beside it; nothing when
-// every input its sport needs is in.
-function pendingInputs(e) {
-  if (e.live) return '';
-  const r = readiness(e, { priceAt: priceTime(e) });
-  if (r.state === 'ready' || (r.state === 'limited' && !e.stale)) return ''; // limited = the sport's coverage, not a missing input
-  const missing = r.checks.filter((c) => c.ok === false).slice(0, 2).map((c) => (c.key === 'price' ? `price ${c.note}` : c.label.toLowerCase()));
-  return `<small class="mini-wait ready-${r.state}">${e.stale ? 'Feed down · ' : ''}${missing.length ? `Check: ${esc(missing.join(', '))}` : esc(r.label)}</small>`;
-}
-
 function miniPick(b) {
   const s = sportOf(b.event.sport);
   const rec = recommendationFor(b, trackCalibration());
   const leg = { key: `${b.event.id}|${b.market}|${b.pick}`, eventId: b.event.id, sport: b.event.sport, match: `${b.event.home} vs ${b.event.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p, recommendationId: rec.recommendationId, ...(b.prop ? { prop: b.prop } : {}) };
   const edge = `${b.ev >= 0 ? '+' : ''}${(b.ev * 100).toFixed(1)}%`;
   return `<div class="mini reveal" data-rec="${esc(rec.recommendationId)}" title="${esc(`${rec.settlementRules} Chance range ${pc(rec.uncertaintyRange[0], 0)}–${pc(rec.uncertaintyRange[1], 0)} (${rec.uncertaintyMethod}).`)}"><span class="mini-ico">${s.icon}</span>
-    <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(b.event.home)} v ${esc(b.event.away)}</small>${b.book ? `<small class="muted">best price: ${esc(b.book)}</small>` : ''}${whyTag(b)}${b.event.live ? '<small class="live">LIVE</small>' : istTag(b.event.start)}${pendingInputs(b.event)}</a>
+    <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(b.event.home)} v ${esc(b.event.away)}</small>${b.book ? `<small class="muted">best price: ${esc(b.book)}</small>` : ''}${whyTag(b)}${b.event.live ? '<small class="live">LIVE</small>' : istTag(b.event.start)}</a>
     <div class="mini-nums"><span><small>ATLAS</small><b>${pc(b.p, 0)}</b></span>${b.fair != null ? `<span><small>Market</small><b>${pc(b.fair, 0)}</b></span>` : ''}<span><small>Break-even</small><b>${pc(1 / b.odds, 0)}</b></span><span><small>Edge</small><b class="${b.ev >= 0 ? 'pos' : 'neg'}">${edge}</b></span></div>
     ${legButton(leg, odd(b.odds))}</div>`;
 }
