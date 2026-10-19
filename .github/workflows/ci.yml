@@ -24,6 +24,14 @@ jobs:
           ODDS_REGIONS: eu
       - name: Track record dry run (empty history, live results)
         run: node scripts/record.mjs /tmp/track/picks.json dist/pages/data/index.json /tmp/track/track.json /tmp/track/audit.json
+      - name: Second results source against real picks (the baseline's final results, confirmed live)
+        # Results from the 18 Oct baseline copy are re-read for confirmation (from the league's own feed
+        # where one exists). Nothing is saved; the log shows how often the two sources agree. Finds
+        # nothing to confirm once the baseline is more than 7 days old.
+        run: |
+          mkdir -p /tmp/second
+          zcat baseline/picks-2026-10-18.json.gz | node -e 'const h=JSON.parse(require("fs").readFileSync(0,"utf8")); process.stdout.write(JSON.stringify(h.filter((p) => p.type !== "multi" && ["won","lost","push"].includes(p.status))))' > /tmp/second/picks.json
+          node scripts/record.mjs /tmp/second/picks.json dist/pages/data/index.json /tmp/second/track.json /tmp/second/audit.json
       - name: Browser tests (fixed board, the built pages in Chromium)
         run: |
           npm install --no-save playwright@1.56.1

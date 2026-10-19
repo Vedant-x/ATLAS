@@ -2,6 +2,7 @@
 import { esc, sportOf, ist } from './views.js';
 import { summarize, MIN_ODDS, MAX_ODDS, calibration, marketChance, SAFE, BEST, potdDay, walkForward } from './track.js';
 import { serviceStats } from './compare.js';
+import { FINAL, independentlyConfirmed } from './settle.js';
 import { localDay } from './engine.js';
 import { modelRecord } from './modelpicks.js';
 
@@ -147,11 +148,15 @@ function comparisonPanel(picks) {
 // final, with the old and new result, the source and the reason (the log is append-only).
 function correctionsPanel(data) {
   const picks = data.picks || [], log = data.corrections || [], conflicts = data.conflicts || [];
-  const disputed = picks.flatMap((h) => [h, ...(h.legs || [])]).filter((x) => x.status === 'disputed');
-  if (!log.length && !disputed.length && !conflicts.length) return '';
+  const all = picks.flatMap((h) => [h, ...(h.legs || [])]);
+  const disputed = all.filter((x) => x.status === 'disputed');
+  const fin = all.filter((x) => x.type !== 'multi' && FINAL.has(x.status));
+  const indep = fin.filter(independentlyConfirmed).length, same = fin.filter((x) => x.confirmedAt && !independentlyConfirmed(x)).length;
+  if (!log.length && !disputed.length && !conflicts.length && !(indep + same)) return '';
   const when = (t) => new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   return `<div class="panel reveal"><h3 class="ph">Settlement audit <small>${disputed.length} disputed · ${conflicts.length} copies disagreeing · ${log.length} correction${log.length === 1 ? '' : 's'} logged</small></h3>
-    <p class="muted">A result is read twice before it is trusted. If the reads disagree it is held out of every total until two reads in a row agree. A changed result is never overwritten silently: the log keeps the old one.</p>
+    <p class="muted">A result is read twice before it is trusted: the second read comes from an independent source where one covers the league (NHL, MLB, NBA and WNBA official feeds; FotMob for soccer), otherwise from the same feed again. If the reads disagree it is held out of every total until two reads in a row agree. A changed result is never overwritten silently: the log keeps the old one.</p>
+    <p class="muted">Final results: ${indep} confirmed by an independent source · ${same} by a second read of the same source · ${fin.length - indep - same} not yet confirmed.</p>
     ${log.length ? `<table class="tbl tight"><thead><tr><th>When</th><th>Selection</th><th>From</th><th>To</th><th>Why</th></tr></thead><tbody>${log.slice(-20).reverse().map((c) => `<tr><td>${when(c.at)}</td><td>${esc(c.key || c.sel || '')}</td><td>${esc(c.from)}${c.prevScore ? ` <small>${esc(c.prevScore)}</small>` : ''}</td><td>${esc(c.to)}${c.score ? ` <small>${esc(c.score)}</small>` : ''}</td><td>${esc(c.reason || '')} <small>${esc(c.source || '')}</small></td></tr>`).join('')}</tbody></table>` : ''}</div>`;
 }
 

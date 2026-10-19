@@ -1,11 +1,12 @@
 // Track record update, run by the Pages build after scripts/pages.mjs:
 //   node scripts/record.mjs <history.json> <events.json> <out.json> [audit.json]
 // Records ATLAS's official picks for matches starting soon, grades finished ones from ESPN final
-// scores, saves the history file (kept on the track-record branch) and writes the public copy.
+// scores (confirmed from an independent second source where one covers the league, js/results2.js), saves the history file (kept on the track-record branch) and writes the public copy.
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { selectPicks, addPicks, updateClosing, gradePick, resultFromSummary, resultFromBo3, settleMulti, duePicks, observations } from '../js/track.js';
-import { applyRead, selectionId } from '../js/settle.js';
+import { applyRead, selectionId, awaitingConfirm, independentlyConfirmed } from '../js/settle.js';
+import { secondReader } from '../js/results2.js';
 import { BO3 } from '../js/esports.js';
 
 const [historyPath = 'track/picks.json', eventsPath = 'dist/pages/data/index.json', outPath = 'dist/pages/data/track.json', auditPath = 'track/audit.json'] = process.argv.slice(2);
@@ -61,22 +62,45 @@ if (bo3Ids.length) {
     if (res.ok) for (const m of (await res.json()).results || []) bo3.set(String(m.id), m);
   } catch { failed += bo3Ids.length; }
 }
+// The confirming read comes from an independent second source where one covers the league
+// (js/results2.js): the league's own feed, or FotMob for soccer. Not found there: ESPN again.
+const second = secondReader(async (url) => {
+  const res = await fetch(url, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', Accept: 'application/json' } });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+});
+const secondStats = {};
+const tally = (src, k) => { (secondStats[src] ||= { agree: 0, disagree: 0, 'not found': 0, failed: 0 })[k]++; };
+// One read per pick: a result, postponed, void, or nothing to grade yet (settle.js decides what that
+// means for this record: settle, confirm, dispute, wait, or mark unresolved).
+const readOf = (p, r) => (r.postponed ? { postponed: true } : r.void ? { void: true, reason: 'event cancelled or abandoned' }
+  : !r.done ? { status: null } : { status: gradePick(p, r), score: `${r.homeScore ?? '?'}-${r.awayScore ?? '?'}` });
+const apply = (p, read, source) => { const what = applyRead(p, read, { now, source, audit }); counts[what] = (counts[what] || 0) + 1; return what; };
 for (const [key, picks] of Object.entries(byMatch)) {
   const [leaguePath, compId] = key.split('|');
-  let r, source;
-  if (leaguePath.startsWith('atlas/')) { r = resultFromBo3(bo3.get(compId)); source = 'bo3.gg'; }
-  else try {
-    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${leaguePath}/summary?event=${compId}`, { signal: AbortSignal.timeout(12000) });
-    r = res.ok ? resultFromSummary(await res.json()) : { done: false };
-    source = 'ESPN summary';
-  } catch { failed++; continue; }
-  for (const p of picks) {
-    // One read per pick: a result, postponed, void, or nothing to grade yet (settle.js decides what
-    // that means for this record: settle, confirm, dispute, wait, or mark unresolved).
-    const read = r.postponed ? { postponed: true } : r.void ? { void: true, reason: 'event cancelled or abandoned' }
-      : !r.done ? { status: null } : { status: gradePick(p, r), score: `${r.homeScore ?? '?'}-${r.awayScore ?? '?'}` };
-    const what = applyRead(p, read, { now, source, audit });
-    counts[what] = (counts[what] || 0) + 1;
+  // Second source: for results waiting to be confirmed, and for disputed ones (read after ESPN, so a
+  // dispute settles only when both sources agree).
+  // Voids (postponed or cancelled) stay with ESPN: a second source only ever reports a played result.
+  const wants = picks.filter((p) => !p.prop && p.status !== 'void' && (awaitingConfirm(p) || p.status === 'disputed'));
+  const alt = wants.length && !leaguePath.startsWith('atlas/') ? await second(wants[0]) : null;
+  if (alt?.failed) tally(alt.source, 'failed');
+  else if (alt && !alt.result) tally(alt.source, 'not found');
+  const altReads = new Map();
+  if (alt?.result) for (const p of wants) { const read = readOf(p, alt.result); if (read.status != null) altReads.set(p, read); else tally(alt.source, 'not found'); }
+  const primary = picks.filter((p) => !(altReads.has(p) && awaitingConfirm(p)));
+  if (primary.length) {
+    let r, source;
+    if (leaguePath.startsWith('atlas/')) { r = resultFromBo3(bo3.get(compId)); source = 'bo3.gg'; }
+    else try {
+      const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${leaguePath}/summary?event=${compId}`, { signal: AbortSignal.timeout(12000) });
+      r = res.ok ? resultFromSummary(await res.json()) : { done: false };
+      source = 'ESPN summary';
+    } catch { failed++; r = null; }
+    if (r) for (const p of primary) apply(p, readOf(p, r), source);
+  }
+  for (const [p, read] of altReads) {
+    if (awaitingConfirm(p)) tally(alt.source, read.status === p.status ? 'agree' : 'disagree');
+    apply(p, read, alt.source);
   }
 }
 // Settle multiplier slips whose legs are all in (or one has lost).
@@ -94,6 +118,12 @@ for (const m of history.filter((h) => h.type === 'multi' && h.status !== 'void')
   m.score = m.legs.map((l) => l.status).join(' · ');
 }
 if (multis) log(`Track record: ${multis} multiplier slip(s) settled or updated`);
+if (Object.keys(secondStats).length) log(`Track record: second source (confirming reads): ${Object.entries(secondStats).map(([k, v]) => `${k} agree ${v.agree}, disagree ${v.disagree}, not found ${v['not found']}, failed ${v.failed}`).join('; ')}`);
+{
+  const recs = [...history.filter((h) => h.type !== 'multi'), ...history.filter((h) => h.type === 'multi').flatMap((m) => m.legs || [])];
+  const fin = recs.filter((h) => ['won', 'lost', 'push', 'void', 'dnp'].includes(h.status));
+  log(`Track record: ${fin.filter(independentlyConfirmed).length} of ${fin.length} final result(s) confirmed by an independent second source, ${fin.filter((h) => h.confirmedAt && !independentlyConfirmed(h)).length} by a second read of the same source`);
+}
 const { conflicts } = observations(history);
 log(`Track record: ${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', ') || 'nothing read'}; lookups failed ${failed}; still pending ${history.filter((h) => h.status === 'pending').length}; disputed ${history.filter((h) => h.status === 'disputed').length}; copies disagreeing ${conflicts.length}; corrections logged ${audit.length - auditBefore}`);
 

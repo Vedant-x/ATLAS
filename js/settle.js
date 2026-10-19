@@ -3,8 +3,9 @@
 // - Every selection has one canonical id (selectionId): the same pick saved as a shortlist banker, a
 //   surest pick, a best bet or a slip leg is one selection with one outcome.
 // - A result read from a provider is applied with applyRead. A final result (won, lost, push, void,
-//   dnp) is re-read once before it is trusted (confirmed); if the second read disagrees the selection
-//   is "disputed" and stays out of every total until two reads in a row agree.
+//   dnp) is re-read once before it is trusted (confirmed), from an independent second source where one
+//   covers the league (results2.js), else from the same provider; if the second read disagrees the
+//   selection is "disputed" and stays out of every total until two reads in a row agree.
 // - Every change to a result that was already final is appended to an audit log (from, to, when,
 //   source, reason): the record keeps the latest result, the log keeps every earlier one.
 // - Postponed matches wait for the new date; only after POSTPONED_VOID_HOURS do they become void (a
@@ -20,6 +21,12 @@ export const UNRESOLVED_AFTER_DAYS = 4;
 export const RETRY_DAYS = 30;
 export const RETRY_HOURS = 6;
 export const CONFIRM_AFTER_HOURS = 3;
+// A final result still waiting for its confirming read.
+export const awaitingConfirm = (p) => FINAL.has(p.status) && !p.confirmedAt;
+// Confirmed by a source other than the one that settled it (results2.js). Records settled before
+// settledBy was saved were all graded from ESPN (bo3.gg for esports).
+export const settledSource = (p) => p.settledBy || (String(p.leaguePath || '').startsWith('atlas/') ? 'bo3.gg' : 'ESPN summary');
+export const independentlyConfirmed = (p) => Boolean(p.confirmedAt && p.confirmedBy && p.confirmedBy !== settledSource(p));
 
 const norm = (s) => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
 const MARKET_ALIAS = { moneyline: 'winner', 'match winner': 'winner', '1x2': 'match result' };
@@ -54,7 +61,7 @@ export function applyRead(p, read, { now = Date.now(), source = 'unknown', audit
     if (FINAL.has(p.status) || p.status === 'disputed') log(status, reason, score ?? null);
     p.status = status; p.gradedAt = now; p.settledBy = source;
     if (score != null) p.score = score;
-    delete p.confirmedAt; delete p.disputedWith;
+    delete p.confirmedAt; delete p.confirmedBy; delete p.disputedWith;
   };
   const next = read.postponed ? 'postponed' : read.void ? 'void' : read.status || null;
   if (!next) {
@@ -63,7 +70,7 @@ export function applyRead(p, read, { now = Date.now(), source = 'unknown', audit
     return 'waiting';
   }
   if (next === 'postponed') {
-    if (p.status === 'void') { p.confirmedAt = now; return 'confirmed'; } // already voided as postponed
+    if (p.status === 'void') { p.confirmedAt = now; p.confirmedBy = source; return 'confirmed'; } // already voided as postponed
     if (p.start < now - POSTPONED_VOID_HOURS * 36e5) { set('void', null, `postponed for more than ${POSTPONED_VOID_HOURS} h`); return 'void'; }
     if (p.status !== 'postponed') { if (FINAL.has(p.status)) log('postponed', 'provider now reports the match postponed'); p.status = 'postponed'; }
     return 'postponed';
@@ -72,14 +79,14 @@ export function applyRead(p, read, { now = Date.now(), source = 'unknown', audit
   if (p.status === 'pending' || p.status === 'postponed' || p.status === 'unresolved') { set(next, score, read.reason || 'first result'); return next; }
   if (FINAL.has(p.status)) {
     // The confirming read: the same result confirms it; a different one opens a dispute.
-    if (next === p.status) { p.confirmedAt = now; return 'confirmed'; }
+    if (next === p.status) { p.confirmedAt = now; p.confirmedBy = source; return 'confirmed'; }
     log('disputed', `second read says ${next}`, score);
     p.disputedWith = next; p.status = 'disputed'; p.disputedAt = now;
     return 'disputed';
   }
   if (p.status === 'disputed') {
     // Settled once the last two reads agree.
-    if (next === p.disputedWith) { set(next, score, 'two reads in a row agree'); p.confirmedAt = now; return next; }
+    if (next === p.disputedWith) { set(next, score, 'two reads in a row agree'); p.confirmedAt = now; p.confirmedBy = source; return next; }
     p.disputedWith = next;
     return 'disputed';
   }
