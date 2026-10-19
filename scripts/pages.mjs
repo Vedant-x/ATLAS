@@ -786,7 +786,8 @@ async function khl() {
 // These sports change slowly and the free key is slow to read, so the fixtures are kept for 30
 // minutes (data/sportsdb.json): most builds reuse the last copy, with finished games dropped and
 // live ones still shown until the next full read.
-const TSDB_KEEP = 30 * 6e4;
+// CI sets TSDB_KEEP_MIN high so test builds reuse the site's copy and leave the shared key to the live build.
+const TSDB_KEEP = (Number(process.env.TSDB_KEEP_MIN) || 30) * 6e4;
 async function sportsdb() {
   let prev = null;
   try {
