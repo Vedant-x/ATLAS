@@ -82,3 +82,16 @@ test('the second source disagreeing opens a dispute that settles only when both 
   assert.ok(audit.length >= 2);
 });
 
+
+test('second source: OpenDota games grouped into a best-of-3 series', () => {
+  assert.equal(secondSourceFor('atlas/dota2').name, 'OpenDota');
+  const s = (t) => Math.floor(T / 1000) + t;
+  const rows = [
+    { match_id: 1, series_id: 9, series_type: 1, start_time: s(0), radiant_win: true, radiant_name: 'Yellow Submarine', dire_name: 'CyberHero' },
+    { match_id: 2, series_id: 9, series_type: 1, start_time: s(3000), radiant_win: true, radiant_name: 'CyberHero', dire_name: 'Yellow Submarine' },
+    { match_id: 3, series_id: 9, series_type: 1, start_time: s(6000), radiant_win: false, radiant_name: 'CyberHero', dire_name: 'Yellow Submarine' },
+  ];
+  const p = { home: 'Yellow Submarine', away: 'CyberHero', start: T, market: 'Winner', pick: 'Yellow Submarine' };
+  assert.deepEqual(findResult(p, parse.opendota({ rows })), { done: true, homeScore: 2, awayScore: 1, winner: 'home' });
+  assert.equal(findResult(p, parse.opendota({ rows: rows.slice(0, 2) })), null, 'series not over after 1-1');
+});

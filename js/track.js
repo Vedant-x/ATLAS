@@ -487,8 +487,9 @@ export function resultFromSummary(sm) {
   if (/postpon|suspend|delay/i.test(`${st.name} ${st.description}`)) return { postponed: true };
   if (/cancel|abandon|forfeit/i.test(`${st.name} ${st.description}`)) return { void: true };
   if (!st.completed) return { done: false };
-  const side = (k) => c.competitors?.find((x) => x.homeAway === k) || {};
-  const h = side('home'), a = side('away');
+  // Fights and tennis matches may list no home/away: the first competitor is home, as on the board.
+  const cs = c.competitors || [];
+  const h = cs.find((x) => x.homeAway === 'home') || cs[0] || {}, a = cs.find((x) => x.homeAway === 'away') || cs[1] || {};
   const winner = h.winner ? 'home' : a.winner ? 'away' : null;
   const b = boxStats(sm), box = b.listed.size ? { box: b } : {}; // player stats, for props
   return { done: true, homeScore: h.score, awayScore: a.score, winner: winner || (h.score != null && h.score === a.score ? 'draw' : null), ...box };
@@ -592,6 +593,15 @@ export function summarize(history) {
 }
 
 // Final result of a bo3.gg series (esports): map score and winner, or { done: false } / { void: true }.
+// Final result for one competition from an ESPN scoreboard (MMA fights and tennis matches: their
+// records carry the fight's or match's own id, which the summary endpoint does not take; the summary
+// wants the whole card's or tournament's id).
+export function resultFromScoreboard(sb, compId) {
+  const c = (sb?.events || []).flatMap((e) => [...(e.competitions || []), ...(e.groupings || []).flatMap((g) => g.competitions || [])]).find((x) => String(x.id) === String(compId));
+  if (!c) return { done: false };
+  return resultFromSummary({ header: { competitions: [c] } });
+}
+
 export function resultFromBo3(m) {
   if (!m) return { done: false };
   if (m.status === 'canceled' || m.status === 'cancelled') return { void: true };

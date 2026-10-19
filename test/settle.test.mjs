@@ -112,3 +112,15 @@ test('quiet hours: no system notifications inside the window, including one past
   assert.equal(quietNow({ quiet: [0, 9] }, at(8)), true);
   assert.equal(quietNow({}, at(3)), false);
 });
+
+test('fights and tennis: graded from the scoreboard by the competition id, first competitor as home', async () => {
+  const { resultFromScoreboard, gradePick } = await import('../js/track.js');
+  const sb = { events: [{ id: '600', competitions: [
+    { id: '401927416', status: { type: { completed: true, name: 'STATUS_FINAL' } }, competitors: [{ athlete: { displayName: 'A' }, winner: false }, { athlete: { displayName: 'B' }, winner: true }] },
+    { id: '401927417', status: { type: { completed: true, name: 'STATUS_FINAL' } }, competitors: [{ athlete: { displayName: 'Gerald Meerschaert' }, winner: false }, { athlete: { displayName: 'Julius Walker' }, winner: true }] },
+  ] }] };
+  const r = resultFromScoreboard(sb, '401927417');
+  assert.equal(r.winner, 'away');
+  assert.equal(gradePick({ market: 'Winner', pick: 'Julius Walker', home: 'Gerald Meerschaert', away: 'Julius Walker' }, r), 'won');
+  assert.equal(resultFromScoreboard(sb, '999').done, false);
+});

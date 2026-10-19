@@ -1,7 +1,6 @@
 # Implementation brief: status (18 October 2026)
 
-Branch `claude/trusting-shannon-82cdza` (PR #102). Nothing here is in production until the PR is merged:
-the live site and the live track record still run the code on `main`.
+PR #102 was merged on 19 October 2026; later fixes are on branch `claude/trusting-shannon-82cdza`.
 
 ## Baseline
 
@@ -94,6 +93,11 @@ the live site and the live track record still run the code on `main`.
     agreed 217 of 217 matched, NHL 8 of 8, NBA 19 of 19, no disagreement. TheSportsDB (tried for the NFL and
     college football) refuses requests from GitHub's servers (HTTP 403), so it is not used.
 16. **Panel widths**: each home panel can be Auto, Third, Half or Full on wide screens.
+17. **Picks that were never graded** (found after the merge): no Dota 2, LoL or Valorant pick and no UFC
+    pick had ever settled. bo3.gg returns CS2 only unless asked for a game, and ESPN's summary does not take a
+    fight's own id. Both fixed: esports are read per game, fights and tennis matches from the scoreboard.
+    Pending and unresolved picks from the last 30 days settle on the next runs. OpenDota is now the second
+    source for Dota 2.
 
 ## Tested
 
@@ -123,12 +127,25 @@ the live site and the live track record still run the code on `main`.
 
 ## Verified in production
 
-Nothing from this list. The PR is not merged. CI runs every change against live feeds without paid odds credits.
+First live build after the merge (19 Oct, 10:03 UTC), from its log:
+- The new settlement ran on the real history: 325 won, 97 lost, 36 confirmed, 28 unresolved; nothing disputed.
+  557 older matches wait for the next runs (150 lookups a run).
+- Second source in production: FotMob confirmed 14 of 14.
+- Odds API: 70 sports in season, 25 free fixture lists read, 14 matches added that no other feed lists.
+- TheSportsDB: rate limited (55 of 71 requests refused); fixed on the branch below.
+
+Fixed on the branch after the merge, verified in CI against live feeds but **not live until merged**:
+- Dota 2, LoL, Valorant and UFC picks settle (they never had): in CI the baseline's 116 stuck picks all
+  settled (Dota 2 51–25 and 1 void, LoL 13–4, Valorant 6–4, UFC 6–6). OpenDota agreed with bo3.gg on 55 of
+  55 Dota 2 series it found.
+- TheSportsDB rate limits: wait and retry, keep the last good fixtures, CI no longer competes for the key.
+- Odds API free lists spaced one a second.
 
 ## Unverified / remaining
 
-- **Second results provider.** Covers NHL, MLB, NBA, WNBA and soccer. NFL, college football, tennis, MMA and
-  esports are still confirmed by a second read of the same provider.
+- **Second results provider.** Covers NHL, MLB, NBA, WNBA, soccer and Dota 2. NFL, college football, tennis,
+  MMA, CS2, LoL and Valorant are still confirmed by a second read of the same provider (no free independent
+  source answers GitHub's servers).
 - **Same-game parlays.** Not offered: ATLAS has no combined same-game quotes, and multiplying the legs of one
   match would misprice them.
 - **Panels.** Hidden, reordered and resized in steps (third, half, full); not dragged to any width.
