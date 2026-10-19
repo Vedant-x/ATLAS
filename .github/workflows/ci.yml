@@ -33,6 +33,19 @@ jobs:
           zcat baseline/picks-2026-10-18.json.gz | node -e 'const h=JSON.parse(require("fs").readFileSync(0,"utf8")); process.stdout.write(JSON.stringify(h.filter((p) => p.type !== "multi" && ["won","lost","push"].includes(p.status))))' > /tmp/second/picks.json
           RECORD_MAX_LOOKUPS=1000 node scripts/record.mjs /tmp/second/picks.json dist/pages/data/index.json /tmp/second/track.json /tmp/second/audit.json
           node -e 'for (const c of JSON.parse(require("fs").readFileSync("/tmp/second/audit.json","utf8"))) console.log(`Correction: ${c.key} ${c.from} -> ${c.to} (${c.score ?? ""}) ${c.source}: ${c.reason}`)'
+      - name: Stuck results settle (the baseline's ungraded Dota 2, LoL, Valorant and UFC picks, read live)
+        run: |
+          mkdir -p /tmp/stuck
+          zcat baseline/picks-2026-10-18.json.gz | node -e 'const h=JSON.parse(require("fs").readFileSync(0,"utf8")); process.stdout.write(JSON.stringify(h.filter((p) => p.type !== "multi" && /^(atlas\/(dota2|lol|valorant)|mma\/)/.test(p.leaguePath) && ["pending","unresolved"].includes(p.status))))' > /tmp/stuck/picks.json
+          RECORD_MAX_LOOKUPS=1000 node scripts/record.mjs /tmp/stuck/picks.json dist/pages/data/index.json /tmp/stuck/track.json /tmp/stuck/audit.json
+          node -e 'const h=JSON.parse(require("fs").readFileSync("/tmp/stuck/picks.json","utf8")); const c={}; for (const p of h.filter((p) => p.recordedAt < Date.parse("2026-10-19"))) { const k=p.leaguePath+" "+p.status; c[k]=(c[k]||0)+1 } console.log("Stuck picks now:", JSON.stringify(c))'
+          # The Dota 2 second source (OpenDota) on the same picks: found and agreeing with bo3.gg?
+          node --input-type=module -e 'import { readFileSync } from "node:fs"; import { secondReader } from "./js/results2.js"; import { gradePick } from "./js/track.js";
+            const read = secondReader(async (u) => { const r = await fetch(u, { signal: AbortSignal.timeout(30000) }); if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); });
+            const h = JSON.parse(readFileSync("/tmp/stuck/picks.json", "utf8")).filter((p) => p.leaguePath === "atlas/dota2" && ["won","lost"].includes(p.status));
+            const c = { agree: 0, disagree: 0, notFound: 0, failed: 0 };
+            for (const p of h) { const a = await read(p); if (a.failed) c.failed++; else if (!a.result) c.notFound++; else gradePick(p, a.result) === p.status ? c.agree++ : c.disagree++; }
+            console.log("OpenDota vs bo3.gg on", h.length, "Dota 2 picks:", JSON.stringify(c), JSON.stringify(read.errors));'
       - name: Browser tests (fixed board, the built pages in Chromium)
         run: |
           npm install --no-save playwright@1.56.1

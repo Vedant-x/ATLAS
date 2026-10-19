@@ -4,10 +4,10 @@
 // scores (confirmed from an independent second source where one covers the league, js/results2.js), saves the history file (kept on the track-record branch) and writes the public copy.
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { selectPicks, addPicks, updateClosing, gradePick, resultFromSummary, resultFromBo3, settleMulti, duePicks, observations } from '../js/track.js';
+import { selectPicks, addPicks, updateClosing, gradePick, resultFromSummary, resultFromScoreboard, resultFromBo3, settleMulti, duePicks, observations } from '../js/track.js';
 import { applyRead, selectionId, awaitingConfirm, independentlyConfirmed } from '../js/settle.js';
 import { secondReader } from '../js/results2.js';
-import { BO3 } from '../js/esports.js';
+import { BO3, BO3_GAMES } from '../js/esports.js';
 
 const [historyPath = 'track/picks.json', eventsPath = 'dist/pages/data/index.json', outPath = 'dist/pages/data/track.json', auditPath = 'track/audit.json'] = process.argv.slice(2);
 const now = Date.now();
@@ -55,13 +55,26 @@ const counts = {};
 let failed = 0;
 // Esports series are graded from bo3.gg in one request for all of them.
 const bo3 = new Map();
-const bo3Ids = Object.keys(byMatch).filter((k) => /^atlas\/(cs2|valorant|lol|dota2)\|/.test(k)).map((k) => k.split('|')[1]);
-if (bo3Ids.length) {
-  try {
-    const res = await fetch(`${BO3}/matches?page[limit]=100&filter[matches.id][in]=${bo3Ids.join(',')}`, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'Mozilla/5.0 ATLAS track record' } });
-    if (res.ok) for (const m of (await res.json()).results || []) bo3.set(String(m.id), m);
-  } catch { failed += bo3Ids.length; }
+// bo3.gg answers for one game at a time (without a discipline it returns CS2 only), 100 ids a request.
+for (const [d, g] of Object.entries(BO3_GAMES)) {
+  const ids = Object.keys(byMatch).filter((k) => k.startsWith(`${g.path}|`)).map((k) => k.split('|')[1]);
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100);
+    try {
+      const res = await fetch(`${BO3}/matches?page[limit]=100&filter[matches.discipline_id][eq]=${d}&filter[matches.id][in]=${chunk.join(',')}`, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'Mozilla/5.0 ATLAS track record' } });
+      if (res.ok) for (const m of (await res.json()).results || []) bo3.set(String(m.id), m);
+      else failed += chunk.length;
+    } catch { failed += chunk.length; }
+  }
 }
+// ESPN scoreboards by date, for fights and tennis matches (fetched once per league and day).
+const boards = new Map();
+const board = (leaguePath, day) => {
+  const k = `${leaguePath}|${day}`;
+  if (!boards.has(k)) boards.set(k, fetch(`https://site.api.espn.com/apis/site/v2/sports/${leaguePath}/scoreboard?dates=${day}`, { signal: AbortSignal.timeout(12000) }).then((r) => (r.ok ? r.json() : null)).catch(() => null));
+  return boards.get(k);
+};
+const ymdOf = (t) => new Date(t).toISOString().slice(0, 10).replaceAll('-', '');
 // The confirming read comes from an independent second source where one covers the league
 // (js/results2.js): the league's own feed, or FotMob for soccer. Not found there: ESPN again.
 const second = secondReader(async (url) => {
@@ -85,7 +98,7 @@ for (const [key, picks] of Object.entries(byMatch)) {
   // dispute settles only when both sources agree).
   // Voids (postponed or cancelled) stay with ESPN: a second source only ever reports a played result.
   const wants = picks.filter((p) => !p.prop && p.status !== 'void' && (awaitingConfirm(p) || p.status === 'disputed'));
-  const alt = wants.length && !leaguePath.startsWith('atlas/') ? await second(wants[0]) : null;
+  const alt = wants.length ? await second(wants[0]) : null;
   if (alt?.failed) tally(alt.source, 'failed');
   else if (alt && !alt.result) tally(alt.source, 'not found');
   const altReads = new Map();
@@ -94,7 +107,13 @@ for (const [key, picks] of Object.entries(byMatch)) {
   if (primary.length) {
     let r, source;
     if (leaguePath.startsWith('atlas/')) { r = resultFromBo3(bo3.get(compId)); source = 'bo3.gg'; }
-    else try {
+    else if (/^(mma|tennis)\//.test(leaguePath)) {
+      // The day it was due and the days either side (cards and sessions run past midnight UTC).
+      const t = picks[0].start, days = [...new Set([t - 864e5, t, t + 864e5].map(ymdOf))];
+      const sbs = await Promise.all(days.map((d) => board(leaguePath, d)));
+      if (sbs.every((x) => x == null)) { failed++; r = null; }
+      else { r = sbs.map((sb) => resultFromScoreboard(sb, compId)).find((x) => x.done || x.void || x.postponed) || { done: false }; source = 'ESPN scoreboard'; }
+    } else try {
       const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${leaguePath}/summary?event=${compId}`, { signal: AbortSignal.timeout(12000) });
       r = res.ok ? resultFromSummary(await res.json()) : { done: false };
       source = 'ESPN summary';
