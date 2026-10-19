@@ -1,7 +1,6 @@
 # Implementation brief: status (18 October 2026)
 
-Branch `claude/trusting-shannon-82cdza` (PR #102). Nothing here is in production until the PR is merged:
-the live site and the live track record still run the code on `main`.
+PR #102 was merged on 19 October 2026; later fixes are on branch `claude/trusting-shannon-82cdza`.
 
 ## Baseline
 
@@ -94,6 +93,11 @@ the live site and the live track record still run the code on `main`.
     agreed 217 of 217 matched, NHL 8 of 8, NBA 19 of 19, no disagreement. TheSportsDB (tried for the NFL and
     college football) refuses requests from GitHub's servers (HTTP 403), so it is not used.
 16. **Panel widths**: each home panel can be Auto, Third, Half or Full on wide screens.
+17. **Picks that were never graded** (found after the merge): no Dota 2, LoL or Valorant pick and no UFC
+    pick had ever settled. bo3.gg returns CS2 only unless asked for a game, and ESPN's summary does not take a
+    fight's own id. Both fixed: esports are read per game, fights and tennis matches from the scoreboard.
+    Pending and unresolved picks from the last 30 days settle on the next runs. OpenDota is now the second
+    source for Dota 2.
 
 ## Tested
 
@@ -127,8 +131,9 @@ Nothing from this list. The PR is not merged. CI runs every change against live 
 
 ## Unverified / remaining
 
-- **Second results provider.** Covers NHL, MLB, NBA, WNBA and soccer. NFL, college football, tennis, MMA and
-  esports are still confirmed by a second read of the same provider.
+- **Second results provider.** Covers NHL, MLB, NBA, WNBA, soccer and Dota 2. NFL, college football, tennis,
+  MMA, CS2, LoL and Valorant are still confirmed by a second read of the same provider (no free independent
+  source answers GitHub's servers).
 - **Same-game parlays.** Not offered: ATLAS has no combined same-game quotes, and multiplying the legs of one
   match would misprice them.
 - **Panels.** Hidden, reordered and resized in steps (third, half, full); not dragged to any width.
