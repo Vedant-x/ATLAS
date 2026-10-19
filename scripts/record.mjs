@@ -45,7 +45,7 @@ log(`Track record: closing prices updated for ${updateClosing(history, events, n
 const due = duePicks(history, now);
 // At most MAX_LOOKUPS matches per run, the oldest first: a backlog (legs of slips that had already
 // lost, which were once left ungraded) clears over a few runs instead of flooding ESPN at once.
-const MAX_LOOKUPS = 150;
+const MAX_LOOKUPS = Number(process.env.RECORD_MAX_LOOKUPS) || 150;
 const grouped = Object.groupBy ? Object.groupBy(due, (h) => `${h.leaguePath}|${h.compId}`) : due.reduce((m, h) => ((m[`${h.leaguePath}|${h.compId}`] ||= []).push(h), m), {});
 // Waiting results first, then confirming reads, then old unresolved ones; the oldest first in each.
 const rank = (list) => (list.some((p) => p.status === 'pending' || p.status === 'disputed' || p.status === 'postponed') ? 0 : list.some((p) => p.status !== 'unresolved') ? 1 : 2);

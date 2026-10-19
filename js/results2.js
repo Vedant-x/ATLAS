@@ -1,6 +1,6 @@
 // A second, independent results source for settlement. ESPN gives the first result; the confirming
 // read (settle.js) comes from the league's own feed where one is free and public: the NHL's, MLB's,
-// the NBA's and WNBA's, and FotMob for soccer. A result is only used when the game is clearly the same
+// the NBA's and WNBA's; FotMob for soccer; TheSportsDB for the NFL and college football. A result is only used when the game is clearly the same
 // one (start within 3 hours, both teams matching, one orientation only) and the source calls it final;
 // anything else counts as "not found" and the confirming read falls back to ESPN. A second source never
 // postpones or voids a pick on its own, and player props (which need a box score) stay with ESPN.
@@ -36,6 +36,13 @@ export const parse = {
     done: Number(g.gameStatus) === 3,
     homeScore: num(g.homeTeam?.score), awayScore: num(g.awayTeam?.score),
   })),
+  // TheSportsDB (free public key): American football, scores including overtime as the markets settle.
+  tsdb: (j) => (j?.events || []).map((e) => ({
+    home: [e.strHomeTeam], away: [e.strAwayTeam],
+    start: Date.parse(e.strTimestamp ? `${String(e.strTimestamp).replace(/Z$|\+00:00$/, '')}Z` : ''),
+    done: /^(match finished|ft|aot|final)$/i.test(String(e.strStatus || '').trim()) && !/^yes$/i.test(e.strPostponed || ''),
+    homeScore: num(e.intHomeScore), awayScore: num(e.intAwayScore),
+  })),
   // FotMob: only results after 90 minutes (FT); a match decided in extra time or on penalties is left
   // to ESPN, as soccer markets settle on regular time.
   fotmob: (j) => (j?.leagues || []).flatMap((l) => l.matches || []).map((m) => ({
@@ -52,6 +59,7 @@ export const SOURCES = [
   { test: /^baseball\/mlb$/, name: 'MLB Stats API', parse: 'mlb', urls: (p) => [`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${easternDate(p.start)}`] },
   { test: /^basketball\/nba$/, name: 'NBA schedule', parse: 'nba', urls: () => ['https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json'] },
   { test: /^basketball\/wnba$/, name: 'WNBA schedule', parse: 'nba', urls: () => ['https://cdn.wnba.com/static/json/staticData/scheduleLeagueV2.json'] },
+  { test: /^football\/(nfl|college-football)$/, name: 'TheSportsDB', parse: 'tsdb', urls: (p) => utcDays(p.start).map((d) => `https://www.thesportsdb.com/api/v1/json/3/eventsday.php?d=${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}&s=American%20Football`) },
   { test: /^soccer\//, name: 'FotMob', parse: 'fotmob', urls: (p) => utcDays(p.start).map((d) => `https://www.fotmob.com/api/data/matches?date=${d}`) },
 ];
 export const secondSourceFor = (leaguePath = '') => SOURCES.find((s) => s.test.test(leaguePath)) || null;

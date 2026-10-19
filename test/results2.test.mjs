@@ -13,7 +13,7 @@ const pick = (o) => ({ leaguePath: 'hockey/nhl', home: 'Utah Mammoth', away: 'Ed
 test('second source: which leagues have one; US dates in Eastern time', () => {
   assert.equal(secondSourceFor('hockey/nhl').name, 'NHL API');
   assert.equal(secondSourceFor('soccer/eng.1').name, 'FotMob');
-  assert.equal(secondSourceFor('football/nfl'), null);
+  assert.equal(secondSourceFor('mma/ufc'), null);
   assert.equal(easternDate(Date.parse('2026-10-18T02:30:00Z')), '2026-10-17'); // 10:30pm ET on the 17th
 });
 
@@ -80,4 +80,12 @@ test('the second source disagreeing opens a dispute that settles only when both 
   applyRead(p, { status: 'lost' }, { now: T + 6 * 36e5, source: 'ESPN summary', audit }); // ESPN corrected
   assert.equal(p.status, 'lost');
   assert.ok(audit.length >= 2);
+});
+
+test('second source: TheSportsDB for American football (UTC timestamps, finished games only)', () => {
+  assert.equal(secondSourceFor('football/college-football').name, 'TheSportsDB');
+  const j = (status) => ({ events: [{ strHomeTeam: 'Ohio State Buckeyes', strAwayTeam: 'Penn State Nittany Lions', intHomeScore: '31', intAwayScore: '24', strTimestamp: '2026-10-17T23:00:00', strStatus: status, strPostponed: 'no' }] });
+  const p = { home: 'Ohio State Buckeyes', away: 'Penn State Nittany Lions', start: T, market: 'Spread', pick: 'Ohio State Buckeyes -6.5' };
+  assert.deepEqual(findResult(p, parse.tsdb(j('Match Finished'))), { done: true, homeScore: 31, awayScore: 24, winner: 'home' });
+  assert.equal(findResult(p, parse.tsdb(j('Not Started'))), null);
 });

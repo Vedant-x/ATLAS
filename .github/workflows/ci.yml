@@ -31,7 +31,7 @@ jobs:
         run: |
           mkdir -p /tmp/second
           zcat baseline/picks-2026-10-18.json.gz | node -e 'const h=JSON.parse(require("fs").readFileSync(0,"utf8")); process.stdout.write(JSON.stringify(h.filter((p) => p.type !== "multi" && ["won","lost","push"].includes(p.status))))' > /tmp/second/picks.json
-          node scripts/record.mjs /tmp/second/picks.json dist/pages/data/index.json /tmp/second/track.json /tmp/second/audit.json
+          RECORD_MAX_LOOKUPS=1000 node scripts/record.mjs /tmp/second/picks.json dist/pages/data/index.json /tmp/second/track.json /tmp/second/audit.json
           node -e 'for (const c of JSON.parse(require("fs").readFileSync("/tmp/second/audit.json","utf8"))) console.log(`Correction: ${c.key} ${c.from} -> ${c.to} (${c.score ?? ""}) ${c.source}: ${c.reason}`)'
       - name: Browser tests (fixed board, the built pages in Chromium)
         run: |
