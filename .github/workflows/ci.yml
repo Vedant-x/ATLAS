@@ -14,6 +14,8 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm test
+      - name: Unit tests at every hour of the day (the live build runs them before publishing)
+        run: for h in $(seq 1 23); do SHIFT_H=$h node --import ./test/support/clock.mjs --test test/*.test.mjs > /tmp/clock.log 2>&1 || { echo "Tests fail with the clock $h h ahead"; grep -E '^not ok' /tmp/clock.log; exit 1; }; done
       - name: Build Pages site against live sources
         run: node scripts/pages.mjs
         env:
