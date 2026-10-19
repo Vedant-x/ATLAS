@@ -91,7 +91,8 @@ the live site and the live track record still run the code on `main`.
     (NHL, MLB, NBA, WNBA) or FotMob for soccer, used only for a clearly matched game final after regular time;
     otherwise ESPN is read again. A dispute settles only when both sources agree. The Results page shows how
     many results were independently confirmed. CI check on the baseline's recent results (19 Oct): FotMob
-    agreed 61 of 61 matched, NHL 3 of 3, NBA 8 of 8, no disagreement.
+    agreed 217 of 217 matched, NHL 8 of 8, NBA 19 of 19, no disagreement. TheSportsDB (tried for the NFL and
+    college football) refuses requests from GitHub's servers (HTTP 403), so it is not used.
 16. **Panel widths**: each home panel can be Auto, Third, Half or Full on wide screens.
 
 ## Tested
