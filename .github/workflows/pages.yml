@@ -36,6 +36,16 @@ jobs:
       - run: npm test
       - run: npm install --no-save esbuild@0.24.2 || true # bundler for the speed step; the build works without it
       - run: node scripts/pages.mjs
+        env:
+          # Bookmaker odds (The Odds API): the ODDS_API_KEY repository secret turns them on; ODDS_*
+          # repository variables tune them (default: every in-season sport, the month's credits spent at
+          # an even pace, region eu (Pinnacle and a dozen books), each sport refreshed when 12 hours old).
+          # Empty values leave the defaults.
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          ODDS_HOURS: ${{ vars.ODDS_HOURS }}
+          ODDS_MARKETS: ${{ vars.ODDS_MARKETS }}
+          ODDS_REGIONS: ${{ vars.ODDS_REGIONS }}
+          ODDS_MAX_SPORTS: ${{ vars.ODDS_MAX_SPORTS }}
       # Track record: history lives on the track-record branch (created on the first run). If the
       # branch exists, its history must load: record.mjs stops the build otherwise, so a failed
       # checkout can never restart the record from empty.
@@ -48,7 +58,7 @@ jobs:
         continue-on-error: true
       - name: Update track record
         env: { TRACK_REQUIRED: '${{ steps.trackbranch.outputs.exists }}' }
-        run: node scripts/record.mjs track/picks.json dist/pages/data/index.json dist/pages/data/track.json
+        run: node scripts/record.mjs track/picks.json dist/pages/data/index.json dist/pages/data/track.json track/audit.json
       # Evidence timeline: what changed since the previous build (kept on the track-record branch).
       - name: Update change timeline
         continue-on-error: true
@@ -90,7 +100,7 @@ jobs:
             git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           fi
           git config user.name "atlas-bot" && git config user.email "atlas-bot@users.noreply.github.com"
-          for f in picks.json snapshot.json changes.json alert-state.json; do [ -f "$f" ] && git add "$f"; done
+          for f in picks.json audit.json snapshot.json changes.json alert-state.json; do [ -f "$f" ] && git add "$f"; done
           git commit -qm "Track record $(date -u +%FT%TZ)" || exit 0
           git push -q origin HEAD:track-record
       - uses: actions/configure-pages@v5

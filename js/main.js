@@ -9,21 +9,26 @@ import { watch, checkAlerts, followed, showMoment, requestNotify } from './alert
 import { propsView, propsClick, propsSearch, propsList } from './propsview.js';
 import { playerView, playerClick, playerInput } from './playerview.js';
 import { slipCheck } from './slipcheck.js';
+import { suggestStake, overExposed } from './staking.js';
+import { encodeSlip } from './share.js';
+import { sharedSlipView } from './shareview.js';
+import { sourcesView } from './sourcesview.js';
 import { loadPlayers, playersData } from './playerdata.js';
-// The Research area: one tab bar across its pages (props and player research, the builder, the
-// edge board, compare, and sports and leagues).
-const RESEARCH = new Set(['props', 'player', 'bankers', 'x', 'target', 'mega', 'edge', 'compare', 'sports', 'sport', 'league']);
-const R_TABS = [['props', '#/props', 'Props', ['props', 'player']], ['builder', '#/x/2', 'Builder', ['bankers', 'x', 'target', 'mega']], ['edge', '#/edge', 'Edge', ['edge']], ['compare', '#/compare', 'Compare', ['compare']], ['sports', '#/sports', 'Sports', ['sports', 'sport', 'league']]];
-const withTabs = (name, html) => { if (!RESEARCH.has(name)) return html; const i = html.indexOf('</section>'); return i < 0 ? researchTabs(name) + html : html.slice(0, i + 10) + researchTabs(name) + html.slice(i + 10); };
+// The Research area: one tab bar across its pages (props and player research, Picks, compare,
+// and sports and leagues).
+const PICKS = ['bankers', 'every', 'edge', 'x', 'target', 'mega'];
+const RESEARCH = new Set(['props', 'player', 'bankers', 'every', 'x', 'target', 'mega', 'edge', 'compare', 'sports', 'sport', 'league', 'live']);
+const R_TABS = [['sports', '#/sports', 'Sports', ['sports', 'sport', 'league']], ['live', '#/live', 'Live', ['live']], ['props', '#/props', 'Props', ['props', 'player']], ['compare', '#/compare', 'Compare', ['compare']], ['picks', '#/bankers', 'Build a slip', PICKS]];
+// Picks pages carry their own tab row (Bankers, Edge board, Multipliers, Target, Mega) instead.
+const withTabs = (name, html) => { if (!RESEARCH.has(name) || PICKS.includes(name)) return html; const i = html.indexOf('</section>'); return i < 0 ? researchTabs(name) + html : html.slice(0, i + 10) + researchTabs(name) + html.slice(i + 10); };
 const researchTabs = (name) => `<nav class="research-tabs" aria-label="Research">${R_TABS.map(([k, h, l, on]) => `<a class="${on.includes(name) ? 'on' : ''}" href="${h}"${on.includes(name) ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>`;
 
 // "More": every page in one sheet (phones and tablets, where the bar holds only the main ones). The
 // tiles reuse the menu's own links and icons.
 const MORE_INFO = {
   '#/': 'Shortlist, live strip and what is next', '#/live': 'Everything in play now', '#/watchlist': 'Matches you follow, with alerts',
-  '#/sports': 'Every sport and competition', '#/props': 'Player lines, hit rates, research', '#/edge': 'Every price against fair odds',
-  '#/bankers': 'Likeliest picks at short odds', '#/x/2': 'Slips from 2x to 1000x', '#/target': 'A slip for any multiplier you type',
-  '#/mega': '100x and 1000x slips', '#/compare': 'Pinned matches side by side', '#/track': 'Track record of every pick',
+  '#/sports': 'Every sport and competition', '#/props': 'Player lines, hit rates, research',
+  '#/bankers': 'Bankers, edge board and slips from 2x to 1000x', '#/compare': 'Pinned matches side by side', '#/track': 'Track record of every pick',
 };
 const sheet = document.getElementById('more-sheet');
 function fillMore() {
@@ -69,9 +74,10 @@ import { trackCalibration } from './trackview.js';
 import { prefs, prefEvents } from './prefs.js';
 import { applyModel } from './intel.js';
 import { fetchLineups, fetchSummary } from './espn.js';
-import { startLiveAlerts } from './livealerts.js';
+import { startLiveAlerts, alertPrefs } from './livealerts.js';
 import { morph } from './morph.js';
-import { views, bind, legIndex, edgeTable, countdown, esc, sportOf, ist } from './views.js';
+import { views, bind, legIndex, edgeTable, countdown, esc, sportOf, ist, setHomeLayout } from './views.js';
+import { enablePush, disablePush, syncPush } from './pushalerts.js';
 import { slip } from './slip.js';
 import { preloader, cursor, wipe, magnetic, tilt, countUp, reveal, fitTitles } from './ui.js';
 import { pc, odd } from './charts.js';
@@ -119,12 +125,13 @@ const state = {
     // Personal filters (min odds per leg, preferred sports) shape every slip.
     // Same window and tolerance as the official record (track.js slipPolicy), plus the viewer's filters.
     // opts.filter (the assistant's constraints: a sport, dates, exclusions) narrows the pool; opts.key
-    // names that filter for the cache, and opts.minOdds can raise the minimum leg price.
-    const key = `${target}|${prefs.sig()}|${opts.key || ''}|${opts.minOdds || ''}`;
+    // names that filter for the cache; opts.minOdds can raise the minimum leg price, opts.maxOdds caps
+    // it, and opts.positiveOnly keeps only legs ATLAS rates above their price (assistant slipRequest).
+    const key = `${target}|${prefs.sig()}|${opts.key || ''}|${opts.minOdds || ''}|${opts.maxOdds || ''}|${opts.positiveOnly ? 1 : 0}`;
     let pool = prefEvents(slipWindow(this.events, target));
     if (opts.filter) pool = pool.filter(opts.filter);
     // Built from bankers: many short-priced favourites, never a few long shots (picks.js).
-    if (!this.slipCache.has(key)) this.slipCache.set(key, bankerSlips(pool, target, { count: opts.count || 5, tolerance: slipPolicy(target).tolerance, cal: trackCalibration(), minOdds: Math.max(prefs.get().minOdds, opts.minOdds || 0) }));
+    if (!this.slipCache.has(key)) this.slipCache.set(key, bankerSlips(pool, target, { count: opts.count || 5, tolerance: slipPolicy(target).tolerance, cal: trackCalibration(), minOdds: Math.max(prefs.get().minOdds, opts.minOdds || 0), maxOdds: opts.maxOdds ?? null, positiveOnly: Boolean(opts.positiveOnly) }));
     return this.slipCache.get(key);
   },
   async detail(e) {
@@ -252,7 +259,7 @@ let current = null;
 function build() {
   const { name, args } = parse();
   legIndex.clear();
-  const research = { watchlist: watchlistView, compare: compareView, props: (a) => propsView(state.events, softRender, a[0] || ''), player: (a) => playerView(a[0], state.events, softRender) };
+  const research = { sources: () => sourcesView(softRender), slip: (a) => sharedSlipView(a[0], state.events), watchlist: watchlistView, compare: compareView, props: (a) => propsView(state.events, softRender, a[0] || ''), player: (a) => playerView(a[0], state.events, softRender) };
   return { name, v: (views[name] || research[name] || legalViews[name] || trackViews[name] || views.notfound)(args.map(decodeURIComponent)) };
 }
 
@@ -263,8 +270,9 @@ function render(animate) {
   scene.setAccent(v.accent);
   document.documentElement.style.setProperty('--accent', readable(v.accent)); // selected chips carry black text on it
   scene.setMode(v.mode, v.sceneOpts);
-  // Deeper pages keep their section lit: matches and leagues under Sports, player research under Props.
-  const tab = ['sport', 'league', 'match'].includes(name) ? 'sports' : name === 'player' ? 'props' : name;
+  // Deeper pages keep their section lit: matches and leagues under Sports, player research under Props, the builder and edge board under Picks.
+  // Research (Sports, Props, Compare, Live and the pages under them) lights the Research entry.
+  const tab = ['sport', 'league', 'match', 'player', 'props', 'compare', 'live'].includes(name) ? 'sports' : PICKS.includes(name) ? 'bankers' : name;
   document.querySelectorAll('nav.top a').forEach((a) => { const h = a.getAttribute('href'); a.classList.toggle('on', h.startsWith('#/') && (h.split('/')[1] || 'home') === tab); });
   // On phones and tablets, More is lit when the page's own menu item is folded into it.
   const lit = document.querySelector('nav.top a.on:not([data-more])');
@@ -385,26 +393,44 @@ function staleNote(l) {
 const drawer = document.getElementById('slip');
 // Re-check the slip's warnings after live data changes, unless the stake box is being edited.
 function refreshSlip() { if (slip.legs.length && document.activeElement?.dataset?.slipStake === undefined) renderSlip(); }
+// Stake guidance under the slip: quarter Kelly on the combined chance, capped (staking.js).
+function stakeTip() {
+  const s = slip.summary(), b = slip.bankroll;
+  if (!(b > 0)) return 'Add a bankroll for a suggested stake. Kept in this browser only.';
+  const g = suggestStake(b, s.p, s.odds, { legs: s.n });
+  const warn = overExposed(b, slip.stake) ? ` <b class="neg">Your stake is ${pc(slip.stake / b, 0)} of your bankroll: more than ATLAS would ever suggest.</b>` : '';
+  if (!g.edge) return `Suggested stake: <b>none</b>. At ${s.odds.toFixed(2)} this slip needs ${pc(1 / s.odds, 1)} to break even and ATLAS has ${pc(s.p, 1)}; it loses on average.${warn}`;
+  return `Suggested stake: <b>${g.amount}</b> (${pc(g.frac, 1)} of bankroll, quarter Kelly${g.capped ? `, capped at ${pc(g.cap, 0)}` : ''}). <button class="link-btn" data-slip-usestake="${g.amount}">Use it</button>${warn}`;
+}
 function renderSlip() {
   const s = slip.summary();
   document.querySelectorAll('[data-slip-count]').forEach((el) => { el.textContent = s.n; el.classList.toggle('has', s.n > 0); });
   drawer.querySelector('.slip-body').innerHTML = s.n ? `
     <ul class="slip-legs">${slip.legs.map((l) => `<li><span>${sportOf(l.sport).icon}</span><div><b>${esc(l.pick)}</b><small>${esc(l.market)} · ${esc(l.match)}</small>${(() => { const ev = state.events.find((x) => x.id === l.eventId); return ev?.live ? '<small class="live">LIVE</small>' : ev?.start ? `<time class="ist">🕒 ${ist(ev.start)}</time>` : ''; })()}${l.derived ? '<small class="warn">ATLAS fair price, not a bookmaker quote</small>' : ''}${staleNote(l)}</div><em>${odd(l.odds)}</em><button data-unleg="${esc(l.key)}" aria-label="Remove">×</button></li>`).join('')}</ul>
-    ${s.correlated ? '<p class="warn">Two legs from the same match: bookmakers may refuse the combination, and the combined chance is not a simple product (see the slip check).</p>' : ''}
+    ${s.correlated ? '<p class="warn">Legs from the same match: bookmakers price that combination themselves (usually lower) or refuse it, so the total odds and returns below are hypothetical, and the combined chance is not a simple product (see the slip check).</p>' : ''}
     ${slip.legs.length > 1 ? slipCheck(slip.legs, { logs: slip.legs.some((l) => l.prop) ? playersData() || loadPlayers(refreshSlip) : null, esc }) : ''}
     <div class="slip-sum">
-      <div><small>Total odds</small><b>${s.odds.toFixed(2)}x</b></div>
+      <div><small>Total odds${s.correlated ? ' · hypothetical' : ''}</small><b>${s.odds.toFixed(2)}x</b></div>
       <div><small>Est. chance</small><b>${pc(s.p, s.p < 0.01 ? 2 : 1)}</b></div>
       <div><small>Edge</small><b class="${s.ev >= 0 ? 'pos' : 'neg'}">${(s.ev * 100).toFixed(1)}%</b></div>
       <label><small>Stake</small><input type="number" min="0" step="1" value="${Number(slip.stake) || 0}" data-slip-stake></label>
       <div><small>Potential return</small><b data-sum-pay>${s.payout.toFixed(2)}</b></div>
       <div><small>Expected return</small><b data-sum-exp>${(slip.stake * s.p * s.odds).toFixed(2)}</b></div>
     </div>
-    <div class="slip-actions"><button class="btn" data-slip-copy>Copy slip</button><button class="btn-ghost" data-slip-clear>Clear</button></div>`
+    <div class="slip-bank"><label><small>Your bankroll</small><input type="number" min="0" step="10" value="${Number(slip.bankroll) || ''}" placeholder="optional" data-slip-bankroll></label><p data-stake-tip>${stakeTip()}</p></div>
+    <div class="slip-actions"><button class="btn" data-slip-share>Share link</button><button class="btn-ghost" data-slip-copy>Copy text</button><button class="btn-ghost" data-slip-clear>Clear</button></div>`
     : '<p class="muted">Tap any price to add it here. ATLAS shows the combined odds, the estimated win chance and the edge as you build.</p>';
 }
+// A link that opens the slip on anyone's ATLAS (#/slip/<code>): the phone's share sheet where there
+// is one, otherwise the link is copied.
+function shareSlip(btn) {
+  const url = `${location.origin}${location.pathname}#/slip/${encodeSlip(slip.legs)}`;
+  const s = slip.summary();
+  if (navigator.share) { navigator.share({ title: 'ATLAS slip', text: `${s.n} legs · ${s.odds.toFixed(2)}x`, url }).catch(() => {}); return; }
+  navigator.clipboard?.writeText(url).then(() => { btn.textContent = 'Link copied'; setTimeout(() => { btn.textContent = 'Share link'; }, 1400); }).catch(() => {});
+}
 slip.subscribe(() => {
-  if (document.activeElement?.matches?.('[data-slip-stake]')) return;
+  if (document.activeElement?.matches?.('[data-slip-stake], [data-slip-bankroll]')) return;
   renderSlip();
   document.querySelectorAll('[data-leg]').forEach((b) => b.classList.toggle('on', slip.has(b.dataset.leg)));
 });
@@ -469,12 +495,15 @@ document.addEventListener('click', (e) => {
     openSlip(true); bump();
   } else if (d.unleg) slip.remove(d.unleg);
   else if ('slipClear' in d) slip.clear();
-  else if ('slipCopy' in d) navigator.clipboard?.writeText(slip.text()).then(() => { t.textContent = 'Copied'; setTimeout(() => { t.textContent = 'Copy slip'; }, 1400); }).catch(() => {});
+  else if ('slipCopy' in d) navigator.clipboard?.writeText(slip.text()).then(() => { t.textContent = 'Copied'; setTimeout(() => { t.textContent = 'Copy text'; }, 1400); }).catch(() => {});
+  else if ('slipShare' in d) shareSlip(t);
+  else if (d.slipUsestake) { slip.stake = d.slipUsestake; }
   else if ('slipToggle' in d) openSlip(!drawer.classList.contains('open'));
   else if (d.watch) {
     e.preventDefault(); e.stopPropagation();
     const on = watch.toggle(d.watch);
     document.querySelectorAll(`[data-watch="${CSS.escape(d.watch)}"]`).forEach((b) => { b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); b.innerHTML = b.classList.contains('icon-btn') ? ico(on ? 'star-on' : 'star') : watchLabel(on, !b.closest('#qv')); });
+    syncPush();
     if (current === 'watchlist') softRender();
   }
   else if (d.pin) {
@@ -486,6 +515,8 @@ document.addEventListener('click', (e) => {
   }
   else if (d.shours) { setResearchPrefs({ shortHours: Number(d.shours) }); softRender(); }
   else if (d.smode) { setResearchPrefs({ shortMode: d.smode }); softRender(); }
+  else if (d.lay) { setHomeLayout(d.lay, d.layKey); softRender(); }
+  else if (d.pzone) { setResearchPrefs({ potdZone: d.pzone }); softRender(); }
   else if (d.border) { setResearchPrefs({ betOrder2: d.border }); softRender(); }
   else if ('qvClose' in d) closeQv();
   else if ('displayToggle' in d) { const p = document.getElementById('display-panel'); const open = !p.classList.contains('open'); p.innerHTML = displayPanel(); p.classList.toggle('open', open); t.setAttribute('aria-expanded', open); }
@@ -495,6 +526,11 @@ document.addEventListener('click', (e) => {
     else if (d.pref === 'sport') prefs.set({ sports: v === 'all' ? [] : p.sports.includes(v) ? p.sports.filter((x) => x !== v) : [...p.sports, v] });
     else if (d.pref === 'priced') prefs.set({ pricedOnly: !p.pricedOnly });
     state.slipCache.clear(); softRender(); }
+  else if (d.quiet) { alertPrefs.set({ quiet: d.quiet === 'off' ? null : d.quiet.split('-').map(Number) }); syncPush(); softRender(); }
+  else if (d.push) { (d.push === 'on' ? enablePush() : disablePush()).then((st) => { toast(st === 'on' ? 'Alerts while ATLAS is closed: on' : st === 'off' ? 'Alerts while ATLAS is closed: off' : `Not turned on (${st})`); softRender(); }).catch((err) => toast(`Alerts: ${err.message}`)); }
+  else if (d.alertKind) { const on = t.getAttribute('aria-pressed') !== 'true';
+    if (d.alertMatch) alertPrefs.setMatch(d.alertMatch, { [d.alertKind]: on }); else alertPrefs.set({ [d.alertKind]: on });
+    softRender(); }
   else if ('clearFinished' in d) { watch.removeMany(watch.finished(state.events)); softRender(); }
   else if ('notifyOn' in d) { requestNotify().then(() => softRender()); }
   else if ('fxToggle' in d) { try { localStorage.setItem('atlas-fx', fxOff ? 'on' : 'off'); } catch { /* storage blocked */ } if (/[?&]lite\b/.test(location.search)) location.search = ''; else location.reload(); }
@@ -508,7 +544,9 @@ document.addEventListener('input', (e) => {
     const s = slip.summary();
     drawer.querySelector('[data-sum-pay]').textContent = s.payout.toFixed(2);
     drawer.querySelector('[data-sum-exp]').textContent = (slip.stake * s.p * s.odds).toFixed(2);
+    drawer.querySelector('[data-stake-tip]').innerHTML = stakeTip();
   }
+  if (e.target.matches('[data-slip-bankroll]')) { slip.bankroll = e.target.value; drawer.querySelector('[data-stake-tip]').innerHTML = stakeTip(); }
   if (e.target.matches('[data-ef]')) refreshEdge();
   if (e.target.matches('[data-props-search]')) { propsSearch(e.target.value); const box = document.querySelector('[data-props-list]'); if (box) box.innerHTML = propsList(state.events, decodeURIComponent(parse().args[0] || '')); }
   playerInput(e.target, state.events);
@@ -625,7 +663,8 @@ document.addEventListener('click', (e) => {
 });
 
 // ---------- boot ----------
-ageGate();
+// A first visit answers the age check straight away, not after the intro animation.
+if (ageGate()) document.getElementById('preloader')?.remove();
 cursor();
 tilt();
 renderSlip();

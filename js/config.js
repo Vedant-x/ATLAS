@@ -4,3 +4,6 @@
 export const AI_URL = '';
 // NPB/KBO live scores published every minute by the deploy workflow (scripts/live-lane.mjs).
 export const ASIA_LIVE_URL = 'https://raw.githubusercontent.com/Vedant-x/ATLAS/live-data/live.json';
+// ALERTS_URL: the alerts Worker (worker/atlas-alerts.js) for alerts while ATLAS is closed. Empty = off: alerts
+// then come only while the site is open. Setup: worker/README-alerts.md.
+export const ALERTS_URL = '';

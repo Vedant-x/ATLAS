@@ -1,0 +1,167 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { parseFixtures, applyFixtures, ukToUtc } from '../js/footballdata.js';
+import { eloratingsIndex, applyEloratings, isInternational } from '../js/eloratings.js';
+import { winProbs } from '../js/models.js';
+
+// football-data.co.uk fixtures.csv, as published (a BOM, many columns, UK times).
+const CSV = '﻿Div,Date,Time,HomeTeam,AwayTeam,Referee,B365H,B365D,B365A,PSH,PSD,PSA,AvgH,AvgD,AvgA,B365>2.5,B365<2.5,P>2.5,P<2.5,Avg>2.5,Avg<2.5\n'
+  + 'E2,25/10/2026,15:00,Wycombe,Bolton,,2.40,3.30,2.90,2.45,3.40,2.95,2.41,3.33,2.88,1.90,1.90,1.93,1.95,1.90,1.92\n'
+  + 'SC1,26/10/2026,12:30,Partick,Ayr,,2.10,3.40,3.30,,,,2.08,3.42,3.35,1.80,2.00,,,1.81,2.01\n'
+  + "E0,25/10/2026,17:30,Nott'm Forest,Man United,,3.10,3.40,2.30,3.15,3.50,2.32,3.05,3.40,2.31,1.70,2.10,1.72,2.15,1.70,2.12\n"
+  + 'X9,25/10/2026,15:00,Nobody,Nowhere,,2,3,4,,,,,,,,,,,,\n';
+
+test('football-data.co.uk: fixtures, Pinnacle first, UK time to UTC', () => {
+  const f = parseFixtures(CSV);
+  assert.equal(f.length, 3, 'an unknown division is skipped');
+  assert.equal(f[0].book, 'Pinnacle');
+  assert.deepEqual(f[0].res, [2.45, 3.4, 2.95]);
+  assert.deepEqual(f[0].ou, [1.93, 1.95]);
+  assert.equal(f[1].book, 'bookmaker average', 'no Pinnacle price: the average');
+  // British Summer Time ends at 01:00 UTC on Sunday 25 October 2026, so that afternoon UK time is UTC.
+  assert.equal(new Date(f[0].start).toISOString(), '2026-10-25T15:00:00.000Z');
+  // The day before, still summer time: 15:00 UK = 14:00 UTC.
+  assert.equal(new Date(ukToUtc(2026, 9, 24, 15, 0)).toISOString(), '2026-10-24T14:00:00.000Z');
+  assert.equal(new Date(ukToUtc(2026, 0, 10, 15, 0)).toISOString(), '2026-01-10T15:00:00.000Z');
+});
+
+test('football-data.co.uk: prices onto unpriced matches only, names matched, file age kept', () => {
+  const now = Date.parse('2026-10-20T00:00:00Z');
+  const ev = (id, path, home, away, iso, o = {}) => ({ id, leaguePath: path, sport: 'football', home, away, start: Date.parse(iso), ...o });
+  const events = [
+    ev('a', 'soccer/eng.3', 'Wycombe Wanderers', 'Bolton Wanderers', '2026-10-25T14:00:00Z'),
+    ev('b', 'soccer/eng.1', 'Nottingham Forest', 'Manchester United', '2026-10-25T16:30:00Z'),
+    ev('c', 'soccer/eng.1', 'Nottingham Forest', 'Manchester United', '2026-10-25T16:30:00Z', { markets: [{ name: 'Match Result', outcomes: [] }] }),
+    ev('d', 'soccer/eng.3', 'Stockport County', 'Reading', '2026-10-25T14:00:00Z'),
+  ];
+  const fileAt = now - 6 * 36e5;
+  const r = applyFixtures(events, parseFixtures(CSV), { now, fileAt });
+  assert.equal(r.priced, 2);
+  assert.deepEqual(events[0].markets[0].outcomes.map((o) => [o.name, o.odds]), [['Wycombe Wanderers', 2.45], ['Draw', 3.4], ['Bolton Wanderers', 2.95]]);
+  assert.equal(events[0].bookmaker, 'Pinnacle via football-data.co.uk');
+  assert.equal(events[0].priceAt, fileAt);
+  assert.equal(events[1].markets[0].outcomes[0].odds, 3.15, "Nott'm Forest / Man United matched by alias");
+  assert.equal(events[2].markets[0].outcomes.length, 0, 'an ESPN-priced match keeps its own price');
+  assert.deepEqual(r.unmatched, ['Stockport County v Reading [eng.3]']);
+  // One-word names, one a shortening of the other.
+  const k = [ev('k', 'soccer/tur.1', 'Kocaelispor', 'Goztepe', '2026-10-25T14:00:00Z')];
+  const tur = parseFixtures('Div,Date,Time,HomeTeam,AwayTeam,AvgH,AvgD,AvgA\nT1,25/10/2026,17:00,Kocaeli,Goztepe,2.6,3.2,2.7\n');
+  assert.equal(applyFixtures(k, tur, { now, fileAt }).priced, 1);
+  // A file over a week old is not used.
+  const late = [ev('e', 'soccer/eng.3', 'Wycombe', 'Bolton', '2026-10-25T14:00:00Z')];
+  assert.equal(applyFixtures(late, parseFixtures(CSV), { now, fileAt: now - 8 * 864e5 }).priced, 0);
+});
+
+const WORLD = '1\t1\tES\t2172\t1\t2242\t+5\n2\t2\tAR\t2140\t1\t2165\t-3\n80\t80\tSQ\t1712\t12\t1950\t0\n';
+const TEAMS = 'ES\tSpain\nAR\tArgentina\nSQ\tScotland\nUS\tUnited States\tUSA\n';
+
+test('World Football Elo: ratings by code, names by alias; senior men only', () => {
+  const idx = eloratingsIndex(WORLD, TEAMS);
+  assert.equal(idx.size, 3);
+  assert.equal(idx.find('Spain'), 2172);
+  assert.equal(idx.find('Scotland'), 1712);
+  assert.equal(idx.find('Spain U21'), null);
+  assert.equal(idx.find('Spain Women'), null);
+  assert.equal(idx.find('USA'), null, 'named but not rated in this file');
+  const e = { id: 'w', sport: 'football', leaguePath: 'soccer/fifa.worldq.uefa', home: 'Spain', away: 'Scotland', start: Date.now() + 36e5 };
+  const r = applyEloratings([e, { ...e, id: 'x', leaguePath: 'soccer/eng.1' }], idx);
+  assert.equal(r.rated, 1);
+  assert.equal(e.stats.eloSource, 'World Football Elo');
+  const w = winProbs(e);
+  assert.equal(w.confidence, 'medium');
+  assert.ok(w.home > 0.7, `Spain strong favourites (${w.home})`);
+  assert.ok(isInternational('soccer/uefa.nations') && isInternational('soccer/fifa.worldq.uefa') && !isInternational('soccer/fifa.wwc'));
+  // The live build's first run rated club matches as internationals: "uefa.euro" caught "uefa.europa".
+  assert.ok(!isInternational('soccer/uefa.europa') && !isInternational('soccer/uefa.europa.conf') && !isInternational('soccer/uefa.champions'));
+  assert.equal(eloratingsIndex('garbage', 'garbage').size, 0, 'an unreadable file gives no ratings');
+});
+
+test('Sleeper: the NFL injury report, injured players only, onto NFL matches with its time', async () => {
+  const { injuredByTeam, applyNflInjuries } = await import('../js/sleeper.js');
+  const { readiness } = await import('../js/readiness.js');
+  const players = {
+    1: { full_name: 'Josh Allen', team: 'BUF', position: 'QB', injury_status: null, active: true },
+    2: { full_name: 'Von Miller', team: 'BUF', position: 'LB', injury_status: 'Questionable', injury_body_part: 'Knee', active: true },
+    3: { full_name: 'Tua Tagovailoa', team: 'MIA', position: 'QB', injury_status: 'Out', injury_body_part: 'Concussion', active: true },
+    4: { full_name: 'Free Agent', team: null, injury_status: 'Out' },
+  };
+  const teams = injuredByTeam(players);
+  assert.deepEqual(Object.keys(teams).sort(), ['BUF', 'MIA']);
+  const now = Date.now();
+  const e = { id: 'n1', sport: 'americanfootball', leaguePath: 'football/nfl', home: 'Buffalo Bills', away: 'Miami Dolphins', start: now + 36e5, markets: [{ name: 'Winner', outcomes: [] }] };
+  assert.equal(applyNflInjuries([e], { at: now - 2 * 36e5, teams }), 1);
+  assert.deepEqual(e.injuries.away.map((p) => [p.name, p.status]), [['Tua Tagovailoa', 'Out']]);
+  const inj = readiness(e, { now, priceAt: now }).checks.find((c) => c.key === 'injuries');
+  assert.equal(inj.ok, true);
+  assert.match(inj.note, /Sleeper: 2 listed, read 2 h ago/);
+});
+
+test('Tennis Abstract Elo: table read by its headers, surface from the tournament, used by the model', async () => {
+  const { parseEloPage, eloIndex, applyTennisElo, surfaceOf } = await import('../js/tennisabstract.js');
+  const html = `<table id="reportable"><thead><tr><th>Rank</th><th>Player</th><th>Age</th><th>Elo</th><th></th><th>hElo Rank</th><th>hElo</th><th>cElo Rank</th><th>cElo</th><th>gElo Rank</th><th>gElo</th></tr></thead>
+    <tbody><tr><td>1</td><td><a href="x">Jannik&nbsp;Sinner</a></td><td>25.2</td><td>2240.5</td><td></td><td>1</td><td>2200.0</td><td>2</td><td>2100.0</td><td>3</td><td>2050.0</td></tr>
+    <tr><td>40</td><td>Casper Ruud</td><td>27.8</td><td>1950.0</td><td></td><td>50</td><td>1900.0</td><td>5</td><td>2050.0</td><td>60</td><td>1800.0</td></tr></tbody></table>`;
+  const map = parseEloPage(html);
+  assert.equal(map.size, 2);
+  const atp = eloIndex(map);
+  assert.equal(atp.find('J. Sinner')?.elo, 2240.5, 'surname and initial');
+  assert.equal(surfaceOf({ tournament: 'Roland Garros' }), 'clay');
+  assert.equal(surfaceOf({ tournament: 'Stuttgart Open' }, Date.parse('2026-06-10')), 'grass');
+  assert.equal(surfaceOf({ tournament: 'Paris Masters' }), 'hard');
+  const { winProbs } = await import('../js/models.js');
+  const e = { id: 't', sport: 'tennis', leaguePath: 'tennis/atp', league: 'ATP', home: 'Casper Ruud', away: 'Jannik Sinner', start: Date.parse('2026-05-30'), tennis: { tournament: 'Roland Garros', draw: 'Singles', home: {}, away: {} } };
+  assert.equal(applyTennisElo([e], { atp, wta: eloIndex(new Map()) }).rated, 1);
+  assert.equal(e.tennis.surface, 'clay');
+  assert.equal(e.tennis.home.elo, 2000, 'Ruud: (1950 + 2050) / 2 on clay');
+  const w = winProbs(e);
+  assert.equal(w.confidence, 'medium');
+  assert.ok(w.away > 0.6 && w.away < 0.75, `Sinner favoured on clay, not overwhelmingly (${w.away.toFixed(3)})`);
+  assert.equal(parseEloPage('<table><tr><td>nothing</td></tr></table>').size, 0);
+});
+
+test('weather: the right city, the hour nearest kick-off, and a flag for wind and rain', async () => {
+  const { geoFrom, atKickoff, weatherLine, weatherFlag } = await import('../js/weather.js');
+  const geo = { results: [{ name: 'Columbus', admin1: 'Georgia', country: 'United States', latitude: 32.46, longitude: -84.99 }, { name: 'Columbus', admin1: 'Ohio', country: 'United States', latitude: 39.96, longitude: -83.0 }] };
+  assert.deepEqual(geoFrom(geo, { city: 'Columbus', region: 'Ohio', country: 'USA' }), { lat: 39.96, lon: -83 });
+  assert.equal(geoFrom({ results: [] }), null);
+  const hourly = { time: ['2026-10-18T18:00', '2026-10-18T19:00', '2026-10-18T20:00'], temperature_2m: [12, 11.4, 10], precipitation_probability: [40, 70, 80], precipitation: [0, 2.4, 3], wind_speed_10m: [20, 34, 40], wind_gusts_10m: [30, 55, 60] };
+  const w = atKickoff(hourly, Date.parse('2026-10-18T19:10:00Z'));
+  assert.deepEqual(w, { tempC: 11.4, rainProb: 70, rainMm: 2.4, windKmh: 34, gustKmh: 55 });
+  assert.equal(weatherLine(w), '11°C, 70% chance of rain, 2.4 mm, wind 34 km/h (gusts 55)');
+  assert.equal(weatherFlag(w), true);
+  assert.equal(atKickoff(hourly, Date.parse('2026-10-19T12:00:00Z')), null, 'outside the forecast');
+});
+
+test('Daily Faceoff: starting goalies from the page data, onto NHL matches, into readiness', async () => {
+  const { nextData, goalieGames, applyGoalies } = await import('../js/goalies.js');
+  const { readiness } = await import('../js/readiness.js');
+  const page = `<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify({ props: { pageProps: { data: [
+    { homeTeamName: 'Toronto Maple Leafs', awayTeamName: 'Montreal Canadiens', homeGoalieName: 'Joseph Woll', awayGoalieName: 'Sam Montembeault', homeNewsStrengthName: 'Confirmed', awayNewsStrengthName: 'Likely' },
+    { homeTeamName: 'Boston Bruins', awayTeamName: 'Florida Panthers', homeGoalieName: 'Jeremy Swayman', awayGoalieName: 'Sergei Bobrovsky', homeNewsStrengthName: 'Confirmed', awayNewsStrengthName: 'Confirmed' },
+  ] } } })}</script></html>`;
+  const games = goalieGames(nextData(page));
+  assert.equal(games.length, 2);
+  const now = Date.now();
+  const ev = (id, home, away) => ({ id, sport: 'hockey', leaguePath: 'hockey/nhl', home, away, start: now + 5 * 36e5, markets: [{ name: 'Winner', outcomes: [] }] });
+  const tor = ev('t', 'Toronto Maple Leafs', 'Montreal Canadiens'), bos = ev('b', 'Boston Bruins', 'Florida Panthers');
+  assert.equal(applyGoalies([tor, bos], games, now), 2);
+  assert.equal(tor.goalies.away.status, 'Likely');
+  assert.equal(readiness(tor, { now, priceAt: now }).state, 'waiting', 'one goalie only likely');
+  assert.equal(readiness(bos, { now, priceAt: now }).checks.find((c) => c.key === 'goalies').ok, true);
+  assert.deepEqual(goalieGames(nextData('<html>nothing</html>')), []);
+});
+
+test('Understat: xG table from the hex-escaped page data, onto big-five matches', async () => {
+  const { teamsData, xgTable, applyXg } = await import('../js/understat.js');
+  const data = { 83: { id: '83', title: 'Arsenal', history: [{ xG: '2.1', xGA: '0.6', scored: '3', missed: '0' }, { xG: '1.5', xGA: '1.0', scored: '1', missed: '1' }] },
+    71: { id: '71', title: 'Leeds', history: [{ xG: '0.8', xGA: '1.9', scored: '0', missed: '2' }] } };
+  const hex = JSON.stringify(data).replace(/[{}"\[\]:,]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`);
+  const page = `<script>var teamsData = JSON.parse('${hex}');</script>`;
+  const t = xgTable(teamsData(page));
+  assert.equal(t.get('arsenal').xgf.toFixed(2), '1.80');
+  assert.equal(t.get('arsenal').ga, 0.5);
+  const e = { id: 'm', leaguePath: 'soccer/eng.1', home: 'Arsenal', away: 'Leeds United', start: Date.now() + 36e5 };
+  assert.equal(applyXg([e], new Map([['soccer/eng.1', t]])), 1);
+  assert.equal(e.xg.away.xga, 1.9);
+  assert.equal(teamsData('<html>no data</html>'), null);
+});

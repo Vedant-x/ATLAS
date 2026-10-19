@@ -1,4 +1,5 @@
 // Match detail: ESPN summary + player overviews, normalised into the sections the dossier renders.
+import { canonStats } from './standings.js';
 import { fetchSummary, fetchAthlete } from './espn.js';
 import { absencesFor } from './fotmob.js';
 import { enrichMlb } from './mlbstats.js';
@@ -89,7 +90,7 @@ function standings(st, header) {
     name: g.header || st.header || '',
     entries: (g.standings?.entries || []).map((en) => ({
       team: en.team, id: String(en.id), ours: ids.includes(String(en.id)),
-      stats: Object.fromEntries((en.stats || []).map((s) => [s.abbreviation || s.shortDisplayName || s.name, s.displayValue ?? s.summary])),
+      stats: canonStats(en.stats || []),
     })),
   }));
   const relevant = groups.filter((g) => g.entries.some((e) => e.ours));

@@ -17,7 +17,7 @@ export const CATALOG = [
       { name: 'France', leagues: [L('soccer/fra.2', 'Ligue 2'), L('soccer/fra.coupe_de_france', 'Coupe de France')] },
       { name: 'Rest of Europe', leagues: [L('soccer/ned.1', 'Eredivisie'), L('soccer/ned.2', 'Eerste Divisie'), L('soccer/por.1', 'Primeira Liga'), L('soccer/bel.1', 'Belgian Pro League'), L('soccer/tur.1', 'Süper Lig'), L('soccer/sco.1', 'Scottish Premiership'), L('soccer/sco.2', 'Scottish Championship'), L('soccer/aut.1', 'Austrian Bundesliga'), L('soccer/gre.1', 'Greek Super League'), L('soccer/den.1', 'Danish Superliga'), L('soccer/swe.1', 'Allsvenskan'), L('soccer/nor.1', 'Eliteserien'), L('soccer/rus.1', 'Russian Premier League'), L('soccer/ned.cup', 'KNVB Beker'), L('soccer/por.taca.portugal', 'Taça de Portugal'), L('soccer/sco.tennents', 'Scottish Cup'), L('soccer/sco.cis', 'Scottish League Cup')] },
       { name: 'North & Central America', leagues: [L('soccer/usa.1', 'MLS'), L('soccer/usa.usl.1', 'USL Championship'), L('soccer/usa.usl.l1', 'USL League One'), L('soccer/usa.open', 'U.S. Open Cup'), L('soccer/mex.1', 'Liga MX'), L('soccer/mex.2', 'Liga de Expansión'), L('soccer/concacaf.champions', 'Concacaf Champions Cup'), L('soccer/concacaf.leagues.cup', 'Leagues Cup'), L('soccer/hon.1', 'Honduras Liga Nacional'), L('soccer/crc.1', 'Costa Rica Primera'), L('soccer/gua.1', 'Guatemala Liga Nacional'), L('soccer/slv.1', 'El Salvador Primera')] },
-      { name: 'South America', leagues: [L('soccer/conmebol.libertadores', 'Libertadores'), L('soccer/conmebol.sudamericana', 'Sudamericana'), L('soccer/bra.1', 'Brasileirão Série A'), L('soccer/bra.2', 'Brasileirão Série B'), L('soccer/bra.copa_do_brazil', 'Copa do Brasil'), L('soccer/arg.1', 'Liga Profesional'), L('soccer/arg.2', 'Primera Nacional'), L('soccer/arg.copa', 'Copa Argentina'), L('soccer/chi.1', 'Chile Primera'), L('soccer/col.1', 'Colombia Primera A'), L('soccer/per.1', 'Peru Liga 1'), L('soccer/uru.1', 'Uruguay Primera'), L('soccer/ecu.1', 'LigaPro Ecuador'), L('soccer/par.1', 'Paraguay Primera'), L('soccer/bol.1', 'Bolivia Primera'), L('soccer/ven.1', 'Venezuela Primera')] },
+      { name: 'South America', leagues: [L('soccer/conmebol.libertadores', 'Libertadores'), L('soccer/conmebol.sudamericana', 'Sudamericana'), L('soccer/bra.1', 'Brasileirão Série A'), L('soccer/bra.2', 'Brasileirão Série B'), L('soccer/bra.copa_do_brazil', 'Copa do Brasil'), L('soccer/bra.camp.paulista', 'Paulista A1'), L('soccer/bra.camp.carioca', 'Carioca'), L('soccer/arg.1', 'Liga Profesional'), L('soccer/arg.2', 'Primera Nacional'), L('soccer/arg.copa', 'Copa Argentina'), L('soccer/chi.1', 'Chile Primera'), L('soccer/col.1', 'Colombia Primera A'), L('soccer/per.1', 'Peru Liga 1'), L('soccer/uru.1', 'Uruguay Primera'), L('soccer/ecu.1', 'LigaPro Ecuador'), L('soccer/par.1', 'Paraguay Primera'), L('soccer/bol.1', 'Bolivia Primera'), L('soccer/ven.1', 'Venezuela Primera')] },
       { name: 'Asia & Oceania', leagues: [L('soccer/jpn.1', 'J1 League'), L('soccer/chn.1', 'Chinese Super League'), L('soccer/ksa.1', 'Saudi Pro League'), L('soccer/ind.1', 'Indian Super League'), L('soccer/aus.1', 'A-League Men'), L('soccer/afc.champions', 'AFC Champions League Elite'), L('soccer/afc.cup', 'AFC Champions League Two')] },
       { name: 'Africa', leagues: [L('soccer/rsa.1', 'South African Premiership'), L('soccer/caf.champions', 'CAF Champions League'), L('soccer/caf.confed', 'CAF Confederation Cup')] },
       { name: 'International', leagues: [L('soccer/fifa.world', 'FIFA World Cup'), L('soccer/fifa.worldq.uefa', 'WC Qualifying · UEFA'), L('soccer/fifa.worldq.conmebol', 'WC Qualifying · CONMEBOL'), L('soccer/fifa.worldq.concacaf', 'WC Qualifying · Concacaf'), L('soccer/fifa.worldq.afc', 'WC Qualifying · AFC'), L('soccer/fifa.worldq.caf', 'WC Qualifying · CAF'), L('soccer/fifa.friendly', 'International Friendlies'), L('soccer/uefa.euro', 'EURO'), L('soccer/uefa.euroq', 'EURO Qualifying'), L('soccer/conmebol.america', 'Copa América'), L('soccer/concacaf.gold', 'Gold Cup'), L('soccer/caf.nations', 'Africa Cup of Nations'), L('soccer/afc.asian.cup', 'AFC Asian Cup'), L('soccer/fifa.cwc', 'Club World Cup')] },
@@ -32,6 +32,7 @@ export const CATALOG = [
       { name: 'College', leagues: [L('basketball/mens-college-basketball', "NCAA Men's"), L('basketball/womens-college-basketball', "NCAA Women's")] },
       { name: 'Europe', leagues: [L('atlas/euroleague', 'EuroLeague'), L('atlas/eurocup', 'EuroCup')] },
       { name: 'International', leagues: [L('basketball/fiba', 'FIBA World Cup')] },
+      { name: 'More leagues', leagues: [L('atlas/basketball-more', 'ACB, Greek GBL, NZ NBL, Turkish BSL, KBL, Champions League & more', 'More leagues')] },
     ],
   },
   {
@@ -53,7 +54,7 @@ export const CATALOG = [
     id: 'baseball', name: 'Baseball', icon: '⚾', color: '#ffd84d', model: 'baseball',
     groups: [
       { name: 'Pro', leagues: [L('baseball/mlb', 'MLB'), L('atlas/npb', 'NPB (Japan)', 'NPB'), L('atlas/kbo', 'KBO (Korea)', 'KBO')] },
-      { name: 'Winter leagues', leagues: [L('baseball/dominican-winter-league', 'Dominican Winter League'), L('baseball/caribbean-series', 'Caribbean Series')] },
+      { name: 'Winter leagues', leagues: [L('baseball/dominican-winter-league', 'Dominican Winter League'), L('baseball/caribbean-series', 'Caribbean Series'), L('atlas/mexican-baseball', 'Mexican leagues (LMP, LMB)', 'Mexican baseball')] },
       { name: 'College', leagues: [L('baseball/college-baseball', 'NCAA Baseball'), L('baseball/college-softball', 'NCAA Softball')] },
     ],
   },
@@ -70,12 +71,12 @@ export const CATALOG = [
     groups: [
       { name: 'Union · International', leagues: [L('rugby/180659', 'Six Nations'), L('rugby/244293', 'The Rugby Championship'), L('rugby/164205', 'Rugby World Cup'), L('rugby/289234', 'Test Matches')] },
       { name: 'Union · Club', leagues: [L('rugby/267979', 'Gallagher Premiership'), L('rugby/270557', 'United Rugby Championship', 'URC'), L('rugby/270559', 'Top 14'), L('rugby/271937', 'Champions Cup'), L('rugby/272073', 'Challenge Cup'), L('rugby/242041', 'Super Rugby Pacific'), L('rugby/289262', 'Major League Rugby'), L('rugby/270555', 'Currie Cup')] },
-      { name: 'League', leagues: [L('rugby-league/3', 'NRL')] },
+      { name: 'League', leagues: [L('rugby-league/3', 'NRL'), L('atlas/rugbyleague-more', 'Super League, NRLW, State of Origin & more', 'More rugby league')] },
     ],
   },
   {
     id: 'aussierules', name: 'Aussie Rules', icon: '🦘', color: '#ffb84d', model: 'aussierules',
-    groups: [{ name: 'AFL', leagues: [L('australian-football/afl', 'AFL')] }],
+    groups: [{ name: 'AFL', leagues: [L('australian-football/afl', 'AFL'), L('atlas/aussie-more', 'AFLW & VFL', 'AFLW / VFL')] }],
   },
   {
     id: 'lacrosse', name: 'Lacrosse', icon: '🥍', color: '#7cf0c4', model: 'binary',
@@ -128,6 +129,12 @@ export const CATALOG = [
   { id: 'netball', name: 'Netball', icon: '🏐', color: '#ffd1f0', model: 'binary', groups: [{ name: 'Netball', leagues: [L('atlas/netball', 'Netball', 'Netball')] }] },
   { id: 'gaelic', name: 'Gaelic Games', icon: '☘️', color: '#4ce07a', model: 'binary', groups: [{ name: 'GAA', leagues: [L('atlas/gaelic', 'Gaelic football & hurling', 'GAA')] }] },
 ];
+
+// Matches the bookmakers list that no feed above carries (The Odds API's free fixture lists, added by
+// scripts/pages.mjs): one catch-all league per sport, each match named by its real competition.
+for (const id of ['football', 'basketball', 'americanfootball', 'hockey', 'baseball', 'tennis', 'mma', 'boxing', 'rugby', 'aussierules', 'cricket', 'handball']) {
+  CATALOG.find((s) => s.id === id)?.groups.push({ name: 'Bookmaker listings', leagues: [L(`atlas/odds-${id}`, "Other competitions on the bookmakers' boards", 'Other competitions')] });
+}
 
 export const ALL_LEAGUES = CATALOG.flatMap((s) => s.groups.flatMap((g) => g.leagues.map((l) => ({ ...l, sport: s.id, group: g.name }))));
 export const sportById = (id) => CATALOG.find((s) => s.id === id);

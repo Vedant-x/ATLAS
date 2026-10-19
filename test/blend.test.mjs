@@ -29,3 +29,13 @@ test('where ATLAS beat the price the weight stays on ATLAS', () => {
   const cal = calibration(settled(100, { p: 0.8, odds: 1.6, rate: 0.8 }));
   assert.ok(cal['hockey:winner'].w > 0.95, `weight ${cal['hockey:winner'].w}`);
 });
+
+test('a prop shows one chance everywhere: the calibrated one, never calibrated twice', async () => {
+  const { shownProp, calibration, calibrated } = await import('../js/track.js');
+  const cal = calibration(Array.from({ length: 60 }, (_, i) => ({ type: 'banker', eventId: `p${i}`, market: 'Player points', pick: `P${i}`, sport: 'basketball', odds: 1.8, p: 0.6, status: i % 2 ? 'won' : 'lost' })));
+  const raw = { id: '1', p: 0.6, odds: 1.8 };
+  const once = shownProp(raw, 'Player points', cal, 'basketball');
+  assert.equal(once.p, calibrated(0.6, 'Player points', cal, 'basketball', 1.8));
+  assert.equal(once.pRaw, 0.6);
+  assert.deepEqual(shownProp(once, 'Player points', cal, 'basketball'), once, 'applying it again changes nothing');
+});

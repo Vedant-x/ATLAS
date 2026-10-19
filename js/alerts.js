@@ -3,7 +3,7 @@
 // starting pitcher, a player newly listed out, a big price move, kick-off soon, a goal or score
 // change. Shown in the page, and as system notifications (if allowed) when ATLAS is in the background.
 import { slip } from './slip.js';
-import { covers } from './livealerts.js';
+import { covers, quietNow, alertPrefs } from './livealerts.js';
 
 const WKEY = 'atlas-watch', SKEY = 'atlas-watch-state', MKEY = 'atlas-watch-meta';
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
@@ -66,7 +66,7 @@ export const requestNotify = () => {
   return 'Notification' in window ? Notification.requestPermission().catch(() => 'denied') : Promise.resolve('unsupported');
 };
 function systemNotify(title, opts) {
-  if (notifyPermission() !== 'granted') return;
+  if (notifyPermission() !== 'granted' || quietNow(alertPrefs.get())) return;
   if (app()) { app().show(title, opts.body || '', opts.tag || '', opts.data?.url || ''); return; }
   navigator.serviceWorker?.getRegistration().then((r) => (r ? r.showNotification(title, opts) : new Notification(title, opts))).catch(() => {});
 }

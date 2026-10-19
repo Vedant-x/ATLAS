@@ -13,14 +13,14 @@ test('prop readiness: ready, waiting, conflict, stale, limited', () => {
   assert.equal(propReadiness(e, x({ id: '7' }), { now }).state, 'conflict', 'a line offered on a player listed out');
   assert.equal(propReadiness({ ...e, fetchedAt: now - 90 * 6e4 }, x(), { now }).state, 'stale', 'an hour-old price');
   assert.equal(propReadiness(e, x(), { now, logsAt: now - 80 * 6e4 }).state, 'stale', 'old game logs');
-  assert.equal(propReadiness(e, x({ hist: { l20: [2, 4] } }), { now }).state, 'limited', 'thin history');
-  assert.equal(propReadiness({ ...e, injuryChecked: null, injuries: null }, x(), { now }).state, 'limited', 'no injury report');
+  assert.equal(propReadiness(e, x({ hist: { l20: [2, 4] } }), { now, logsAt: now - 6e4 }).state, 'limited', 'thin history');
+  assert.equal(propReadiness({ ...e, injuryChecked: null, injuries: null }, x(), { now, logsAt: now - 6e4 }).state, 'limited', 'no injury report');
   assert.equal(propReadiness(e, x({ adj: [{ name: 'Jamal Murray', status: 'Questionable', applied: false }] }), { now }).state, 'waiting', 'a key teammate questionable');
-  assert.equal(propReadiness({ ...e, sport: 'hockey' }, x(), { now }).state, 'limited', 'no goalie feed');
+  assert.equal(propReadiness({ ...e, sport: 'hockey' }, x(), { now, logsAt: now - 6e4 }).state, 'limited', 'no goalie feed');
 });
 
 test('analysis panel: forecast, break-even, return, range, sample, age, missing', () => {
-  const html = analysisPanel({ hits: 11, n: 20, avg: 26.1, forecast: 0.6, range: [0.5, 0.7], nEff: 11, priced: true, odds: 2, marketEst: 0.475, readiness: propReadiness(e, x(), { now }), priceAge: 5, logsAge: 10 });
+  const html = analysisPanel({ hits: 11, n: 20, avg: 26.1, forecast: 0.6, range: [0.5, 0.7], nEff: 11, priced: true, odds: 2, marketEst: 0.475, readiness: propReadiness(e, x(), { now, logsAt: now - 10 * 6e4 }), priceAge: 5, logsAge: 10 });
   assert.match(html, /Ready to assess/);
   assert.match(html, /50%/); // break-even at 2.00
   assert.match(html, /\+20\.0%/); // return 0.6 x 2 - 1
@@ -31,7 +31,7 @@ test('analysis panel: forecast, break-even, return, range, sample, age, missing'
 
 test('constraints: odds, days, exclusions, sport-only, positive only, counts', () => {
   const K = { leagueIn: (t) => (/\bnba\b/.test(t) ? 'basketball/nba' : null), sportIn: (t) => (/tennis/.test(t) ? 'tennis' : /baseball/.test(t) ? 'baseball' : null) };
-  const day0 = new Date(now); day0.setHours(0, 0, 0, 0);
+  const day0 = { getTime: () => Math.floor((now + 330 * 6e4) / 864e5) * 864e5 - 330 * 6e4 }; // midnight IST, the default zone
   assert.equal(parseConstraints('one bet with odds at least 1.80', K, now).minOdds, 1.8);
   assert.equal(parseConstraints('one bet with odds at least 1.80', K, now).n, 1);
   assert.equal(parseConstraints('best bets tomorrow', K, now).from, day0.getTime() + 864e5);
@@ -45,4 +45,20 @@ test('constraints: odds, days, exclusions, sport-only, positive only, counts', (
   assert.equal(c.minOdds, 1.5);
   assert.equal(c.n, 3);
   assert.equal(parseConstraints('under 2.5 goals bets', K, now).maxOdds, undefined, 'a goals line is not an odds limit');
+});
+
+test('prop readiness: a missing time is never passed as fresh', () => {
+  // The review's case: no price time, no game-log time, an injury check with no time, plenty of games.
+  const bare = { id: 'e', sport: 'basketball', injuryChecked: true, injuries: { home: [], away: [] } };
+  const r = propReadiness(bare, x(), { now });
+  assert.equal(r.state, 'unknown');
+  assert.equal(r.label, 'Freshness unknown');
+  assert.deepEqual(r.checks.filter((c) => c.flag === 'unknown').map((c) => c.key), ['price', 'logs', 'injuries']);
+  // An injury report read 13 hours ago is stale.
+  assert.equal(propReadiness({ ...e, injuryChecked: now - 13 * 36e5 }, x(), { now, logsAt: now - 6e4 }).state, 'stale');
+});
+
+test('a forecast above the market but below break-even says so in words', async () => {
+  const html = analysisPanel({ hits: 6, n: 10, forecast: 0.55, priced: true, odds: 1.7, marketEst: 0.53, readiness: null, priceAge: 5, logsAge: 10 });
+  assert.match(html, /forecast \+2 pts vs it, still below break-even/);
 });

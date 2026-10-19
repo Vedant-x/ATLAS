@@ -7,18 +7,18 @@ import { loadDetail, detailFor } from '../detail.js';
 import { CATALOG, ALL_LEAGUES, sportById } from '../catalog.js';
 import { prefs, prefEvents } from '../prefs.js';
 import { liveWin } from '../live.js';
-import { calibrated } from '../track.js';
+import { calibrated, shownProp, rankedBankers, bestBets, MAX_ODDS, recommendationFor } from '../track.js';
 import { bankers } from '../intel.js';
 import { trackCalibration } from '../trackview.js';
-import { researchRow, caseFor } from '../research.js';
+import { researchRow, caseFor, researchPrefs } from '../research.js';
 import { changesSince, lastVisit, needsReview, timelineUpdatedAt } from '../timeline.js';
 import { watch } from '../alerts.js';
-import { readiness } from '../readiness.js';
+import { readiness, priceTime } from '../readiness.js';
 import { playersData, playersMeta, loadPlayers, rowsOf, valueOf } from '../playerdata.js';
 import { analyseSlip } from '../slipcheck.js';
 import { slip } from '../slip.js';
 import { propReadiness } from '../propcheck.js';
-import { PROP_STATS } from '../props.js';
+import { PROP_STATS, propMarket } from '../props.js';
 
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const words = (s) => norm(s).split(/[^a-z0-9]+/).filter((w) => w.length >= 3);
@@ -124,18 +124,24 @@ export function createKnowledge(S) {
     return out;
   }
 
-  // mode: safe (highest win chance), value (model above the price), balanced (short-ish odds, high chance).
-  // The visitor's saved filters apply: minimum odds, and preferred sports when none is named.
+  // The same selection engine as the dashboard (track.js), so the assistant and the cards always
+  // agree: balanced = Best bets (the home shortlist's default), safe = Most likely (60%+), value =
+  // Best value (ATLAS above the price). Matches no bookmaker prices follow, at model fair odds,
+  // unless the visitor shows priced matches only. The visitor's saved filters apply: minimum odds,
+  // and preferred sports when none is named. Odds limits asked for are hard rules on every pick.
   function picks({ sport, league, today = false, mode = 'balanced', limit = 5, minOdds = prefs.get().minOdds, maxOdds, from, to, exclude, skip = [] } = {}) {
-    let list = filterEvents({ sport, league, today, from, to, exclude });
+    let list = filterEvents({ sport, league, today, from, to, exclude }).filter((e) => !e.live);
     if (!sport && !league) list = prefEvents(list);
-    let c = candidates(list);
-    if (prefs.get().pricedOnly) c = c.filter((x) => x.priced);
+    const cal = trackCalibration();
+    const lo = minOdds || 1;
+    const ranked = mode === 'value' ? rankedBankers(list, { cal, minOdds: lo, limit: 2000, mix: false, mode: 'value' })
+      : mode === 'safe' ? rankedBankers(list, { cal, min: 0.6, minOdds: lo, maxOdds: maxOdds ?? (lo > MAX_ODDS ? 50 : MAX_ODDS), limit: 2000, mix: false })
+        : bestBets(list, { cal, limit: 2000 });
+    let c = ranked.map((b) => ({ e: b.event, market: b.market, pick: b.pick, odds: b.odds, p: b.p, fair: b.fair, ev: b.p * b.odds - 1, priced: true, book: b.book || null, recommendationId: recommendationFor(b, cal).recommendationId,
+      ...(b.prop ? { prop: { ...b.prop, id: String(b.prop.id), league: b.event.leaguePath?.split('/')[1] } } : {}) }));
+    if (!prefs.get().pricedOnly && mode !== 'value') c = [...c, ...candidates(list).filter((x) => !x.priced && x.p >= (mode === 'safe' ? 0.6 : 0.55)).sort((a, b) => b.p - a.p)];
     if (minOdds) c = c.filter((x) => x.odds >= minOdds);
     if (maxOdds) c = c.filter((x) => x.odds <= maxOdds);
-    if (mode === 'safe') c = c.filter((x) => x.p >= 0.6).sort((a, b) => b.p - a.p || b.priced - a.priced);
-    else if (mode === 'value') c = c.filter((x) => x.priced && x.ev > 0 && x.odds <= 5).sort((a, b) => b.ev - a.ev);
-    else c = c.filter((x) => x.odds >= 1.3 && x.odds <= 2.6 && x.p >= 0.45).sort((a, b) => (b.priced - a.priced) || b.p - a.p);
     const seen = new Set(), out = [];
     const skipped = new Set(skip);
     for (const x of c) { if (seen.has(x.e.id) || skipped.has(pickId(x))) continue; seen.add(x.e.id); out.push(x); if (out.length >= limit) break; }
@@ -186,13 +192,13 @@ export function createKnowledge(S) {
   // Research: the case for one match (supports / against / unknown / would change the call), the
   // evidence readiness, and the change timeline. Same functions the pages use.
   const caseOf = (e) => { const x = researchRow(e); return { row: x, ...(caseFor(x) || { pro: [], con: [], unknown: [], invalid: [] }) }; };
-  const readinessOf = (e) => readiness(e, { priceAt: e.fetchedAt || S.fetchedAt });
+  const readinessOf = (e) => readiness(e, { priceAt: priceTime(e) });
   const changes = ({ since = lastVisit(), watchedOnly = false } = {}) => changesSince(since).filter((c) => !watchedOnly || watch.has(c.eventId));
   const reviewList = () => watch.ids().map((id) => S.events.find((e) => e.id === id)).filter(Boolean).map((e) => ({ e, changes: needsReview(e.id) })).filter((x) => x.changes.length);
-  const freshness = () => ({ pricesAt: S.fetchedAt || null, changesAt: timelineUpdatedAt() });
+  const freshness = () => ({ pricesAt: S.events?.reduce((t, e) => Math.max(t, priceTime(e) || 0), 0) || null, changesAt: timelineUpdatedAt() });
   // Slips, optionally limited to the events a question allows (sport, dates, exclusions) and a minimum
   // leg price; a filtered set is built fresh rather than read from the page's cache.
-  const slips = (target, today = true, { filter = null, key = '', minOdds = null } = {}) => S.slips(target, { count: 5, today: today && target < 100, filter, key, minOdds });
+  const slips = (target, today = true, { filter = null, key = '', minOdds = null, maxOdds = null, positiveOnly = false } = {}) => S.slips(target, { count: 5, today: today && target < 100, filter, key, minOdds, maxOdds, positiveOnly });
   const pickId = (x) => `${x.e.id}|${x.market}|${x.pick}`;
 
   // Player research for the assistant: a player named in the question, with every line he has and
@@ -206,9 +212,10 @@ export function createKnowledge(S) {
     const [key, p] = hit;
     const [league, id] = key.split('|');
     const lines = [];
+    const cal = trackCalibration(); // the same calibrated chance as the props pages, never the raw one
     for (const e of S.events) {
       if (e.leaguePath?.split('/')[1] !== league) continue;
-      for (const x of e.props || []) if (String(x.id) === id) lines.push({ e, x, r: propReadiness(e, x, { logsAt: playersMeta().updatedAt }) });
+      for (const raw of e.props || []) if (String(raw.id) === id) { const x = shownProp(raw, propMarket(raw), cal, e.sport); lines.push({ e, x, r: propReadiness(e, x, { logsAt: playersMeta().updatedAt }) }); }
     }
     const rows = rowsOf(p);
     return { key, name: p.n, team: p.t, sport: p.s, games: rows.length, logsAt: playersMeta().updatedAt, lines, injury: p.inj || null,
@@ -220,17 +227,17 @@ export function createKnowledge(S) {
   function sourcesFor(e) {
     const age = (t) => (t ? `${Math.max(0, Math.round((Date.now() - t) / 6e4))} min ago` : 'time unknown');
     const out = [];
-    if (e.markets?.length) out.push({ what: 'Prices', from: e.bookmaker || 'bookmaker feed', at: age(e.fetchedAt || S.fetchedAt) });
-    out.push({ what: 'Fixture and scores', from: e.source || 'league feed', at: age(e.fetchedAt || S.fetchedAt) });
-    if (e.props?.length) out.push({ what: 'Player props', from: 'DraftKings via ESPN', at: age(e.fetchedAt || S.fetchedAt) });
+    if (e.markets?.length) out.push({ what: 'Prices', from: e.bookmaker || 'bookmaker feed', at: age(priceTime(e)) });
+    out.push({ what: 'Fixture and scores', from: e.source || 'league feed', at: age(e.fetchedAt ?? null) });
+    if (e.props?.length) out.push({ what: 'Player props', from: 'DraftKings via ESPN', at: age(e.fetchedAt ?? null) });
     if (e.injuries || e.injuryChecked) out.push({ what: 'Injury report', from: 'ESPN', at: age(e.injuryChecked || e.injuries?.at) });
     if (e.absences) out.push({ what: 'Absences and lineups', from: e.absences.source || 'FotMob', at: age(e.absences.at) });
-    if ((e.probables || []).some((x) => x.report)) out.push({ what: 'Starting pitchers', from: 'MLB / NPB / KBO feeds', at: age(e.fetchedAt || S.fetchedAt) });
+    if ((e.probables || []).some((x) => x.report)) out.push({ what: 'Starting pitchers', from: 'MLB / NPB / KBO feeds', at: age((e.probables || []).find((x) => x.report)?.report?.fetchedAt ?? null) });
     if (playersMeta().updatedAt && e.props?.some((x) => x.hist)) out.push({ what: 'Player game logs', from: 'ESPN game logs', at: age(playersMeta().updatedAt) });
     return out;
   }
 
   const catalog = () => CATALOG.map((s) => ({ id: s.id, name: s.name, matches: S.events.filter((e) => e.sport === s.id).length }));
 
-  return { route, currentEvent, currentScope, eventById, sportIn, leagueIn, eventsIn, filterEvents, picks, pickId, candidates, matchSummary, injuriesOf, startersOf, slips, catalog, norm, caseOf, readinessOf, changes, reviewList, freshness, lastVisit, minOdds: () => prefs.get().minOdds, playerResearch, slipSummary, sourcesFor, SPORT_WORDS, LEAGUE_WORDS };
+  return { route, currentEvent, currentScope, eventById, sportIn, leagueIn, eventsIn, filterEvents, picks, pickId, candidates, matchSummary, injuriesOf, startersOf, slips, catalog, norm, caseOf, readinessOf, changes, reviewList, freshness, lastVisit, minOdds: () => prefs.get().minOdds, zone: () => (researchPrefs().potdZone === 'GMT' ? 'GMT' : 'IST'), playerResearch, slipSummary, sourcesFor, SPORT_WORDS, LEAGUE_WORDS };
 }

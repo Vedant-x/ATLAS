@@ -5,12 +5,16 @@ const KEY = 'atlas-prefs-v1';
 export const DEFAULT_PREFS = { minOdds: 1.3, sports: [], pricedOnly: false };
 const subs = new Set();
 let cur = { ...DEFAULT_PREFS };
+// No pick or slip leg below 1.20 (a minimum saved before that rule is raised to it).
+export const MIN_LEG_ODDS = 1.2;
 try { cur = { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { /* storage blocked: defaults */ }
+if (!(cur.minOdds >= MIN_LEG_ODDS)) cur.minOdds = Math.max(MIN_LEG_ODDS, Number(cur.minOdds) || DEFAULT_PREFS.minOdds);
 
 export const prefs = {
   get: () => cur,
   set(patch) {
     cur = { ...cur, ...patch };
+    if (!(cur.minOdds >= MIN_LEG_ODDS)) cur.minOdds = MIN_LEG_ODDS;
     try { localStorage.setItem(KEY, JSON.stringify(cur)); } catch { /* ignore */ }
     subs.forEach((f) => f(cur));
   },

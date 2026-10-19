@@ -79,7 +79,9 @@ function tennisInfo(ev, comp, grouping, homeC, awayC) {
   };
 }
 
-export function parseScoreboard(json, league) {
+// finished: optional list that receives every finished game seen (the build's results history,
+// js/results.js); the returned list still holds only live and upcoming games.
+export function parseScoreboard(json, league, finished = null) {
   const out = [];
   for (const raw of json.events || []) {
     for (const { ev, comp, grouping } of competitionsOf(raw)) {
@@ -91,7 +93,25 @@ export function parseScoreboard(json, league) {
       const home = name(homeC), away = name(awayC);
       if (home === 'TBD' && away === 'TBD') continue; // future bracket slot, nothing to analyse yet
       const state = (comp.status || ev.status)?.type?.state; // pre | in | post
-      if (state === 'post') continue;
+      if (state === 'post') {
+        if (finished && home !== 'TBD' && away !== 'TBD') {
+          const st = (comp.status || ev.status)?.type || {};
+          const winner = homeC.winner ? 'home' : awayC.winner ? 'away' : null;
+          const hs = Number(homeC.score), as = Number(awayC.score);
+          const void_ = /postpon|cancel|abandon|forfeit|suspend|walkover|retired/i.test(`${st.name} ${st.description} ${st.detail}`);
+          if (!void_ && (winner || (Number.isFinite(hs) && Number.isFinite(as)))) {
+            finished.push({
+              id: `${league.path}-${comp.id || ev.id}`.replace(/\//g, '_'), lg: league.path, sport: league.sport, t: Date.parse(comp.date || ev.date),
+              // The same ids upcoming matches carry (teamIds; for tennis the competitor id, as tennisInfo).
+              h: home, a: away, hid: String((league.sport === 'tennis' ? homeC.id : homeC.team?.id) || ''), aid: String((league.sport === 'tennis' ? awayC.id : awayC.team?.id) || ''),
+              hs: Number.isFinite(hs) ? hs : null, as: Number.isFinite(as) ? as : null,
+              w: winner || (hs > as ? 'home' : hs < as ? 'away' : 'draw'),
+              ...(league.sport === 'tennis' ? { tour: ev.name || '', draw: tennisInfo(ev, comp, grouping, homeC, awayC).draw } : {}),
+            });
+          }
+        }
+        continue;
+      }
       out.push({
         id: `${league.path}-${comp.id || ev.id}`.replace(/\//g, '_'),
         sport: league.sport,
@@ -115,6 +135,8 @@ export function parseScoreboard(json, league) {
         colors: { home: homeC.team?.color ? `#${homeC.team.color}` : null, away: awayC.team?.color ? `#${awayC.team.color}` : null },
         leaguePath: league.path, compId: String(comp.id || ev.id), eventId: String(ev.id), group: league.group,
         venue: comp.venue?.fullName || null,
+        // Where it is played, for the weather (Open-Meteo): city, state/region, country, and whether indoors.
+        place: comp.venue?.address?.city ? { city: comp.venue.address.city, region: comp.venue.address.state || null, country: comp.venue.address.country || null, indoor: comp.venue.indoor === true } : null,
         broadcast: comp.broadcast || (comp.broadcasts || []).flatMap((b) => b.names || []).join(', ') || null,
         note: comp.notes?.[0]?.headline || ev.season?.slug || null,
         records: { home: recs(homeC), away: recs(awayC) },
@@ -137,7 +159,7 @@ export const fetchErrors = [];
 // actually answered; a failed or throttled league is retried instead.
 export const leagueStatus = new Map();
 
-export async function fetchLeague(league, { days = 3, from = -1, extra = false, signal, live = false } = {}) {
+export async function fetchLeague(league, { days = 3, from = -1, extra = false, signal, live = false, finished = null } = {}) {
   // ESPN rejects multi-day ranges (HTTP 400 since Oct 2026; tennis aside), so ask one day at a time,
   // from `from` days (default: yesterday) through `days` ahead. The live loop only needs the current
   // scoreboard (games in play). `extra` is a best-effort look further ahead: it neither marks the
@@ -157,7 +179,7 @@ export async function fetchLeague(league, { days = 3, from = -1, extra = false, 
         const res = await fetch(u, { signal, headers });
         if (res.status === 403 || res.status === 429) { err = new Error(`HTTP ${res.status}`); await new Promise((r) => setTimeout(r, 1500 * (attempt + 1))); continue; }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return parseScoreboard(await res.json(), league);
+        return parseScoreboard(await res.json(), league, finished);
       } catch (e) { err = e; if (signal?.aborted) break; }
     }
     throw err;

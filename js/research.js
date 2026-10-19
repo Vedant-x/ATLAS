@@ -9,11 +9,13 @@ import { ico, kindIco, watchLabel, pinLabel } from './icons.js';
 import { esc, sportOf, ist, analysisFor } from './views.js';
 import { coherentBets } from './picks.js';
 import { trackCalibration } from './trackview.js';
-import { readiness, readyBadge } from './readiness.js';
+import { readiness, readyBadge, priceTime } from './readiness.js';
 import { changesFor, latestChange, needsReview, changesSince, lastVisit, timelineUpdatedAt } from './timeline.js';
 import { FORECAST_NOTE } from './changelog.js';
 import { ORDERS, orderByTime } from './engine.js';
 import { watch, notifyPermission } from './alerts.js';
+import { alertPrefs, ALERT_KINDS, QUIET_CHOICES } from './livealerts.js';
+import { pushState } from './pushalerts.js';
 import { pc, odd } from './charts.js';
 
 let S;
@@ -28,7 +30,7 @@ export function researchRow(e) {
   const a = analysisFor(e);
   const { lean, picks } = coherentBets(e, a, { cal: trackCalibration(), preferBook: true }); // a real price first, where one exists
   const main = picks.find((p) => p.book) || picks[0] || null;
-  const r = readiness(e, { priceAt: e.fetchedAt || S?.fetchedAt });
+  const r = readiness(e, { priceAt: priceTime(e) });
   return { e, a, lean, main, picks, r, change: latestChange(e.id), review: watch.has(e.id) ? needsReview(e.id) : [] };
 }
 
@@ -45,13 +47,15 @@ export const WINDOWS = [3, 6, 12, 24, 48];
 export const windowChips = (key, cur) => `<div class="win-chips" role="group" aria-label="Time window"><span>Starting in</span>${WINDOWS.map((h) => `<button class="chip ${cur === h ? 'on' : ''}" data-${key}="${h}" aria-pressed="${cur === h}">${h}h</button>`).join('')}</div>`;
 
 // ---------- what changed ----------
-export function changesPanel(events, { limit = 8, title = 'What changed' } = {}) {
+export function changesPanel(events, { limit = 8, title = 'What changed', hideEmpty = false } = {}) {
   const ids = new Set(events.map((e) => e.id));
   const since = lastVisit();
   const all = changesSince(null).filter((c) => ids.has(c.eventId) && c.start > Date.now() - 36e5);
   const fresh = since ? all.filter((c) => c.at > since) : all;
   const watched = all.filter((c) => watch.has(c.eventId) && needsReview(c.eventId).length);
   const list = [...new Map([...watched, ...fresh].map((c) => [c.id, c])).values()].slice(0, limit);
+  // Nothing recorded yet (first load, or the timeline has not arrived): an empty panel says nothing.
+  if (hideEmpty && !list.length && !timelineUpdatedAt()) return '';
   return `<div class="changes panel reveal"><h2 class="ph">${title} <small>${since ? `since your last visit (${ago(since)} ago)` : 'last 48 hours'}${timelineUpdatedAt() ? ` · checked ${ago(timelineUpdatedAt())} ago` : ''}</small></h2>
     ${list.length ? `<ul class="ch-list">${list.map(changeItem).join('')}</ul>` : `<p class="muted">${timelineUpdatedAt() ? 'No material changes (starters, lineups, absences, price moves) since you last looked.' : 'The change timeline starts with the next data update.'}</p>`}
   </div>`;
@@ -194,8 +198,17 @@ export function alertPanel() {
       : perm === 'unsupported' ? '<span class="al-off">This browser can\'t show notifications here (on iPhone, add ATLAS to your Home Screen first)</span>'
         : '<button class="btn-ghost" data-notify-on>Turn on notifications</button>';
   return `<div class="panel alerts-panel reveal"><h3 class="ph">Live alerts <small>for matches you watch or have in your slip</small></h3>
-    <div class="al-row">${state}</div></div>`;
+    <div class="al-row">${state}</div>${alertChips(alertPrefs.get(), '', 'For every match')}
+    <div class="al-row">${(() => { const ps = pushState(); return ps === 'on' ? '<span class="al-on">Alerts while ATLAS is closed: on</span> <button class="btn-ghost" data-push="off">Turn off</button>'
+      : ps === 'off' ? '<button class="btn-ghost" data-push="on">Alerts while ATLAS is closed</button><small> starters, lineups, absences, price and time changes for your saved matches</small>'
+        : ps === 'unsupported' ? '<span class="al-off">This browser can\'t receive alerts while ATLAS is closed</span>'
+          : '<span class="al-off">Alerts while ATLAS is closed need the alerts server (not set up yet); until then alerts come while the site is open</span>'; })()}</div>
+    <div class="al-kinds" role="group" aria-label="Quiet hours"><span>Quiet hours</span>${QUIET_CHOICES.map((q) => { const on = JSON.stringify(alertPrefs.get().quiet ?? null) === JSON.stringify(q); return `<button class="chip ${on ? 'on' : ''}" data-quiet="${q ? q.join('-') : 'off'}" aria-pressed="${on}">${q ? `${String(q[0]).padStart(2, '0')}:00–${String(q[1]).padStart(2, '0')}:00` : 'Off'}</button>`; }).join('')}</div></div>`;
 }
+// Which moments to announce, for every match or one ("goals" in soccer, "scores" elsewhere).
+const KIND_LABEL = (k, sport) => ({ scores: sport === 'football' ? 'Goals' : 'Scores', cards: 'Cards', periods: 'Breaks', final: 'Full time' }[k]);
+const alertChips = (p, id, label, sport) => `<div class="al-kinds" role="group" aria-label="${esc(label)}"><span>${esc(label)}</span>${ALERT_KINDS.filter((k) => k !== 'cards' || !sport || sport === 'football')
+  .map((k) => `<button class="chip ${p[k] ? 'on' : ''}" data-alert-kind="${k}"${id ? ` data-alert-match="${esc(id)}"` : ''} aria-pressed="${Boolean(p[k])}">${KIND_LABEL(k, sport)}</button>`).join('')}</div>`;
 // A watched match that has ended: kept with its result until cleared.
 const doneRow = (id, m) => `<div class="row wl done reveal">
         <span class="ico">${sportOf(m.sport).icon}</span>
@@ -216,7 +229,8 @@ export function watchlistView() {
         <span class="ico">${sportOf(x.e.sport).icon}</span>
         <div class="teams"><b>${esc(x.e.home)} v ${esc(x.e.away)}</b><small>${esc(x.e.league)} · ${x.e.live ? `<span class="live">LIVE ${esc(x.e.score || '')}</span>` : esc(ist(x.e.start))}</small>
           ${x.review.length ? `<small class="nr">⚠ Needs review: ${esc(x.review[0].text)}${x.review.length > 1 ? ` (+${x.review.length - 1} more)` : ''}</small>` : ''}</div>
-        <div class="odds">${x.main ? `<span class="stat"><small>${esc(x.main.pick)}</small>${pc(x.main.q, 0)}</span>` : ''}${readyBadge(x.r)}</div></a>`).join('')}</div>` : !doneIds.length ? '<p class="muted reveal">No saved matches. Use Watch on any match or in the research table.</p>' : ''}
+        <div class="odds">${x.main ? `<span class="stat"><small>${esc(x.main.pick)}</small>${pc(x.main.q, 0)}</span>` : ''}${readyBadge(x.r)}</div></a>
+        ${alertChips(alertPrefs.forMatch(x.e.id), x.e.id, alertPrefs.hasOwn(x.e.id) ? 'Alerts (this match)' : 'Alerts', x.e.sport)}`).join('')}</div>` : !doneIds.length ? '<p class="muted reveal">No saved matches. Use Watch on any match or in the research table.</p>' : ''}
       ${doneIds.length ? `<div class="wl-done-head reveal"><h3 class="ph">Finished</h3><button class="btn-ghost" data-clear-finished>Clear finished (${doneIds.length})</button></div>
       ${done.length ? `<div class="list">${done.map((id) => doneRow(id, watch.meta(id))).join('')}</div>` : ''}` : ''}
       ${changesPanel(list, { title: 'Changes to your matches', limit: 20 })}`,

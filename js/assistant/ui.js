@@ -168,7 +168,7 @@ export function mountAssistant(S) {
     const gone = !now && (c.e || K.eventById(base.eventId))?.start < Date.now();
     const leg = now ? { ...base, odds: now.odds, p: now.p, ...(now.prop ? { prop: now.prop } : {}) } : base;
     legIndex.set(leg.key, leg);
-    return `<div class="ai-card pick"><div><b>${esc(leg.pick)}</b><small>${esc(leg.market)} · <a href="#/match/${esc(leg.eventId)}">${esc(leg.match)}</a>${moved ? ` · <span class="warn">price now ${Number(now.odds).toFixed(2)}, was ${Number(base.odds).toFixed(2)}</span>` : ''}${gone ? ' · <span class="warn">started: price no longer valid</span>' : ''}</small></div>
+    return `<div class="ai-card pick"${c.recommendationId && !moved ? ` data-rec="${esc(c.recommendationId)}"` : ''}><div><b>${esc(leg.pick)}</b><small>${esc(leg.market)} · <a href="#/match/${esc(leg.eventId)}">${esc(leg.match)}</a>${moved ? ` · <span class="warn">price now ${Number(now.odds).toFixed(2)}, was ${Number(base.odds).toFixed(2)}</span>` : ''}${gone ? ' · <span class="warn">started: price no longer valid</span>' : ''}</small></div>
       <span class="ai-odds">${Number(leg.odds).toFixed(2)}<small>${pc(leg.p)}</small></span>
       ${gone ? '' : `<button class="leg ${slip.has(leg.key) ? 'on' : ''}" data-leg="${esc(leg.key)}" aria-label="Add to slip">+</button>`}</div>`;
   };

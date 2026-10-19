@@ -8,7 +8,7 @@
 // "Nothing qualifies" is a valid answer. The conversation keeps a structured memory (the last list of
 // picks, the pick or match in focus, the constraints in force), so "the second one", "what about
 // tomorrow?" and "explain the risk" work.
-import { parseConstraints, constraintChips, passes } from './constraints.js';
+import { parseConstraints, constraintChips, slipRequest, slipsOk, legOk } from './constraints.js';
 const pc = (p) => `${(p * 100).toFixed(p < 0.1 ? 1 : 0)}%`;
 const od = (o) => (Number.isFinite(o) ? o.toFixed(2) : '—');
 const NUM = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, few: 4, couple: 2, some: 4 };
@@ -21,7 +21,7 @@ export function createBrain(K) {
     const w = Object.keys(NUM).find((k) => new RegExp(`\\b${k}\\b`).test(q));
     return w ? NUM[w] : d;
   };
-  const pickCard = (x) => ({ type: 'pick', e: x.e, market: x.market, pick: x.pick, odds: x.odds, p: x.p, ev: x.ev, priced: x.priced, ...(x.prop ? { prop: x.prop } : {}), at: Date.now() });
+  const pickCard = (x) => ({ type: 'pick', e: x.e, market: x.market, pick: x.pick, odds: x.odds, p: x.p, ev: x.ev, priced: x.priced, ...(x.prop ? { prop: x.prop } : {}), ...(x.recommendationId ? { recommendationId: x.recommendationId } : {}), at: Date.now() });
   // Structured memory of this conversation.
   const mem = { list: [], focus: null, constraints: null, event: null };
   const remember = (list, c) => { mem.list = list; mem.constraints = c; mem.focus = list[0] || null; mem.event = list[0]?.e || mem.event; };
@@ -88,7 +88,19 @@ export function createBrain(K) {
     return { text: `**Starting pitchers: ${e.home} vs ${e.away}**\n\n${st.map((s) => `- ${line(s)}`).join('\n')}${edge}`, cards: [{ type: 'match', e }] };
   }
 
-  function matchView(e) {
+  // Is a remembered pick still on offer at the price it was given at? Re-read from the live board so a
+  // follow-up never builds on a price that moved or vanished without saying so.
+  function priceNow(x) {
+    if (!x.priced || !K.candidates) return null;
+    const e = K.eventById?.(x.e.id) || x.e;
+    if (e.live || !(e.start > Date.now())) return { gone: true, why: 'the match has started' };
+    const cur = K.candidates([e]).find((y) => K.pickId(y) === K.pickId(x));
+    if (!cur) return { gone: true, why: 'the price is no longer offered' };
+    return Math.abs(cur.odds - x.odds) >= 0.01 ? { moved: true, odds: cur.odds, p: cur.p } : null;
+  }
+  const priceNote = (x) => { const n = priceNow(x); return !n ? '' : n.gone ? `Note: **${x.pick}** can't be taken as given: ${n.why}.\n\n` : `Note: **${x.pick}** is now **${od(n.odds)}** (it was ${od(x.odds)} when I gave it).\n\n`; };
+
+  function matchView(e, { keep = false } = {}) {
     const s = K.matchSummary(e);
     const w = s.winProbability;
     const fav = w.home >= w.away ? e.home : e.away;
@@ -101,7 +113,8 @@ export function createBrain(K) {
       s.starters?.length === 2 && s.starters[0].season && s.starters[1].season ? `Starters: ${s.starters[0].name} (${s.starters[0].season.era} ERA) vs ${s.starters[1].name} (${s.starters[1].season.era} ERA).` : '',
     ].filter(Boolean);
     const cards = rec.map((x) => ({ type: 'pick', e, market: x.market, pick: x.pick, odds: x.odds, p: x.probability, ev: x.edge, priced: x.priced, at: Date.now() }));
-    if (rec.length) remember(rec.map((x) => ({ e, market: x.market, pick: x.pick, odds: x.odds, p: x.probability, ev: x.priced ? x.edge : 0, priced: x.priced })), mem.constraints);
+    // Asked about one pick of an earlier list ("the second one"): that list stays the one remembered.
+    if (rec.length && !keep) remember(rec.map((x) => ({ e, market: x.market, pick: x.pick, odds: x.odds, p: x.probability, ev: x.priced ? x.edge : 0, priced: x.priced })), mem.constraints);
     mem.event = e;
     return { text: lines.join('\n'), cards: [{ type: 'match', e }, ...cards], followups: rec.length ? FOLLOW_PICK : [], sources: K.sourcesFor?.(e) || [] };
   }
@@ -125,6 +138,7 @@ export function createBrain(K) {
       list = K.picks({ ...base, today: true }); window = 'the next 12 hours';
       if (!list.length) { list = K.picks({ ...base, today: false }); window = 'the next few days'; }
     }
+    list = list.filter((x) => legOk(c, x)); // every chip shown is a rule applied
     const chips = chipsOf(c);
     if (!list.length) {
       const why = mode === 'value' ? 'No pick has a positive estimated return (forecast x odds above 1)' : 'No pick passes these filters';
@@ -157,9 +171,8 @@ export function createBrain(K) {
     const c = parseConstraints(q, K);
     const t = c.target || (/mega|long ?shot/.test(q) ? 100 : 3);
     const mega = t >= 100;
-    const filtered = c.sport || c.league || c.from || c.exclude.sports.length || c.exclude.leagues.length;
-    const key = filtered ? JSON.stringify([c.sport, c.league, c.from, c.to, c.exclude]) : '';
-    const list = K.slips(t, !mega && !c.from, filtered ? { filter: (e) => passes(c, e), key, minOdds: c.minOdds } : { minOdds: c.minOdds });
+    // One request for every rule shown in the chips; the result is checked against them again.
+    const list = slipsOk(c, K.slips(t, !mega && !c.from, slipRequest(c)));
     const chips = chipsOf({ ...c, target: t });
     if (!list.length) return { text: `**No ${t}x slip can be built** ${chips.length > 1 ? `with ${chips.filter((x) => x !== `${t}x`).join(' · ')}` : 'from the current picks'}: not enough qualifying legs. I won't loosen the filters on my own; try a smaller multiplier or a wider window.`, chips };
     const s = list[0];
@@ -181,7 +194,7 @@ export function createBrain(K) {
   function explainRisk(x) {
     const cs = K.caseOf(x.e), r = K.readinessOf(x.e);
     const margin = x.p - 1 / x.odds;
-    return { text: `**Risk: ${x.pick}** (${x.e.home} vs ${x.e.away})\n\n- Loses about **${pc(1 - x.p)}** of the time on ATLAS's estimate.\n- Margin over break-even: ${margin >= 0 ? '+' : ''}${(margin * 100).toFixed(1)} pts (${pc(x.p)} vs ${pc(1 / x.odds)} needed at ${od(x.odds)}).\n${cs.con.length ? cs.con.slice(0, 3).map((t) => `- Against: ${t}`).join('\n') : '- No specific case against it in the data.'}\n- Evidence: ${r.label}${r.missing.length || r.uncovered.length ? `; unknown: ${[...r.missing, ...r.uncovered].join(', ').toLowerCase()}` : ''}.`, cards: [pickCard(x)], followups: ['Compare alternatives', 'What would change this?'] };
+    return { text: `${priceNote(x)}**Risk: ${x.pick}** (${x.e.home} vs ${x.e.away})\n\n- Loses about **${pc(1 - x.p)}** of the time on ATLAS's estimate.\n- Margin over break-even: ${margin >= 0 ? '+' : ''}${(margin * 100).toFixed(1)} pts (${pc(x.p)} vs ${pc(1 / x.odds)} needed at ${od(x.odds)}).\n${cs.con.length ? cs.con.slice(0, 3).map((t) => `- Against: ${t}`).join('\n') : '- No specific case against it in the data.'}\n- Evidence: ${r.label}${r.missing.length || r.uncovered.length ? `; unknown: ${[...r.missing, ...r.uncovered].join(', ').toLowerCase()}` : ''}.`, cards: [pickCard(x)], followups: ['Compare alternatives', 'What would change this?'] };
   }
   function changeThis(x) {
     const cs = K.caseOf(x.e), r = K.readinessOf(x.e);
@@ -261,11 +274,27 @@ export function createBrain(K) {
     if (/compare|alternative|other options|instead/.test(q) && focus) { mem.focus = focus; return alternatives(focus); }
     if (/what would change|change (this|the call|your mind)|invalidat/.test(q) && focus) { mem.focus = focus; return changeThis(focus); }
     if (/player history|show (his|player)|game log/.test(q) && focus) { mem.focus = focus; return playerHistory(focus); }
-    if (/weakest leg|which leg/.test(q) && mem.list.length) { const w = mem.list.reduce((a, x) => (!a || x.p < a.p ? x : a), null); mem.focus = w; return { ...explainRisk(w), text: `**Weakest leg: ${w.pick}** (${pc(w.p)})\n\n${explainRisk(w).text.split('\n').slice(2).join('\n')}` }; }
-    if (ref && /^(the |what about |and |tell me about |why |explain )?(the )?(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|last|#\s?\d|number \d|pick \d|bet \d|leg \d)/.test(q)) { mem.focus = ref; return { ...matchView(ref.e), followups: followupsFor(ref) }; }
+    if (/weakest leg|which leg/.test(q) && !/\b(remove|drop|take out|cut)\b/.test(q) && mem.list.length) { const w = mem.list.reduce((a, x) => (!a || x.p < a.p ? x : a), null); mem.focus = w; return { ...explainRisk(w), text: `**Weakest leg: ${w.pick}** (${pc(w.p)})\n\n${explainRisk(w).text.split('\n').slice(2).join('\n')}` }; }
+    // Remove a leg (the weakest, or one by number) from the list or slip just given: the rest kept as is.
+    if (/\b(remove|drop|take out|without|cut)\b.*\b(leg|pick|bet|one)\b/.test(q) && mem.list.length > 1) {
+      const out = /weakest|worst|riskiest/.test(q) ? mem.list.reduce((a, x) => (!a || x.p < a.p ? x : a), null) : ref;
+      if (out) {
+        const rest = mem.list.filter((x) => x !== out);
+        remember(rest, mem.constraints);
+        const odds = rest.reduce((a, x) => a * x.odds, 1), p = rest.reduce((a, x) => a * x.p, 1);
+        return { text: `${rest.map(priceNote).join('')}Removed **${out.pick}** (${pc(out.p)}). **${rest.length} left at ${od(odds)}x**, ${pc(p)} if the legs are unrelated:\n\n${rest.map((x, i) => `${i + 1}. **${x.pick}** · ${x.market} · ${x.e.home} vs ${x.e.away} @ ${od(x.odds)} (${pc(x.p)})`).join('\n')}`,
+          cards: rest.map(pickCard), chips: mem.constraints ? chipsOf(mem.constraints) : [], followups: ['Which leg is weakest?', 'Explain the risk'] };
+      }
+    }
+    if (ref && /^(the |what about |and |tell me about |why |explain )?(the )?(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|last|#\s?\d|number \d|pick \d|bet \d|leg \d)/.test(q)) {
+      mem.focus = ref;
+      const v = matchView(ref.e, { keep: true });
+      const i = mem.list.indexOf(ref) + 1;
+      return { ...v, text: `${priceNote(ref)}**#${i}: ${ref.pick}** · ${ref.market} @ ${od(ref.odds)} · ATLAS ${pc(ref.p)}\n\n${v.text}`, followups: followupsFor(ref) };
+    }
     if (/^(more|another|others|more like (these|this)|next ones?)\b/.test(q) && mem.constraints) return bets(q, { carry: mem.constraints, more: true });
     if (/^best bets anyway$/.test(q)) return bets('best bets', { carry: { ...(mem.constraints || {}), positiveOnly: false, mode: 'balanced' } });
-    if (/^(what about|how about|and|same for|same but)\b/.test(q) && mem.constraints) return bets(q, { carry: mem.constraints });
+    if (/^(what about|how about|and|same for|same but|same (filters|rules|settings|constraints|again))\b/.test(q) && mem.constraints) return bets(q, { carry: mem.constraints });
     if (/what.?s? changed|what changed|changes|anything new|since (yesterday|last)/.test(q)) return changed(q);
     if (/need(s)? review|review my|my saved|my watch/.test(q)) return review();
     if (/confirmed (line ?ups?|xi)|line ?ups? (are )?confirmed/.test(q)) return confirmedLineups();

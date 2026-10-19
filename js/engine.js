@@ -1,12 +1,16 @@
 // Probability + slip-building engine.
 // Odds are decimal. "Fair" probability = bookmaker implied probability with the margin (vig) removed.
 
+// The fair (margin-free) chance of each outcome. Where the market carries a consensus chance from
+// many bookmakers (oddsapi.js: Pinnacle's, or the median's, margin removed), that is the fair
+// chance, and the odds are the best price on offer; otherwise the market's own prices, margin removed.
 export function devig(market) {
   const inv = market.outcomes.map((o) => 1 / o.odds);
   const book = inv.reduce((a, b) => a + b, 0);
+  const cons = market.outcomes.every((o) => Number.isFinite(o.cons) && o.cons > 0);
   return {
     margin: book - 1,
-    outcomes: market.outcomes.map((o, i) => ({ ...o, fair: inv[i] / book })),
+    outcomes: market.outcomes.map((o, i) => ({ ...o, fair: cons ? o.cons : inv[i] / book })),
   };
 }
 

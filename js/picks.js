@@ -87,12 +87,12 @@ const propLegs = (events) => events.filter((e) => !e.live).flatMap((e) => (e.pro
   eventId: e.id, sport: e.sport, start: e.start, match: `${e.home} vs ${e.away}`, market: propMarket(pr), pick: propLabel(pr),
   odds: pr.odds, p: pr.p, margin: 0.05, ev: pr.p * pr.odds - 1, prop: { id: String(pr.id), league: e.leaguePath?.split('/')[1], type: pr.type, target: pr.target },
 })));
-export function legPool(events, { minP = 0.55, minOdds = 1.04, maxOdds = 1.6, cal = null } = {}) {
+export function legPool(events, { minP = 0.55, minOdds = 1.04, maxOdds = 1.6, cal = null, positiveOnly = false } = {}) {
   const best = new Map();
   for (const l of [...allLegs(events.filter((e) => e.markets?.length && !e.live)), ...propLegs(events)]) {
     const p = calibrated(l.p, l.market, cal, l.sport, l.derived ? null : l.odds);
     // A banker is a clear favourite at a fair-ish price: short odds and an estimate close to the price.
-    if (l.cushion || l.odds < minOdds || l.odds > maxOdds || p < minP || p * l.odds < 0.93 || blockedSegment(cal, l.sport, l.market)) continue;
+    if (l.cushion || l.odds < minOdds || l.odds > maxOdds || p < minP || p * l.odds < (positiveOnly ? 1.000001 : 0.93) || blockedSegment(cal, l.sport, l.market)) continue;
     const leg = { ...l, pRaw: l.p, p };
     const cur = best.get(l.eventId);
     if (!cur || ratio(leg) < ratio(cur)) best.set(l.eventId, leg);
@@ -101,7 +101,9 @@ export function legPool(events, { minP = 0.55, minOdds = 1.04, maxOdds = 1.6, ca
 }
 
 // Up to `count` slips near `target` built from the pool, each using its own legs where possible.
-export function bankerSlips(events, target, { count = 5, tolerance = 0.1, cal = null, minOdds = 1.2 } = {}) {
+// minOdds / maxOdds (per leg) and positiveOnly are the viewer's or the question's hard rules: the
+// fallbacks below widen the search but never past them.
+export function bankerSlips(events, target, { count = 5, tolerance = 0.1, cal = null, minOdds = 1.2, maxOdds = null, positiveOnly = false } = {}) {
   // Fewer, longer legs: every leg pays the bookmaker's margin again, so for the same total odds two
   // legs at 1.73 keep more of the true chance than four at 1.32. The longest leg allowed grows with
   // the target (about its square root, so a slip has two legs or more), and legs are ranked by
@@ -109,16 +111,22 @@ export function bankerSlips(events, target, { count = 5, tolerance = 0.1, cal = 
   // margin. The chance floor follows the price (a 2.2 leg can't be a 70% leg). If the board is thin,
   // a slightly wider band.
   const cap = Math.min(2.6, Math.max(1.5, Math.sqrt(target) * 1.1));
-  for (const [minP, maxOdds, tol] of [[0.4, cap, tolerance], [0.4, cap, Math.max(tolerance, 0.15)], [0.35, Math.max(cap, 2.2), 0.2]]) {
+  // Three searches, the strict one first. A slip from a wider search says so (slip.search), with the
+  // band it used, so the page can show it: the rules are widened in the open, never quietly.
+  const passes = [[0.4, cap, tolerance], [0.4, cap, Math.max(tolerance, 0.15)], [0.35, Math.max(cap, 2.2), 0.2]];
+  for (const [pass, [minP, bandMax, tol]] of passes.entries()) {
     // The user's minimum odds per leg is a hard rule: never relaxed by the fallbacks.
     const lo = Math.max(1.04, minOdds);
-    const pool = legPool(events, { minP, maxOdds: Math.max(maxOdds, lo + 0.15), cal, minOdds: lo });
+    const hi = Math.min(Math.max(bandMax, lo + 0.15), maxOdds ?? Infinity);
+    if (hi < lo) return [];
+    const pool = legPool(events, { minP, maxOdds: hi, cal, minOdds: lo, positiveOnly });
     // Mixed bet types first (no market family over half the legs); one type only if that is all
     // the board allows.
+    const search = { pass, wider: pass > 0, minP, maxLegOdds: +hi.toFixed(2), tolerance: tol };
     const out = buildFrom(pool, target, count, tol, true);
-    if (out.length) return out;
+    if (out.length) return out.map((x) => ({ ...x, search }));
     const any = buildFrom(pool, target, count, tol, false);
-    if (any.length) return any;
+    if (any.length) return any.map((x) => ({ ...x, search: { ...search, oneType: true } }));
   }
   return [];
 }

@@ -4,9 +4,9 @@
 // are remembered per device. The same row is used on match pages.
 import { esc, legButton, ist } from './views.js';
 import { pc, odd } from './charts.js';
-import { propLabel, propMarket, propOver, propLadder } from './props.js';
-import { playersData, rowsOf, loadPlayers } from './playerdata.js';
-import { calibrated } from './track.js';
+import { propLabel, propMarket, propLadder } from './props.js';
+import { playersData, playersMeta, rowsOf, loadPlayers } from './playerdata.js';
+import { shownProp } from './track.js';
 import { trackCalibration, trackStats, recordLine, ensureTrack } from './trackview.js';
 import { split } from './ui.js';
 import { playerPanel } from './playerview.js';
@@ -52,7 +52,7 @@ function otherLines(e, x) {
   if (x.yes) return '';
   const league = e.leaguePath?.split('/')[1];
   const p = playersData()?.[`${league}|${x.id}`];
-  if (!p) return playersData() ? '' : '<p class="muted pp2-lines-wait">Other lines appear once the game logs load.</p>';
+  if (!p) return '';
   const rows = rowsOf(p), home = x.side ? x.side === 'home' : null;
   const opts = { home, scale: x.adj?.find((a) => a.applied)?.scale ?? 1, without: x.adj?.find((a) => a.applied)?.without ?? null };
   const mkt = x.pm ?? 1 / x.odds;
@@ -101,24 +101,33 @@ export function propRow(e, x, { withMatch = false, sel = '' } = {}) {
   const gap = x.p - mkt;
   const ret = x.p * x.odds - 1;
   const where = x.side ? `${x.side === 'home' ? 'vs' : '@'} ${opp}` : `${e.home} v ${e.away}`;
-  const rates = h ? [hr('L5', h.l5), hr('L10', h.l10), hr('L20', h.l20), h.season ? hr('Season', h.season, 'this season\'s games among the last 20 stored') : '', h.vs ? hr(`vs ${opp.split(' ').at(-1)}`, h.vs) : '', h.venue ? hr(h.home ? 'Home' : 'Away', h.venue) : ''].join('') : '<span class="muted">No recent games on record: the price alone</span>';
+  const rates = h ? [hr('L5', h.l5), hr('L10', h.l10), hr('L20', h.l20), h.season ? hr('Season', h.season, 'this season\'s games among the last 20 stored') : '', h.vs ? hr(`vs ${opp.split(' ').at(-1)}`, h.vs) : '', h.venue ? hr(h.home ? 'Home' : 'Away', h.venue) : ''].join('') : '';
+  // Only what helps decide: a warning badge (stale price, conflicting reports), never "limited coverage".
+  const rd = propReadiness(e, x, { logsAt: playersMeta().updatedAt });
   return `<div class="pp2${sel && sel === pkey ? ' sel' : ''}">
-    <div class="pp2-head"><div><b>${esc(propLabel(x))}</b>${propOver(x) ? ` <span class="pp2-over">${esc(propOver(x))}</span>` : ''}<small>${x.hist ? `<a class="pp2-who" href="#/props/${esc(`${league}~${x.id}~${encodeURIComponent(x.type)}~${x.target}`)}">Research ›</a> ` : ''}${esc(team)} · ${esc(where)}${withMatch ? ` · <a href="#/match/${encodeURIComponent(e.id)}">${esc(ist(e.start).replace(/ IST$/, ''))}</a>` : ''}</small></div>${legButton(leg, odd(x.odds))}</div>
-    <div class="pp2-num">${readinessBadge(propReadiness(e, x))}<span class="pp2-p" title="ATLAS forecast for this game"><i>ATLAS</i> ${pc(x.p, 0)}</span><span class="muted" title="Break-even: the chance this price needs to pay off">break-even ${pc(1 / x.odds, 0)}</span><span class="${ret >= 0 ? 'pos' : 'neg'}" title="Estimated return at this price: forecast x odds - 1">return ${ret >= 0 ? '+' : '−'}${Math.abs(ret * 100).toFixed(0)}%</span><span class="muted" title="${MARGIN_NOTE}">vs market est. ${gap >= 0 ? '+' : '−'}${Math.abs(gap * 100).toFixed(0)} pts</span>${h ? `<span class="muted">avg ${h.avg}</span>` : ''}${x.why ? `<span class="pp2-why" title="ATLAS before this: ${pc(x.pBase, 0)}">${esc(x.why)}</span>` : ''}</div>
-    <div class="pp2-hist"><div class="pp2-rates">${rates}</div>${h ? propBars(h, x.target) : ''}</div>
+    <div class="pp2-head"><div><b>${esc(propLabel(x))}</b><small>${x.hist ? `<a class="pp2-who" href="#/props/${esc(`${league}~${x.id}~${encodeURIComponent(x.type)}~${x.target}`)}">Research ›</a> ` : ''}${esc(team)} · ${esc(where)}${withMatch ? ` · <a href="#/match/${encodeURIComponent(e.id)}">${esc(ist(e.start).replace(/ IST$/, ''))}</a>` : ''}</small></div>${legButton(leg, odd(x.odds))}</div>
+    <div class="pp2-num">${['stale', 'conflict'].includes(rd.state) ? readinessBadge(rd) : ''}<span class="pp2-p" title="ATLAS forecast for this game"><i>ATLAS</i> ${pc(x.p, 0)}</span><span class="muted" title="Break-even: the chance this price needs to pay off">needs ${pc(1 / x.odds, 0)}</span><span class="${ret >= 0 ? 'pos' : 'neg'}" title="Estimated return at this price: forecast x odds - 1. ${esc(edgeWords(gap, ret))}. ${MARGIN_NOTE}">return ${ret >= 0 ? '+' : '−'}${Math.abs(ret * 100).toFixed(0)}%</span>${h ? `<span class="muted">avg ${h.avg}</span>` : ''}${x.why ? `<span class="pp2-why" title="ATLAS before this: ${pc(x.pBase, 0)}">${esc(x.why)}</span>` : ''}</div>
+    ${h ? `<div class="pp2-hist"><div class="pp2-rates">${rates}</div>${propBars(h, x.target)}</div>` : ''}
     ${otherLines(e, x)}
   </div>`;
 }
 
 // Every prop in the next 36 hours, with the calibrated chance the rest of the site shows.
+// The forecast against the market's estimate and against break-even, in words, so a positive gap
+// next to a negative return reads as what it is rather than a contradiction.
+export const edgeWords = (gap, ret) => (gap > 0 && ret < 0 ? `above the market estimate (+${Math.round(gap * 100)} pts), still below break-even at this price`
+  : gap > 0 ? `above the market estimate (+${Math.round(gap * 100)} pts) and above break-even`
+    : `${Math.abs(Math.round(gap * 100))} pts below the market estimate`);
+
 export function allProps(events, now = Date.now(), { any = false } = {}) {
   const cal = trackCalibration();
   const out = [];
   for (const e of events) {
     if (!e.props?.length || (!any && (e.live || !(e.start > now)))) continue;
     for (const x of e.props) {
-      if (!(x.odds >= 1.2)) continue;
-      out.push({ e, x: { ...x, p: calibrated(x.p, propMarket(x), cal, e.sport, x.odds) } });
+      // No game history: ATLAS would only repeat the bookmaker's price, so the prop is left out.
+      if (!(x.odds >= 1.2) || !x.hist) continue;
+      out.push({ e, x: shownProp(x, propMarket(x), cal, e.sport) });
     }
   }
   return out;

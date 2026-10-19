@@ -6,6 +6,7 @@
 // Every derived number is a model fair price, not a bookmaker quote, and the UI labels it so.
 import { devig } from './engine.js';
 import { eloWin } from './clubelo.js';
+import { ratingWin, TRUST_GAMES } from './ratings.js';
 
 // ---------- maths ----------
 const LN_FACT = [0];
@@ -72,7 +73,11 @@ function formRate(f) {
 export function tennisRankWin(t) {
   const ph = Number(t.home?.points), pa = Number(t.away?.points), rh = Number(t.home?.rank), ra = Number(t.away?.rank);
   let p = null, note = null;
-  if (ph > 0 && pa > 0) { p = ph ** 0.9 / (ph ** 0.9 + pa ** 0.9); note = `ranking #${rh || '?'} (${ph} pts) vs #${ra || '?'} (${pa} pts)`; }
+  // Elo (Tennis Abstract, blended with the surface's) rates how well a player plays, not how much:
+  // a better guide than ranking points when both players have one.
+  const eh = Number(t.home?.elo), ea = Number(t.away?.elo);
+  if (eh > 0 && ea > 0) { p = 1 / (1 + 10 ** ((ea - eh) / 400)); note = `Elo ${eh} vs ${ea}${t.surface ? ` (${t.surface} court${t.surfaceInferred ? ', from the tournament' : ''})` : ''}`; }
+  else if (ph > 0 && pa > 0) { p = ph ** 0.9 / (ph ** 0.9 + pa ** 0.9); note = `ranking #${rh || '?'} (${ph} pts) vs #${ra || '?'} (${pa} pts)`; }
   else if (rh > 0 && ra > 0) { p = 1 / (1 + (rh / ra) ** 0.5); note = `world ranking #${rh} vs #${ra}`; }
   else if (rh > 0 || ra > 0) { p = rh > 0 ? 0.66 : 0.34; note = `only ${rh > 0 ? 'the first' : 'the second'} player is ranked (#${rh || ra})`; }
   return p == null ? null : { p: Math.min(0.97, Math.max(0.03, p)), note };
@@ -105,8 +110,15 @@ function baselineWin(event) {
       starterNote = `starter ERA ${eh.toFixed(2)} vs ${ea.toFixed(2)}`;
     }
   }
-  // Tennis has no bookmaker price in the feed: use the official rankings (points when we have them).
+  // ATLAS's own ratings, from every result in its history (ratings.js): used once both sides have
+  // TRUST_GAMES results, after the published ratings below (Tennis Abstract, ClubElo, World Elo).
+  const at = event.atlas;
+  const atlasOk = at && at.home.n >= TRUST_GAMES && at.away.n >= TRUST_GAMES;
+  const atlasNote = atlasOk ? `ATLAS rating ${at.home.r} vs ${at.away.r} (from ${at.home.n} and ${at.away.n} results${at.surface ? `, ${at.surface} court` : ''})` : null;
+  // Tennis has no bookmaker price in the feed: Elo where there is one, else the official rankings.
   if (event.sport === 'tennis' && event.tennis) {
+    const hasTa = Number(event.tennis.home?.elo) > 0 && Number(event.tennis.away?.elo) > 0;
+    if (!hasTa && atlasOk) { const w = ratingWin('tennis', at.home.r, at.away.r); return { win: { home: w.home, draw: 0, away: w.away }, confidence: 'medium', starterNote: atlasNote }; }
     const t = tennisRankWin(event.tennis);
     if (t) return { win: { home: t.p, draw: 0, away: 1 - t.p }, confidence: 'medium', starterNote: t.note };
   }
@@ -121,7 +133,12 @@ function baselineWin(event) {
   // European club soccer: ClubElo ratings (set by the build).
   if (soccer && Number(st.homeElo) && Number(st.awayElo)) {
     const w = eloWin(Number(st.homeElo), Number(st.awayElo), { neutral: event.neutral });
-    return { win: w, confidence: 'medium', starterNote: `ClubElo ${Math.round(st.homeElo)} vs ${Math.round(st.awayElo)}` };
+    return { win: w, confidence: 'medium', starterNote: `${st.eloSource || 'ClubElo'} ${Math.round(st.homeElo)} vs ${Math.round(st.awayElo)}` };
+  }
+  // Any other sport (and soccer without a published rating): ATLAS's own ratings ahead of records and form.
+  if (atlasOk && event.sport !== 'efootball' && event.sport !== 'esports') {
+    const w = ratingWin(event.sport, at.home.r, at.away.r, { neutral: event.neutral });
+    return { win: w, confidence: 'medium', starterNote: atlasNote };
   }
   // eSoccer: each player's recent goals for and against.
   if (event.sport === 'efootball') {

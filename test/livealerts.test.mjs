@@ -39,3 +39,20 @@ test('baseball: every scoring play with the score after it; basketball only peri
   const q = liveMoments({ ...comp({ period: 2, type: { name: 'STATUS_END_PERIOD', state: 'in', detail: 'End of 2nd Quarter' } }, '55', '50'), scoringPlays: [{ id: 'x', text: 'layup', homeScore: 55, awayScore: 50 }] }, nba);
   assert.deepEqual(q.map((x) => [x.kind, x.body]), [['period', 'End of 2nd Quarter']]);
 });
+
+test('alert settings: one match can differ from the rest, and returns to them when they match', async () => {
+  const { alertPrefs, wants } = await import('../js/livealerts.js');
+  alertPrefs.setMatch('m9', { cards: false, periods: false });
+  assert.equal(alertPrefs.forMatch('m9').cards, false);
+  assert.equal(alertPrefs.forMatch('m9').scores, true);
+  assert.equal(alertPrefs.forMatch('other').cards, true);
+  assert.equal(wants(alertPrefs.forMatch('m9'), { kind: 'card' }), false);
+  assert.equal(wants(alertPrefs.forMatch('m9'), { kind: 'score' }), true);
+  assert.equal(alertPrefs.hasOwn('m9'), true);
+  alertPrefs.setMatch('m9', { cards: true, periods: true });
+  assert.equal(alertPrefs.hasOwn('m9'), false);
+  // The general setting applies to every match without its own.
+  alertPrefs.set({ cards: false });
+  assert.equal(alertPrefs.forMatch('other').cards, false);
+  alertPrefs.set({ cards: true });
+});

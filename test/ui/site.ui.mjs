@@ -1,0 +1,322 @@
+// Browser tests: the real pages in Chromium against a fixed board (test/fixtures/site.mjs), with every
+// outside feed blocked. Run with `npm run test:ui` (needs Playwright; CI installs it). Serves the
+// built site when dist/pages exists, else the source. Screenshots land in test-results/ for review.
+import test, { before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { mkdir } from 'node:fs/promises';
+import { siteData, trackData } from '../fixtures/site.mjs';
+
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const PORT = 8187, BASE = `http://127.0.0.1:${PORT}/`;
+const SHOTS = 'test-results';
+const PHONE = { width: 390, height: 844 }, DESK = { width: 1440, height: 900 };
+
+let server, browser;
+before(async () => {
+  await mkdir(SHOTS, { recursive: true });
+  server = spawn(process.execPath, ['scripts/serve.mjs'], { env: { ...process.env, PORT: String(PORT) }, stdio: ['ignore', 'pipe', 'inherit'] });
+  await new Promise((res) => server.stdout.once('data', res));
+  browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
+});
+after(async () => { await browser?.close(); server?.kill(); });
+
+// A page with the fixture board. `hold` keeps data/index.json waiting until released (loading state).
+async function open(route, { viewport = DESK, adult = true, hold = false, feeds = [] } = {}) {
+  const ctx = await browser.newContext({ viewport, serviceWorkers: 'block' }); // feeds come only from the fixtures
+  if (adult) await ctx.addInitScript(() => { try { localStorage.setItem('atlas-age-ok', '1'); } catch { /* ignore */ } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  let release = () => {};
+  const held = hold ? new Promise((r) => { release = r; }) : null;
+  await page.route(/^https?:\/\/(?!127\.0\.0\.1)/, (r) => r.abort());
+  await page.route('**/data/index.json*', async (r) => { if (held) await held; r.fulfill({ json: siteData() }); });
+  await page.route('**/data/track.json*', (r) => r.fulfill({ json: trackData() }));
+  await page.route(/\/data\/(?!index|track)[^/]+\.json/, (r) => r.fulfill({ status: 404, body: '' }));
+  for (const [url, json] of feeds) await page.route(url, (r) => r.fulfill({ json })); // outside feeds a test stands in for
+  await page.goto(BASE + route, { waitUntil: 'commit' });
+  return { page, ctx, errors, release };
+}
+const shot = (page, name) => page.screenshot({ path: `${SHOTS}/${name}.png` });
+const noOverflow = (page) => page.evaluate(() => document.scrollingElement.scrollWidth <= innerWidth + 1);
+
+test('home: placeholders while loading, never "0 events" or "no picks"', async () => {
+  const { page, ctx, errors, release } = await open('#/', { hold: true });
+  await page.waitForSelector('.stats .skel-num');
+  assert.equal(await page.locator('.stats .skel-num').count(), 3);
+  assert.equal(await page.locator('.dash-short .muted').count(), 0, 'no empty-state text while loading');
+  await shot(page, 'home-loading');
+  release();
+  await page.waitForSelector('.stats b[data-count-to]');
+  assert.equal(await page.getAttribute('.stats b[data-count-to]', 'data-count-to'), String(siteData().events.length));
+  await page.waitForSelector('.dash-short .mini');
+  await shot(page, 'home-desktop');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('home: 30-day record strip and a reason on picks', async () => {
+  const { page, ctx, errors } = await open('#/');
+  await page.waitForSelector('.track-strip');
+  const strip = await page.textContent('.track-strip');
+  assert.match(strip, /Last 30 days/);
+  assert.match(strip, /9–3/);
+  assert.match(strip, /beat the close/);
+  await page.waitForSelector('.dash-short .mini');
+  assert.match(await page.textContent('.dash-short'), /Arsenal unbeaten in 5/);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('phone: the three hero numbers share a row and no page scrolls sideways', async () => {
+  const { page, ctx, errors } = await open('#/', { viewport: PHONE });
+  await page.waitForSelector('.stats b[data-count-to]');
+  // The live board runs to four figures: measure with numbers that wide.
+  await page.waitForTimeout(1500); // count-up finished
+  await page.$$eval('.hero .stats b', (bs) => bs.forEach((b) => { b.textContent = '1,284'; }));
+  const tops = await page.$$eval('.hero .stats > div', (ds) => ds.map((d) => Math.round(d.getBoundingClientRect().top)));
+  assert.equal(tops.length, 3);
+  assert.equal(new Set(tops).size, 1, `stats on one row: ${tops}`);
+  await shot(page, 'home-phone');
+  for (const r of ['#/', '#/bankers', '#/edge', '#/x/2', '#/watchlist', '#/track']) {
+    await page.goto(BASE + r); await page.waitForTimeout(600);
+    assert.ok(await noOverflow(page), `${r} fits the phone width`);
+  }
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('first visit: the age check shows at once, without the intro animation', async () => {
+  const { page, ctx } = await open('#/', { adult: false });
+  await page.waitForSelector('.age-gate');
+  assert.equal(await page.locator('#preloader').count(), 0);
+  await shot(page, 'age-gate');
+  await ctx.close();
+});
+
+test('Picks: one menu entry lit across bankers, edge board and the builder', async () => {
+  const { page, ctx, errors } = await open('#/edge');
+  for (const [r, tab] of [['#/edge', 'Edge board'], ['#/bankers', 'Bankers'], ['#/x/3', 'Multipliers'], ['#/mega', 'Mega']]) {
+    await page.goto(BASE + r); await page.waitForSelector('.builder-nav');
+    assert.equal(await page.getAttribute('nav.top a[href="#/bankers"]', 'class'), 'on', `${r}: Picks lit`);
+    assert.equal(await page.textContent('.builder-nav [aria-current="page"]'), tab);
+    assert.equal(await page.locator('.research-tabs').count(), 0, 'one tab row only');
+  }
+  await shot(page, 'picks-mega');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('slip: bankroll gives a stake suggestion, and a share link opens the same legs', async () => {
+  const { page, ctx, errors } = await open('#/bankers');
+  await page.waitForSelector('button.leg');
+  const legs = page.locator('.list button.leg');
+  await legs.nth(0).click(); await legs.nth(1).click();
+  await page.click('.slip-btn');
+  await page.fill('[data-slip-bankroll]', '1000');
+  assert.match(await page.textContent('[data-stake-tip]'), /Suggested stake/);
+  await shot(page, 'slip-bankroll');
+  const url = await page.evaluate(async () => { const { encodeSlip } = await import('./js/share.js'); const { slip } = await import('./js/slip.js'); return `#/slip/${encodeSlip(slip.legs)}`; })
+    .catch(() => null); // the bundled build has no separate modules: build the link through the button instead
+  const link = url || await (async () => { await ctx.grantPermissions(['clipboard-read', 'clipboard-write']); await page.click('[data-slip-share]'); return new URL(await page.evaluate(() => navigator.clipboard.readText())).hash; })();
+  await page.goto(BASE + link);
+  await page.waitForSelector('.shared-slip');
+  assert.equal(await page.locator('.shared-slip .slip-legs li').count(), 2);
+  await shot(page, 'shared-slip');
+  await page.goto(`${BASE}#/slip/not-a-slip`);
+  await page.waitForSelector('.hero h1');
+  assert.match(await page.textContent('#app'), /SLIP NOT FOUND/i);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('watchlist: alerts can be set for one match only', async () => {
+  const { page, ctx, errors } = await open('#/match/fx-ars-lee');
+  await page.waitForSelector('[data-watch]');
+  await page.click('[data-watch]');
+  await page.goto(`${BASE}#/watchlist`);
+  await page.waitForSelector('.list .al-kinds');
+  await page.click('.list [data-alert-kind="cards"]');
+  await page.waitForSelector('.list [data-alert-kind="cards"][aria-pressed="false"]');
+  assert.match(await page.textContent('.list .al-kinds'), /this match/);
+  assert.equal(await page.getAttribute('.alerts-panel [data-alert-kind="cards"]', 'aria-pressed'), 'true', 'other matches keep cards');
+  await shot(page, 'watchlist-alerts');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('league table: GP, W, D, L, GD, Pts in rank order, whatever order the feed sends', async () => {
+  // ESPN lists the stats as GP, L, GD, P, D, W, R plus a Total record (the order that used to show).
+  const row = (team, [gp, l, gd, p, d, w, r]) => ({ team: { displayName: team }, stats: [['GP', gp], ['L', l], ['GD', gd], ['P', p], ['D', d], ['W', w], ['R', r]].map(([abbreviation, v]) => ({ abbreviation, displayValue: String(v) })).concat({ name: 'Total', summary: `${w}-${d}-${l}` }) });
+  const feed = { children: [{ name: "Women's Super League", standings: { entries: [row('Chelsea', [5, 0, '+11', 13, 1, 4, 2]), row('Manchester City', [5, 0, '+10', 15, 0, 5, 1]), row('Arsenal', [6, 2, '-2', 6, 3, 1, 3])] } }] };
+  const { page, ctx, errors } = await open('#/league/soccer~eng.w.1', { feeds: [['**/apis/v2/sports/soccer/eng.w.1/standings*', feed]], viewport: PHONE });
+  await page.waitForSelector('.tbl.standings');
+  await page.waitForTimeout(1000); // past the redraw once the league's fixtures load: the table must stay
+  assert.deepEqual(await page.$$eval('.tbl.standings th', (ths) => ths.map((t) => t.textContent.trim())), ['#', 'Team', 'GP', 'W', 'D', 'L', 'GD', 'Pts']);
+  assert.deepEqual(await page.$$eval('.tbl.standings tbody tr', (trs) => trs.map((t) => [...t.cells].map((c) => c.textContent.trim()).join(' '))),
+    ['1 Manchester City 5 5 0 0 +10 15', '2 Chelsea 5 4 1 0 +11 13', '3 Arsenal 6 1 3 2 -2 6']);
+  // Every column visible on a phone: the table does not scroll sideways.
+  assert.ok(await page.$eval('.tbl.standings', (t) => t.parentElement.scrollWidth <= t.parentElement.clientWidth + 1));
+  await page.locator('#league-standings').scrollIntoViewIfNeeded();
+  await shot(page, 'standings-phone');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('Every sport: priced and model picks for each sport, and what ATLAS knows about each', async () => {
+  const { page, ctx, errors } = await open('#/every');
+  await page.waitForSelector('.tbl.coverage');
+  // A model pick for each unpriced match with evidence, with fair odds and its basis.
+  const model = await page.$$eval('.model-pick', (rows) => rows.map((r) => r.querySelector('.teams b').textContent));
+  assert.deepEqual(model.sort(), ['Alcaraz', 'India']);
+  assert.match(await page.textContent('.model-pick'), /worth it at \d\.\d\d or better/);
+  // Priced picks alongside, and every sport on the board has a section.
+  assert.ok(await page.locator('#sec-every-tennis').count());
+  assert.ok(await page.locator('#sec-every-cricket').count());
+  assert.match(await page.textContent('.tbl.coverage'), /Cricket[\s\S]*0 of 1 priced/);
+  assert.equal(await page.getAttribute('nav.top a[href="#/bankers"]', 'class'), 'on');
+  await shot(page, 'every-sport');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('Sources: every feed with its last result, failures first', async () => {
+  const at = Date.now() - 5 * 6e4;
+  const report = { at, sources: [
+    { name: 'ESPN', site: 'espn.com', what: 'Fixtures', ok: true, count: 1700, note: '1700 events', at },
+    { name: 'football-data.co.uk', site: 'football-data.co.uk', what: 'Pinnacle odds', ok: false, count: null, note: 'HTTP 503', at },
+    { name: 'The Odds API', site: 'the-odds-api.com', what: 'Odds', ok: null, count: null, note: 'not switched on', at },
+  ] };
+  const { page, ctx, errors } = await open('#/sources', { feeds: [['**/data/sources.json*', report]] });
+  await page.waitForSelector('.sources-tbl');
+  const rows = await page.$$eval('.sources-tbl tbody tr', (trs) => trs.map((t) => t.querySelector('b').textContent + ' ' + t.querySelector('.src-state').textContent));
+  assert.deepEqual(rows, ['football-data.co.uk Failed', 'ESPN Working', 'The Odds API Not set up']);
+  assert.match(await page.textContent('#app'), /1 source failed on the last build/);
+  await shot(page, 'sources');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('match page: the results history (ratings, rest, last meetings)', async () => {
+  const { page, ctx, errors } = await open('#/match/fx-ars-lee');
+  await page.waitForSelector('.hist-nums');
+  const txt = await page.textContent('.hist-nums');
+  assert.match(txt, /1712/);
+  assert.match(txt, /ATLAS rating · 34 results/);
+  assert.match(await page.textContent('#app'), /Last meetings[\s\S]*Leeds[\s\S]*0 – 2/);
+  await shot(page, 'match-history');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('home: parlay of the day at the top, with a time-zone switch', async () => {
+  const { page, ctx, errors } = await open('#/');
+  await page.waitForSelector('.dash-potd');
+  assert.match(await page.textContent('.dash-potd'), /12:00 to 12:00 IST/);
+  await page.click('.dash-potd [data-pzone="GMT"]');
+  await page.waitForFunction(() => /12:00 to 12:00 GMT/.test(document.querySelector('.dash-potd')?.textContent || ''));
+  assert.equal(await page.getAttribute('.dash-potd [data-pzone="GMT"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('.dash-potd [data-pzone="IST"]', 'aria-pressed'), 'false');
+  await page.mouse.move(0, 0);
+  await shot(page, 'home-potd');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('assistant and dashboard agree: the same picks at the same chance', async () => {
+  const { page, ctx, errors } = await open('#/');
+  await page.waitForSelector('.dash-short .mini');
+  const board = await page.$$eval('.dash-short .mini', (rows) => rows.map((r) => [r.querySelector('.mini-main b').textContent.trim(), r.querySelector('.mini-nums b').textContent.trim()]));
+  await page.click('.ai-launch');
+  await page.fill('.ai-input', 'best bets');
+  await page.press('.ai-input', 'Enter');
+  await page.waitForSelector('.ai-msg.bot .ai-card.pick');
+  const said = await page.$$eval('.ai-msg.bot:last-child .ai-card.pick', (cards) => cards.map((c) => c.querySelector('b').textContent.trim()));
+  // The same recommendation (same id: selection, quote, model and calibration) on both surfaces.
+  const recs = await page.$$eval('.ai-msg.bot:last-child .ai-card.pick[data-rec]', (cards) => cards.map((c) => c.dataset.rec));
+  const boardRecs = await page.$$eval('.dash-short .mini[data-rec]', (rows) => rows.map((r) => r.dataset.rec));
+  assert.ok(recs.length > 0 && recs.every((r) => boardRecs.includes(r)), JSON.stringify({ recs, boardRecs }));
+  assert.ok(said.length > 0);
+  // Every pick the assistant gives is on the dashboard's Best bets list.
+  const names = board.map(([n]) => n);
+  assert.ok(said.every((n) => names.includes(n)), JSON.stringify({ said, names }));
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('home: multiplier cards fit their text on desktop and phone', async () => {
+  for (const viewport of [DESK, PHONE]) {
+    const { page, ctx, errors } = await open('#/', { viewport });
+    await page.waitForSelector('.grid.xs .xcard');
+    const overflow = await page.$$eval('.grid.xs .xcard b', (bs) => bs.filter((b) => b.scrollWidth > b.parentElement.clientWidth).map((b) => b.textContent));
+    assert.deepEqual(overflow, []);
+    await page.locator('.grid.xs').scrollIntoViewIfNeeded();
+    await shot(page, `multipliers-${viewport === PHONE ? 'phone' : 'desk'}`);
+    assert.deepEqual(errors, []);
+    await ctx.close();
+  }
+});
+
+test('navigation: five destinations, Research lit across its pages, Live and Props one tap away', async () => {
+  for (const viewport of [DESK, PHONE]) {
+    const { page, ctx, errors } = await open('#/props', { viewport });
+    await page.waitForSelector('.research-tabs');
+    const shown = await page.$$eval('nav.top a', (as) => as.filter((a) => getComputedStyle(a).display !== 'none').map((a) => a.dataset.m));
+    assert.deepEqual(shown, ['Today', 'Research', 'Build a slip', 'Watchlist', 'Results', ...(viewport === PHONE ? ['More'] : [])]);
+    assert.equal(await page.getAttribute('nav.top a[href="#/sports"]', 'class'), 'on');
+    assert.deepEqual(await page.$$eval('.research-tabs a', (as) => as.map((a) => a.textContent)), ['Sports', 'Live', 'Props', 'Compare', 'Build a slip']);
+    await shot(page, `nav-${viewport === PHONE ? 'phone' : 'desk'}`);
+    assert.deepEqual(errors, []);
+    await ctx.close();
+  }
+});
+
+test('home: panels can be hidden and reordered, and the layout is kept', async () => {
+  const { page, ctx, errors } = await open('#/');
+  await page.waitForSelector('.dash-potd');
+  const order = () => page.$$eval('.dash > .panel:not(.dash-layout)', (ps) => ps.map((p) => p.className.match(/dash-(potd|short|live|health)|every|changes|track/)?.[0]).filter(Boolean));
+  await page.click('.dash-layout summary');
+  await page.click('[data-lay="toggle"][data-lay-key="potd"]');
+  await page.waitForFunction(() => !document.querySelector('.dash-potd'));
+  assert.ok(await page.$('.dash-layout[open]'), 'still open after a change');
+  await page.click('[data-lay="up"][data-lay-key="live"]');
+  await page.waitForFunction(() => { const ps = [...document.querySelectorAll('.dash > .panel')]; return ps.findIndex((p) => p.classList.contains('dash-live')) < ps.findIndex((p) => p.classList.contains('dash-short')); });
+  await page.reload();
+  await page.waitForSelector('.dash-live');
+  assert.equal(await page.$('.dash-potd'), null, 'hidden after a reload');
+  const o = await order();
+  assert.ok(o.indexOf('dash-live') < o.indexOf('dash-short'), JSON.stringify(o));
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('watchlist: quiet hours are kept, and alerts while closed say when the server is not set up', async () => {
+  const { page, ctx, errors } = await open('#/watchlist');
+  await page.waitForSelector('.alerts-panel');
+  assert.match(await page.textContent('.alerts-panel'), /need the alerts server/);
+  await page.click('[data-quiet="22-7"]');
+  await page.waitForSelector('[data-quiet="22-7"][aria-pressed="true"]');
+  await page.reload();
+  await page.waitForSelector('[data-quiet="22-7"][aria-pressed="true"]');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('home: a panel can be made full width, and every panel takes a size', async () => {
+  const { page, ctx, errors } = await open('#/');
+  await page.waitForSelector('.dash-live');
+  await page.click('.dash-layout summary');
+  for (let i = 0; i < 3; i++) await page.click('[data-lay="size"][data-lay-key="live"]'); // auto → third → half → full
+  await page.waitForSelector('.dash-live.lay-full');
+  const [panel, dash] = await page.$$eval('.dash-live, .dash', (els) => els.map((x) => x.getBoundingClientRect().width).reverse());
+  assert.ok(Math.abs(panel - dash) < 2, `${panel} vs ${dash}`);
+  assert.match(await page.textContent('[data-lay="size"][data-lay-key="live"]'), /Full/);
+  // Every panel's markup accepts a size (the class goes on its own element).
+  for (const k of ['potd', 'shortlist', 'every', 'changes', 'record', 'health']) await page.click(`[data-lay="size"][data-lay-key="${k}"]`);
+  const sized = await page.$$eval('.dash > .panel.lay-third', (ps) => ps.length);
+  const shown = await page.$$eval('.dash > .panel:not(.dash-layout):not(.lay-full)', (ps) => ps.length);
+  assert.equal(sized, shown);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

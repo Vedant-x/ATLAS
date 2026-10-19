@@ -7,7 +7,8 @@
 // AI_URL (js/config.js) can point at a hosted model later (worker/atlas-ai.js); if it fails, the
 // on-device model takes over without telling the visitor anything about quotas.
 import { AI_URL } from '../config.js';
-import { parseConstraints, constraintChips } from './constraints.js';
+import { parseConstraints, constraintChips, slipRequest, slipsOk, legOk } from './constraints.js';
+import { verifyAnswer } from './verify.js';
 
 const pc = (p) => (Number.isFinite(p) ? `${Math.round(p * 100)}%` : '?');
 const od = (o) => (Number.isFinite(o) ? Number(o).toFixed(2) : '?');
@@ -70,7 +71,9 @@ export async function buildContext(K, text, max = 6000, mem = null) {
   const mode = c.positiveOnly || /\b(value|edge|\+ev)\b/.test(q) ? 'value' : /\b(safe|safest|banker|lock)/.test(q) ? 'safe' : 'balanced';
   const sel = { ...(c.league ? { league: c.league } : c.sport ? { sport: c.sport } : scope), mode, limit: c.n || 6, exclude: c.exclude, ...(c.minOdds != null ? { minOdds: c.minOdds } : {}), ...(c.maxOdds != null ? { maxOdds: c.maxOdds } : {}) };
   let picks = c.from ? K.picks({ ...sel, from: c.from, to: c.to }) : K.picks({ ...sel, today: true });
-  if (!picks.length && !c.from) picks = K.picks({ ...sel, today: false });
+  // Nothing today and no day asked for: the next few days, said out loud (never a silent widening).
+  if (!picks.length && !c.from) { picks = K.picks({ ...sel, today: false }); if (picks.length) lines.push('WINDOW: nothing qualifies today, so these picks are from the next few days. Say so in the answer.'); }
+  picks = picks.filter((x) => legOk(c, x));
   const tagged = [...(mem?.list || []).map((x) => ({ ...x, earlier: true })), ...picks.filter((x) => !(mem?.list || []).some((y) => K.pickId(y) === K.pickId(x)))].slice(0, 12);
   tagged.forEach((x, i) => { x.tag = `P${i + 1}`; });
   const pickLine = (x) => `[${x.tag}] ${x.pick} · ${x.market} · [${x.e.home} vs ${x.e.away}](#/match/${x.e.id}) ${when(x.e.start)} · odds ${od(x.odds)} · ATLAS ${pc(x.p)} · break-even ${pc(1 / x.odds)} · return ${x.ev >= 0 ? '+' : ''}${(x.ev * 100).toFixed(1)}% · evidence: ${K.readinessOf?.(x.e)?.label || 'not checked'}${x.priced ? '' : ' · model only'}${x.earlier ? ' · (from your earlier answer)' : ''}`;
@@ -90,11 +93,13 @@ export async function buildContext(K, text, max = 6000, mem = null) {
     const live = K.filterEvents({ ...scope, live: true }).slice(0, 8);
     lines.push(live.length ? `LIVE NOW: ${live.map((e) => `[${e.home} vs ${e.away}](#/match/${e.id}) ${e.score || ''} ${e.clock || ''}`).join('; ')}` : 'LIVE NOW: nothing in play.');
   }
-  const mult = q.match(/(\d{1,4})\s*x\b|\b(\d{1,4})\s*times\b/);
-  if (mult || /\b(slip|parlay|acca|accumulator|multi|mega)\b/.test(q)) {
-    const t = Number(mult?.[1] || mult?.[2]) || (/mega/.test(q) ? 100 : 3);
-    const target = [2, 3, 4, 5, 10, 20, 100, 500, 1000].reduce((a, b) => (Math.abs(b - t) < Math.abs(a - t) ? b : a), 3);
-    K.slips(target, target <= 20).slice(0, 2).forEach((s, i) => lines.push(`${target}x SLIP ${i + 1}: total ${od(s.odds)}, est. ${pc(s.p)} — ${s.legs.map((l) => `${l.pick} @ ${od(l.odds)} (${l.match})`).join('; ')}`));
+  // Slips at the multiplier asked for (not rounded to a preset), under the same constraints as the
+  // picks above, from the same builder as the multiplier pages and the built-in assistant.
+  if (c.target || /\b(slip|parlay|acca|accumulator|multi|mega)\b/.test(q)) {
+    const target = c.target || 3;
+    const slips = slipsOk(c, K.slips(target, target < 100 && !c.from, slipRequest(c)));
+    slips.slice(0, 2).forEach((s, i) => lines.push(`${target}x SLIP ${i + 1}: total ${od(s.odds)}, est. ${pc(s.p)} — ${s.legs.map((l) => `${l.pick} @ ${od(l.odds)} (${l.match})`).join('; ')}`));
+    if (!slips.length) lines.push(`${target}x SLIP: none can be built under these constraints. Say so; do not loosen them.`);
   }
   if (!matches.length && /injur|absen|\bout\b|suspend|team news/.test(q)) {
     K.filterEvents(scope).filter((e) => e.absences).slice(0, 5).forEach((e) => lines.push(`ABSENCES [${e.home} vs ${e.away}](#/match/${e.id}): ${e.home}: ${(e.absences.home || []).map((i) => `${i.name} (${i.injury || i.type})`).join(', ') || 'none'}; ${e.away}: ${(e.absences.away || []).map((i) => `${i.name} (${i.injury || i.type})`).join(', ') || 'none'}`));
@@ -200,17 +205,8 @@ export async function stopAI() {
   if (engineP) { try { (await engineP).interruptGenerate(); } catch { /* not generating */ } }
 }
 
-// Checks an answer against the data it was given: [P#] tags become the pick names (and verified cards),
-// and any odds or percentage the model wrote that is not in the data is flagged.
-export function verifyAnswer(answer, context) {
-  const used = [...new Set([...answer.matchAll(/\[(P\d{1,2})\]/g)].map((m) => m[1]))].filter((t) => context.tags[t]);
-  let text = answer.replace(/\[(P\d{1,2})\]/g, (m, t) => (context.tags[t] ? `**${context.tags[t].pick}**` : m));
-  const known = new Set((context.text.match(/\d+(?:\.\d+)?%?/g) || []));
-  const numbers = (text.match(/\b\d\.\d{2}\b|\b\d{1,3}(?:\.\d)?%/g) || []);
-  const unknown = numbers.filter((n) => !known.has(n) && !known.has(n.replace('%', '')));
-  if (unknown.length) text += `\n\n_Unverified: ${[...new Set(unknown)].slice(0, 4).join(', ')} ${unknown.length > 1 ? 'are' : 'is'} not in ATLAS's data; trust the cards below._`;
-  return { text, picks: used.map((t) => context.tags[t]), unverified: unknown };
-}
+// The answer check (numbers bound to the pick they are said about) lives in verify.js.
+export { verifyAnswer };
 
 // One answer. history: [{role:'user'|'assistant', content}] of earlier turns; mem: the brain's memory.
 export async function askAI(K, history, text, { onText, mem = null } = {}) {

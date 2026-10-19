@@ -3,17 +3,21 @@
 // Pure, so it can be tested; K supplies sportIn / leagueIn (knowledge.js).
 //
 //   "one bet with odds at least 1.80"        -> minOdds 1.8, n 1
-//   "best bets tomorrow"                      -> from/to = tomorrow (local day)
+//   "best bets tomorrow"                      -> from/to = tomorrow in the chosen time zone (IST or GMT)
 //   "best bets excluding NBA"                 -> exclude leagues [basketball/nba]
 //   "an NBA-only 3x slip"                     -> league basketball/nba, target 3
 //   "positive edge bets only"                 -> positiveOnly (never substituted)
 
 const NUM = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, couple: 2, few: 3 };
-const dayStart = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+// Days run midnight to midnight in the time zone the visitor chose (the same IST / GMT switch as the
+// parlay of the day), never the browser's own zone, so "tomorrow" means the same day on every device.
+export const ZONE_OFFSET = { IST: 330, GMT: 0 };
+const dayStart = (t, zone) => { const off = (ZONE_OFFSET[zone] ?? 330) * 6e4; return Math.floor((t + off) / 864e5) * 864e5 - off; };
+const dayOfWeek = (t, zone) => new Date(t + (ZONE_OFFSET[zone] ?? 330) * 6e4).getUTCDay();
 
-export function parseConstraints(raw, K, now = Date.now()) {
+export function parseConstraints(raw, K, now = Date.now(), zone = K?.zone?.() || 'IST') {
   let q = String(raw || '').toLowerCase().replace(/[–—]/g, '-').replace(/\s+/g, ' ').trim();
-  const c = { exclude: { sports: [], leagues: [] } };
+  const c = { exclude: { sports: [], leagues: [] }, zone };
 
   // Exclusions first, and cut them out so "excluding NBA" never reads as "NBA".
   // A list runs through "and" / "or" ("no tennis or baseball"); words that are not a sport or league
@@ -39,11 +43,11 @@ export function parseConstraints(raw, K, now = Date.now()) {
   for (const k of ['minOdds', 'maxOdds']) if (c[k] != null && !(c[k] >= 1.01 && c[k] <= 1000)) delete c[k];
 
   // Day or window.
-  const today0 = dayStart(now), D = 864e5;
+  const today0 = dayStart(now, zone), D = 864e5;
   if (/\btomorrow\b/.test(q)) { c.day = 'tomorrow'; c.from = today0 + D; c.to = today0 + 2 * D; }
   else if (/\b(today|tonight)\b/.test(q)) { c.day = 'today'; c.from = now; c.to = today0 + D + 6 * 36e5; }
   else if (/\b(this week|next 7 days|week)\b/.test(q)) { c.day = 'week'; c.from = now; c.to = now + 7 * D; }
-  else if (/\bweekend\b/.test(q)) { const dow = new Date(now).getDay(); const sat = today0 + ((6 - dow + 7) % 7) * D; c.day = 'weekend'; c.from = Math.max(now, sat); c.to = sat + 2 * D; }
+  else if (/\bweekend\b/.test(q)) { const dow = dayOfWeek(now, zone); const sat = today0 + ((6 - dow + 7) % 7) * D; c.day = 'weekend'; c.from = Math.max(now, sat); c.to = sat + 2 * D; }
 
   // Positive return only (value / +EV with "only", or "positive edge").
   c.positiveOnly = /\b(positive (edge|value|ev|return)|\+ ?ev|value only|only (value|positive)|edge only)\b/.test(q) || (/\b(value|edge|\+ev|positive)\b/.test(q) && /\bonly\b/.test(q));
@@ -67,7 +71,7 @@ export function parseConstraints(raw, K, now = Date.now()) {
 // The constraints as short labels for the answer ("Tomorrow · NBA · Odds ≥ 1.80 · Positive return only").
 export function constraintChips(c, names = {}) {
   const out = [];
-  if (c.day) out.push({ today: 'Today', tomorrow: 'Tomorrow', week: 'Next 7 days', weekend: 'Weekend' }[c.day]);
+  if (c.day) out.push(`${{ today: 'Today', tomorrow: 'Tomorrow', week: 'Next 7 days', weekend: 'Weekend' }[c.day]}${c.zone ? ` (${c.zone})` : ''}`);
   const lname = (l) => (names.leagueName ? names.leagueName(l) : l.split('/').pop().toUpperCase());
   if (c.league) out.push(lname(c.league));
   else if (c.sport) out.push(names.sport || c.sport);
@@ -86,3 +90,24 @@ export function constraintChips(c, names = {}) {
 export const passes = (c, e) => (!c.sport || e.sport === c.sport) && (!c.league || e.leaguePath === c.league)
   && !(c.exclude?.sports || []).includes(e.sport) && !(c.exclude?.leagues || []).includes(e.leaguePath)
   && (!c.from || e.start >= c.from) && (!c.to || e.start < c.to);
+
+// Does one leg or pick keep the odds limits and "positive return only"? Every answer is checked with
+// this after it is built, so a chip on screen is always a rule that was applied.
+export const legOk = (c, l) => (c.minOdds == null || l.odds >= c.minOdds - 1e-9) && (c.maxOdds == null || l.odds <= c.maxOdds + 1e-9)
+  && (!c.positiveOnly || l.p * l.odds - 1 > 0);
+
+// The one slip request for a question: the dashboard's slip builder takes it as it is, from the
+// built-in assistant and the AI's context alike. Scope (sport, league, day, exclusions) becomes the
+// event filter; the odds limits and positive-return rule go to the leg pool as hard rules; `key`
+// names the whole request for the slip cache.
+export function slipRequest(c) {
+  const scoped = Boolean(c.sport || c.league || c.from || c.exclude?.sports?.length || c.exclude?.leagues?.length);
+  return {
+    filter: scoped ? (e) => passes(c, e) : null,
+    key: JSON.stringify([c.sport, c.league, c.from, c.to, c.exclude, c.minOdds, c.maxOdds, Boolean(c.positiveOnly)]),
+    minOdds: c.minOdds ?? null, maxOdds: c.maxOdds ?? null, positiveOnly: Boolean(c.positiveOnly),
+  };
+}
+
+// Slips that keep every rule: any slip with a leg outside them is dropped, never shown.
+export const slipsOk = (c, slips) => slips.filter((s) => s.legs.every((l) => legOk(c, l)));

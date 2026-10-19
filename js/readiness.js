@@ -7,13 +7,14 @@
 //   conflict  two sources disagree on something that matters
 //   stale     the price is older than an hour
 //   waiting   a confirmation that normally arrives before the start is not in yet
+//   unknown   there is a price but no time on it, so its freshness can't be checked
 //   limited   our feeds do not cover something the sport needs (said plainly, never hidden)
 //   ready     everything the sport needs is in
 //   none      no price and nothing else to go on
 
 const H = 36e5;
 export const READY_LABEL = {
-  ready: 'Ready to assess', waiting: 'Waiting', stale: 'Stale price', conflict: 'Conflicting reports', limited: 'Limited coverage', none: 'Insufficient data',
+  ready: 'Ready to assess', waiting: 'Waiting', stale: 'Stale price', conflict: 'Conflicting reports', unknown: 'Freshness unknown', limited: 'Limited coverage', none: 'Insufficient data',
 };
 
 const starterName = (p) => p?.report?.name || p?.name || (p?.npbId || p?.kboId ? 'announced' : '');
@@ -39,12 +40,21 @@ function checks(e, now) {
       add('absences', 'Injuries and suspensions', e.absences ? true : null, e.absences ? `${(e.absences.home?.length || 0) + (e.absences.away?.length || 0)} listed` : 'no team-news feed for this league');
       break;
     }
-    case 'hockey':
-      add('goalies', 'Starting goalies', null, 'no confirmed-goalie feed yet');
+    case 'hockey': {
+      // Daily Faceoff's starters (goalies.js): confirmed for both, or waiting on the confirmation.
+      const g = e.goalies, sure = (x) => /confirm/i.test(x?.status || '');
+      if (g) add('goalies', 'Starting goalies', sure(g.home) && sure(g.away) ? true : false, `${g.home.name} (${(g.home.status || 'unconfirmed').toLowerCase()}) v ${g.away.name} (${(g.away.status || 'unconfirmed').toLowerCase()})`, true);
+      else add('goalies', 'Starting goalies', null, e.leaguePath === 'hockey/nhl' ? 'not reported yet' : 'no starting-goalie feed for this league');
       break;
-    case 'basketball': case 'americanfootball':
-      add('injuries', 'Injury report', null, 'checked live when the match page opens');
+    }
+    case 'basketball': case 'americanfootball': {
+      // A dated injury list from the build (ESPN for prop leagues, Sleeper for the NFL), else the
+      // match page checks it live.
+      const inj = e.injuries, at = Number.isFinite(inj?.at) ? inj.at : null;
+      if (inj && at) add('injuries', 'Injury report', now - at <= injuryLimit(e.start - now), `${inj.source || 'feed'}: ${(inj.home?.length || 0) + (inj.away?.length || 0)} listed, read ${Math.max(0, Math.round((now - at) / 36e5))} h ago`);
+      else add('injuries', 'Injury report', null, 'checked live when the match page opens');
       break;
+    }
     case 'tennis': {
       const t = e.tennis, ranked = t?.home?.seed != null || t?.away?.seed != null || e.ranks;
       add('ranks', 'Rankings / seeds', ranked ? true : null, ranked ? 'known' : 'not in the feed');
@@ -67,19 +77,34 @@ function checks(e, now) {
   return out;
 }
 
+// How old a price may be before it is stale: tighter as the start nears (prices move most in the
+// last hours: team news, lineups, sharp money) and for sports whose markets move fast (tennis,
+// esports, small leagues priced by few books). Minutes.
+export function priceLimit(sport, msToStart) {
+  const h = msToStart / 36e5;
+  const base = h > 24 ? 360 : h > 6 ? 120 : h > 1 ? 60 : 20;
+  return ['tennis', 'esports', 'efootball', 'mma'].includes(sport) ? Math.round(base / 2) : base;
+}
+// How old an injury report may be: 12 hours, 2 hours on game day (inside 6 hours of the start).
+export const injuryLimit = (msToStart) => (msToStart < 6 * 36e5 ? 2 : 12) * 36e5;
+
 export function readiness(e, { now = Date.now(), priceAt = null } = {}) {
   const priced = Boolean(e.markets?.length);
   const list = checks(e, now);
-  const ageMin = priced && priceAt ? Math.round((now - priceAt) / 6e4) : null;
-  list.unshift({ key: 'price', label: 'Bookmaker price', ok: priced ? (ageMin == null || ageMin <= 60) : false, note: priced ? (ageMin == null ? 'available' : `checked ${ageMin < 1 ? 'just now' : `${ageMin} min ago`}`) : 'no price for this match' });
+  // The quote's own time when the feed gives one (Odds API), else when our prices were fetched.
+  const at = e.priceAt ?? priceAt;
+  const ageMin = priced && at ? Math.round((now - at) / 6e4) : null;
+  const limit = priceLimit(e.sport, e.start - now);
+  list.unshift({ key: 'price', label: 'Bookmaker price', ok: priced ? (ageMin == null ? null : ageMin <= limit) : false, note: priced ? (ageMin == null ? 'offered, but the time it was checked is unknown' : `checked ${ageMin < 1 ? 'just now' : `${ageMin} min ago`} (limit ${limit} min at this distance from the start)`) : 'no price for this match' });
   // Two sides announced with the same starter name, or a starter also listed as out: reports disagree.
   const outNames = new Set(['home', 'away'].flatMap((s) => (e.absences?.[s] || []).map((x) => String(x.name).toLowerCase())));
   const conflict = (e.probables || []).some((p) => outNames.has(String(starterName(p)).toLowerCase()));
   let state;
   const soon = e.start - now;
   if (conflict) state = 'conflict';
-  else if (priced && ageMin != null && ageMin > 60) state = 'stale';
+  else if (priced && ageMin != null && ageMin > limit) state = 'stale';
   else if (list.some((c) => c.ok === false && c.waitable && soon > -H)) state = 'waiting';
+  else if (priced && ageMin == null) state = 'unknown';
   else if (!priced && !list.some((c) => c.ok)) state = 'none';
   else if (list.some((c) => c.ok === null) || !priced) state = 'limited';
   else state = 'ready';
@@ -88,6 +113,10 @@ export function readiness(e, { now = Date.now(), priceAt = null } = {}) {
   return { state, label, checks: list, missing: list.filter((c) => c.ok === false).map((c) => c.label), uncovered: list.filter((c) => c.ok === null).map((c) => c.label) };
 }
 
-// Sort weight: ready first, then waiting, limited, stale, conflict, none.
-export const READY_ORDER = { ready: 0, waiting: 1, limited: 2, stale: 3, conflict: 4, none: 5 };
+// Sort weight: ready first, then waiting, freshness unknown, limited, stale, conflict, none.
+export const READY_ORDER = { ready: 0, waiting: 1, unknown: 2, limited: 3, stale: 4, conflict: 5, none: 6 };
 export const readyBadge = (r) => `<span class="ready ready-${r.state}" title="${r.checks.map((c) => `${c.ok === true ? '✓' : c.ok === false ? '✗' : '–'} ${c.label}: ${c.note}`).join('\n').replace(/"/g, '&quot;')}">${r.label}</span>`;
+
+// When a match's price was quoted: the quote's own time (Odds API, football-data.co.uk), else the
+// time the feed carrying it was read. Never the site's build time: null means freshness unknown.
+export const priceTime = (e) => e?.priceAt ?? (e?.markets?.length ? e.fetchedAt ?? null : null);

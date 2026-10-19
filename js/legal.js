@@ -67,10 +67,11 @@ export const legalViews = {
 };
 
 // First visit: confirm age before showing betting content (remembered in this browser).
+// Returns true when the check is on screen.
 export function ageGate() {
   let ok = false;
   try { ok = localStorage.getItem('atlas-age-ok') === '1'; } catch { /* storage blocked: ask each visit */ }
-  if (ok) return;
+  if (ok) return false;
   const d = document.createElement('div');
   d.className = 'age-gate';
   d.setAttribute('role', 'dialog');
@@ -89,4 +90,5 @@ export function ageGate() {
     if (t.dataset.age === 'read') d.classList.add('peek'); // let them read the page, gate returns on reload
   });
   setTimeout(() => d.querySelector('[data-age="yes"]')?.focus(), 50);
+  return true;
 }

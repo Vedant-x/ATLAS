@@ -95,7 +95,14 @@ export function analyseSlip(legs, { logs = null } = {}) {
   const bare = legs.filter((l) => l.prop && logs && !logs[`${l.prop.league}|${l.prop.id}`]).length;
   if (bare) limits.push(`${bare} prop leg${bare > 1 ? 's have' : ' has'} no game history: the chance is the price's own`);
   if (uncertain) limits.push('same-match legs ATLAS cannot measure: the combined chance is uncertain, not just the number shown');
-  return { n, odds, product, adjusted, breakEven: 1 / odds, ret: adjusted * odds - 1, pairs, uncertain, weakest, without, limits };
+  // Legs that depend on each other (same match, or the same stat at two lines) are not priced by
+  // multiplying their odds: a bookmaker prices that combination itself (a same-game parlay), usually
+  // lower, or refuses it. The total odds, payout and return are then what the multiplied price would
+  // pay, not a quote anyone offers.
+  const hypothetical = pairs.length > 0;
+  if (hypothetical) limits.push('legs that depend on each other: no bookmaker quote for this combination; the total odds, payout and return assume the odds multiply, which they usually do not');
+  if (pairs.some((x) => x.kind === 'measured')) limits.push('the same-match adjustment is a pairwise approximation from shared games, not a full joint model');
+  return { n, odds, product, adjusted, breakEven: 1 / odds, ret: adjusted * odds - 1, pairs, uncertain, hypothetical, weakest, without, limits };
 }
 
 const pc = (x, d = 0) => `${(x * 100).toFixed(d)}%`;
@@ -110,14 +117,15 @@ export function slipCheck(legs, { logs, esc }) {
     if (p.kind === 'nested') return `<li><b>${names}</b>: the same stat at two lines; the higher line implies the lower one, so only the harder leg counts toward the combined chance.</li>`;
     if (p.kind === 'measured') {
       const j = p.joint, indep = (j.ha / j.n) * (j.hb / j.n);
-      return `<li><b>${names}</b>: both landed in ${j.both} of ${j.n} games they played together (${pc(j.both / j.n)}); if unrelated, ${pc(indep)}. ${p.lift > 1.03 ? 'They tend to land together' : p.lift < 0.97 ? 'One tends to come at the other\'s expense' : 'Little sign they move together'} (×${p.lift.toFixed(2)} applied, shrunk for sample size).</li>`;
+      return `<li><b>${names}</b>: both landed in ${j.both} of ${j.n} games they played together (${pc(j.both / j.n)}); if unrelated, ${pc(indep)}. ${p.lift > 1.03 ? 'They tend to land together' : p.lift < 0.97 ? 'One tends to come at the other\'s expense' : 'Little sign they move together'} (×${p.lift.toFixed(2)} applied, shrunk for sample size: a pairwise approximation).</li>`;
     }
     if (p.kind === 'thin') return `<li><b>${names}</b>: ${p.joint ? `only ${p.joint.n} shared game${p.joint.n === 1 ? '' : 's'}` : 'no shared games on record'}: too few to measure how they move together.</li>`;
     return `<li><b>${names}</b>: same match, so they depend on the same game; ATLAS cannot measure by how much.</li>`;
   }).join('');
   return `<div class="slip-an">
     <h4>Slip check</h4>
-    <p>Combined chance <b>${pc(a.adjusted, d)}</b>${Math.abs(a.adjusted - a.product) > 1e-4 ? ` <small>(${pc(a.product, d)} if every leg were unrelated)</small>` : ''} · break-even ${pc(a.breakEven, d)} · estimated return at this price <b class="${a.ret >= 0 ? 'pos' : 'neg'}">${a.ret >= 0 ? '+' : ''}${(a.ret * 100).toFixed(1)}%</b>${a.uncertain ? ' <small class="warn">(uncertain: see below)</small>' : ''}.</p>
+    <p>Combined chance <b>${pc(a.adjusted, d)}</b>${Math.abs(a.adjusted - a.product) > 1e-4 ? ` <small>(${pc(a.product, d)} if every leg were unrelated)</small>` : ''} · break-even ${pc(a.breakEven, d)} · ${a.hypothetical ? 'return <i>if</i> the odds multiplied' : 'estimated return at this price'} <b class="${a.ret >= 0 ? 'pos' : 'neg'}">${a.ret >= 0 ? '+' : ''}${(a.ret * 100).toFixed(1)}%</b>${a.uncertain ? ' <small class="warn">(uncertain: see below)</small>' : ''}.</p>
+    ${a.hypothetical ? '<p class="warn"><b>Hypothetical price.</b> Some legs depend on each other, so no bookmaker pays the multiplied odds for them together. Ask your bookmaker for a same-game price and compare it with the combined chance above.</p>' : ''}
     ${pairs ? `<h5>Legs that depend on each other</h5><ul>${pairs}</ul>` : '<p class="muted">No two legs share a match: they settle independently.</p>'}
     <p><b>Weakest leg:</b> ${esc(short(a.weakest))} (${pc(a.weakest.p)}).</p>
     <h5>Without each leg</h5>

@@ -62,3 +62,15 @@ test('slip check: nested lines collapse to the strictest; removing a leg recompu
   assert.equal(r3.uncertain, false, 'nested lines are fully determined, not uncertain');
   assert.ok(Math.abs(r3.ret - (0.2 * r3.odds - 1)) < 1e-9, 'return at the price uses the combined chance');
 });
+
+test('slip check: dependent legs get a hypothetical price, independent ones a real one', () => {
+  // The review's case: 25+ at 80% and 30+ at 40% on the same player. The chance is 40%, but 1.25 x 2.50
+  // = 3.125 is not a price anyone offers for the pair.
+  const leg = (t, p, odds) => ({ eventId: 'm', pick: `${t}+ points`, market: 'Player points', odds, p, prop: { id: '9', type: 'points', target: t, league: 'nba' } });
+  const r = analyseSlip([leg(25, 0.8, 1.25), leg(30, 0.4, 2.5)]);
+  assert.equal(+r.adjusted.toFixed(3), 0.4);
+  assert.equal(r.hypothetical, true);
+  assert.ok(r.limits.some((x) => /no bookmaker quote/.test(x)));
+  const apart = analyseSlip([{ eventId: 'a', pick: 'A', odds: 1.5, p: 0.7 }, { eventId: 'b', pick: 'B', odds: 1.5, p: 0.7 }]);
+  assert.equal(apart.hypothetical, false);
+});

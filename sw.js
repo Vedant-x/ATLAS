@@ -42,3 +42,23 @@ self.addEventListener('notificationclick', (e) => {
     return c.focus().then((w) => (w || c).navigate(url)).catch(() => self.clients.openWindow(url));
   }));
 });
+
+// Alerts while ATLAS is closed (js/pushalerts.js, worker/atlas-alerts.js): the push carries no data;
+// the waiting messages for this subscription are fetched from the alerts Worker and shown, each once
+// (tagged by its change id). A browser must show something for every push: if the messages can't be
+// read, a short note opens the watchlist.
+const subIdOf = async (endpoint) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(endpoint)))].slice(0, 16).map((b) => b.toString(16).padStart(2, '0')).join('');
+self.addEventListener('push', (e) => {
+  e.waitUntil((async () => {
+    try {
+      const cfg = await (await caches.open('atlas-config')).match('/alerts-config').then((r) => r && r.json());
+      const sub = await self.registration.pushManager.getSubscription();
+      if (!cfg?.alertsUrl || !sub) throw new Error('not configured');
+      const { messages = [] } = await (await fetch(`${cfg.alertsUrl}/pending?id=${await subIdOf(sub.endpoint)}`)).json();
+      if (!messages.length) throw new Error('nothing waiting');
+      await Promise.all(messages.slice(-5).map((m) => self.registration.showNotification(m.title, { body: m.body, tag: m.id, icon: 'icons/icon-192.png', data: { url: m.url } })));
+    } catch {
+      await self.registration.showNotification('ATLAS', { body: 'A saved match changed.', tag: 'atlas-generic', icon: 'icons/icon-192.png', data: { url: '#/watchlist' } });
+    }
+  })());
+});

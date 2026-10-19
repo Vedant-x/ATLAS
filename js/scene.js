@@ -2,7 +2,7 @@
 //  - 9k-particle field that morphs between formations per page: sphere, stadium, helix, galaxy
 //  - Sport venues and the F1 circuit (single pass, no post-processing)
 // API: setMode(mode, opts), setAccent(hex), pulse()
-import * as THREE from '../vendor/three.module.js';
+import * as THREE from '../vendor/three.module.min.js';
 import { VENUES } from './venues.js';
 
 // ---------- particle formations ----------

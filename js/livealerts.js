@@ -7,10 +7,34 @@ const PREF_KEY = 'atlas-alert-prefs', SEEN_KEY = 'atlas-live-seen';
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage blocked */ } };
 
+// Which moments to announce: one setting for every match, and per match overrides (say, goals only
+// for one game). Kept in memory as well, so a blocked storage still works for the visit.
+export const ALERT_KINDS = ['scores', 'cards', 'periods', 'final'];
+const KIND_PREF = { score: 'scores', card: 'cards', period: 'periods', final: 'final' };
+let stored = load(PREF_KEY, {});
 export const alertPrefs = {
-  get: () => ({ scores: true, cards: true, periods: true, final: true, ...load(PREF_KEY, {}) }),
-  set(patch) { save(PREF_KEY, { ...alertPrefs.get(), ...patch }); },
+  get: () => { const general = { ...stored }; delete general.match; return { scores: true, cards: true, periods: true, final: true, ...general }; },
+  set(patch) { stored = { ...stored, ...patch }; save(PREF_KEY, stored); },
+  // The settings in force for one match: the general ones with that match's own on top.
+  forMatch: (id) => ({ ...alertPrefs.get(), ...(stored.match?.[id] || {}) }),
+  hasOwn: (id) => Boolean(stored.match?.[id]),
+  setMatch(id, patch) {
+    const match = { ...(stored.match || {}), [id]: { ...(stored.match?.[id] || {}), ...patch } };
+    // Back to the general settings: drop the override.
+    if (ALERT_KINDS.every((k) => match[id][k] == null || match[id][k] === alertPrefs.get()[k])) delete match[id];
+    stored = { ...stored, match }; save(PREF_KEY, stored);
+  },
 };
+export const wants = (prefs, m) => Boolean(prefs[KIND_PREF[m.kind]]);
+// Quiet hours: no system notifications from `quiet[0]` to `quiet[1]` o'clock (local time, may run past
+// midnight, e.g. 23 to 7); moments still show in the page. Off when unset.
+export const QUIET_CHOICES = [null, [22, 7], [23, 8], [0, 9]];
+export function quietNow(prefs, d = new Date()) {
+  const q = prefs?.quiet;
+  if (!Array.isArray(q) || q[0] === q[1]) return false;
+  const h = d.getHours();
+  return q[0] < q[1] ? h >= q[0] && h < q[1] : h >= q[0] || h < q[1];
+}
 
 const ord = (n) => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
 const short = (s, n = 110) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -75,8 +99,8 @@ export function startLiveAlerts({ events, follow, fetchSummary, show, final = ()
       const ids = follow();
       const now = Date.now();
       const due = events().filter((e) => ids.has(e.id) && covers(e) && (e.live || (e.start <= now + 10 * 6e4 && e.start > now - 5 * 36e5))).slice(0, 10);
-      const prefs = alertPrefs.get();
       for (const e of due) {
+        const prefs = alertPrefs.forMatch(e.id);
         let sm;
         try { sm = await fetchSummary(e); } catch { continue; }
         const ms = liveMoments(sm, e);
@@ -89,7 +113,7 @@ export function startLiveAlerts({ events, follow, fetchSummary, show, final = ()
         const fresh = caughtUp ? ms.filter((m) => !known.has(m.key)) : [];
         primed.add(e.id);
         seen[e.id] = { keys: ms.map((m) => m.key), at: now };
-        for (const m of fresh) if (prefs[{ score: 'scores', card: 'cards', period: 'periods', final: 'final' }[m.kind]]) show(m);
+        for (const m of fresh) if (wants(prefs, m)) show(m);
       }
       for (const [id, v] of Object.entries(seen)) if (v.at < now - 2 * 864e5) delete seen[id];
       save(SEEN_KEY, seen);
