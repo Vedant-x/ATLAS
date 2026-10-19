@@ -788,9 +788,10 @@ async function khl() {
 // live ones still shown until the next full read.
 const TSDB_KEEP = 30 * 6e4;
 async function sportsdb() {
+  let prev = null;
   try {
     const r = await fetch((process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json').replace('index.json', 'sportsdb.json'), { signal: AbortSignal.timeout(15000) });
-    const prev = r.ok ? await r.json() : null;
+    prev = r.ok ? await r.json() : null;
     if (prev?.fetchedAt && Date.now() - prev.fetchedAt < TSDB_KEEP && Array.isArray(prev.events)) {
       const kept = prev.events.filter((e) => e.live || e.start > Date.now() - 3 * 36e5);
       tsdbFile = prev;
@@ -798,19 +799,31 @@ async function sportsdb() {
       return kept;
     }
   } catch { /* first build, or the site is unreachable: read afresh */ }
-  const events = await sportsdbFetch();
-  tsdbFile = { fetchedAt: Date.now(), events };
-  return events;
+  const kept = Array.isArray(prev?.events) ? prev.events.filter((e) => e.start > Date.now() - 3 * 36e5) : [];
+  const fresh = await sportsdbFetch().catch((e) => { log(`TheSportsDB failed: ${e.message}`); return null; });
+  // A read cut short (rate limits, an outage) never wipes the fixtures already known: the last good
+  // copy stays, with its own read time, until a full read replaces it.
+  if (!fresh || (fresh.partial && fresh.events.length < kept.length)) {
+    if (kept.length) log(`TheSportsDB: keeping ${kept.length} fixtures from the last full read (${Math.round((Date.now() - prev.fetchedAt) / 6e4)} min ago)`);
+    tsdbFile = prev?.events ? prev : { fetchedAt: Date.now(), events: [] };
+    return kept;
+  }
+  tsdbFile = { fetchedAt: Date.now(), events: fresh.events };
+  return fresh.events;
 }
 let tsdbFile = null;
 async function sportsdbFetch() {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-  let last = 0, calls = 0, errors = 0;
-  const getJson = async (path) => {
+  let last = 0, calls = 0, errors = 0, backoffs = 0;
+  const getJson = async (path, retry = true) => {
     const gap = 2200 - (Date.now() - last);
     if (gap > 0) await wait(gap);
     last = Date.now(); calls++;
-    try { return JSON.parse(await get(`${TSDB}${path}`, { headers: { Accept: 'application/json' } })); } catch (e) { errors++; if (errors <= 4) log(`  TheSportsDB ${path}: ${e.message}`); return null; }
+    try { return JSON.parse(await get(`${TSDB}${path}`, { headers: { Accept: 'application/json' } })); } catch (e) {
+      // Rate limited (the key is shared): wait out the minute and try once more, at most 3 times a build.
+      if (retry && /^429\b/.test(e.message) && backoffs < 3) { backoffs++; log(`  TheSportsDB rate limited: waiting 60 s (${backoffs} of 3)`); await wait(60000); return getJson(path, false); }
+      errors++; if (errors <= 4) log(`  TheSportsDB ${path}: ${e.message}`); return null;
+    }
   };
   const iso = (off) => new Date(Date.now() + off * 864e5).toISOString().slice(0, 10);
   const raw = new Map(), leagues = new Map(), counts = {};
@@ -847,7 +860,7 @@ async function sportsdbFetch() {
   log(`TheSportsDB: ${events.length} upcoming or live fixtures (${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', ')} listed), ${events.filter((e) => e.live).length} live, ${events.filter((e) => e.stats.homeRecord && e.stats.awayRecord).length} with both records, from ${past.length} season events in ${busy.length} competitions (${seasons} full seasons); ${calls} requests, ${errors} failed`);
   for (const e of events.slice(0, 6)) log(`  TSDB ${e.sport} ${e.league}: ${e.home} v ${e.away} ${new Date(e.start).toISOString()} rec ${e.stats.homeRecord || '-'} / ${e.stats.awayRecord || '-'}`);
   if (calls && errors === calls) throw new Error('every request failed');
-  return events;
+  return { events, partial: errors > 0 };
 }
 
 // ---------- Golf and motor racing (field events, data/fields.json) ----------
@@ -1416,11 +1429,14 @@ if (process.env.ODDS_API_KEY) {
     const active = Object.keys(titles);
     // Fixture lists (free): the stalest first, up to 25 per build, each kept 6 hours.
     const lists = { ...(cache.lists || {}) }, listAt = { ...(cache.listAt || {}) };
-    let listed = 0;
+    let listed = 0, tried = 0;
     for (const k of active.filter((x) => !(listAt[x] > Date.now() - 6 * 36e5)).sort((x, y) => (listAt[x] || 0) - (listAt[y] || 0)).slice(0, 25)) {
+      // One request a second; a rate limit ends this build's lists (the stalest go first next build).
+      if (tried++) await new Promise((r) => setTimeout(r, 1000));
       try {
         const res = await fetch(`${ODDS_API}/sports/${k}/events?apiKey=${key}`, { signal: AbortSignal.timeout(20000) });
         if (res.ok) { lists[k] = (await res.json()).map((o) => ({ id: o.id, commence_time: o.commence_time, home_team: o.home_team, away_team: o.away_team })); listAt[k] = Date.now(); listed++; }
+        else if (res.status === 429) { log(`Odds API fixture lists: rate limited after ${listed}; the rest next build`); break; }
         else log(`Odds API ${k} fixtures: HTTP ${res.status}`);
       } catch (e) { log(`Odds API ${k} fixtures: ${e.message}`); }
     }
