@@ -76,7 +76,7 @@ import { applyModel } from './intel.js';
 import { fetchLineups, fetchSummary } from './espn.js';
 import { startLiveAlerts, alertPrefs } from './livealerts.js';
 import { morph } from './morph.js';
-import { views, bind, legIndex, edgeTable, countdown, esc, sportOf, ist, setHomeLayout } from './views.js';
+import { views, bind, legIndex, edgeTable, countdown, esc, sportOf, ist, setHomeLayout, setFiltersOpen } from './views.js';
 import { enablePush, disablePush, syncPush } from './pushalerts.js';
 import { slip } from './slip.js';
 import { preloader, cursor, wipe, magnetic, tilt, countUp, reveal, fitTitles } from './ui.js';
@@ -85,6 +85,7 @@ import { bindResearch, quickView, togglePin, compareView, watchlistView, setRese
 import { loadTimeline, markReviewed } from './timeline.js';
 import { display, displayPanel, tzOptions } from './display.js';
 import { ZONES, setZone } from './tz.js';
+import { accentFor, setTheme } from './theme.js';
 import { leagueByPath, leagueKey, sportById } from './catalog.js';
 
 const app = document.getElementById('app');
@@ -264,12 +265,19 @@ function build() {
   return { name, v: (views[name] || research[name] || legalViews[name] || trackViews[name] || views.notfound)(args.map(decodeURIComponent)) };
 }
 
+// The visitor's own accent (Display: Colour) wins over the page's, in the scene too.
+let pageAccent = '#d2ff00';
+function applyAccent() {
+  scene.setAccent(accentFor(pageAccent));
+  document.documentElement.style.setProperty('--accent', readable(accentFor(pageAccent))); // selected chips carry black text on it
+}
+
 function render(animate) {
   const { name, v } = build();
   app.innerHTML = withTabs(name, v.html);
   document.title = `${v.title} · ATLAS`;
-  scene.setAccent(v.accent);
-  document.documentElement.style.setProperty('--accent', readable(v.accent)); // selected chips carry black text on it
+  pageAccent = v.accent;
+  applyAccent();
   scene.setMode(v.mode, v.sceneOpts);
   // Deeper pages keep their section lit: matches and leagues under Sports, player research under Props, the builder and edge board under Picks.
   // Research (Sports, Props, Compare, Live and the pages under them) lights the Research entry.
@@ -526,6 +534,7 @@ document.addEventListener('click', (e) => {
   else if ('qvClose' in d) closeQv();
   else if ('displayToggle' in d) { const p = document.getElementById('display-panel'); const open = !p.classList.contains('open'); p.innerHTML = displayPanel(); p.classList.toggle('open', open); t.setAttribute('aria-expanded', open); }
   else if (d.display) { display.set({ [d.display]: d.value }); document.getElementById('display-panel').innerHTML = displayPanel(); }
+  else if (d.themeAccent || d.themeSurface) { setTheme(d.themeAccent ? { accent: d.themeAccent } : { surface: d.themeSurface }); applyAccent(); document.getElementById('display-panel').innerHTML = displayPanel(); }
   else if (d.pref) { e.preventDefault(); const p = prefs.get(); const v = d.value;
     if (d.pref === 'minOdds') prefs.set({ minOdds: Number(v) });
     else if (d.pref === 'sport') prefs.set({ sports: v === 'all' ? [] : p.sports.includes(v) ? p.sports.filter((x) => x !== v) : [...p.sports, v] });
@@ -542,6 +551,7 @@ document.addEventListener('click', (e) => {
   else if ('navBack' in d) { if (stack.length > 1) history.back(); else { replacing = true; location.replace(parentOf()); } }
   else if (d.jump) { e.preventDefault(); document.getElementById(d.jump)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 });
+document.addEventListener('toggle', (e) => { if (e.target.matches?.('.sl-filters')) setFiltersOpen(e.target.open); }, true);
 // One time zone for every time on the site (tz.js): the header menu and Display settings.
 function syncTz() { for (const sel of document.querySelectorAll('[data-tz-select]')) sel.innerHTML = tzOptions(); }
 document.addEventListener('change', (e) => {

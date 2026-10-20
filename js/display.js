@@ -1,3 +1,4 @@
+import { themeRows } from './theme.js';
 import { ZONES, zone, abbr } from './tz.js';
 // Display settings, saved in this browser: how much motion, how dense the pages are and what the
 // ticker does. Applied as attributes on <html> so CSS and the motion code both read them.
@@ -44,7 +45,8 @@ export const tzOptions = () => Object.entries(ZONES).map(([k, z]) => `<option va
 
 export function displayPanel() {
   const opt = (k, v, label) => `<button class="chip ${cur[k] === v ? 'on' : ''}" data-display="${k}" data-value="${v}" aria-pressed="${cur[k] === v}">${label}</button>`;
-  return `<div class="dp-row"><span>Time zone</span><select data-tz-select aria-label="Time zone for every time shown">${tzOptions()}</select></div>
+  return `${themeRows()}
+    <div class="dp-row"><span>Time zone</span><select data-tz-select aria-label="Time zone for every time shown">${tzOptions()}</select></div>
     <div class="dp-row"><span>Motion</span>${opt('motion', 'reduced', 'Off')}${opt('motion', 'standard', 'Standard')}${opt('motion', 'cinematic', 'Cinematic')}</div>
     <div class="dp-row"><span>Density</span>${opt('density', 'comfortable', 'Comfortable')}${opt('density', 'compact', 'Compact')}${opt('density', 'focus', 'Focus')}</div>
     <div class="dp-row"><span>3D scene</span><button class="chip ${fx3d() ? 'on' : ''}" data-fx-toggle aria-pressed="${fx3d()}">${fx3d() ? 'On' : 'Off'} · tap to switch</button></div>

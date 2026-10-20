@@ -421,13 +421,12 @@ function dashboard(ev, live) {
   // Every panel by name, shown in the visitor's saved order with hidden ones left out (Customise).
   const panels = {
     potd: () => potdPanel(pool),
-    shortlist: () => `<div class="panel dash-short reveal"><h2 class="ph">Shortlist <small>${when2} · ${MODES.find((m) => m[0] === mode)[2]} · ${orderLabel()}</small></h2>
-      <div class="win-chips" role="group" aria-label="Rank by">${MODES.map(([k, l]) => `<button class="chip ${mode === k ? 'on' : ''}" data-smode="${k}" aria-pressed="${mode === k}">${l}</button>`).join('')}</div>
-      ${windowChips('shours', hrs)}
-      ${orderChips()}
-      ${safest ? `<p class="rec-line">${rec ? `Surest so far: ${rec}` : 'Surest: tracked from today'} · picks where ATLAS does not claim to beat the bookmaker: in the record these landed most often</p>`
-    : best ? `<p class="rec-line">${rec ? `Best bets so far: ${rec}` : 'Best bets: tracked from today'} · the price is the best across bookmakers, never shorter than the market's own fair odds · <a href="#/track">full record</a></p>` : rec ? `<p class="rec-line">Bankers so far: ${rec} · <a href="#/track">full record</a></p>` : ''}
-      <div class="minilist">${S.loading ? skelRows(4) : short.map((b) => miniPick(b)).join('') || `<p class="muted">${empty}</p>`}</div>${prefsBar()}</div>`,
+    // Minimal: the modes, one folded "Filters" control (window, order, odds and sports), one record line.
+    shortlist: () => `<div class="panel dash-short reveal"><h2 class="ph">Shortlist <small title="${esc(MODES.find((m) => m[0] === mode)[2])}">${esc(MODES.find((m) => m[0] === mode)[1])}</small></h2>
+      <div class="win-chips sl-modes" role="group" aria-label="Rank by">${MODES.map(([k, l]) => `<button class="chip ${mode === k ? 'on' : ''}" data-smode="${k}" aria-pressed="${mode === k}" title="${esc(MODES.find((m) => m[0] === k)[2])}">${l}</button>`).join('')}</div>
+      <details class="sl-filters"${filtersOpen ? ' open' : ''}><summary>${ico('filter')} Next ${hrs}h · ${esc(orderLabel())}</summary>${windowChips('shours', hrs)}${orderChips()}${prefsBar()}</details>
+      ${rec ? `<p class="rec-line">${safest ? 'Surest' : best ? 'Best bets' : 'Bankers'} so far: ${rec} · <a href="#/track">record</a></p>` : ''}
+      <div class="minilist">${S.loading ? skelRows(4) : short.map((b) => miniPick(b)).join('') || `<p class="muted">${empty}</p>`}</div></div>`,
     live: () => `<div class="panel dash-live reveal"><h2 class="ph">Live now <small>${S.loading ? '' : live.length}</small></h2>
       ${S.loading ? skelRows(3) : live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${esc(e.score || '')}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>`,
     every: () => everyTeaser(),
@@ -440,10 +439,16 @@ function dashboard(ev, live) {
   return `<section class="dash">${homeLayout().filter((k) => panels[k]).map((k) => sized(k, panels[k]())).join('')}${layoutPanel()}</section>`;
 }
 
+// The shortlist's folded filters stay open across re-renders once opened (main.js listens).
+let filtersOpen = false;
+export const setFiltersOpen = (v) => { filtersOpen = Boolean(v); };
+
 // Home panels: order and visibility, saved per visitor (localStorage, best effort). Unknown or missing
 // names fall back to the default order, so a new panel always appears.
 const HOME_PANELS = [['potd', 'Parlay of the day'], ['shortlist', 'Shortlist'], ['live', 'Live now'], ['every', 'Every sport'], ['changes', 'What changed'], ['record', 'Track record'], ['health', 'Source health']];
 const LAYOUT_KEY = 'atlas-home-layout';
+// Minimal by default: the source-health and what-changed panels start hidden (Customise shows them).
+const DEFAULT_HIDDEN = ['health', 'changes'];
 // Panel widths on wide screens (phones always show one column): auto is the panel's own width.
 const SIZES = { third: 'Third', half: 'Half', full: 'Full' };
 const SIZE_CYCLE = ['auto', 'third', 'half', 'full'];
@@ -451,7 +456,7 @@ const readLayout = () => { try { return JSON.parse(localStorage.getItem(LAYOUT_K
 export function homeLayout(saved = readLayout()) {
   const known = HOME_PANELS.map(([k]) => k);
   const order = [...(saved.order || []).filter((k) => known.includes(k)), ...known.filter((k) => !(saved.order || []).includes(k))];
-  return order.filter((k) => !(saved.hidden || []).includes(k));
+  return order.filter((k) => !(saved.hidden ?? DEFAULT_HIDDEN).includes(k));
 }
 // Stays open after a change, so several panels can be moved in a row.
 let layoutOpen = false;
@@ -459,7 +464,7 @@ export function setHomeLayout(action, key) {
   layoutOpen = true;
   const saved = readLayout(), known = HOME_PANELS.map(([k]) => k);
   const order = [...(saved.order || []).filter((k) => known.includes(k)), ...known.filter((k) => !(saved.order || []).includes(k))];
-  let hidden = saved.hidden || [];
+  let hidden = saved.hidden ?? DEFAULT_HIDDEN;
   const i = order.indexOf(key);
   if (action === 'up' && i > 0) [order[i - 1], order[i]] = [order[i], order[i - 1]];
   if (action === 'down' && i >= 0 && i < order.length - 1) [order[i + 1], order[i]] = [order[i], order[i + 1]];
@@ -473,7 +478,7 @@ function layoutPanel() {
   const saved = readLayout(), known = HOME_PANELS.map(([k]) => k);
   const order = [...(saved.order || []).filter((k) => known.includes(k)), ...known.filter((k) => !(saved.order || []).includes(k))];
   const name = Object.fromEntries(HOME_PANELS);
-  return `<details class="panel dash-layout reveal"${layoutOpen ? ' open' : ''}><summary>Customise this page</summary><ul class="lay-list">${order.map((k, i) => { const off = (saved.hidden || []).includes(k); return `<li class="${off ? 'off' : ''}"><span>${name[k]}</span>
+  return `<details class="panel dash-layout reveal"${layoutOpen ? ' open' : ''}><summary>Customise this page</summary><ul class="lay-list">${order.map((k, i) => { const off = (saved.hidden ?? DEFAULT_HIDDEN).includes(k); return `<li class="${off ? 'off' : ''}"><span>${name[k]}</span>
     <button class="chip" data-lay="up" data-lay-key="${k}" aria-label="Move ${name[k]} up"${i === 0 ? ' disabled' : ''}>↑</button><button class="chip" data-lay="down" data-lay-key="${k}" aria-label="Move ${name[k]} down"${i === order.length - 1 ? ' disabled' : ''}>↓</button>
     <button class="chip" data-lay="size" data-lay-key="${k}" aria-label="Width of ${name[k]}: ${SIZES[saved.size?.[k]] || 'Auto'} (tap to change)">${SIZES[saved.size?.[k]] || 'Auto'}</button>
     <button class="chip ${off ? '' : 'on'}" data-lay="toggle" data-lay-key="${k}" aria-pressed="${!off}">${off ? 'Hidden' : 'Shown'}</button></li>`; }).join('')}</ul><button class="btn-ghost" data-lay="reset" data-lay-key="">Reset layout</button></details>`;
@@ -599,17 +604,20 @@ function statusPill(e) {
   return `<small class="pill-status" tabindex="0" title="${esc(why)}">${esc(word)}</small>`;
 }
 
+// A pick, minimal: the pick, the match and when; then ATLAS's chance, what the price needs and the
+// return, on one line. The reasons, the best bookmaker and the market's own chance are on hover / tap
+// (title) and on the match page.
 function miniPick(b) {
   const s = sportOf(b.event.sport);
   const rec = recommendationFor(b, trackCalibration());
   const leg = { key: `${b.event.id}|${b.market}|${b.pick}`, eventId: b.event.id, sport: b.event.sport, match: `${b.event.home} vs ${b.event.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p, recommendationId: rec.recommendationId, ...(b.prop ? { prop: b.prop } : {}) };
   const edge = `${b.ev >= 0 ? '+' : ''}${(b.ev * 100).toFixed(1)}%`;
-  return `<div class="mini reveal" data-rec="${esc(rec.recommendationId)}" title="${esc(`${rec.settlementRules} Chance range ${pc(rec.uncertaintyRange[0], 0)}–${pc(rec.uncertaintyRange[1], 0)} (${rec.uncertaintyMethod}).`)}"><span class="mini-ico">${s.icon}</span>
-    <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(b.event.home)} v ${esc(b.event.away)}</small>${b.book ? `<small class="muted">best price: ${esc(b.book)}</small>` : ''}${whyTag(b)}${b.event.live ? '<small class="live">LIVE</small>' : istTag(b.event.start)}${statusPill(b.event)}${b.ev < 0 ? '<small class="pill-below" title="ATLAS\'s chance is below what this price needs to break even: likely, but a poor price.">Below break-even at this price</small>' : ''}</a>
-    <div class="mini-nums"><span title="ATLAS estimated probability"><small>ATLAS chance</small><b>${pc(b.p, 0)}</b></span>${b.fair != null ? `<span title="Bookmakers' own chance with their margin removed"><small>Market (no margin)</small><b>${pc(b.fair, 0)}</b></span>` : ''}<span title="The chance this price needs to break even"><small>Break-even</small><b>${pc(1 / b.odds, 0)}</b></span><span title="Estimated return per unit staked: ATLAS chance × odds − 1"><small>Return</small><b class="${b.ev >= 0 ? 'pos' : 'neg'}">${edge}</b></span></div>
+  const tip = [whyLine(b) && `Why: ${whyLine(b)}`, b.fair != null && `Market (no margin): ${pc(b.fair, 0)}`, b.book && `Best price: ${b.book}`, `Chance range ${pc(rec.uncertaintyRange[0], 0)}–${pc(rec.uncertaintyRange[1], 0)}`, rec.settlementRules].filter(Boolean).join('\n');
+  return `<div class="mini reveal" data-rec="${esc(rec.recommendationId)}" title="${esc(tip)}"><span class="mini-ico">${s.icon}</span>
+    <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.event.home)} v ${esc(b.event.away)} · ${b.event.live ? '<span class="live">LIVE</span>' : esc(fmtTime(b.event.start, tzZone(), 'short'))}</small>${statusPill(b.event)}</a>
+    <div class="mini-nums"><b title="ATLAS chance">${pc(b.p, 0)}</b><small><span class="mm-need" title="The chance this price needs to break even">needs ${pc(1 / b.odds, 0)} · </span><span class="${b.ev >= 0 ? 'pos' : 'neg'}" title="Estimated return per unit staked${b.ev < 0 ? ': below break-even at this price' : ''}">${edge}</span></small></div>
     ${legButton(leg, odd(b.odds))}</div>`;
 }
-
 
 const paramLabel = (k, unit) => ({ lambdaHome: `Expected ${unit} · home`, lambdaAway: `Expected ${unit} · away`, total: `Expected total ${unit || 'points'}`, margin: 'Expected margin (home)', sigma: 'Margin spread σ', homePoints: 'Home points', awayPoints: 'Away points', setWin: 'Home set-win chance', bestOf: 'Best of' }[k] || k);
 

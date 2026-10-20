@@ -56,28 +56,25 @@ test('home: placeholders while loading, never "0 events" or "no picks"', async (
   await ctx.close();
 });
 
-test('home: 30-day record strip and a reason on picks', async () => {
+test('home: 30-day record strip and a reason behind each pick', async () => {
   const { page, ctx, errors } = await open('#/');
   await page.waitForSelector('.track-strip');
   const strip = await page.textContent('.track-strip');
   assert.match(strip, /Last 30 days/);
   assert.match(strip, /9–3/);
-  assert.match(strip, /beat the close/);
+  assert.match(await page.getAttribute('.track-strip', 'title'), /beat the close/);
   await page.waitForSelector('.dash-short .mini');
-  assert.match(await page.textContent('.dash-short'), /Arsenal unbeaten in 5/);
+  // Minimal cards: the reason is in the card's tip (hover / long-press), not printed on it.
+  const tips = await page.$$eval('.dash-short .mini', (rows) => rows.map((r) => r.title).join('\n'));
+  assert.match(tips, /Why: Arsenal unbeaten in 5/);
   assert.deepEqual(errors, []);
   await ctx.close();
 });
 
-test('phone: the three hero numbers share a row and no page scrolls sideways', async () => {
+test('phone: minimal first screen (no hero counters, picks in view) and no page scrolls sideways', async () => {
   const { page, ctx, errors } = await open('#/', { viewport: PHONE });
-  await page.waitForSelector('.stats b[data-count-to]');
-  // The live board runs to four figures: measure with numbers that wide.
-  await page.waitForTimeout(1500); // count-up finished
-  await page.$$eval('.hero .stats b', (bs) => bs.forEach((b) => { b.textContent = '1,284'; }));
-  const tops = await page.$$eval('.hero .stats > div', (ds) => ds.map((d) => Math.round(d.getBoundingClientRect().top)));
-  assert.equal(tops.length, 3);
-  assert.equal(new Set(tops).size, 1, `stats on one row: ${tops}`);
+  await page.waitForSelector('.dash-short .mini');
+  assert.equal(await page.$eval('.hero .stats', (el) => getComputedStyle(el).display), 'none', 'hero counters hidden on phones');
   await shot(page, 'home-phone');
   for (const r of ['#/', '#/bankers', '#/edge', '#/x/2', '#/watchlist', '#/track']) {
     await page.goto(BASE + r); await page.waitForTimeout(600);
@@ -219,7 +216,7 @@ test('time zone: one setting for every time; the parlay of the day follows it', 
   // A zone with no recorded day follows the IST day, shown in the visitor's own time too.
   await page.selectOption('.bar [data-tz-select]', 'ET');
   await page.waitForFunction(() => /12:00 to 12:00 IST · .*your time/.test(document.querySelector('.dash-potd')?.textContent || ''));
-  assert.match(await page.textContent('.dash-short'), /\d am (EDT|EST)|\d pm (EDT|EST)/, 'kick-off times in US Eastern time');
+  assert.match(await page.textContent('.dash-short'), /\d\d:\d\d (EDT|EST)/, 'kick-off times in US Eastern time');
   await page.reload();
   await page.waitForSelector('.dash-potd');
   assert.equal(await page.$eval('.bar [data-tz-select]', (s) => s.value), 'ET', 'kept after a reload');
@@ -321,6 +318,23 @@ test('home: a panel can be made full width, and every panel takes a size', async
   const sized = await page.$$eval('.dash > .panel.lay-third', (ps) => ps.length);
   const shown = await page.$$eval('.dash > .panel:not(.dash-layout):not(.lay-full)', (ps) => ps.length);
   assert.equal(sized, shown);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('theme: a colour and a background of the visitor\'s own, kept after a reload', async () => {
+  const { page, ctx, errors } = await open('#/');
+  await page.waitForSelector('.dash-short');
+  await page.click('[data-display-toggle]');
+  await page.waitForSelector('#display-panel.open [data-theme-accent="cyan"]');
+  await page.click('[data-theme-accent="cyan"]');
+  await page.click('[data-theme-surface="navy"]');
+  const vars = () => page.evaluate(() => { const cs = getComputedStyle(document.documentElement); return [cs.getPropertyValue('--accent').trim().toLowerCase(), cs.getPropertyValue('--bg').trim().toLowerCase()]; });
+  assert.deepEqual(await vars(), ['#00e5ff', '#03060f']);
+  await shot(page, 'theme-panel');
+  await page.reload();
+  await page.waitForSelector('.dash-short');
+  assert.deepEqual(await vars(), ['#00e5ff', '#03060f'], 'kept after a reload');
   assert.deepEqual(errors, []);
   await ctx.close();
 });
