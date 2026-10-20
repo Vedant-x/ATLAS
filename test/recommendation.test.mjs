@@ -37,3 +37,21 @@ test('lines, settlement rules and uncertainty', () => {
   assert.ok(narrow.range[1] - narrow.range[0] < wide.range[1] - wide.range[0]);
   assert.deepEqual(uncertainty(0.6, 0).range, [0.44999999999999996, 0.75]);
 });
+
+test('forecast revision: a new chance, bookmaker or quote time is a new forecast, the selection id stays', async () => {
+  const { recommendation } = await import('../js/recommendation.js');
+  const e = { id: 'e9', sport: 'hockey', league: 'NHL', markets: [{}], fetchedAt: 1000, priceAt: 900, bookmaker: 'Book A' };
+  const b = { event: e, market: 'Winner', pick: 'Colorado Avalanche', odds: 1.44, p: 0.71, pRaw: 0.7, book: 'Book A' };
+  const opt = { modelVersion: 'm1', calibrationVersion: 'cal-10-x' };
+  const a = recommendation(b, opt);
+  const lower = recommendation({ ...b, p: 0.65 }, opt);
+  const otherBook = recommendation({ ...b, book: 'Book B' }, opt);
+  const later = recommendation({ ...b, event: { ...e, priceAt: 2000 } }, opt);
+  for (const x of [lower, otherBook, later]) {
+    assert.equal(x.canonicalSelectionId, a.canonicalSelectionId);
+    assert.notEqual(x.forecastId, a.forecastId);
+  }
+  assert.equal(recommendation(b, opt).forecastId, a.forecastId, 'the same forecast keeps its id');
+  assert.equal(a.forecastGeneratedAt, 1000, 'generated at the data build, not at render time');
+  assert.equal(a.publishedAt, null);
+});

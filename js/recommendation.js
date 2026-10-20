@@ -28,7 +28,7 @@ export function uncertainty(p, n) {
   return { method: `normal approximation from ${n} settled forecasts of this kind`, range: [Math.max(0, +(p - half).toFixed(3)), Math.min(1, +(p + half).toFixed(3))] };
 }
 
-export function recommendation(b, { modelVersion, calibrationVersion = null, calN = null, readiness = null, constraints = null, mode = null, reason = null, now = Date.now(), sources = [] } = {}) {
+export function recommendation(b, { modelVersion, calibrationVersion = null, calN = null, readiness = null, constraints = null, mode = null, reason = null, now = Date.now(), generatedAt = null, publishedAt = null, sources = [] } = {}) {
   const e = b.event || b.e;
   const sel = selectionId({ eventId: e.id, market: b.market, pick: b.pick, prop: b.prop });
   const quoteAt = e.priceAt ?? (e.markets?.length ? e.fetchedAt ?? null : null);
@@ -36,14 +36,20 @@ export function recommendation(b, { modelVersion, calibrationVersion = null, cal
   const quoteId = priced ? `${sel}@${Number(b.odds).toFixed(2)}${quoteAt ? `#${quoteAt}` : ''}` : null;
   return {
     schema: MODEL_SCHEMA,
+    // recommendationId: the selection at a price under one model and calibration (shared by every
+    // surface showing it). forecastId: this exact forecast revision (the quote's bookmaker and time,
+    // the exact odds and the chance shown), so any change to the quote or the chance is a new forecast.
     recommendationId: `r-${hash(`${sel}|${Number(b.odds).toFixed(2)}|${modelVersion}|${calibrationVersion}`)}`,
+    forecastId: `f-${hash(`${sel}|${b.odds}|${priced ? b.book || e.bookmaker || '' : 'fair'}|${quoteAt ?? ''}|${Number(b.p).toFixed(4)}|${Number(b.pRaw ?? b.p).toFixed(4)}|${modelVersion}|${calibrationVersion}`)}`,
     canonicalSelectionId: sel,
     eventId: e.id, sport: e.sport, league: e.league,
     marketId: b.market, selection: b.pick, line: lineOf(b.pick), settlementRules: settlementRules(b.market, e.sport),
     bookmaker: priced ? b.book || e.bookmaker || null : null, quoteType: priced ? e.quoteType || 'bookmaker' : 'model fair odds',
     quoteId, quotedOdds: b.odds,
     sourceUpdatedAt: e.fetchedAt ?? null, fetchedAt: quoteAt,
-    forecastGeneratedAt: now, publishedAt: now,
+    // When the forecast was computed (the data build that produced it, where known) and when it was
+    // published to the record (null for a display that was never recorded): never the render time.
+    forecastGeneratedAt: generatedAt ?? e.fetchedAt ?? now, publishedAt,
     modelVersion, calibrationVersion,
     rawProbability: b.pRaw ?? b.p, calibratedProbability: b.p, marketProbability: b.fair ?? null,
     ...(() => { const u = uncertainty(b.p, calN); return { uncertaintyMethod: u.method, uncertaintyRange: u.range }; })(),

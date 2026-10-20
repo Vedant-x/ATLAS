@@ -109,11 +109,12 @@ function outOfSample(picks, all) {
   const f = (x) => x.toFixed(4);
   const better = t.brier.shown < t.brier.market;
   const close = Math.abs(t.brier.shown - t.brier.market) < 0.002;
-  return `<div class="panel reveal"><h3 class="ph">Out-of-sample check <small>fitted on earlier results only, scored on the next week · ${w.weeks.length} week${w.weeks.length === 1 ? '' : 's'} · ${t.n} forecasts</small></h3>
+  return `<div class="panel reveal"><h3 class="ph">Out-of-sample check <small>fitted only on results known before each week, scored on that week · ${w.weeks.length} week${w.weeks.length === 1 ? '' : 's'} · ${t.n} forecasts</small></h3>
     <table class="tbl tight"><thead><tr><th></th><th class="num">Brier</th><th class="num">Log loss</th></tr></thead><tbody>
     <tr><td>ATLAS as shown (calibrated)</td><td class="num">${f(t.brier.shown)}</td><td class="num">${f(t.logLoss.shown)}</td></tr>
     <tr><td>ATLAS model alone</td><td class="num">${f(t.brier.raw)}</td><td class="num">${f(t.logLoss.raw)}</td></tr>
     <tr><td>Market price (less an assumed ${(w.margin * 100).toFixed(1)}% margin)</td><td class="num">${f(t.brier.market)}</td><td class="num">${f(t.logLoss.market)}</td></tr></tbody></table>
+    ${t.published ? `<p class="muted">As originally published (the chance shown at the time, not recalculated): Brier ${f(t.published.brier)} against the market's ${f(t.published.market)} on ${t.published.n} forecasts.</p>` : ''}
     <p>${close ? 'On results it had not seen, ATLAS and the market forecast about equally well: no measurable edge yet.' : better ? 'On results it had not seen, ATLAS forecast slightly better than the market.' : 'On results it had not seen, the market forecast better than ATLAS.'} ${t.n < 1000 ? 'The sample is small: treat this as provisional.' : ''} ${roi}.</p></div>`;
 }
 function verdict(a) {
