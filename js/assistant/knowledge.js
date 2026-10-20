@@ -1,3 +1,4 @@
+import { zone as tzZone } from '../tz.js';
 // What the assistant knows: read-only views over the site's live state (matches, prices, model
 // probabilities, injuries, starters, slips). Used by both the built-in brain and the Claude tools,
 // so every answer comes from the same numbers the pages show.
@@ -239,5 +240,5 @@ export function createKnowledge(S) {
 
   const catalog = () => CATALOG.map((s) => ({ id: s.id, name: s.name, matches: S.events.filter((e) => e.sport === s.id).length }));
 
-  return { route, currentEvent, currentScope, eventById, sportIn, leagueIn, eventsIn, filterEvents, picks, pickId, candidates, matchSummary, injuriesOf, startersOf, slips, catalog, norm, caseOf, readinessOf, changes, reviewList, freshness, lastVisit, minOdds: () => prefs.get().minOdds, zone: () => (researchPrefs().potdZone === 'GMT' ? 'GMT' : 'IST'), playerResearch, slipSummary, sourcesFor, SPORT_WORDS, LEAGUE_WORDS };
+  return { route, currentEvent, currentScope, eventById, sportIn, leagueIn, eventsIn, filterEvents, picks, pickId, candidates, matchSummary, injuriesOf, startersOf, slips, catalog, norm, caseOf, readinessOf, changes, reviewList, freshness, lastVisit, minOdds: () => prefs.get().minOdds, zone: () => tzZone(), playerResearch, slipSummary, sourcesFor, SPORT_WORDS, LEAGUE_WORDS };
 }

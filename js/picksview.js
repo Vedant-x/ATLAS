@@ -11,6 +11,7 @@ import { modelPicks } from './modelpicks.js';
 import { coverage, COVERAGE_FIELDS } from './coverage.js';
 import { rankedBankers, slipPolicy, MAX_ODDS } from './track.js';
 import { orderBets, orderChips } from './research.js';
+import { fmt, zone } from './tz.js';
 import { views, esc, sportOf, notice, when, istTag, legButton, legIndex, whyTag, prefsBar, prefFilter, bookLeg } from './views.js';
 
 let S;
@@ -28,7 +29,7 @@ function overlapNote(s, i, all = []) {
 // (coloured by its chance, hover or long-press for the pick), the weakest leg, and the full legs
 // behind "Show legs". Short slips (4 legs or fewer, below 10x) open by default.
 const chanceTone = (p) => (p >= 0.8 ? 'c5' : p >= 0.72 ? 'c4' : p >= 0.65 ? 'c3' : p >= 0.58 ? 'c2' : 'c1');
-const hourMin = (t) => (Number.isFinite(t) ? new Date(t).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', hour: 'numeric', minute: '2-digit', hour12: true }) : '');
+const hourMin = (t) => (Number.isFinite(t) ? fmt(t, zone(), 'short') : '');
 function slipCard(s, i, target, all) {
   const startOf = (l) => l.start ?? S.events.find((x) => x.id === l.eventId)?.start;
   const keys = s.legs.map((l) => {

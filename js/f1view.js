@@ -3,13 +3,14 @@
 // teammate battles, constructors), best bets and both championships. Data: data/f1.json (built every
 // few minutes), live timing straight from ESPN and OpenF1 in the browser.
 import { readable } from './color.js';
+import { fmt, zone } from './tz.js';
 import { ESPN_F1, OPENF1, liveSession } from './f1.js';
 import { split } from './ui.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const pc = (p, d = 0) => `${(p * 100).toFixed(d)}%`;
 const odd = (p) => (p > 0 ? (1 / p).toFixed(p > 0.5 ? 2 : 1) : '—');
-const when = (t) => `${new Date(t).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', hour: 'numeric', minute: '2-digit', hour12: true })} IST`;
+const when = (t) => fmt(t, zone(), 'short');
 function until(t) {
   const m = Math.round((t - Date.now()) / 6e4);
   if (m <= 0) return 'now';

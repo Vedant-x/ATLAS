@@ -2,6 +2,7 @@
 // statistics shown on the Record page. Pure functions, shared by the build (scripts/record.mjs) and
 // the browser.
 import { modelPicks, modelRecord } from './modelpicks.js';
+import { ZONES, dayStartAt, dayKey } from './tz.js';
 import { applyModel, bankers } from './intel.js';
 import { boxStats, gradeProp } from './props.js';
 import { bankerSlips, legPool } from './picks.js';
@@ -335,6 +336,8 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
     ...modelPicks(soon, { now, hours, record: modelRecord(history) }).slice(0, 40).map(modelRow),
     ...multiPicks(events, now, history),
     ...potdPicks(events, now, history),
+    // Banker of the day, one per day per recorded zone (the first one seen is kept, like the parlay).
+    ...Object.keys(POTD_ZONES).flatMap((zone) => { const b = bankerOfDay(events, { now, zone, cal }); return b ? [{ ...row('botd')(b), key: `botd|${potdDay(now, zone).key}|${zone}`, zone, fairOnly: b.fairOnly }] : []; }),
   ];
 }
 
@@ -342,17 +345,17 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
 // chance per unit of odds (the same leg ranking as the multipliers), each leg at a price no shorter
 // than its fair odds where the board allows. A day runs from 12:00 to 12:00 in the chosen time zone;
 // the record saves the first slip of each day and the pages show that saved slip all day.
-export const POTD = { min: 1.7, max: 2.0, minOdds: 1.04 };
+export const POTD = { min: 1.7, max: 2.0, minOdds: 1.04, maxLegs: 6 };
+// The record saves the parlay of the day for these zones (any zone in tz.js can be shown live).
 export const POTD_ZONES = { IST: { offset: 330, tz: 'Asia/Kolkata' }, GMT: { offset: 0, tz: 'UTC' } };
 export function potdDay(now = Date.now(), zone = 'IST') {
-  const off = (POTD_ZONES[zone] || POTD_ZONES.IST).offset * 6e4, noon = 12 * 36e5;
-  const startLocal = Math.floor((now + off - noon) / 864e5) * 864e5 + noon;
-  return { key: new Date(startLocal).toISOString().slice(0, 10), start: startLocal - off, end: startLocal - off + 864e5 };
+  const start = dayStartAt(now, ZONES[zone] ? zone : 'IST', 12), end = dayStartAt(start + 30 * 36e5, ZONES[zone] ? zone : 'IST', 12);
+  return { key: dayKey(start, ZONES[zone] ? zone : 'IST'), start, end };
 }
 export function parlayOfDay(events, { now = Date.now(), zone = 'IST', cal = null } = {}) {
   const { end } = potdDay(now, zone);
   const pool = applyModel(events.filter((e) => e.compId && e.markets?.length && !e.live && e.start > now + 30 * 6e4 && e.start < end));
-  // Every combination of 2 to 4 of the best legs (most chance per unit of odds, one per match, no
+  // Every combination of 2 to 6 of the best legs (most chance per unit of odds, one per match, no
   // team twice) whose total lands in 1.70 to 2.00; the one most likely to win. Legs at a price no
   // shorter than their fair odds first; any banker legs only if no such slip exists.
   for (const positiveOnly of [true, false]) {
@@ -361,7 +364,7 @@ export function parlayOfDay(events, { now = Date.now(), zone = 'IST', cal = null
     let best = null;
     const walk = (from, picked, odds, p) => {
       if (picked.length >= 2 && odds >= POTD.min && odds <= POTD.max && (!best || p > best.p)) best = { legs: picked, odds, p, ev: p * odds - 1, fairOnly: positiveOnly };
-      if (picked.length === 4 || odds > POTD.max) return;
+      if (picked.length === POTD.maxLegs || odds > POTD.max) return;
       for (let i = from; i < legs.length; i++) {
         const l = legs[i];
         if (picked.some((x) => teams(x).some((t) => teams(l).includes(t)))) continue;
@@ -373,6 +376,19 @@ export function parlayOfDay(events, { now = Date.now(), zone = 'IST', cal = null
   }
   return null;
 }
+// Banker of the day: the single likeliest winner of the same 12:00-to-12:00 day, at odds 1.10 to 1.60,
+// at a price no shorter than the market's fair odds where one qualifies (else the likeliest, marked).
+// The honest way to a high hit rate: a short-priced single, not a long parlay.
+export const BOTD = { minOdds: 1.1, maxOdds: 1.6, min: 0.7 };
+export function bankerOfDay(events, { now = Date.now(), zone = 'IST', cal = null } = {}) {
+  const { end } = potdDay(now, zone);
+  const pool = applyModel(events.filter((e) => e.compId && e.markets?.length && !e.live && e.start > now + 30 * 6e4 && e.start < end));
+  const good = (b) => (b.consensus ? b.fair * b.odds >= 1 : b.pRaw <= marketChance(b.odds) + BEST.overclaim);
+  const list = rankedBankers(pool, { cal, min: BOTD.min, minOdds: BOTD.minOdds, maxOdds: BOTD.maxOdds, limit: 400, mix: false }).sort((x, y) => y.p - x.p);
+  const pick = list.find(good) || list[0];
+  return pick ? { ...pick, fairOnly: good(pick) } : null;
+}
+
 export function potdPicks(events, now = Date.now(), history = []) {
   const cal = calibration(history);
   const out = [];
@@ -547,7 +563,7 @@ export function summarize(history) {
   history = canonicalOrder(history);
   const settledAll = history.filter((h) => h.status === 'won' || h.status === 'lost' || h.status === 'push');
   const graded = settledAll.filter(inRecord);
-  const outside = settledAll.filter((h) => !['multi', 'safe', 'model', 'best', 'two'].includes(h.type) && !inRecord(h));
+  const outside = settledAll.filter((h) => !['multi', 'safe', 'model', 'best', 'two', 'botd'].includes(h.type) && !inRecord(h));
   const best = settledAll.filter((h) => h.type === 'best');
   const models = settledAll.filter((h) => h.type === 'model');
   const safe = settledAll.filter((h) => h.type === 'safe');
@@ -585,6 +601,7 @@ export function summarize(history) {
     pending: history.filter((h) => h.status === 'pending' && inRecord(h)).sort((a, b) => a.start - b.start),
     unresolved: history.filter((h) => h.status === 'unresolved' && inRecord(h)).length,
     outside: stat(outside), safe: stat(safe), best: stat(best), two: stat(settledAll.filter((h) => h.type === 'two')),
+    botd: { ...stat(settledAll.filter((h) => h.type === 'botd')), recent: settledAll.filter((h) => h.type === 'botd').sort((a, b) => b.start - a.start).slice(0, 14) },
     // Model-only picks (no price): hit rate against forecast and Brier only; their "odds" are fair
     // odds, so profit means nothing for them and is not shown.
     model: { ...stat(models), bySport: Object.entries(models.reduce((m, h) => ((m[h.sport] ||= []).push(h), m), {})).map(([k, l]) => ({ key: k, ...stat(l) })).sort((a, b) => b.picks - a.picks) },
