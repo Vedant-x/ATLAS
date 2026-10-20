@@ -58,13 +58,13 @@ test('summary: hit rate, flat-stake profit and calibration (shortlist picks only
   assert.equal(s.outside.won, 1); assert.equal(s.outside.lost, 1);
 });
 
-test('official picks: shortlist bankers (1.30 to 1.80), the surest list (1.20 to 1.40), best bets (1.20 to 2.50) singles near 2.00 (1.70 to 2.30) and the banker of the day (1.10 to 1.60), no value spots', async () => {
+test('official picks: shortlist bankers (1.30 to 1.80), the surest list (1.20 to 1.40), best bets (1.20 to 2.50) and singles near 2.00 (1.70 to 2.30), no value spots', async () => {
   const { selectPicks } = await import('../js/track.js');
   const now = Date.parse('2026-10-07T08:00:00Z');
   const ev = (id, a, b) => ({ id, compId: id, sport: 'basketball', league: 'NBA', home: `H${id}`, away: `A${id}`, start: now + 36e5, markets: [{ name: 'Winner', outcomes: [{ name: `H${id}`, odds: a }, { name: `A${id}`, odds: b }] }] });
   const picks = selectPicks([ev('1', 1.35, 3.3), ev('2', 1.25, 4.1), ev('3', 1.62, 2.35), ev('4', 1.9, 1.95)], now, 12, []).filter((p) => p.type !== 'multi');
   assert.ok(picks.length > 0);
-  assert.ok(picks.every((p) => (p.type === 'banker' && p.odds >= 1.3 && p.odds <= 1.8) || (p.type === 'safe' && p.odds >= 1.2 && p.odds <= 1.4) || (p.type === 'best' && p.odds >= 1.2 && p.odds <= 2.5) || (p.type === 'two' && p.odds >= 1.7 && p.odds <= 2.3) || (p.type === 'botd' && p.odds >= 1.1 && p.odds <= 1.6)), JSON.stringify(picks.map((p) => [p.type, p.odds])));
+  assert.ok(picks.every((p) => (p.type === 'banker' && p.odds >= 1.3 && p.odds <= 1.8) || (p.type === 'safe' && p.odds >= 1.2 && p.odds <= 1.4) || (p.type === 'best' && p.odds >= 1.2 && p.odds <= 2.5) || (p.type === 'two' && p.odds >= 1.7 && p.odds <= 2.3)), JSON.stringify(picks.map((p) => [p.type, p.odds])));
   assert.equal(new Set(picks.map((p) => p.key)).size, picks.length, 'a pick on both lists keeps two records');
 });
 
@@ -129,8 +129,6 @@ test('parlay of the day: a day runs 12:00 to 12:00 in the chosen zone; one slip 
   assert.ok(slip.legs.every((l) => l.eventId !== '5'), 'nothing after the day ends');
   const recorded = selectPicks(board, now, 12, []).filter((h) => h.target === 'potd');
   assert.deepEqual(recorded.map((h) => h.key).sort(), ['multi|2026-10-17|potd-GMT', 'multi|2026-10-18|potd-IST']); // 13:00 IST is 07:30 GMT: still the 17 Oct GMT day
-  const banker = selectPicks(board, now, 12, []).filter((h) => h.type === 'botd');
-  assert.ok(banker.every((b) => b.odds >= 1.1 && b.odds <= 1.6 && /^botd\|/.test(b.key)), JSON.stringify(banker.map((b) => [b.key, b.odds])));
 });
 
 

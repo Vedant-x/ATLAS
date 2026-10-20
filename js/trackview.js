@@ -44,11 +44,6 @@ export function officialParlay(zone) {
   const key = `multi|${potdDay(Date.now(), zone).key}|potd-${zone}`;
   return (cache?.data.picks || []).find((h) => h.key === key) || null;
 }
-// Today's banker of the day for a time zone, as the record saved it: or null if none yet.
-export function officialBanker(zone) {
-  const key = `botd|${potdDay(Date.now(), zone).key}|${zone}`;
-  return (cache?.data.picks || []).find((h) => h.key === key) || null;
-}
 // One line of record for a section: "41–16 · 72% hit rate · +4.9u".
 // A multiplier's own slip history: each daily official slip with its legs and result.
 export function slipHistory(slips = []) {

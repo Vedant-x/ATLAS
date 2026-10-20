@@ -18,9 +18,9 @@ import { fetchAll, LEAGUES, leagueStatus } from './espn.js';
 import { prefs, prefEvents } from './prefs.js';
 import { liveWin } from './live.js';
 import { watch } from './alerts.js';
-import { trackCard, trackStrip, trackStats, trackCalibration, recordLine, ensureTrack, officialParlay, officialBanker } from './trackview.js';
+import { trackCard, trackStrip, trackStats, trackCalibration, recordLine, ensureTrack, officialParlay } from './trackview.js';
 import { zone as tzZone, tzOf, abbr as tzAbbr, fmt as fmtTime, ZONES } from './tz.js';
-import { rankedBankers, calibrated, SAFE, surestPicks, bestBets, BEST, POTD_ZONES, potdDay, parlayOfDay, bankerOfDay, recommendationFor, nearTwo } from './track.js';
+import { rankedBankers, calibrated, SAFE, surestPicks, bestBets, BEST, POTD_ZONES, potdDay, parlayOfDay, recommendationFor, nearTwo } from './track.js';
 import { propLabel, propMarket } from './props.js';
 import { propRow, allProps } from './propsview.js';
 import { coherentBets } from './picks.js';
@@ -421,7 +421,6 @@ function dashboard(ev, live) {
   // Every panel by name, shown in the visitor's saved order with hidden ones left out (Customise).
   const panels = {
     potd: () => potdPanel(pool),
-    botd: () => botdPanel(pool),
     shortlist: () => `<div class="panel dash-short reveal"><h2 class="ph">Shortlist <small>${when2} · ${MODES.find((m) => m[0] === mode)[2]} · ${orderLabel()}</small></h2>
       <div class="win-chips" role="group" aria-label="Rank by">${MODES.map(([k, l]) => `<button class="chip ${mode === k ? 'on' : ''}" data-smode="${k}" aria-pressed="${mode === k}">${l}</button>`).join('')}</div>
       ${windowChips('shours', hrs)}
@@ -443,7 +442,7 @@ function dashboard(ev, live) {
 
 // Home panels: order and visibility, saved per visitor (localStorage, best effort). Unknown or missing
 // names fall back to the default order, so a new panel always appears.
-const HOME_PANELS = [['botd', 'Banker of the day'], ['potd', 'Parlay of the day'], ['shortlist', 'Shortlist'], ['live', 'Live now'], ['every', 'Every sport'], ['changes', 'What changed'], ['record', 'Track record'], ['health', 'Source health']];
+const HOME_PANELS = [['potd', 'Parlay of the day'], ['shortlist', 'Shortlist'], ['live', 'Live now'], ['every', 'Every sport'], ['changes', 'What changed'], ['record', 'Track record'], ['health', 'Source health']];
 const LAYOUT_KEY = 'atlas-home-layout';
 // Panel widths on wide screens (phones always show one column): auto is the panel's own width.
 const SIZES = { third: 'Third', half: 'Half', full: 'Full' };
@@ -508,22 +507,6 @@ function potdPanel(ev) {
     <p class="muted potd-note">The likeliest ${legs.length}-leg combination at 1.70 to 2.00 today. At ${odd(odds)} the bookmakers rate a slip like this about ${pc(1 / odds, 0)}: more, shorter legs do not change that. ${(saved || live)?.fairOnly ? 'Every leg is at its fair odds or better.' : 'Some legs are below their fair odds today.'}</p>`
     : `<p class="muted">${S.loading ? 'Loading…' : `No parlay yet for this day: not enough strong legs before 12:00 ${tzAbbr(rz)}. Next one in ${nextIn(day)}.`}</p>`;
   return `<div class="panel dash-potd reveal"><h2 class="ph">Parlay of the day <small>${legs.length ? `${legs.length} legs · ` : ''}${esc(dayLabel(day))}${saved ? '' : legs.length ? ' · not saved yet' : ''}</small>${zoneLink()}</h2>${body}${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}</div>`;
-}
-
-// Banker of the day: the single likeliest winner of the same day (odds 1.10 to 1.60), with its chance.
-function botdPanel(ev) {
-  const rz = dayZone(), day = potdDay(Date.now(), rz);
-  const saved = officialBanker(rz);
-  const live = saved ? null : bankerOfDay(ev, { zone: rz, cal: trackCalibration() });
-  const b = saved ? { pick: saved.pick, market: saved.market, home: saved.home, away: saved.away, start: saved.start, odds: saved.odds, p: saved.shown ?? saved.p, eventId: saved.eventId, sport: saved.sport, status: saved.status, fairOnly: saved.fairOnly }
-    : live ? { pick: live.pick, market: live.market, home: live.event.home, away: live.event.away, start: live.event.start, odds: live.odds, p: live.p, eventId: live.event.id, sport: live.event.sport, status: 'pending', fairOnly: live.fairOnly } : null;
-  const rec = recordLine(trackStats()?.botd);
-  const e = b && ev.find((x) => x.id === b.eventId);
-  const body = b ? `<a class="botd-main" href="#/match/${esc(b.eventId)}"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(b.home)} v ${esc(b.away)} · ${esc(fmtTime(b.start, tzZone(), 'short'))}</small></a>
-    <div class="botd-row"><span class="botd-p"><small>ATLAS chance</small><b>${pc(b.p, 0)}</b></span>${resultBadge(b.status, e?.live && e)}${legButton({ key: `${b.eventId}|${b.market}|${b.pick}`, eventId: b.eventId, sport: b.sport, match: `${b.home} vs ${b.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p }, odd(b.odds))}</div>
-    <p class="muted potd-note">${b.fairOnly ? 'Priced at its fair odds or better.' : 'The likeliest winner today, though the price is below its fair odds.'} Next one in ${nextIn(day)}.</p>`
-    : `<p class="muted">${S.loading ? 'Loading…' : `No single at 1.10 to 1.60 rated 70%+ before 12:00 ${tzAbbr(rz)}.`}</p>`;
-  return `<div class="panel dash-botd reveal"><h2 class="ph">Banker of the day <small>the likeliest single</small></h2>${body}${rec ? `<p class="rec-line">So far: ${rec}</p>` : ''}</div>`;
 }
 
 // The match page's menu: five groups, each jumping to its first section on this page (sections a

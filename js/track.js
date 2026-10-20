@@ -349,8 +349,6 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
     ...modelPicks(soon, { now, hours, record: modelRecord(history) }).slice(0, 40).map(modelRow),
     ...multiPicks(events, now, history),
     ...potdPicks(events, now, history),
-    // Banker of the day, one per day per recorded zone (the first one seen is kept, like the parlay).
-    ...Object.keys(POTD_ZONES).flatMap((zone) => { const b = bankerOfDay(events, { now, zone, cal }); return b ? [{ ...row('botd')(b), key: `botd|${potdDay(now, zone).key}|${zone}`, zone, fairOnly: b.fairOnly }] : []; }),
   ];
 }
 
@@ -389,19 +387,6 @@ export function parlayOfDay(events, { now = Date.now(), zone = 'IST', cal = null
   }
   return null;
 }
-// Banker of the day: the single likeliest winner of the same 12:00-to-12:00 day, at odds 1.10 to 1.60,
-// at a price no shorter than the market's fair odds where one qualifies (else the likeliest, marked).
-// The honest way to a high hit rate: a short-priced single, not a long parlay.
-export const BOTD = { minOdds: 1.1, maxOdds: 1.6, min: 0.7 };
-export function bankerOfDay(events, { now = Date.now(), zone = 'IST', cal = null } = {}) {
-  const { end } = potdDay(now, zone);
-  const pool = applyModel(events.filter((e) => e.compId && e.markets?.length && !e.live && e.start > now + 30 * 6e4 && e.start < end));
-  const good = (b) => (b.consensus ? b.fair * b.odds >= 1 : b.pRaw <= marketChance(b.odds) + BEST.overclaim);
-  const list = rankedBankers(pool, { cal, min: BOTD.min, minOdds: BOTD.minOdds, maxOdds: BOTD.maxOdds, limit: 400, mix: false }).sort((x, y) => y.p - x.p);
-  const pick = list.find(good) || list[0];
-  return pick ? { ...pick, fairOnly: good(pick) } : null;
-}
-
 export function potdPicks(events, now = Date.now(), history = []) {
   const cal = calibration(history);
   const out = [];
@@ -576,6 +561,7 @@ export function summarize(history) {
   history = canonicalOrder(history);
   const settledAll = history.filter((h) => h.status === 'won' || h.status === 'lost' || h.status === 'push');
   const graded = settledAll.filter(inRecord);
+  // botd: the banker of the day, recorded briefly (19-20 Oct) before it was retired; kept out of every list.
   const outside = settledAll.filter((h) => !['multi', 'safe', 'model', 'best', 'two', 'botd'].includes(h.type) && !inRecord(h));
   const best = settledAll.filter((h) => h.type === 'best');
   const models = settledAll.filter((h) => h.type === 'model');
@@ -614,7 +600,6 @@ export function summarize(history) {
     pending: history.filter((h) => h.status === 'pending' && inRecord(h)).sort((a, b) => a.start - b.start),
     unresolved: history.filter((h) => h.status === 'unresolved' && inRecord(h)).length,
     outside: stat(outside), safe: stat(safe), best: stat(best), two: stat(settledAll.filter((h) => h.type === 'two')),
-    botd: { ...stat(settledAll.filter((h) => h.type === 'botd')), recent: settledAll.filter((h) => h.type === 'botd').sort((a, b) => b.start - a.start).slice(0, 14) },
     // Model-only picks (no price): hit rate against forecast and Brier only; their "odds" are fair
     // odds, so profit means nothing for them and is not shown.
     model: { ...stat(models), bySport: Object.entries(models.reduce((m, h) => ((m[h.sport] ||= []).push(h), m), {})).map(([k, l]) => ({ key: k, ...stat(l) })).sort((a, b) => b.picks - a.picks) },
