@@ -183,3 +183,47 @@ test('follow-ups keep the exact list: the second one, remove the weakest leg, sa
     assert.match(r.text, /now \*\*1\.62\*\* \(it was 1\.50/);
   } finally { C[0] = saved; }
 });
+
+test('market type is a hard rule: moneyline only, no player props', async () => {
+  const { parseConstraints, constraintChips, legOk } = await import('../js/assistant/constraints.js');
+  const c = parseConstraints('Give me one NHL moneyline bet tomorrow. Moneyline only, no player props, odds between 1.30 and 1.80. If none qualify, say none.', K, now);
+  assert.deepEqual(c.markets, ['moneyline']);
+  assert.equal(c.noProps, true);
+  assert.ok(constraintChips(c).includes('Moneyline only'));
+  assert.ok(legOk(c, { market: 'Winner', odds: 1.44, p: 0.69 }));
+  assert.ok(!legOk(c, { market: 'Player shots on goal', odds: 1.44, p: 0.7, prop: { id: '1' } }));
+  assert.ok(!legOk(c, { market: 'Total 5.5', odds: 1.44, p: 0.7 }));
+  const d = parseConstraints('best bets today, no props', K, now);
+  assert.equal(d.markets, undefined);
+  assert.equal(d.noProps, true);
+});
+
+test('today ends at midnight, tonight at 06:00, "next N hours" is rolling; checked at 23:59, 00:00 and 05:59 IST', async () => {
+  const { parseConstraints, constraintChips } = await import('../js/assistant/constraints.js');
+  const at = (d, hm) => Date.parse(`2026-10-${d}T${hm}:00+05:30`);
+  const mid = (d) => at(d, '00:00');
+  const t1 = at(20, '23:59'), today = parseConstraints('best bets today', K, t1, 'IST');
+  assert.equal(today.to, mid(21));
+  assert.ok(constraintChips(today).includes('Today (until midnight IST)'));
+  assert.equal(parseConstraints('best bets tonight', K, t1, 'IST').to, at(21, '06:00'));
+  assert.equal(parseConstraints('best bets tomorrow', K, t1, 'IST').from, mid(21));
+  const t2 = at(21, '00:00');
+  assert.equal(parseConstraints('best bets today', K, t2, 'IST').to, mid(22));
+  assert.equal(parseConstraints('best bets tomorrow', K, t2, 'IST').from, mid(22));
+  const t3 = at(21, '05:59');
+  assert.equal(parseConstraints('best bets tonight', K, t3, 'IST').to, at(21, '06:00'), 'before 06:00 tonight ends this morning');
+  const h = parseConstraints('best bets next 12 hours', K, t3, 'IST');
+  assert.equal(h.to - h.from, 12 * 36e5);
+  assert.ok(constraintChips(h).includes('Next 12 hours'));
+});
+
+test('when nothing qualifies, the assistant says which markets matched and why each was left out', async () => {
+  const misses = [{ e: E[2], market: 'Winner', pick: 'NHL fav', odds: 1.44, p: 0.69, ev: -0.006, reasons: ['below break-even at this price (needs 69%, ATLAS 69%)'] }];
+  const b = createBrain({ ...K, picks: () => [], nearMisses: () => misses });
+  const a = await b.answer('Give me one NHL moneyline bet tomorrow, odds between 1.30 and 1.80');
+  assert.equal(a.cards, undefined);
+  assert.match(a.text, /None qualifies as a best bet/);
+  assert.match(a.text, /NHL fav[\s\S]*below break-even/);
+  const none = await createBrain({ ...K, picks: () => [], nearMisses: () => [] }).answer('Give me one NHL moneyline bet tomorrow');
+  assert.match(none.text, /No matching market/);
+});
