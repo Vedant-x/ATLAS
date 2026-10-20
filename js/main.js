@@ -83,7 +83,8 @@ import { preloader, cursor, wipe, magnetic, tilt, countUp, reveal, fitTitles } f
 import { pc, odd } from './charts.js';
 import { bindResearch, quickView, togglePin, compareView, watchlistView, setResearchPrefs, pins } from './research.js';
 import { loadTimeline, markReviewed } from './timeline.js';
-import { display, displayPanel } from './display.js';
+import { display, displayPanel, tzOptions } from './display.js';
+import { ZONES, setZone } from './tz.js';
 import { leagueByPath, leagueKey, sportById } from './catalog.js';
 
 const app = document.getElementById('app');
@@ -516,7 +517,7 @@ document.addEventListener('click', (e) => {
   else if (d.shours) { setResearchPrefs({ shortHours: Number(d.shours) }); softRender(); }
   else if (d.smode) { setResearchPrefs({ shortMode: d.smode }); softRender(); }
   else if (d.lay) { setHomeLayout(d.lay, d.layKey); softRender(); }
-  else if (d.pzone) { setResearchPrefs({ potdZone: d.pzone }); softRender(); }
+  else if (d.pzone) { setZone(d.pzone); syncTz(); softRender(); }
   else if (d.border) { setResearchPrefs({ betOrder2: d.border }); softRender(); }
   else if ('qvClose' in d) closeQv();
   else if ('displayToggle' in d) { const p = document.getElementById('display-panel'); const open = !p.classList.contains('open'); p.innerHTML = displayPanel(); p.classList.toggle('open', open); t.setAttribute('aria-expanded', open); }
@@ -537,6 +538,14 @@ document.addEventListener('click', (e) => {
   else if ('navBack' in d) { if (stack.length > 1) history.back(); else { replacing = true; location.replace(parentOf()); } }
   else if (d.jump) { e.preventDefault(); document.getElementById(d.jump)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 });
+// One time zone for every time on the site (tz.js): the header menu and Display settings.
+function syncTz() { for (const sel of document.querySelectorAll('[data-tz-select]')) sel.innerHTML = tzOptions(); }
+document.addEventListener('change', (e) => {
+  if (!e.target.matches('[data-tz-select]')) return;
+  setZone(e.target.value); syncTz(); softRender();
+  toast(`Times now in ${ZONES[e.target.value].label}`);
+});
+syncTz();
 document.addEventListener('input', (e) => {
   if (e.target.matches('[data-calc]')) { slip.stake = e.target.value; calc(); }
   if (e.target.matches('[data-slip-stake]')) {

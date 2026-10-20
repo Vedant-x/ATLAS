@@ -233,3 +233,11 @@ main, .foot { overflow-x: clip; }
   .win-chips > span { font-size: 10.5px; margin-right: 2px; white-space: nowrap; }
   .win-chips .chip { padding: 6px 9px; font-size: 11.5px; }
 }
+/* Time zone (header): one choice for every time shown; on phones it lives in Display settings. */
+.tz-pick { flex: none; display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line2); border-radius: 999px; padding: 0 4px 0 9px; height: 32px; color: #c8c8cc; }
+.tz-pick .ico { width: 15px; height: 15px; }
+.tz-pick select, .dp-row select { background: transparent; color: inherit; border: 0; font: 600 12px var(--sans); max-width: 150px; cursor: pointer; padding: 4px 2px; }
+.tz-pick select option, .dp-row select option { background: #111; color: #eee; }
+.dp-row select { border: 1px solid var(--line2); border-radius: 999px; padding: 6px 10px; max-width: none; }
+@media (max-width: 999px) { .tz-pick select { max-width: 92px; } }
+@media (max-width: 600px) { .tz-pick { display: none; } }

@@ -44,6 +44,11 @@ export function officialParlay(zone) {
   const key = `multi|${potdDay(Date.now(), zone).key}|potd-${zone}`;
   return (cache?.data.picks || []).find((h) => h.key === key) || null;
 }
+// Today's banker of the day for a time zone, as the record saved it: or null if none yet.
+export function officialBanker(zone) {
+  const key = `botd|${potdDay(Date.now(), zone).key}|${zone}`;
+  return (cache?.data.picks || []).find((h) => h.key === key) || null;
+}
 // One line of record for a section: "41–16 · 72% hit rate · +4.9u".
 // A multiplier's own slip history: each daily official slip with its legs and result.
 export function slipHistory(slips = []) {
@@ -257,6 +262,6 @@ export function trackCard(refresh) {
   const last = s.recent.slice(0, 10).map((h) => `<i class="tr-dot ${h.status}" title="${esc(h.pick)}: ${h.status}"></i>`).join('');
   return `<a class="panel dash-track reveal" href="#/track"><h2 class="ph">Track record <small>every pick, locked before kick-off</small></h2>
     <div class="dt-row"><div><b>${a.won}–${a.lost}</b><small>won–lost</small></div><div><b>${pct(a.hitRate, 0)}</b><small>hit rate (est. ${pct(a.expected, 0)})</small></div><div><b class="${a.profit >= 0 ? 'pos' : 'neg'}">${a.roi == null ? '—' : `${a.roi >= 0 ? '+' : ''}${(a.roi * 100).toFixed(1)}%`}</b><small>ROI · ${units(a.profit)}</small></div>${a.brierN >= 20 ? `<div><b class="${a.brierModel <= a.brierMarket ? 'pos' : 'neg'}">${a.brierModel <= a.brierMarket ? 'Beats' : 'Trails'}</b><small>the market's own forecast</small></div>` : ''}</div>
-    <ul class="dt-types">${s.bySport.slice(0, 4).map((r) => `<li><span>${sportOf(r.key).icon} ${esc(sportOf(r.key).name)}</span><b>${pct(r.hitRate, 0)}</b><small>${r.won}–${r.lost}</small></li>`).join('')}</ul>
+    <ul class="dt-types">${s.bySport.map((r) => `<li><span>${sportOf(r.key).icon} ${esc(sportOf(r.key).name)}</span><b>${pct(r.hitRate, 0)}</b><small>${r.won}–${r.lost}</small></li>`).join('')}</ul>
     <div class="dt-last">${last}<span>latest results →</span></div></a>`;
 }

@@ -18,8 +18,9 @@ import { fetchAll, LEAGUES, leagueStatus } from './espn.js';
 import { prefs, prefEvents } from './prefs.js';
 import { liveWin } from './live.js';
 import { watch } from './alerts.js';
-import { trackCard, trackStrip, trackStats, trackCalibration, recordLine, ensureTrack, officialParlay } from './trackview.js';
-import { rankedBankers, calibrated, SAFE, surestPicks, bestBets, BEST, POTD_ZONES, potdDay, parlayOfDay, recommendationFor, nearTwo } from './track.js';
+import { trackCard, trackStrip, trackStats, trackCalibration, recordLine, ensureTrack, officialParlay, officialBanker } from './trackview.js';
+import { zone as tzZone, tzOf, abbr as tzAbbr, fmt as fmtTime, ZONES } from './tz.js';
+import { rankedBankers, calibrated, SAFE, surestPicks, bestBets, BEST, POTD_ZONES, potdDay, parlayOfDay, bankerOfDay, recommendationFor, nearTwo } from './track.js';
 import { propLabel, propMarket } from './props.js';
 import { propRow, allProps } from './propsview.js';
 import { coherentBets } from './picks.js';
@@ -83,8 +84,8 @@ export function prefsBar() {
 }
 export const prefFilter = (list) => { const p = prefs.get(); const ev = prefEvents(list); return p.pricedOnly ? ev.filter((e) => e.markets?.length) : ev; };
 
-// Kick-off in Indian time, e.g. "Mon 6 Oct, 7:30 pm IST".
-export const ist = (t) => (Number.isFinite(t) ? `${new Date(t).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true })} IST` : '');
+// Kick-off in the visitor's chosen time zone (tz.js), e.g. "Mon 6 Oct, 7:30 pm IST".
+export const ist = (t) => fmtTime(t);
 export const istTag = (t) => (Number.isFinite(t) ? `<time class="ist" datetime="${new Date(t).toISOString()}">${ico('clock')} ${ist(t)}</time>` : '');
 export const when = (e) => (e.live ? `<span class="live">LIVE${e.score ? ` · ${esc(e.score)}` : ''}</span>${e.clock ? ` <small class="lclock" data-clock="${esc(e.id)}">${esc(e.clock)}</small>` : ''}` : `<span data-start="${e.start}">${countdown(e.start)}</span> ${istTag(e.start)}`);
 export function countdown(ms) {
@@ -189,7 +190,7 @@ export const views = {
       mode: 'home', accent: '#d2ff00', title: 'Dashboard',
       html: `
       <section class="hero compact today">
-        <p class="kicker reveal">TODAY · ${esc(new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase())} · IST</p>
+        <p class="kicker reveal">TODAY · ${esc(new Date().toLocaleDateString('en-IN', { timeZone: tzOf(tzZone()), weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase())} · ${esc(tzAbbr(tzZone()))}</p>
         <h1>${split('EVERY SPORT. EVERY EDGE.')}</h1>
         <div class="stats reveal${S.loading ? ' is-loading' : ''}">
           <div>${statNum(ev.length)}<span>events tracked</span></div>
@@ -413,6 +414,7 @@ function dashboard(ev, live) {
   // Every panel by name, shown in the visitor's saved order with hidden ones left out (Customise).
   const panels = {
     potd: () => potdPanel(pool),
+    botd: () => botdPanel(pool),
     shortlist: () => `<div class="panel dash-short reveal"><h2 class="ph">Shortlist <small>${when2} · ${MODES.find((m) => m[0] === mode)[2]} · ${orderLabel()}</small></h2>
       <div class="win-chips" role="group" aria-label="Rank by">${MODES.map(([k, l]) => `<button class="chip ${mode === k ? 'on' : ''}" data-smode="${k}" aria-pressed="${mode === k}">${l}</button>`).join('')}</div>
       ${windowChips('shours', hrs)}
@@ -434,7 +436,7 @@ function dashboard(ev, live) {
 
 // Home panels: order and visibility, saved per visitor (localStorage, best effort). Unknown or missing
 // names fall back to the default order, so a new panel always appears.
-const HOME_PANELS = [['potd', 'Parlay of the day'], ['shortlist', 'Shortlist'], ['live', 'Live now'], ['every', 'Every sport'], ['changes', 'What changed'], ['record', 'Track record'], ['health', 'Source health']];
+const HOME_PANELS = [['botd', 'Banker of the day'], ['potd', 'Parlay of the day'], ['shortlist', 'Shortlist'], ['live', 'Live now'], ['every', 'Every sport'], ['changes', 'What changed'], ['record', 'Track record'], ['health', 'Source health']];
 const LAYOUT_KEY = 'atlas-home-layout';
 // Panel widths on wide screens (phones always show one column): auto is the panel's own width.
 const SIZES = { third: 'Third', half: 'Half', full: 'Full' };
@@ -471,26 +473,50 @@ function layoutPanel() {
     <button class="chip ${off ? '' : 'on'}" data-lay="toggle" data-lay-key="${k}" aria-pressed="${!off}">${off ? 'Hidden' : 'Shown'}</button></li>`; }).join('')}</ul><button class="btn-ghost" data-lay="reset" data-lay-key="">Reset layout</button></details>`;
 }
 
-// Parlay of the day: one slip at 1.70 to 2.00 for the day (12:00 to 12:00 in the chosen time zone).
-// The saved one (the record's) once the build has saved it; until then the same pick, live.
+// Result badge for a leg or a slip: Won / Lost / Void, or the live score while it is being played.
+const RESULT = { won: 'Won', lost: 'Lost', void: 'Void', push: 'Void', dnp: 'Void' };
+const resultBadge = (status, live) => (RESULT[status] ? `<span class="res res-${status === 'push' || status === 'dnp' ? 'void' : status}">${RESULT[status]}</span>` : live ? `<span class="res res-live">LIVE ${esc(live.score || '')}</span>` : '');
+// The day these cards follow: 12:00 to 12:00 in the recorded zone nearest the visitor's (IST unless
+// GMT is chosen), shown in the visitor's own time zone too.
+const dayZone = () => (POTD_ZONES[tzZone()] ? tzZone() : 'IST');
+const dayLabel = (day) => { const z = tzZone(), rz = dayZone(); return `12:00 to 12:00 ${tzAbbr(rz)}${z === rz ? '' : ` · ${fmtTime(day.start, z, 'short')} to ${fmtTime(day.end, z, 'short')} your time`}`; };
+const nextIn = (day) => { const left = Math.max(0, day.end - Date.now()); return `${Math.floor(left / 36e5)}h ${Math.floor((left % 36e5) / 6e4)}m`; };
+const zoneLink = () => `<button class="zone-link" data-display-toggle aria-label="Change the time zone">${ico('clock')} ${esc(tzAbbr(tzZone()))} · change</button>`;
+
+// Parlay of the day: one slip at 1.70 to 2.00 for the day, 2 to 6 legs, the likeliest combination
+// on the board. The saved one (the record's) once the build has saved it; until then the same pick, live.
 function potdPanel(ev) {
-  const zone = POTD_ZONES[researchPrefs().potdZone] ? researchPrefs().potdZone : 'IST';
-  const { tz } = POTD_ZONES[zone];
-  const day = potdDay(Date.now(), zone);
-  const saved = officialParlay(zone);
-  const live = saved ? null : parlayOfDay(ev, { zone, cal: trackCalibration() });
+  const rz = dayZone(), day = potdDay(Date.now(), rz);
+  const saved = officialParlay(rz);
+  const live = saved ? null : parlayOfDay(ev, { zone: rz, cal: trackCalibration() });
   const byId = new Map(ev.map((e) => [e.id, e]));
   const legs = saved ? saved.legs : (live?.legs || []).map((l) => { const e = byId.get(l.eventId); return { ...l, home: e?.home, away: e?.away, status: 'pending' }; });
   const odds = saved ? saved.odds : live?.odds, p = saved ? saved.p : live?.p;
-  const when = (t) => new Date(t).toLocaleString('en-GB', { timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit' });
-  const left = Math.max(0, day.end - Date.now()), next = `${Math.floor(left / 36e5)}h ${Math.floor((left % 36e5) / 6e4)}m`;
-  const chips = `<div class="win-chips" role="group" aria-label="Time zone">${Object.keys(POTD_ZONES).map((z) => `<button class="chip ${z === zone ? 'on' : ''}" data-pzone="${z}" aria-pressed="${z === zone}">${z}</button>`).join('')}</div>`;
   const rec = recordLine(trackStats()?.potd);
-  const body = legs.length ? `<ul class="potd-legs">${legs.map((l) => `<li class="leg-${esc(l.status || 'pending')}"><a href="#/match/${esc(l.eventId)}"><b>${esc(l.pick)}</b><small>${esc(l.home || '')} v ${esc(l.away || '')} · ${esc(when(l.start))} ${zone}</small></a>${legButton({ key: `${l.eventId}|${l.market}|${l.pick}`, eventId: l.eventId, sport: l.sport, match: `${l.home} vs ${l.away}`, market: l.market, pick: l.pick, odds: l.odds, p: l.p }, odd(l.odds))}</li>`).join('')}</ul>
-    <div class="potd-sum"><span><small>Total odds</small><b>${odd(odds)}</b></span><span><small>ATLAS chance</small><b>${pc(p, 0)}</b></span><span><small>Next parlay in</small><b>${next}</b></span></div>
-    <p class="muted">${(saved || live)?.fairOnly ? 'Every leg priced at or above its fair odds.' : 'No slip in the band had every leg at its fair odds or better today: some legs are priced below fair.'} Legs treated as independent.</p>`
-    : `<p class="muted">${S.loading ? 'Loading…' : `No parlay yet for this day: not enough strong legs before 12:00 ${zone}. Next one in ${next}.`}</p>`;
-  return `<div class="panel dash-potd reveal"><h2 class="ph">Parlay of the day <small>${legs.length ? `${legs.length} legs · ` : ''}12:00 to 12:00 ${zone}${saved ? '' : legs.length ? ' · not saved yet' : ''}</small></h2>${chips}${body}${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}</div>`;
+  const done = saved && RESULT[saved.status];
+  const body = legs.length ? `${done ? `<p class="potd-result res-${saved.status}">${saved.status === 'won' ? `Won · paid ${odd(saved.settledOdds ?? odds)}` : saved.status === 'lost' ? `Lost · ${esc(legs.filter((l) => l.status === 'lost').map((l) => l.pick).join(', '))}` : 'Void'}</p>` : ''}
+    <ul class="potd-legs">${legs.map((l) => { const e = byId.get(l.eventId); return `<li class="leg-${esc(l.status || 'pending')}"><a href="#/match/${esc(l.eventId)}"><b>${esc(l.pick)}</b><small>${esc(l.market)} · ${esc(l.home || '')} v ${esc(l.away || '')} · ${esc(fmtTime(l.start, tzZone(), 'short'))}</small></a>
+      <span class="leg-side">${resultBadge(l.status, e?.live && e)}<span class="leg-p" title="ATLAS chance for this leg">${pc(l.p, 0)}</span>${legButton({ key: `${l.eventId}|${l.market}|${l.pick}`, eventId: l.eventId, sport: l.sport, match: `${l.home} vs ${l.away}`, market: l.market, pick: l.pick, odds: l.odds, p: l.p }, odd(l.odds))}</span></li>`; }).join('')}</ul>
+    <div class="potd-sum"><span><small>Total odds</small><b>${odd(odds)}</b></span><span><small>ATLAS chance</small><b>${pc(p, 0)}</b></span><span><small>Break-even</small><b>${pc(1 / odds, 0)}</b></span><span><small>Next parlay in</small><b>${nextIn(day)}</b></span></div>
+    <p class="muted potd-note">The likeliest ${legs.length}-leg combination at 1.70 to 2.00 today. At ${odd(odds)} the bookmakers rate a slip like this about ${pc(1 / odds, 0)}: more, shorter legs do not change that. ${(saved || live)?.fairOnly ? 'Every leg is at its fair odds or better.' : 'Some legs are below their fair odds today.'}</p>`
+    : `<p class="muted">${S.loading ? 'Loading…' : `No parlay yet for this day: not enough strong legs before 12:00 ${tzAbbr(rz)}. Next one in ${nextIn(day)}.`}</p>`;
+  return `<div class="panel dash-potd reveal"><h2 class="ph">Parlay of the day <small>${legs.length ? `${legs.length} legs · ` : ''}${esc(dayLabel(day))}${saved ? '' : legs.length ? ' · not saved yet' : ''}</small>${zoneLink()}</h2>${body}${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}</div>`;
+}
+
+// Banker of the day: the single likeliest winner of the same day (odds 1.10 to 1.60), with its chance.
+function botdPanel(ev) {
+  const rz = dayZone(), day = potdDay(Date.now(), rz);
+  const saved = officialBanker(rz);
+  const live = saved ? null : bankerOfDay(ev, { zone: rz, cal: trackCalibration() });
+  const b = saved ? { pick: saved.pick, market: saved.market, home: saved.home, away: saved.away, start: saved.start, odds: saved.odds, p: saved.shown ?? saved.p, eventId: saved.eventId, sport: saved.sport, status: saved.status, fairOnly: saved.fairOnly }
+    : live ? { pick: live.pick, market: live.market, home: live.event.home, away: live.event.away, start: live.event.start, odds: live.odds, p: live.p, eventId: live.event.id, sport: live.event.sport, status: 'pending', fairOnly: live.fairOnly } : null;
+  const rec = recordLine(trackStats()?.botd);
+  const e = b && ev.find((x) => x.id === b.eventId);
+  const body = b ? `<a class="botd-main" href="#/match/${esc(b.eventId)}"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(b.home)} v ${esc(b.away)} · ${esc(fmtTime(b.start, tzZone(), 'short'))}</small></a>
+    <div class="botd-row"><span class="botd-p"><small>ATLAS chance</small><b>${pc(b.p, 0)}</b></span>${resultBadge(b.status, e?.live && e)}${legButton({ key: `${b.eventId}|${b.market}|${b.pick}`, eventId: b.eventId, sport: b.sport, match: `${b.home} vs ${b.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p }, odd(b.odds))}</div>
+    <p class="muted potd-note">${b.fairOnly ? 'Priced at its fair odds or better.' : 'The likeliest winner today, though the price is below its fair odds.'} Next one in ${nextIn(day)}.</p>`
+    : `<p class="muted">${S.loading ? 'Loading…' : `No single at 1.10 to 1.60 rated 70%+ before 12:00 ${tzAbbr(rz)}.`}</p>`;
+  return `<div class="panel dash-botd reveal"><h2 class="ph">Banker of the day <small>the likeliest single</small></h2>${body}${rec ? `<p class="rec-line">So far: ${rec}</p>` : ''}</div>`;
 }
 
 function sourceHealth(ev) {

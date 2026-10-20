@@ -1,3 +1,4 @@
+import { ZONES, dayStartAt, weekday } from '../tz.js';
 // What a question asks for, as constraints every answer must keep: an odds range, a day or window,
 // sports or leagues to include or leave out, "positive return only", how many, and a multiplier.
 // Pure, so it can be tested; K supplies sportIn / leagueIn (knowledge.js).
@@ -9,11 +10,10 @@
 //   "positive edge bets only"                 -> positiveOnly (never substituted)
 
 const NUM = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, couple: 2, few: 3 };
-// Days run midnight to midnight in the time zone the visitor chose (the same IST / GMT switch as the
-// parlay of the day), never the browser's own zone, so "tomorrow" means the same day on every device.
-export const ZONE_OFFSET = { IST: 330, GMT: 0 };
-const dayStart = (t, zone) => { const off = (ZONE_OFFSET[zone] ?? 330) * 6e4; return Math.floor((t + off) / 864e5) * 864e5 - off; };
-const dayOfWeek = (t, zone) => new Date(t + (ZONE_OFFSET[zone] ?? 330) * 6e4).getUTCDay();
+// Days run midnight to midnight in the time zone the visitor chose (tz.js, one setting for the whole
+// site), never the browser's own zone, so "tomorrow" means the same day on every device.
+const dayStart = (t, zone) => dayStartAt(t, ZONES[zone] ? zone : 'IST');
+const dayOfWeek = (t, zone) => weekday(t, ZONES[zone] ? zone : 'IST');
 
 export function parseConstraints(raw, K, now = Date.now(), zone = K?.zone?.() || 'IST') {
   let q = String(raw || '').toLowerCase().replace(/[–—]/g, '-').replace(/\s+/g, ' ').trim();
