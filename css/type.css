@@ -365,6 +365,7 @@ details.more-picks summary { cursor: pointer; color: var(--accent); font-weight:
 .sources-tbl .src-state { font-weight: 700; }
 .sources-tbl .src-ok .src-state { color: var(--pos); }
 .sources-tbl .src-failed .src-state { color: var(--neg); }
+.sources-tbl .src-empty .src-state { color: #ffb547; }
 .sources-tbl .src-off .src-state { color: var(--muted); }
 .hist-nums em { display: block; font-style: normal; color: var(--muted); font-size: 12px; }
 .panel.warn-weather { border-color: #ffb54766; }
@@ -396,3 +397,14 @@ nav.top a[data-extra] { display: none; }
   .dash > .panel.lay-half { grid-column: span 3; grid-row: auto; }
   .dash > .panel.lay-full { grid-column: 1 / -1; grid-row: auto; }
 }
+
+/* Pick cards: a quiet two-word status when an input is pending, and the poor-price tag. */
+.mini-main .pill-status, .mini-main .pill-below { display: inline-block; align-self: flex-start; margin: 4px 6px 0 0; padding: 2px 8px; border-radius: 999px; font: 600 10.5px var(--sans); background: rgba(255, 255, 255, .06); color: var(--muted); cursor: help; }
+.mini-main .pill-below { background: rgba(255, 92, 92, .08); color: #e9a0a0; }
+/* Player research: type and line stay in view; the rest folds away (open when one is in use). */
+.pl-more { border: 1px solid var(--line); border-radius: 12px; padding: 6px 10px; }
+.pl-more > summary { cursor: pointer; font: 600 12px var(--sans); color: var(--muted); padding: 4px 0; }
+.pl-more[open] > summary { margin-bottom: 6px; }
+.pl-more .chips { margin-bottom: 6px; }
+/* Room under the last control on phones, so the floating assistant never sits on top of it. */
+@media (max-width: 600px) { #app { padding-bottom: 110px; } }

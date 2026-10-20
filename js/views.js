@@ -18,9 +18,9 @@ import { fetchAll, LEAGUES, leagueStatus } from './espn.js';
 import { prefs, prefEvents } from './prefs.js';
 import { liveWin } from './live.js';
 import { watch } from './alerts.js';
-import { trackCard, trackStrip, trackStats, trackCalibration, recordLine, ensureTrack, officialParlay, officialBanker } from './trackview.js';
+import { trackCard, trackStrip, trackStats, trackCalibration, recordLine, ensureTrack, officialParlay } from './trackview.js';
 import { zone as tzZone, tzOf, abbr as tzAbbr, fmt as fmtTime, ZONES } from './tz.js';
-import { rankedBankers, calibrated, SAFE, surestPicks, bestBets, BEST, POTD_ZONES, potdDay, parlayOfDay, bankerOfDay, recommendationFor, nearTwo } from './track.js';
+import { rankedBankers, calibrated, SAFE, surestPicks, bestBets, BEST, POTD_ZONES, potdDay, parlayOfDay, recommendationFor, nearTwo } from './track.js';
 import { propLabel, propMarket } from './props.js';
 import { propRow, allProps } from './propsview.js';
 import { coherentBets } from './picks.js';
@@ -99,9 +99,16 @@ export function countdown(ms) {
 const confBadge = (c) => `<span class="conf conf-${c}" title="${c === 'high' ? 'From bookmaker prices' : c === 'medium' ? 'ATLAS model from records/form' : 'Baseline only: little data'}">${c === 'high' ? 'MARKET' : c === 'medium' ? 'MODEL' : 'BASELINE'}</span>`;
 
 // Status box removed from pages; it only appears when live feeds failed and sample data is shown.
+// How fresh the whole snapshot is: fresh within 30 minutes of the last build (builds run about every
+// 15), delayed to 75, stale after. Shown at the top of working pages whenever it is not fresh.
+export const buildAge = () => (S.fetchedAt ? Date.now() - S.fetchedAt : null);
+export const buildState = (age = buildAge()) => (age == null ? 'unknown' : age < 30 * 6e4 ? 'fresh' : age < 75 * 6e4 ? 'delayed' : 'stale');
 export function notice() {
   if (S.loading) return '<div class="notice reveal"><span class="loading-dots">Loading today\'s fixtures</span></div>';
-  return S.demo ? '<div class="notice reveal"><span class="led"></span><b>DEMO DATA</b> · live feeds unreachable, prices are simulated.</div>' : '';
+  if (S.demo) return '<div class="notice reveal"><span class="led"></span><b>DEMO DATA</b> · live feeds unreachable, prices are simulated.</div>';
+  const st = buildState();
+  if (st === 'delayed' || st === 'stale') return `<div class="notice notice-${st} reveal"><span class="led"></span><b>${st === 'stale' ? 'DATA STALE' : 'DATA DELAYED'}</b> · last update ${Math.round(buildAge() / 6e4)} min ago (normally about every 15 min). Prices and team news may have moved; live scores still update.</div>`;
+  return '';
 }
 
 // ---------- rows & cards ----------
@@ -320,7 +327,7 @@ export const views = {
       return `<div class="side reveal">${gauge(p, color, label)}
         <dl><dt>Fair odds</dt><dd>${odd(1 / p)}</dd>
         <dt>${esc(e.bookmaker?.split(' (')[0] || 'Book')} odds</dt><dd>${bookOdds ? odd(bookOdds) : '<span class="muted">none</span>'}</dd>
-        <dt>Edge</dt><dd class="${ev == null ? '' : ev >= 0 ? 'pos' : 'neg'}">${ev == null ? '—' : `${(ev * 100).toFixed(1)}%`}</dd>
+        <dt title="Estimated return per unit staked">Return</dt><dd class="${ev == null ? '' : ev >= 0 ? 'pos' : 'neg'}">${ev == null ? '—' : `${(ev * 100).toFixed(1)}%`}</dd>
         <dt>Kelly ¼</dt><dd>${ev && ev > 0 ? pc(kelly(p, bookOdds) / 4, 1) : '—'}</dd></dl></div>`;
     };
     const paramChips = Object.entries(a.params || {}).filter(([, v]) => typeof v === 'number').map(([k, v]) => `<div><small>${esc(paramLabel(k, a.params.unit))}</small><b>${k === 'setWin' ? pc(v) : Number.isInteger(v) ? v : v.toFixed(2)}</b></div>`).join('');
@@ -351,7 +358,7 @@ export const views = {
           <button class="watch-btn ${pins().includes(e.id) ? 'on' : ''}" data-pin="${esc(e.id)}">${pinLabel(pins().includes(e.id))}</button></div>
         ${sourcesLine(e)}
       </section>
-      <nav class="subnav reveal">${sections.map(([k, l]) => `<a href="#sec-${k}" data-jump="sec-${k}">${l}</a>`).join('')}</nav>
+      <nav class="subnav reveal" aria-label="Sections">${matchGroups(sections, dos).map(([k, l]) => `<a href="#sec-${k}" data-jump="sec-${k}">${l}</a>`).join('')}</nav>
       ${notice()}
       <section class="panel big reveal" id="sec-overview">
         <h2 class="ph">${e.live ? 'Pre-match ' : ''}Estimated win probability <small>${esc(a.basis)}</small></h2>
@@ -403,7 +410,7 @@ function dashboard(ev, live) {
     : best ? bestBets(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration(), limit: 10 })
     : mode === 'two' ? nearTwo(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration(), limit: 10 })
     : rankedBankers(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration(), min: 0.6, minOdds, limit: 10, mode, ready })), when2 = `next ${hrs} hours`;
-  const MODES = [['best', 'Best bets', `likeliest winners at a fair price or better, odds ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)}, every sport`], ['likely', 'Most likely', '60%+ win chance'], ['two', 'Near 2.00', 'singles at odds 1.70–2.30, likeliest first, at a fair price or better (recorded apart from slips)'], ['safest', 'Surest', `odds ${SAFE.minOdds.toFixed(2)}–${SAFE.maxOdds.toFixed(2)}, the bets that land most often`], ['value', 'Best value', 'ATLAS chance above the price'], ['evidence', 'Best evidence', '60%+ with every key input confirmed']];
+  const MODES = [['best', 'Best bets', `likeliest winners at a fair price or better, odds ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)}, every sport`], ['likely', 'Highest probability', '60%+ chance, ranked by chance alone: not a value call'], ['two', 'Near 2.00', 'singles at odds 1.70–2.30, likeliest first, at a fair price or better (recorded apart from slips)'], ['safest', 'Surest', `odds ${SAFE.minOdds.toFixed(2)}–${SAFE.maxOdds.toFixed(2)}, the bets that land most often`], ['value', 'Best value', 'ATLAS chance above the price'], ['evidence', 'Best evidence', '60%+ with every key input confirmed']];
   const empty = { likely: `No strong picks in the next ${hrs} hours right now.${hrs < 48 ? ' Try a longer window, or' : ''} lower the minimum odds / add sports.`,
     value: `No qualifying selection: every price in the next ${hrs} hours is at or below ATLAS's estimate.`,
     evidence: `No qualifying selection: no 60%+ pick in the next ${hrs} hours has all its inputs confirmed yet (starters, lineups, a fresh price).`,
@@ -414,7 +421,6 @@ function dashboard(ev, live) {
   // Every panel by name, shown in the visitor's saved order with hidden ones left out (Customise).
   const panels = {
     potd: () => potdPanel(pool),
-    botd: () => botdPanel(pool),
     shortlist: () => `<div class="panel dash-short reveal"><h2 class="ph">Shortlist <small>${when2} · ${MODES.find((m) => m[0] === mode)[2]} · ${orderLabel()}</small></h2>
       <div class="win-chips" role="group" aria-label="Rank by">${MODES.map(([k, l]) => `<button class="chip ${mode === k ? 'on' : ''}" data-smode="${k}" aria-pressed="${mode === k}">${l}</button>`).join('')}</div>
       ${windowChips('shours', hrs)}
@@ -436,7 +442,7 @@ function dashboard(ev, live) {
 
 // Home panels: order and visibility, saved per visitor (localStorage, best effort). Unknown or missing
 // names fall back to the default order, so a new panel always appears.
-const HOME_PANELS = [['botd', 'Banker of the day'], ['potd', 'Parlay of the day'], ['shortlist', 'Shortlist'], ['live', 'Live now'], ['every', 'Every sport'], ['changes', 'What changed'], ['record', 'Track record'], ['health', 'Source health']];
+const HOME_PANELS = [['potd', 'Parlay of the day'], ['shortlist', 'Shortlist'], ['live', 'Live now'], ['every', 'Every sport'], ['changes', 'What changed'], ['record', 'Track record'], ['health', 'Source health']];
 const LAYOUT_KEY = 'atlas-home-layout';
 // Panel widths on wide screens (phones always show one column): auto is the panel's own width.
 const SIZES = { third: 'Third', half: 'Half', full: 'Full' };
@@ -503,20 +509,12 @@ function potdPanel(ev) {
   return `<div class="panel dash-potd reveal"><h2 class="ph">Parlay of the day <small>${legs.length ? `${legs.length} legs · ` : ''}${esc(dayLabel(day))}${saved ? '' : legs.length ? ' · not saved yet' : ''}</small>${zoneLink()}</h2>${body}${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}</div>`;
 }
 
-// Banker of the day: the single likeliest winner of the same day (odds 1.10 to 1.60), with its chance.
-function botdPanel(ev) {
-  const rz = dayZone(), day = potdDay(Date.now(), rz);
-  const saved = officialBanker(rz);
-  const live = saved ? null : bankerOfDay(ev, { zone: rz, cal: trackCalibration() });
-  const b = saved ? { pick: saved.pick, market: saved.market, home: saved.home, away: saved.away, start: saved.start, odds: saved.odds, p: saved.shown ?? saved.p, eventId: saved.eventId, sport: saved.sport, status: saved.status, fairOnly: saved.fairOnly }
-    : live ? { pick: live.pick, market: live.market, home: live.event.home, away: live.event.away, start: live.event.start, odds: live.odds, p: live.p, eventId: live.event.id, sport: live.event.sport, status: 'pending', fairOnly: live.fairOnly } : null;
-  const rec = recordLine(trackStats()?.botd);
-  const e = b && ev.find((x) => x.id === b.eventId);
-  const body = b ? `<a class="botd-main" href="#/match/${esc(b.eventId)}"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(b.home)} v ${esc(b.away)} · ${esc(fmtTime(b.start, tzZone(), 'short'))}</small></a>
-    <div class="botd-row"><span class="botd-p"><small>ATLAS chance</small><b>${pc(b.p, 0)}</b></span>${resultBadge(b.status, e?.live && e)}${legButton({ key: `${b.eventId}|${b.market}|${b.pick}`, eventId: b.eventId, sport: b.sport, match: `${b.home} vs ${b.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p }, odd(b.odds))}</div>
-    <p class="muted potd-note">${b.fairOnly ? 'Priced at its fair odds or better.' : 'The likeliest winner today, though the price is below its fair odds.'} Next one in ${nextIn(day)}.</p>`
-    : `<p class="muted">${S.loading ? 'Loading…' : `No single at 1.10 to 1.60 rated 70%+ before 12:00 ${tzAbbr(rz)}.`}</p>`;
-  return `<div class="panel dash-botd reveal"><h2 class="ph">Banker of the day <small>the likeliest single</small></h2>${body}${rec ? `<p class="rec-line">So far: ${rec}</p>` : ''}</div>`;
+// The match page's menu: five groups, each jumping to its first section on this page (sections a
+// sport doesn't have are left out, and a group with none is not shown).
+function matchGroups(sections, dos) {
+  const has = new Set(sections.map(([k]) => k)), first = (ids) => sections.find(([k]) => ids.includes(k))?.[0];
+  const groups = [['Overview', ['overview', 'case', 'best']], ['Markets', ['markets', 'book', 'props', 'calc']], ['Team & player evidence', [...dos.map((x) => x.id), 'form', 'model']], ['News & changes', ['history']], ['History & sources', ['notes']]];
+  return groups.map(([l, ids]) => [first(ids.filter((k) => has.has(k))), l]).filter(([k]) => k);
 }
 
 function sourceHealth(ev) {
@@ -524,7 +522,7 @@ function sourceHealth(ev) {
   const espn = ev.filter((e) => e.leaguePath && !e.leaguePath.startsWith('atlas/') && e.source !== 'MLB Stats API');
   const reports = ev.flatMap((e) => (e.probables || []).filter((p) => p.report?.league === 'MLB').map((p) => p.report));
   const rows = [
-    ['Snapshot build', ev.length, S.fetchedAt, 'every league, rebuilt about every 10 min'],
+    ['Snapshot build', ev.length, S.fetchedAt, `every league, rebuilt about every 15 min · ${{ fresh: 'on time', delayed: 'delayed', stale: 'overdue', unknown: 'not known yet' }[buildState()]}`],
     ['ESPN scoreboards', espn.length, newest(espn, (e) => e.fetchedAt), 'fixtures, scores, reference odds'],
     ['NPB official', ev.filter((e) => e.leaguePath === 'atlas/npb').length, newest(ev.filter((e) => e.leaguePath === 'atlas/npb'), (e) => e.fetchedAt), 'schedule, starters'],
     ['KBO official', ev.filter((e) => e.leaguePath === 'atlas/kbo').length, newest(ev.filter((e) => e.leaguePath === 'atlas/kbo'), (e) => e.fetchedAt), 'schedule, starters'],
@@ -588,14 +586,27 @@ function bestBetsPanel(e, a) {
     }).join('')}</div></section>`;
 }
 
+// A two-word status beside a pick when an input it depends on is still pending (details on hover or
+// tap); nothing when every input its sport needs is in.
+const PENDING = { price: 'Price updating', goalies: 'Goalies pending', lineups: 'Lineup pending', lineup: 'Lineup pending', starters: 'Starters pending', pitchers: 'Starters pending', injuries: 'Injury news pending', toss: 'Toss pending' };
+function statusPill(e) {
+  if (e.live) return '';
+  const r = readiness(e, { priceAt: priceTime(e) });
+  if (r.state === 'ready' || (r.state === 'limited' && !e.stale)) return '';
+  const miss = r.checks.find((c) => c.ok === false);
+  const word = e.stale ? 'Feed delayed' : miss ? PENDING[miss.key] || `${miss.label} pending` : r.state === 'limited' ? 'Limited data' : 'Checking';
+  const why = r.checks.filter((c) => c.ok !== true).map((c) => `${c.label}: ${c.note}`).join('\n');
+  return `<small class="pill-status" tabindex="0" title="${esc(why)}">${esc(word)}</small>`;
+}
+
 function miniPick(b) {
   const s = sportOf(b.event.sport);
   const rec = recommendationFor(b, trackCalibration());
   const leg = { key: `${b.event.id}|${b.market}|${b.pick}`, eventId: b.event.id, sport: b.event.sport, match: `${b.event.home} vs ${b.event.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p, recommendationId: rec.recommendationId, ...(b.prop ? { prop: b.prop } : {}) };
   const edge = `${b.ev >= 0 ? '+' : ''}${(b.ev * 100).toFixed(1)}%`;
   return `<div class="mini reveal" data-rec="${esc(rec.recommendationId)}" title="${esc(`${rec.settlementRules} Chance range ${pc(rec.uncertaintyRange[0], 0)}–${pc(rec.uncertaintyRange[1], 0)} (${rec.uncertaintyMethod}).`)}"><span class="mini-ico">${s.icon}</span>
-    <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(b.event.home)} v ${esc(b.event.away)}</small>${b.book ? `<small class="muted">best price: ${esc(b.book)}</small>` : ''}${whyTag(b)}${b.event.live ? '<small class="live">LIVE</small>' : istTag(b.event.start)}</a>
-    <div class="mini-nums"><span><small>ATLAS</small><b>${pc(b.p, 0)}</b></span>${b.fair != null ? `<span><small>Market</small><b>${pc(b.fair, 0)}</b></span>` : ''}<span><small>Break-even</small><b>${pc(1 / b.odds, 0)}</b></span><span><small>Edge</small><b class="${b.ev >= 0 ? 'pos' : 'neg'}">${edge}</b></span></div>
+    <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(b.event.home)} v ${esc(b.event.away)}</small>${b.book ? `<small class="muted">best price: ${esc(b.book)}</small>` : ''}${whyTag(b)}${b.event.live ? '<small class="live">LIVE</small>' : istTag(b.event.start)}${statusPill(b.event)}${b.ev < 0 ? '<small class="pill-below" title="ATLAS\'s chance is below what this price needs to break even: likely, but a poor price.">Below break-even at this price</small>' : ''}</a>
+    <div class="mini-nums"><span title="ATLAS estimated probability"><small>ATLAS chance</small><b>${pc(b.p, 0)}</b></span>${b.fair != null ? `<span title="Bookmakers' own chance with their margin removed"><small>Market (no margin)</small><b>${pc(b.fair, 0)}</b></span>` : ''}<span title="The chance this price needs to break even"><small>Break-even</small><b>${pc(1 / b.odds, 0)}</b></span><span title="Estimated return per unit staked: ATLAS chance × odds − 1"><small>Return</small><b class="${b.ev >= 0 ? 'pos' : 'neg'}">${edge}</b></span></div>
     ${legButton(leg, odd(b.odds))}</div>`;
 }
 

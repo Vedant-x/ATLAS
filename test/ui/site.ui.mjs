@@ -210,17 +210,16 @@ test('match page: the results history (ratings, rest, last meetings)', async () 
   await ctx.close();
 });
 
-test('time zone: one setting for every time; the parlay and banker of the day follow it', async () => {
+test('time zone: one setting for every time; the parlay of the day follows it', async () => {
   const { page, ctx, errors } = await open('#/');
   await page.waitForSelector('.dash-potd');
   assert.match(await page.textContent('.dash-potd'), /12:00 to 12:00 IST/);
-  assert.ok(await page.$('.dash-botd'), 'banker of the day beside the parlay');
   await page.selectOption('.bar [data-tz-select]', 'GMT');
   await page.waitForFunction(() => /12:00 to 12:00 GMT/.test(document.querySelector('.dash-potd')?.textContent || ''));
   // A zone with no recorded day follows the IST day, shown in the visitor's own time too.
   await page.selectOption('.bar [data-tz-select]', 'ET');
   await page.waitForFunction(() => /12:00 to 12:00 IST · .*your time/.test(document.querySelector('.dash-potd')?.textContent || ''));
-  assert.match(await page.textContent('.dash-short'), /\b(EDT|EST)\b/, 'kick-off times in US Eastern time');
+  assert.match(await page.textContent('.dash-short'), /\d am (EDT|EST)|\d pm (EDT|EST)/, 'kick-off times in US Eastern time');
   await page.reload();
   await page.waitForSelector('.dash-potd');
   assert.equal(await page.$eval('.bar [data-tz-select]', (s) => s.value), 'ET', 'kept after a reload');
@@ -318,7 +317,7 @@ test('home: a panel can be made full width, and every panel takes a size', async
   assert.ok(Math.abs(panel - dash) < 2, `${panel} vs ${dash}`);
   assert.match(await page.textContent('[data-lay="size"][data-lay-key="live"]'), /Full/);
   // Every panel's markup accepts a size (the class goes on its own element).
-  for (const k of ['botd', 'potd', 'shortlist', 'every', 'changes', 'record', 'health']) await page.click(`[data-lay="size"][data-lay-key="${k}"]`);
+  for (const k of ['potd', 'shortlist', 'every', 'changes', 'record', 'health']) await page.click(`[data-lay="size"][data-lay-key="${k}"]`);
   const sized = await page.$$eval('.dash > .panel.lay-third', (ps) => ps.length);
   const shown = await page.$$eval('.dash > .panel:not(.dash-layout):not(.lay-full)', (ps) => ps.length);
   assert.equal(sized, shown);

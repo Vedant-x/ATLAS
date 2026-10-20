@@ -103,6 +103,19 @@ test('out-of-sample check: each week is scored with a calibration fitted only on
   assert.equal(walkForward([]), null);
 });
 
+test('out-of-sample check: a result graded (or corrected) after the cutoff is not trained on', async () => {
+  const { walkForward } = await import('../js/track.js');
+  const h = [];
+  for (let i = 0; i < 300; i++) {
+    const at = T0 + i * 4 * H;
+    // Every result is only known 9 days after the match (a slow backfill).
+    h.push(pick({ key: `w${i}|Winner|A`, eventId: `w${i}`, pick: 'A', odds: 1.6, p: 0.7, shown: 0.66, status: i % 5 < 3 ? 'won' : 'lost', recordedAt: at, start: at + 2 * H, gradedAt: at + 2 * H + 9 * 24 * H }));
+  }
+  const w = walkForward(h);
+  for (const wk of w.weeks) assert.ok(wk.train <= h.filter((x) => x.gradedAt < wk.from).length, 'trained only on results already known');
+  assert.ok(w.total.published && w.total.published.n > 0, 'the published chance is scored as it was');
+});
+
 test('quiet hours: no system notifications inside the window, including one past midnight', async () => {
   const { quietNow } = await import('../js/livealerts.js');
   const at = (h) => new Date(2026, 9, 18, h, 30);

@@ -134,9 +134,15 @@ export function observations(history = []) {
   const take = (r, p) => {
     const k = r.sel || selectionId(r);
     const o = k && by.get(k);
-    if (!o) { const n = { key: k, market: r.market, p, sport: r.sport, odds: r.odds, at: r.at, start: r.start, results: new Set() }; if (k) by.set(k, n); list.push(n); }
+    // shown: the chance displayed when it was first published; known: when its result was last set
+    // (a correction moves it later), so an evaluation never trains on a result not yet known.
+    if (!o) { const n = { key: k, market: r.market, p, shown: r.shown ?? null, sport: r.sport, odds: r.odds, at: r.at, start: r.start, known: null, results: new Set() }; if (k) by.set(k, n); list.push(n); }
     const t = o || list[list.length - 1];
-    if (r.status === 'won' || r.status === 'lost' || r.status === 'push') t.results.add(r.status);
+    if (r.status === 'won' || r.status === 'lost' || r.status === 'push') {
+      t.results.add(r.status);
+      const when = r.gradedAt ?? (Number.isFinite(r.start) ? r.start + 6 * 36e5 : null);
+      if (when != null) t.known = Math.max(t.known ?? 0, when);
+    }
   };
   // Oldest record first (not file order), so a rebuilt or reordered history gives the same forecasts.
   const rows = [];
@@ -214,22 +220,26 @@ export function walkForward(history, { step = 7 * 864e5, minTrain = 50 } = {}) {
   const obs = observations(canonicalOrder(history)).list.filter((o) => (o.status === 'won' || o.status === 'lost') && Number.isFinite(o.at) && o.odds > 1).sort((a, b) => a.at - b.at);
   if (!obs.length) return null;
   const clip = (q) => Math.min(0.99, Math.max(0.01, q));
-  const score = () => ({ n: 0, raw: 0, shown: 0, market: 0, llRaw: 0, llShown: 0, llMarket: 0 });
+  const score = () => ({ n: 0, raw: 0, shown: 0, market: 0, llRaw: 0, llShown: 0, llMarket: 0, nPub: 0, pub: 0, pubMarket: 0 });
   const add = (t, o, cal) => {
     const y = o.status === 'won' ? 1 : 0, f = { raw: clip(o.p), shown: clip(calibrated(o.p, o.market, cal, o.sport, o.odds)), market: clip(marketChance(o.odds)) };
     t.n++;
     for (const k of ['raw', 'shown', 'market']) { t[k] += (f[k] - y) ** 2; t[`ll${k[0].toUpperCase()}${k.slice(1)}`] += -Math.log(y ? f[k] : 1 - f[k]); }
+    // The chance actually published at the time, scored as it was (no recalibration).
+    if (Number.isFinite(o.shown)) { t.nPub++; t.pub += (clip(o.shown) - y) ** 2; t.pubMarket += (f.market - y) ** 2; }
   };
   const total = score(), weeks = [];
   for (let w0 = obs[0].at + step; w0 <= obs.at(-1).at; w0 += step) {
-    const train = obs.filter((o) => (o.start ?? o.at) < w0 - 6 * 36e5);
+    // Only results known before the week starts (graded, and not corrected since).
+    const train = obs.filter((o) => (o.known ?? (o.start ?? o.at) + 6 * 36e5) < w0);
     const test = obs.filter((o) => o.at >= w0 && o.at < w0 + step);
     if (train.length < minTrain || !test.length) continue;
     const cal = calibrationFrom(train), wk = score();
     for (const o of test) { add(wk, o, cal); add(total, o, cal); }
     weeks.push({ from: w0, train: train.length, ...wk });
   }
-  const avg = (t) => (t.n ? { n: t.n, brier: { raw: t.raw / t.n, shown: t.shown / t.n, market: t.market / t.n }, logLoss: { raw: t.llRaw / t.n, shown: t.llShown / t.n, market: t.llMarket / t.n } } : null);
+  const avg = (t) => (t.n ? { n: t.n, brier: { raw: t.raw / t.n, shown: t.shown / t.n, market: t.market / t.n }, logLoss: { raw: t.llRaw / t.n, shown: t.llShown / t.n, market: t.llMarket / t.n },
+    published: t.nPub ? { n: t.nPub, brier: t.pub / t.nPub, market: t.pubMarket / t.nPub } : null } : null);
   return { total: avg(total), weeks: weeks.map((w) => ({ from: w.from, train: w.train, ...avg(w) })), margin: MARGIN };
 }
 
@@ -252,7 +262,10 @@ export const calibrated = (p, market, cal, sport, odds) => {
 export const shownProp = (x, market, cal, sport) => ({ ...x, pRaw: x.pRaw ?? x.p, p: calibrated(x.pRaw ?? x.p, market, cal, sport, x.odds) });
 
 // The calibration's version: how many settled forecasts it was fitted on (one per family key).
-export const calVersionOf = (cal) => `cal-${Object.entries(cal || {}).filter(([k]) => !k.includes(':')).reduce((a, [, r]) => a + (r.n || 0), 0)}`;
+// The calibration a chance was shown with: its size and a fingerprint of its contents, so a
+// correction that changes a result (but not the count) still gives a new version.
+const fnv = (s) => { let h = 0x811c9dc5; for (const c of String(s)) { h ^= c.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(36); };
+export const calVersionOf = (cal) => `cal-${Object.entries(cal || {}).filter(([k]) => !k.includes(':')).reduce((a, [, r]) => a + (r.n || 0), 0)}-${fnv(JSON.stringify(Object.entries(cal || {}).sort(([x], [y]) => (x < y ? -1 : 1)).map(([k, r]) => [k, r.n, r.factor, r.w, r.blendFactor, r.blocked])))}`;
 // How many settled forecasts of this kind the shown chance rests on (the sport's own record once it
 // is used, else the all-sports one).
 export const calSize = (cal, sport, market) => { const own = sport ? cal?.[`${sport}:${familyOf(market)}`] : null; return (own?.n >= 30 ? own : cal?.[familyOf(market)])?.n ?? 0; };
@@ -313,7 +326,7 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
   const calVersion = calVersionOf(cal);
   const quote = (e) => ({ book: e.bookmaker || null, oddsSource: e.oddsSource || null, quoteType: e.quoteType || (e.markets?.length ? 'bookmaker' : null), priceAt: e.priceAt ?? null });
   const row = (type) => (b) => ({ sel: selectionId({ eventId: b.event.id, market: b.market, pick: b.pick, prop: b.prop }), ...quote(b.event), calVersion,
-    ...(() => { const r = recommendationFor(b, cal, { now, mode: type }); return { recommendationId: r.recommendationId, uncertaintyRange: r.uncertaintyRange }; })(),
+    ...(() => { const r = recommendationFor(b, cal, { now, mode: type, publishedAt: now }); return { recommendationId: r.recommendationId, forecastId: r.forecastId, generatedAt: r.forecastGeneratedAt, uncertaintyRange: r.uncertaintyRange }; })(),
     // The surest list keeps its own record, so its key differs from the same pick on the shortlist.
     key: `${type === 'safe' ? 'safe|' : type === 'best' ? 'best|' : type === 'two' ? 'two|' : ''}${b.event.id}|${b.market}|${b.pick}`, type, eventId: b.event.id, leaguePath: b.event.leaguePath, compId: b.event.compId,
     sport: b.event.sport, league: b.event.league, home: b.event.home, away: b.event.away, start: b.event.start,
@@ -336,8 +349,6 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
     ...modelPicks(soon, { now, hours, record: modelRecord(history) }).slice(0, 40).map(modelRow),
     ...multiPicks(events, now, history),
     ...potdPicks(events, now, history),
-    // Banker of the day, one per day per recorded zone (the first one seen is kept, like the parlay).
-    ...Object.keys(POTD_ZONES).flatMap((zone) => { const b = bankerOfDay(events, { now, zone, cal }); return b ? [{ ...row('botd')(b), key: `botd|${potdDay(now, zone).key}|${zone}`, zone, fairOnly: b.fairOnly }] : []; }),
   ];
 }
 
@@ -376,19 +387,6 @@ export function parlayOfDay(events, { now = Date.now(), zone = 'IST', cal = null
   }
   return null;
 }
-// Banker of the day: the single likeliest winner of the same 12:00-to-12:00 day, at odds 1.10 to 1.60,
-// at a price no shorter than the market's fair odds where one qualifies (else the likeliest, marked).
-// The honest way to a high hit rate: a short-priced single, not a long parlay.
-export const BOTD = { minOdds: 1.1, maxOdds: 1.6, min: 0.7 };
-export function bankerOfDay(events, { now = Date.now(), zone = 'IST', cal = null } = {}) {
-  const { end } = potdDay(now, zone);
-  const pool = applyModel(events.filter((e) => e.compId && e.markets?.length && !e.live && e.start > now + 30 * 6e4 && e.start < end));
-  const good = (b) => (b.consensus ? b.fair * b.odds >= 1 : b.pRaw <= marketChance(b.odds) + BEST.overclaim);
-  const list = rankedBankers(pool, { cal, min: BOTD.min, minOdds: BOTD.minOdds, maxOdds: BOTD.maxOdds, limit: 400, mix: false }).sort((x, y) => y.p - x.p);
-  const pick = list.find(good) || list[0];
-  return pick ? { ...pick, fairOnly: good(pick) } : null;
-}
-
 export function potdPicks(events, now = Date.now(), history = []) {
   const cal = calibration(history);
   const out = [];
@@ -563,6 +561,7 @@ export function summarize(history) {
   history = canonicalOrder(history);
   const settledAll = history.filter((h) => h.status === 'won' || h.status === 'lost' || h.status === 'push');
   const graded = settledAll.filter(inRecord);
+  // botd: the banker of the day, recorded briefly (19-20 Oct) before it was retired; kept out of every list.
   const outside = settledAll.filter((h) => !['multi', 'safe', 'model', 'best', 'two', 'botd'].includes(h.type) && !inRecord(h));
   const best = settledAll.filter((h) => h.type === 'best');
   const models = settledAll.filter((h) => h.type === 'model');
@@ -601,7 +600,6 @@ export function summarize(history) {
     pending: history.filter((h) => h.status === 'pending' && inRecord(h)).sort((a, b) => a.start - b.start),
     unresolved: history.filter((h) => h.status === 'unresolved' && inRecord(h)).length,
     outside: stat(outside), safe: stat(safe), best: stat(best), two: stat(settledAll.filter((h) => h.type === 'two')),
-    botd: { ...stat(settledAll.filter((h) => h.type === 'botd')), recent: settledAll.filter((h) => h.type === 'botd').sort((a, b) => b.start - a.start).slice(0, 14) },
     // Model-only picks (no price): hit rate against forecast and Brier only; their "odds" are fair
     // odds, so profit means nothing for them and is not shown.
     model: { ...stat(models), bySport: Object.entries(models.reduce((m, h) => ((m[h.sport] ||= []).push(h), m), {})).map(([k, l]) => ({ key: k, ...stat(l) })).sort((a, b) => b.picks - a.picks) },

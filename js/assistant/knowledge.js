@@ -1,4 +1,5 @@
 import { zone as tzZone } from '../tz.js';
+import { marketOk } from './constraints.js';
 // What the assistant knows: read-only views over the site's live state (matches, prices, model
 // probabilities, injuries, starters, slips). Used by both the built-in brain and the Claude tools,
 // so every answer comes from the same numbers the pages show.
@@ -130,7 +131,7 @@ export function createKnowledge(S) {
   // Best value (ATLAS above the price). Matches no bookmaker prices follow, at model fair odds,
   // unless the visitor shows priced matches only. The visitor's saved filters apply: minimum odds,
   // and preferred sports when none is named. Odds limits asked for are hard rules on every pick.
-  function picks({ sport, league, today = false, mode = 'balanced', limit = 5, minOdds = prefs.get().minOdds, maxOdds, from, to, exclude, skip = [] } = {}) {
+  function picks({ sport, league, today = false, mode = 'balanced', limit = 5, minOdds = prefs.get().minOdds, maxOdds, from, to, exclude, skip = [], markets = null, noProps = false } = {}) {
     let list = filterEvents({ sport, league, today, from, to, exclude }).filter((e) => !e.live);
     if (!sport && !league) list = prefEvents(list);
     const cal = trackCalibration();
@@ -143,10 +144,32 @@ export function createKnowledge(S) {
     if (!prefs.get().pricedOnly && mode !== 'value') c = [...c, ...candidates(list).filter((x) => !x.priced && x.p >= (mode === 'safe' ? 0.6 : 0.55)).sort((a, b) => b.p - a.p)];
     if (minOdds) c = c.filter((x) => x.odds >= minOdds);
     if (maxOdds) c = c.filter((x) => x.odds <= maxOdds);
+    c = c.filter((x) => marketOk({ markets, noProps }, x));
     const seen = new Set(), out = [];
     const skipped = new Set(skip);
     for (const x of c) { if (seen.has(x.e.id) || skipped.has(pickId(x))) continue; seen.add(x.e.id); out.push(x); if (out.length >= limit) break; }
     return out;
+  }
+
+  // Why nothing qualified: every priced selection that matches the request's scope, day, market
+  // type and odds range, each with the reason it was left out (below break-even at this price, below
+  // the list's chance floor, missing evidence), the nearest first. Empty when no such market exists.
+  function nearMisses({ sport, league, from, to, today = false, exclude, minOdds, maxOdds, markets = null, noProps = false, mode = 'balanced' } = {}) {
+    const list = filterEvents({ sport, league, today, from, to, exclude }).filter((e) => !e.live && e.markets?.length);
+    const cal = trackCalibration();
+    const all = rankedBankers(list, { cal, min: 0, minOdds: minOdds ?? 1.01, maxOdds: maxOdds ?? 1000, limit: 2000, mix: false })
+      .filter((b) => marketOk({ markets, noProps }, { market: b.market, prop: b.prop }));
+    return all.slice(0, 40).map((b) => {
+      const ev = b.p * b.odds - 1, r = readiness(b.event, { priceAt: priceTime(b.event) });
+      const reasons = [];
+      if (ev < 0) reasons.push(`below break-even at this price (needs ${Math.round(100 / b.odds)}%, ATLAS ${Math.round(b.p * 100)}%)`);
+      if (mode === 'safe' && b.p < 0.6) reasons.push('under the 60% chance this list needs');
+      if (mode === 'balanced' && b.p < 0.55) reasons.push('under the 55% chance Best bets need');
+      const missing = r.checks.filter((x) => x.ok === false && x.key !== 'price').map((x) => x.label.toLowerCase());
+      if (missing.length) reasons.push(`missing: ${missing.join(', ')}`);
+      if (r.checks.some((x) => x.key === 'price' && x.ok === false)) reasons.push('price not fresh');
+      return { e: b.event, market: b.market, pick: b.pick, odds: b.odds, p: b.p, ev, reasons };
+    }).sort((x, y) => y.p - x.p);
   }
 
   const startersOf = (e) => (e.probables || []).filter((p) => p.report).map((p) => {
@@ -240,5 +263,5 @@ export function createKnowledge(S) {
 
   const catalog = () => CATALOG.map((s) => ({ id: s.id, name: s.name, matches: S.events.filter((e) => e.sport === s.id).length }));
 
-  return { route, currentEvent, currentScope, eventById, sportIn, leagueIn, eventsIn, filterEvents, picks, pickId, candidates, matchSummary, injuriesOf, startersOf, slips, catalog, norm, caseOf, readinessOf, changes, reviewList, freshness, lastVisit, minOdds: () => prefs.get().minOdds, zone: () => tzZone(), playerResearch, slipSummary, sourcesFor, SPORT_WORDS, LEAGUE_WORDS };
+  return { route, currentEvent, currentScope, eventById, sportIn, leagueIn, eventsIn, filterEvents, picks, nearMisses, pickId, candidates, matchSummary, injuriesOf, startersOf, slips, catalog, norm, caseOf, readinessOf, changes, reviewList, freshness, lastVisit, minOdds: () => prefs.get().minOdds, zone: () => tzZone(), playerResearch, slipSummary, sourcesFor, SPORT_WORDS, LEAGUE_WORDS };
 }

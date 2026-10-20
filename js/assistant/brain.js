@@ -126,14 +126,15 @@ export function createBrain(K) {
     const asked = parseConstraints(q, K);
     const c = carry ? { ...carry, ...Object.fromEntries(Object.entries(asked).filter(([k, v]) => v != null && v !== false && !(k === 'exclude' && !v.sports.length && !v.leagues.length))) } : asked;
     if (carry && asked.exclude && (asked.exclude.sports.length || asked.exclude.leagues.length)) c.exclude = { sports: [...new Set([...(carry.exclude?.sports || []), ...asked.exclude.sports])], leagues: [...new Set([...(carry.exclude?.leagues || []), ...asked.exclude.leagues])] };
-    const mode = c.positiveOnly || /\b(value|edge|\+ev|underpriced)\b/.test(q) ? 'value' : /\b(safe|safest|banker|bankers|sure|lock|locks|certain|guarantee)/.test(q) ? 'safe' : (carry?.mode || 'balanced');
+    const mode = c.positiveOnly || /\b(value|edge|\+ev|underpriced)\b/.test(q) ? 'value' : /\b(safe|safest|banker|bankers|sure|lock|locks|certain|guarantee|highest probability|most likely|likeliest)/.test(q) ? 'safe' : (carry?.mode || 'balanced');
     c.mode = mode;
     // Without a day asked for: the next 12 hours, then the next few days (said plainly).
     const n = c.n || howMany(q, 5);
     const scope = c.league ? { league: c.league } : c.sport ? { sport: c.sport } : names(scopeFrom(q.replace(/\b(?:excluding|exclude|except|without|other than|not|no|non)[- ][a-z0-9 ]+/g, ' '), !/\b(all|every|any)\b/.test(q) && !c.exclude.sports.length && !c.exclude.leagues.length));
-    const base = { ...scope, mode, limit: n, exclude: c.exclude, ...(c.minOdds != null ? { minOdds: c.minOdds } : {}), ...(c.maxOdds != null ? { maxOdds: c.maxOdds } : {}), skip: more ? mem.list.map(K.pickId) : [] };
+    const base = { ...scope, mode, limit: n, exclude: c.exclude, ...(c.minOdds != null ? { minOdds: c.minOdds } : {}), ...(c.maxOdds != null ? { maxOdds: c.maxOdds } : {}), markets: c.markets || null, noProps: Boolean(c.noProps), skip: more ? mem.list.map(K.pickId) : [] };
     let list, window;
-    if (c.from) { list = K.picks({ ...base, from: c.from, to: c.to }); window = { today: 'today', tomorrow: 'tomorrow', week: 'the next 7 days', weekend: 'this weekend' }[c.day]; }
+    const WIN = { today: 'today (until midnight)', tonight: 'tonight (until 06:00)', hours: `the next ${c.hours} hours`, tomorrow: 'tomorrow', week: 'the next 7 days', weekend: 'this weekend' };
+    if (c.from) { list = K.picks({ ...base, from: c.from, to: c.to }); window = WIN[c.day]; }
     else {
       list = K.picks({ ...base, today: true }); window = 'the next 12 hours';
       if (!list.length) { list = K.picks({ ...base, today: false }); window = 'the next few days'; }
@@ -141,10 +142,18 @@ export function createBrain(K) {
     list = list.filter((x) => legOk(c, x)); // every chip shown is a rule applied
     const chips = chipsOf(c);
     if (!list.length) {
-      const why = mode === 'value' ? 'No pick has a positive estimated return (forecast x odds above 1)' : 'No pick passes these filters';
-      const when = { today: 'today', tomorrow: 'for tomorrow', week: 'in the next 7 days', weekend: 'this weekend' }[c.day] || `in ${window || 'the window asked for'}`;
+      const when = { today: 'today (until midnight)', tonight: 'tonight (until 06:00)', hours: `in the next ${c.hours} hours`, tomorrow: 'for tomorrow', week: 'in the next 7 days', weekend: 'this weekend' }[c.day] || `in ${window || 'the window asked for'}`;
       remember([], c);
-      return { text: `**${why}** ${when}. I won't swap in picks that break what you asked for.\n\nYou could widen the window, drop a filter${mode === 'value' ? ', or ask for **"best bets"** without the positive-return rule' : ''}.`, chips, followups: mode === 'value' ? ['Best bets anyway', 'Best bets this week'] : ['Best bets this week'] };
+      // Say which case it is: no such market at all, or markets that match but were left out (and why).
+      if (!K.nearMisses) {
+        const why = mode === 'value' ? 'No pick has a positive estimated return (forecast x odds above 1)' : 'No pick passes these filters';
+        return { text: `**${why}** ${when}. I won't swap in picks that break what you asked for.\n\nYou could widen the window or drop a filter.`, chips, followups: mode === 'value' ? ['Best bets anyway', 'Best bets this week'] : ['Best bets this week'] };
+      }
+      const misses = K.nearMisses({ ...base, ...(c.from ? { from: c.from, to: c.to } : { today: !window || window === 'the next 12 hours' }) });
+      if (!misses.length) return { text: `**No matching market ${when}.** Nothing on the board fits ${chips.length ? chips.join(' · ') : 'this request'}${c.from ? '' : ' (or the feeds have not listed it yet)'}. I won't swap in picks that break what you asked for.`, chips, followups: ['Best bets this week'] };
+      const head = mode === 'value' ? 'No pick has a positive estimated return' : mode === 'safe' ? 'None is likely enough for the safest list' : 'None qualifies as a best bet';
+      const rows = misses.slice(0, 3).map((x) => `- **${x.pick}** · ${x.market} · ${x.e.home} vs ${x.e.away} at ${od(x.odds)}: ${x.reasons.length ? x.reasons.join('; ') : 'passes on its own, but not as the price-checked best bet'}`);
+      return { text: `**${head} ${when}.** ${misses.length} market${misses.length > 1 ? 's' : ''} fit${misses.length > 1 ? '' : 's'} what you asked; the nearest:\n${rows.join('\n')}\n\nThese are research, not recommendations. I won't call them picks when they break the list's rules.`, chips, followups: ['Same filters, highest probability', 'Best bets this week'] };
     }
     const head = { safe: 'Safest picks', value: 'Positive estimated return', balanced: 'Best bets' }[mode];
     const combo = list.reduce((a, x) => a * x.odds, 1), comboP = list.reduce((a, x) => a * x.p, 1);

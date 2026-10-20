@@ -95,6 +95,7 @@ body.scrolled .ticker { top: 52px; }
 .ticker-track b { color: var(--accent); }
 .ticker-track small { color: var(--dim); }
 .ticker-track i { font-style: normal; }
+.ticker-track .tk-head { color: var(--accent); font-weight: 700; letter-spacing: 1.5px; font-size: 10px; opacity: .8; }
 @keyframes tick { to { transform: translateX(-50%); } }
 @media (max-width: 820px) {
   nav.top { position: fixed; bottom: 12px; left: 12px; right: 12px; justify-content: space-around; background: rgba(10,10,14,.97); border: 1px solid var(--line2); border-radius: 18px; padding: 12px 6px; gap: 4px; font-size: 10px; letter-spacing: .5px; z-index: 60; }
@@ -135,6 +136,8 @@ h1.vs small { font: 700 14px var(--mono); letter-spacing: 6px; color: var(--acce
 .notice { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; border: 1px solid var(--line); background: rgba(12, 12, 18, 0.8); border-radius: 14px; padding: 12px 16px; font-size: 13px; color: var(--muted); margin: 10px 0 30px; }
 .notice b { color: var(--fg); } .notice b.ok { color: var(--pos); }
 .notice a { color: var(--accent); text-decoration: underline; }
+.notice-delayed { border-color: rgba(255, 181, 71, .45); } .notice-delayed b { color: #ffb547; }
+.notice-stale { border-color: rgba(255, 92, 92, .5); } .notice-stale b { color: var(--neg, #ff5c5c); }
 .notice em { margin-left: auto; font-style: normal; color: var(--dim); }
 .led { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
 .led.on { background: var(--pos); box-shadow: 0 0 12px var(--pos); animation: blink 2s infinite; }
@@ -162,7 +165,7 @@ h1.vs small { font: 700 14px var(--mono); letter-spacing: 6px; color: var(--acce
 
 /* ---------- glass cards ---------- */
 /* no backdrop-filter on cards: dozens of blurred layers over the WebGL canvas make Chrome drop tiles to black */
-.tilt, .panel { position: relative; border-radius: 20px; border: 1px solid var(--line); background: rgba(12, 12, 18, 0.92); }
+.tilt, .panel { position: relative; border-radius: 20px; border: 1px solid var(--line); background: rgba(12, 12, 18, 0.97); } /* near-opaque: dense research reads cleanly over the 3D scene */
 .tilt { overflow: hidden; transition: transform .35s var(--ease), border-color .4s; transform-style: preserve-3d; }
 .tilt::before { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .4s; background: radial-gradient(500px circle at var(--mx, 50%) var(--my, 50%), rgba(255,255,255,.1), transparent 40%); }
 .tilt::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; padding: 1px; background: radial-gradient(300px circle at var(--mx, 50%) var(--my, 50%), var(--c, var(--accent)), transparent 60%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: 0; transition: opacity .4s; }

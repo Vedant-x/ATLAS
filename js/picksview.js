@@ -47,7 +47,8 @@ function slipCard(s, i, target, all) {
     <header><span class="tag">#${String(i + 1).padStart(2, '0')}</span><span class="mult">${s.odds.toFixed(2)}<small>x</small></span></header>
     <div class="sc-stats">
       <div><small>Chance</small><b>${pc(s.p, s.p < 0.01 ? 2 : 1)}</b></div>
-      <div><small>Edge</small><b class="${edge >= 0 ? 'pos' : 'neg'}">${edge >= 0 ? '+' : ''}${(edge * 100).toFixed(1)}%</b></div>
+      <div><small>Break-even</small><b>${pc(1 / s.odds, s.odds >= 100 ? 2 : 1)}</b></div>
+      <div title="Estimated return per unit staked"><small>Return</small><b class="${edge >= 0 ? 'pos' : 'neg'}">${edge >= 0 ? '+' : ''}${(edge * 100).toFixed(1)}%</b></div>
       <div><small>Sports</small><b class="sc-sp" title="${esc(sports.map((x) => sportOf(x).name).join(', '))}">${sports.slice(0, 3).map((x) => sportOf(x).icon).join('')}${sports.length > 3 ? `<small>+${sports.length - 3}</small>` : ''}</b></div>
     </div>
     <div class="sc-strip" role="img" aria-label="${s.legs.length} legs by chance">${legs.map((l) => `<i class="${chanceTone(l.p)}" title="${esc(`${l.pick} · ${pc(l.p, 0)} · ${l.odds.toFixed(2)}`)}"></i>`).join('')}</div>
@@ -73,11 +74,21 @@ function recordBlock(title, r) {
   if (!r?.slips?.length) return '';
   return `<h2 class="sec reveal">${title}${r.won + r.lost ? ` <small>${recordLine(r)}</small>` : ''}</h2><div class="panel reveal">${slipHistory(r.slips)}</div>`;
 }
+// Today's official slip while it can still be followed: not started yet, or in progress. A settled
+// one moves to the history below (settled slips never sit above what is available now).
 function officialBlock(target) {
   const o = officialSlip(target);
-  if (!o) return '';
-  return `<div class="panel official reveal"><h3 class="ph">Today's official ${target}x slip <small>saved to the ${target}x track record · ${o.legs.length} legs · ${Number(o.odds).toFixed(2)}x · chance ${pc(o.shown ?? o.p, o.p < 0.01 ? 2 : 1)}</small></h3>${slipHistory([o])}</div>`;
+  if (!o || o.status !== 'pending') return '';
+  const started = o.legs.some((l) => l.start <= Date.now());
+  return `<div class="panel official reveal"><h3 class="ph">${started ? 'In progress' : 'Today\'s official'} ${target}x slip <small>saved to the ${target}x track record · ${o.legs.length} legs · ${Number(o.odds).toFixed(2)}x · chance ${pc(o.shown ?? o.p, o.p < 0.01 ? 2 : 1)} · break-even ${pc(1 / o.odds, 1)}</small></h3>${slipHistory([o])}</div>`;
 }
+// The builder's own record beside it, with its sample size: a singles hit rate never stands in for it.
+function recordSummary(target, r) {
+  const n = (r?.won || 0) + (r?.lost || 0);
+  return `<p class="rec-line reveal">${target}x record: ${n ? `${recordLine(r)} · ${n} settled slip${n === 1 ? '' : 's'}${n < 50 ? ' (a small sample: no conclusion yet)' : ''}` : 'no settled slips yet'} · each slip needs ${pc(1 / target, 1)} to break even</p>`;
+}
+// Fewer options than asked for: say why, never pad the list.
+const fewNote = (list, target, want = 5) => (list.length && list.length < want ? `<p class="muted reveal">Only ${list.length} slip${list.length === 1 ? '' : 's'} meet${list.length === 1 ? 's' : ''} the rules right now (legs ATLAS rates likely enough, your minimum odds per leg, no two legs sharing a team, matches ${windowLabel(target).toLowerCase().replace('next', 'in the next')}). ATLAS doesn't add weaker slips to fill the page.</p>` : '');
 // Why no slip could be built: name the rule that blocked it instead of quietly loosening it.
 function emptySlips(target) {
   const mo = prefs.get().minOdds;
@@ -93,7 +104,7 @@ function smartBankers(events, { min = 0.7, limit = 10, minOdds = 1 } = {}) {
 
 // Likely is not the same as good value: the chance a pick needs just to break even at its price, and
 // the market's own margin-free chance, next to ATLAS's estimate.
-const priceCheck = (b) => `ATLAS ${pc(b.p, 0)}${b.fair != null ? ` · market ${pc(b.fair, 0)}` : ''} · break-even ${pc(1 / b.odds, 0)}`;
+const priceCheck = (b) => `ATLAS chance ${pc(b.p, 0)}${b.fair != null ? ` · market (no margin) ${pc(b.fair, 0)}` : ''} · break-even ${pc(1 / b.odds, 0)}`;
 
 function bigPick(b, value) {
   const e = b.event, s = sportOf(e.sport);
@@ -103,8 +114,8 @@ function bigPick(b, value) {
     <span class="ico">${s.icon}</span>
     <div class="teams"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(e.home)} v ${esc(e.away)} · ${esc(e.league)} · ${when(e)}</small><small class="pcheck">${priceCheck(b)}</small>${whyTag(b)}</div>
     <div class="row-prob">${gaugeMini(b.p)}</div>
-    <div class="odds"><span class="stat"><small>chance</small>${pc(b.p, 1)}</span><span class="stat ${b.ev >= 0 ? 'pos' : ''}"><small>edge</small>${(b.ev * 100).toFixed(1)}%</span>${legButton(leg, `<small>odds</small>${odd(b.odds)}`)}</div>
-    ${value ? '<span class="conf conf-high">VALUE</span>' : '<span class="conf conf-medium">BANKER</span>'}
+    <div class="odds"><span class="stat"><small>chance</small>${pc(b.p, 1)}</span><span class="stat ${b.ev >= 0 ? 'pos' : ''}" title="Estimated return per unit staked"><small>return</small>${b.ev >= 0 ? '+' : ''}${(b.ev * 100).toFixed(1)}%</span>${legButton(leg, `<small>odds</small>${odd(b.odds)}`)}</div>
+    ${value ? '<span class="conf conf-high">VALUE</span>' : b.ev < 0 ? '<span class="conf conf-low" title="Likely, but ATLAS rates the price below break-even">BELOW BREAK-EVEN</span>' : '<span class="conf conf-medium">HIGH PROBABILITY</span>'}
   </article>`;
 }
 const gaugeMini = (p) => `<div class="meter tall"><i class="grow" style="--w:${(p * 100).toFixed(1)}%"></i></div>`;
@@ -212,7 +223,7 @@ function everySport() {
   return {
     mode: 'bankers', accent: '#00ffc3', title: 'Every sport',
     html: `<section class="hero small"><p class="kicker reveal">EVERY SPORT · NEXT ${H} HOURS · ${total} PICKS</p><h1>${split('EVERY SPORT')}</h1>${builderNav('every')}
-      <p class="lede reveal">The strongest pick ATLAS can make for each match, sport by sport. <b>Priced</b> picks are rated against a bookmaker's price (BANKER). <b>Model</b> picks are for matches no bookmaker in our feeds prices: ATLAS rates them from rankings, ratings, records, form and starters, shows the fair odds, and they are worth taking only at that price or better. Model picks keep their own track record.</p></section>
+      <p class="lede reveal">The strongest pick ATLAS can make for each match, sport by sport. <b>Priced</b> picks are rated against a bookmaker's price: HIGH PROBABILITY when the price is at least break-even for ATLAS's chance, BELOW BREAK-EVEN when it is likely but poorly priced. <b>Model</b> picks are for matches no bookmaker in our feeds prices: ATLAS rates them from rankings, ratings, records, form and starters, shows the fair odds, and they are worth taking only at that price or better. Model picks keep their own track record.</p></section>
       ${notice()}
       ${jump ? `<nav class="win-chips every-jump reveal" aria-label="Sports">${jump}</nav>` : ''}
       ${coverageTable(cov)}
@@ -252,11 +263,11 @@ export const picksViews = {
       mode: 'x', accent: ['#d2ff00', '#00ffc3', '#4fd1ff', '#b08cff'][[2, 3, 4, 5].indexOf(target)] || '#ff9f43', title: `${target}x slips`,
       html: `<section class="hero small"><p class="kicker reveal">MULTIPLIER · BREAK-EVEN ${pc(1 / target, target >= 100 ? 2 : 1)} · ${windowLabel(target)}</p><h1>${split(`${target}X SLIPS`)}</h1>${builderNav('x')}
         <nav class="tabs reveal">${[2, 3, 4, 5, 10, 20].map((x) => `<a href="#/x/${x}" class="${x === target ? 'on' : ''}">${x}x</a>`).join('')}</nav></section>
-        ${notice()}${orderChips()}
+        ${notice()}${recordSummary(target, r)}${orderChips()}
         ${officialBlock(target)}
-        <h2 class="sec reveal">${officialSlip(target) ? 'More options' : 'Options'}</h2>
-        <section class="grid slips">${list.map((s, i, arr) => slipCard(s, i, target, arr)).join('') || emptySlips(target)}</section>
-        ${recordBlock(`${target}x track record`, r)}`,
+        <h2 class="sec reveal">Available now <small>legs treated as independent; same-match links are not modelled here (the slip check measures them)</small></h2>
+        <section class="grid slips">${list.map((s, i, arr) => slipCard(s, i, target, arr)).join('') || emptySlips(target)}</section>${fewNote(list, target)}
+        ${recordBlock(`Settled ${target}x slips`, r)}`,
     };
   },
 
@@ -301,6 +312,7 @@ export const picksViews = {
       mode: 'bankers', accent: '#00ffc3', title: 'Bankers',
       html: `<section class="hero small"><p class="kicker reveal">NEXT 12 HOURS · ODDS ${minOdds.toFixed(2)}–${MAX_ODDS.toFixed(2)}</p><h1>${split('BANKERS')}</h1>${builderNav('bankers')}</section>
         ${notice()}${prefsBar()}${orderChips()}
+        <p class="note reveal">Highest estimated probability: the likeliest outcomes, ranked by ATLAS's chance alone. A likely pick is not always a good bet: <b>Below break-even</b> marks prices too short for ATLAS's chance. For picks at a fair price or better, see <a href="#/">Best bets</a>.</p>
         <div class="list">${list.map((b) => bigPick(b)).join('') || '<p class="muted">No 70%+ favourites in the next 12 hours right now. The board refreshes as new matches come into range.</p>'}</div>
         ${recordLine(ts?.all) ? `<p class="rec-line reveal">Track record · ${recordLine(ts.all)} · <a href="#/track">see every pick</a></p>` : ''}`,
     };
