@@ -93,7 +93,7 @@ function smartBankers(events, { min = 0.7, limit = 10, minOdds = 1 } = {}) {
 
 // Likely is not the same as good value: the chance a pick needs just to break even at its price, and
 // the market's own margin-free chance, next to ATLAS's estimate.
-const priceCheck = (b) => `ATLAS ${pc(b.p, 0)}${b.fair != null ? ` · market ${pc(b.fair, 0)}` : ''} · break-even ${pc(1 / b.odds, 0)}`;
+const priceCheck = (b) => `ATLAS chance ${pc(b.p, 0)}${b.fair != null ? ` · market (no margin) ${pc(b.fair, 0)}` : ''} · break-even ${pc(1 / b.odds, 0)}`;
 
 function bigPick(b, value) {
   const e = b.event, s = sportOf(e.sport);
@@ -103,8 +103,8 @@ function bigPick(b, value) {
     <span class="ico">${s.icon}</span>
     <div class="teams"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(e.home)} v ${esc(e.away)} · ${esc(e.league)} · ${when(e)}</small><small class="pcheck">${priceCheck(b)}</small>${whyTag(b)}</div>
     <div class="row-prob">${gaugeMini(b.p)}</div>
-    <div class="odds"><span class="stat"><small>chance</small>${pc(b.p, 1)}</span><span class="stat ${b.ev >= 0 ? 'pos' : ''}"><small>edge</small>${(b.ev * 100).toFixed(1)}%</span>${legButton(leg, `<small>odds</small>${odd(b.odds)}`)}</div>
-    ${value ? '<span class="conf conf-high">VALUE</span>' : '<span class="conf conf-medium">BANKER</span>'}
+    <div class="odds"><span class="stat"><small>chance</small>${pc(b.p, 1)}</span><span class="stat ${b.ev >= 0 ? 'pos' : ''}" title="Estimated return per unit staked"><small>return</small>${b.ev >= 0 ? '+' : ''}${(b.ev * 100).toFixed(1)}%</span>${legButton(leg, `<small>odds</small>${odd(b.odds)}`)}</div>
+    ${value ? '<span class="conf conf-high">VALUE</span>' : b.ev < 0 ? '<span class="conf conf-low" title="Likely, but ATLAS rates the price below break-even">BELOW BREAK-EVEN</span>' : '<span class="conf conf-medium">HIGH PROBABILITY</span>'}
   </article>`;
 }
 const gaugeMini = (p) => `<div class="meter tall"><i class="grow" style="--w:${(p * 100).toFixed(1)}%"></i></div>`;
@@ -212,7 +212,7 @@ function everySport() {
   return {
     mode: 'bankers', accent: '#00ffc3', title: 'Every sport',
     html: `<section class="hero small"><p class="kicker reveal">EVERY SPORT · NEXT ${H} HOURS · ${total} PICKS</p><h1>${split('EVERY SPORT')}</h1>${builderNav('every')}
-      <p class="lede reveal">The strongest pick ATLAS can make for each match, sport by sport. <b>Priced</b> picks are rated against a bookmaker's price (BANKER). <b>Model</b> picks are for matches no bookmaker in our feeds prices: ATLAS rates them from rankings, ratings, records, form and starters, shows the fair odds, and they are worth taking only at that price or better. Model picks keep their own track record.</p></section>
+      <p class="lede reveal">The strongest pick ATLAS can make for each match, sport by sport. <b>Priced</b> picks are rated against a bookmaker's price: HIGH PROBABILITY when the price is at least break-even for ATLAS's chance, BELOW BREAK-EVEN when it is likely but poorly priced. <b>Model</b> picks are for matches no bookmaker in our feeds prices: ATLAS rates them from rankings, ratings, records, form and starters, shows the fair odds, and they are worth taking only at that price or better. Model picks keep their own track record.</p></section>
       ${notice()}
       ${jump ? `<nav class="win-chips every-jump reveal" aria-label="Sports">${jump}</nav>` : ''}
       ${coverageTable(cov)}
@@ -301,6 +301,7 @@ export const picksViews = {
       mode: 'bankers', accent: '#00ffc3', title: 'Bankers',
       html: `<section class="hero small"><p class="kicker reveal">NEXT 12 HOURS · ODDS ${minOdds.toFixed(2)}–${MAX_ODDS.toFixed(2)}</p><h1>${split('BANKERS')}</h1>${builderNav('bankers')}</section>
         ${notice()}${prefsBar()}${orderChips()}
+        <p class="note reveal">Highest estimated probability: the likeliest outcomes, ranked by ATLAS's chance alone. A likely pick is not always a good bet: <b>Below break-even</b> marks prices too short for ATLAS's chance. For picks at a fair price or better, see <a href="#/">Best bets</a>.</p>
         <div class="list">${list.map((b) => bigPick(b)).join('') || '<p class="muted">No 70%+ favourites in the next 12 hours right now. The board refreshes as new matches come into range.</p>'}</div>
         ${recordLine(ts?.all) ? `<p class="rec-line reveal">Track record · ${recordLine(ts.all)} · <a href="#/track">see every pick</a></p>` : ''}`,
     };

@@ -403,7 +403,7 @@ function dashboard(ev, live) {
     : best ? bestBets(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration(), limit: 10 })
     : mode === 'two' ? nearTwo(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration(), limit: 10 })
     : rankedBankers(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration(), min: 0.6, minOdds, limit: 10, mode, ready })), when2 = `next ${hrs} hours`;
-  const MODES = [['best', 'Best bets', `likeliest winners at a fair price or better, odds ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)}, every sport`], ['likely', 'Most likely', '60%+ win chance'], ['two', 'Near 2.00', 'singles at odds 1.70–2.30, likeliest first, at a fair price or better (recorded apart from slips)'], ['safest', 'Surest', `odds ${SAFE.minOdds.toFixed(2)}–${SAFE.maxOdds.toFixed(2)}, the bets that land most often`], ['value', 'Best value', 'ATLAS chance above the price'], ['evidence', 'Best evidence', '60%+ with every key input confirmed']];
+  const MODES = [['best', 'Best bets', `likeliest winners at a fair price or better, odds ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)}, every sport`], ['likely', 'Highest probability', '60%+ chance, ranked by chance alone: not a value call'], ['two', 'Near 2.00', 'singles at odds 1.70–2.30, likeliest first, at a fair price or better (recorded apart from slips)'], ['safest', 'Surest', `odds ${SAFE.minOdds.toFixed(2)}–${SAFE.maxOdds.toFixed(2)}, the bets that land most often`], ['value', 'Best value', 'ATLAS chance above the price'], ['evidence', 'Best evidence', '60%+ with every key input confirmed']];
   const empty = { likely: `No strong picks in the next ${hrs} hours right now.${hrs < 48 ? ' Try a longer window, or' : ''} lower the minimum odds / add sports.`,
     value: `No qualifying selection: every price in the next ${hrs} hours is at or below ATLAS's estimate.`,
     evidence: `No qualifying selection: no 60%+ pick in the next ${hrs} hours has all its inputs confirmed yet (starters, lineups, a fresh price).`,
@@ -588,14 +588,27 @@ function bestBetsPanel(e, a) {
     }).join('')}</div></section>`;
 }
 
+// A two-word status beside a pick when an input it depends on is still pending (details on hover or
+// tap); nothing when every input its sport needs is in.
+const PENDING = { price: 'Price updating', goalies: 'Goalies pending', lineups: 'Lineup pending', lineup: 'Lineup pending', starters: 'Starters pending', pitchers: 'Starters pending', injuries: 'Injury news pending', toss: 'Toss pending' };
+function statusPill(e) {
+  if (e.live) return '';
+  const r = readiness(e, { priceAt: priceTime(e) });
+  if (r.state === 'ready' || (r.state === 'limited' && !e.stale)) return '';
+  const miss = r.checks.find((c) => c.ok === false);
+  const word = e.stale ? 'Feed delayed' : miss ? PENDING[miss.key] || `${miss.label} pending` : r.state === 'limited' ? 'Limited data' : 'Checking';
+  const why = r.checks.filter((c) => c.ok !== true).map((c) => `${c.label}: ${c.note}`).join('\n');
+  return `<small class="pill-status" tabindex="0" title="${esc(why)}">${esc(word)}</small>`;
+}
+
 function miniPick(b) {
   const s = sportOf(b.event.sport);
   const rec = recommendationFor(b, trackCalibration());
   const leg = { key: `${b.event.id}|${b.market}|${b.pick}`, eventId: b.event.id, sport: b.event.sport, match: `${b.event.home} vs ${b.event.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p, recommendationId: rec.recommendationId, ...(b.prop ? { prop: b.prop } : {}) };
   const edge = `${b.ev >= 0 ? '+' : ''}${(b.ev * 100).toFixed(1)}%`;
   return `<div class="mini reveal" data-rec="${esc(rec.recommendationId)}" title="${esc(`${rec.settlementRules} Chance range ${pc(rec.uncertaintyRange[0], 0)}–${pc(rec.uncertaintyRange[1], 0)} (${rec.uncertaintyMethod}).`)}"><span class="mini-ico">${s.icon}</span>
-    <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(b.event.home)} v ${esc(b.event.away)}</small>${b.book ? `<small class="muted">best price: ${esc(b.book)}</small>` : ''}${whyTag(b)}${b.event.live ? '<small class="live">LIVE</small>' : istTag(b.event.start)}</a>
-    <div class="mini-nums"><span><small>ATLAS</small><b>${pc(b.p, 0)}</b></span>${b.fair != null ? `<span><small>Market</small><b>${pc(b.fair, 0)}</b></span>` : ''}<span><small>Break-even</small><b>${pc(1 / b.odds, 0)}</b></span><span><small>Edge</small><b class="${b.ev >= 0 ? 'pos' : 'neg'}">${edge}</b></span></div>
+    <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(b.event.home)} v ${esc(b.event.away)}</small>${b.book ? `<small class="muted">best price: ${esc(b.book)}</small>` : ''}${whyTag(b)}${b.event.live ? '<small class="live">LIVE</small>' : istTag(b.event.start)}${statusPill(b.event)}${b.ev < 0 ? '<small class="pill-below" title="ATLAS\'s chance is below what this price needs to break even: likely, but a poor price.">Below break-even at this price</small>' : ''}</a>
+    <div class="mini-nums"><span title="ATLAS estimated probability"><small>ATLAS chance</small><b>${pc(b.p, 0)}</b></span>${b.fair != null ? `<span title="Bookmakers' own chance with their margin removed"><small>Market (no margin)</small><b>${pc(b.fair, 0)}</b></span>` : ''}<span title="The chance this price needs to break even"><small>Break-even</small><b>${pc(1 / b.odds, 0)}</b></span><span title="Estimated return per unit staked: ATLAS chance × odds − 1"><small>Return</small><b class="${b.ev >= 0 ? 'pos' : 'neg'}">${edge}</b></span></div>
     ${legButton(leg, odd(b.odds))}</div>`;
 }
 

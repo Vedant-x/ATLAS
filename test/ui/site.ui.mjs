@@ -220,7 +220,7 @@ test('time zone: one setting for every time; the parlay and banker of the day fo
   // A zone with no recorded day follows the IST day, shown in the visitor's own time too.
   await page.selectOption('.bar [data-tz-select]', 'ET');
   await page.waitForFunction(() => /12:00 to 12:00 IST · .*your time/.test(document.querySelector('.dash-potd')?.textContent || ''));
-  assert.match(await page.textContent('.dash-short'), /\b(EDT|EST)\b/, 'kick-off times in US Eastern time');
+  assert.match(await page.textContent('.dash-short'), /\d am (EDT|EST)|\d pm (EDT|EST)/, 'kick-off times in US Eastern time');
   await page.reload();
   await page.waitForSelector('.dash-potd');
   assert.equal(await page.$eval('.bar [data-tz-select]', (s) => s.value), 'ET', 'kept after a reload');

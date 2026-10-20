@@ -8,6 +8,8 @@
 import { ico, kindIco, watchLabel, pinLabel } from './icons.js';
 import { esc, sportOf, ist, analysisFor } from './views.js';
 import { coherentBets } from './picks.js';
+import { rankedBankers } from './track.js';
+import { applyModel } from './intel.js';
 import { trackCalibration } from './trackview.js';
 import { readiness, readyBadge, priceTime } from './readiness.js';
 import { changesFor, latestChange, needsReview, changesSince, lastVisit, timelineUpdatedAt } from './timeline.js';
@@ -26,10 +28,17 @@ const write = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } ca
 const ago = (t) => { if (!t) return '—'; const m = Math.round((Date.now() - t) / 6e4); return m < 1 ? '<1 min' : m < 60 ? `${m}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`; };
 
 // ---------- one research row per match ----------
+// The chance and return the pick cards show for the same selection (track.js rankedBankers), so the
+// match page, the research table and the cards never disagree on a number or the sign of the edge.
+function cardNumbers(e, m) {
+  const b = rankedBankers(applyModel([e]), { cal: trackCalibration(), min: 0, minOdds: 1.01, maxOdds: 1000, limit: 400, mix: false }).find((x) => x.market === m.market && x.pick === m.pick && Math.abs(x.odds - m.odds) < 1e-9);
+  return b ? { q: b.p, ev: b.p * b.odds - 1, fair: b.fair ?? m.fair } : {};
+}
 export function researchRow(e) {
   const a = analysisFor(e);
   const { lean, picks } = coherentBets(e, a, { cal: trackCalibration(), preferBook: true }); // a real price first, where one exists
-  const main = picks.find((p) => p.book) || picks[0] || null;
+  const main0 = picks.find((p) => p.book) || picks[0] || null;
+  const main = main0?.book ? { ...main0, ...cardNumbers(e, main0) } : main0;
   const r = readiness(e, { priceAt: priceTime(e) });
   return { e, a, lean, main, picks, r, change: latestChange(e.id), review: watch.has(e.id) ? needsReview(e.id) : [] };
 }
