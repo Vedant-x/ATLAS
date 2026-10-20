@@ -1,12 +1,13 @@
 /* ATLAS styles 1/5: tokens, atmosphere, header and ticker, layout, cards, rows, charts, match page, slips and drawer, dossier, tennis. index.html loads the parts in order, so later rules win. */
 :root {
   --bg: #040406;
+  --panel-rgb: 12, 12, 18; /* card surfaces (theme.js changes both) */
   --fg: #f3f3ee;
   --muted: #8a8a94;
   --dim: #7c7c87; /* 4.6:1 on the background: readable small text */
   --line: rgba(255, 255, 255, 0.09);
   --line2: rgba(255, 255, 255, 0.16);
-  --glass: rgba(14, 14, 20, 0.62);
+  --glass: rgba(var(--panel-rgb), 0.62);
   --accent: #d2ff00;
   --win: #9dff5c;
   --loss: #ff3d6e;
@@ -67,7 +68,7 @@ body.has-cursor, body.has-cursor a, body.has-cursor button { cursor: none; }
 
 /* ---------- header + ticker ---------- */
 .bar { position: fixed; top: 0; left: 0; right: 0; z-index: 50; display: flex; align-items: center; gap: 24px; padding: 16px var(--gutter); transition: transform .5s var(--ease), background .4s, padding .4s; }
-body.scrolled .bar { background: rgba(4,4,6,.94); padding-block: 10px; border-bottom: 1px solid var(--line); }
+body.scrolled .bar { background: color-mix(in srgb, var(--bg) 94%, transparent); padding-block: 10px; border-bottom: 1px solid var(--line); }
 body.hide-bar .bar { transform: translateY(-100%); }
 body.hide-bar .ticker { transform: translateY(-140px); }
 .logo { font: 26px var(--display); letter-spacing: .04em; padding-block: 9px; margin-block: -9px; } /* bigger tap target, same layout */
@@ -84,11 +85,11 @@ nav.top a:hover::after, nav.top a.on::after { transform: scaleX(1); transform-or
 .fx-btn[aria-pressed="false"] b { color: var(--muted); }
 .slip-btn b { min-width: 24px; height: 24px; border-radius: 999px; display: grid; place-items: center; background: var(--line2); font: 700 12px var(--mono); }
 .slip-btn b.has { background: var(--accent); color: #000; }
-.ticker { position: fixed; top: 64px; left: 0; right: 0; z-index: 49; overflow: hidden; height: 30px; border-block: 1px solid var(--line); background: #040406; transition: transform .5s var(--ease), top .4s; }
+.ticker { position: fixed; top: 64px; left: 0; right: 0; z-index: 49; overflow: hidden; height: 30px; border-block: 1px solid var(--line); background: var(--bg); transition: transform .5s var(--ease), top .4s; }
 /* Solid strip (nothing shows through it); the text fades out under two edge overlays. */
 .ticker::before, .ticker::after { content: ''; position: absolute; top: 0; bottom: 0; width: 56px; z-index: 1; pointer-events: none; }
-.ticker::before { left: 0; background: linear-gradient(90deg, #040406, transparent); }
-.ticker::after { right: 0; background: linear-gradient(-90deg, #040406, transparent); }
+.ticker::before { left: 0; background: linear-gradient(90deg, var(--bg), transparent); }
+.ticker::after { right: 0; background: linear-gradient(-90deg, var(--bg), transparent); }
 body.scrolled .ticker { top: 52px; }
 .ticker-track { display: flex; gap: 40px; width: max-content; padding-left: 40px; animation: tick 90s linear infinite; font: 12px/30px var(--mono); color: #b8b8be; white-space: nowrap; }
 .ticker:hover .ticker-track, .ticker:active .ticker-track { animation-play-state: paused; } /* hold it still to read (touch too) */
@@ -109,7 +110,7 @@ main { padding: 0 var(--gutter) 120px; max-width: 1480px; margin: 0 auto; min-he
 .hero { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; padding-top: 120px; position: relative; }
 .hero.small { min-height: 62vh; }
 /* Readability scrim stays under the text column only, so the 3D core never slides into it. */
-.hero::before { content: ''; position: absolute; top: 0; bottom: 0; left: calc(-1 * var(--gutter)); width: min(62vw, 900px); z-index: -1; pointer-events: none; background: radial-gradient(70% 55% at 30% 50%, rgba(4,4,6,.5), transparent 75%); }
+.hero::before { content: ''; position: absolute; top: 0; bottom: 0; left: calc(-1 * var(--gutter)); width: min(62vw, 900px); z-index: -1; pointer-events: none; background: radial-gradient(70% 55% at 30% 50%, color-mix(in srgb, var(--bg) 50%, transparent), transparent 75%); }
 .hero h1, .hero .kicker { text-shadow: 0 2px 30px rgba(0,0,0,.55); }
 .kicker { color: var(--accent); font: 700 12px var(--mono); letter-spacing: 3px; margin-bottom: 22px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; text-transform: uppercase; }
 h1 { font: clamp(64px, 14vw, 230px)/.84 var(--display); text-transform: uppercase; perspective: 900px; }
@@ -133,7 +134,7 @@ h1.vs small { font: 700 14px var(--mono); letter-spacing: 6px; color: var(--acce
 
 @keyframes hint { 0% { transform: scaleY(0); } 60% { transform: scaleY(1); } 100% { transform: scaleY(1); opacity: 0; } }
 
-.notice { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; border: 1px solid var(--line); background: rgba(12, 12, 18, 0.8); border-radius: 14px; padding: 12px 16px; font-size: 13px; color: var(--muted); margin: 10px 0 30px; }
+.notice { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; border: 1px solid var(--line); background: rgba(var(--panel-rgb), 0.8); border-radius: 14px; padding: 12px 16px; font-size: 13px; color: var(--muted); margin: 10px 0 30px; }
 .notice b { color: var(--fg); } .notice b.ok { color: var(--pos); }
 .notice a { color: var(--accent); text-decoration: underline; }
 .notice-delayed { border-color: rgba(255, 181, 71, .45); } .notice-delayed b { color: #ffb547; }
@@ -165,7 +166,7 @@ h1.vs small { font: 700 14px var(--mono); letter-spacing: 6px; color: var(--acce
 
 /* ---------- glass cards ---------- */
 /* no backdrop-filter on cards: dozens of blurred layers over the WebGL canvas make Chrome drop tiles to black */
-.tilt, .panel { position: relative; border-radius: 20px; border: 1px solid var(--line); background: rgba(12, 12, 18, 0.97); } /* near-opaque: dense research reads cleanly over the 3D scene */
+.tilt, .panel { position: relative; border-radius: 20px; border: 1px solid var(--line); background: rgba(var(--panel-rgb), 0.97); } /* near-opaque: dense research reads cleanly over the 3D scene */
 .tilt { overflow: hidden; transition: transform .35s var(--ease), border-color .4s; transform-style: preserve-3d; }
 .tilt::before { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .4s; background: radial-gradient(500px circle at var(--mx, 50%) var(--my, 50%), rgba(255,255,255,.1), transparent 40%); }
 .tilt::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; padding: 1px; background: radial-gradient(300px circle at var(--mx, 50%) var(--my, 50%), var(--c, var(--accent)), transparent 60%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: 0; transition: opacity .4s; }
@@ -511,7 +512,7 @@ small.why b, .mini .mini-main small.why b { font: 700 12px/1.35 var(--sans); col
 .mtable td.better::after { content: ' ✓'; }
 
 /* ---------- tennis: tournaments, draws, rounds ---------- */
-.tourney { margin-top: 34px; border: 1px solid var(--line); border-radius: 22px; padding: clamp(16px, 2.4vw, 28px); background: rgba(12,12,18,.72); scroll-margin-top: 150px; }
+.tourney { margin-top: 34px; border: 1px solid var(--line); border-radius: 22px; padding: clamp(16px, 2.4vw, 28px); background: rgba(var(--panel-rgb), .72); scroll-margin-top: 150px; }
 .tourney-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 14px; padding-bottom: 16px; border-bottom: 1px solid var(--line2); }
 .tourney-head h2 { font: clamp(28px, 3.4vw, 48px)/1 var(--display); text-transform: uppercase; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .tourney-head p { color: var(--muted); margin-top: 8px; font-size: 14px; }
@@ -525,7 +526,7 @@ small.why b, .mini .mini-main small.why b { font: 700 12px/1.35 var(--sans); col
 .round-title { margin: 16px 0 8px; font: 700 11px var(--mono); letter-spacing: 2px; text-transform: uppercase; color: var(--muted); }
 .seed { font: normal 600 11px var(--mono); color: var(--accent); margin-left: 4px; }
 .tennis-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; margin: 18px 0 6px; max-width: 980px; }
-.tennis-facts div { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: rgba(12,12,18,.75); }
+.tennis-facts div { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: rgba(var(--panel-rgb), .75); }
 .tennis-facts small { display: block; font: 700 10px var(--mono); letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
 .tennis-facts b { font-size: 14px; }
 .subnav a small { opacity: .6; margin-left: 4px; }
