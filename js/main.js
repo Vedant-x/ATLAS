@@ -68,7 +68,7 @@ import { liveSession } from './f1.js';
 import { overlayLive } from './merge.js';
 import { enrichMlb } from './mlbstats.js';
 import { todayEvents } from './engine.js';
-import { slipWindow, slipPolicy, rankedBankers } from './track.js';
+import { slipWindow, slipPolicy, bestBets } from './track.js';
 import { bankerSlips } from './picks.js';
 import { trackCalibration } from './trackview.js';
 import { prefs, prefEvents } from './prefs.js';
@@ -441,11 +441,15 @@ let tickerHtml = '';
 function ticker() {
   const el = document.querySelector('.ticker-track');
   if (!el) return;
-  const live = state.events.filter((e) => e.live).map((e) => `<span><i class="live">●</i> ${esc(e.home)} <b>${esc(e.score || '')}</b> ${esc(e.away)} <small>${esc(e.clock || '')}</small></span>`);
-  const picks = rankedBankers(todayEvents(state.events), { cal: trackCalibration(), min: 0.6, limit: 10 }).map((b) => `<span>${sportOf(b.event.sport).icon} ${esc(b.pick)} <b>${odd(b.odds)}</b> <small>${pc(b.p, 0)}</small></span>`);
-  const next = [...state.events].filter((e) => !e.live).sort((a, b) => a.start - b.start).slice(0, 10).map((e) => `<span>${sportOf(e.sport).icon} ${esc(e.home)} v ${esc(e.away)}</span>`);
-  const items = [...live, ...picks, ...next];
-  const html = items.length ? items.join('') + items.join('') : '<span>ATLAS · connecting feeds</span>';
+  // Three labelled groups: live scores (a missing score says so), the dashboard's own Best bets (the
+  // same rules and odds floor as the Today list), then what starts next.
+  const live = state.events.filter((e) => e.live).map((e) => `<span><i class="live">●</i> ${esc(e.home)} ${e.score ? `<b>${esc(e.score)}</b>` : '<small>score unavailable</small>'} ${esc(e.away)} <small>${esc(e.clock || '')}</small></span>`);
+  const picks = bestBets(prefEvents(todayEvents(state.events)), { cal: trackCalibration(), limit: 10 }).filter((b) => b.odds >= (prefs.get().minOdds || 1)).map((b) => `<span>${sportOf(b.event.sport).icon} ${esc(b.pick)} <b>${odd(b.odds)}</b> <small>${pc(b.p, 0)}</small></span>`);
+  const next = [...state.events].filter((e) => !e.live && e.start > Date.now()).sort((a, b) => a.start - b.start).slice(0, 10).map((e) => `<span>${sportOf(e.sport).icon} ${esc(e.home)} v ${esc(e.away)}</span>`);
+  const head = (t) => `<span class="tk-head">${t}</span>`;
+  const items = [...(live.length ? [head('LIVE'), ...live] : []), ...(picks.length ? [head('BEST BETS'), ...picks] : []), ...(next.length ? [head('NEXT UP'), ...next] : [])];
+  // The strip holds the items twice for the loop; the copy is hidden from screen readers.
+  const html = items.length ? items.join('') + items.map((x) => x.replace(/^<span/, '<span aria-hidden="true"')).join('') : '<span>ATLAS · connecting feeds</span>';
   if (html !== tickerHtml) {
     tickerHtml = html; el.innerHTML = html;
     // A steady reading speed (about 30 px a second) however long the strip is: a fixed duration made a

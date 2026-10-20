@@ -99,9 +99,16 @@ export function countdown(ms) {
 const confBadge = (c) => `<span class="conf conf-${c}" title="${c === 'high' ? 'From bookmaker prices' : c === 'medium' ? 'ATLAS model from records/form' : 'Baseline only: little data'}">${c === 'high' ? 'MARKET' : c === 'medium' ? 'MODEL' : 'BASELINE'}</span>`;
 
 // Status box removed from pages; it only appears when live feeds failed and sample data is shown.
+// How fresh the whole snapshot is: fresh within 30 minutes of the last build (builds run about every
+// 15), delayed to 75, stale after. Shown at the top of working pages whenever it is not fresh.
+export const buildAge = () => (S.fetchedAt ? Date.now() - S.fetchedAt : null);
+export const buildState = (age = buildAge()) => (age == null ? 'unknown' : age < 30 * 6e4 ? 'fresh' : age < 75 * 6e4 ? 'delayed' : 'stale');
 export function notice() {
   if (S.loading) return '<div class="notice reveal"><span class="loading-dots">Loading today\'s fixtures</span></div>';
-  return S.demo ? '<div class="notice reveal"><span class="led"></span><b>DEMO DATA</b> · live feeds unreachable, prices are simulated.</div>' : '';
+  if (S.demo) return '<div class="notice reveal"><span class="led"></span><b>DEMO DATA</b> · live feeds unreachable, prices are simulated.</div>';
+  const st = buildState();
+  if (st === 'delayed' || st === 'stale') return `<div class="notice notice-${st} reveal"><span class="led"></span><b>${st === 'stale' ? 'DATA STALE' : 'DATA DELAYED'}</b> · last update ${Math.round(buildAge() / 6e4)} min ago (normally about every 15 min). Prices and team news may have moved; live scores still update.</div>`;
+  return '';
 }
 
 // ---------- rows & cards ----------
@@ -320,7 +327,7 @@ export const views = {
       return `<div class="side reveal">${gauge(p, color, label)}
         <dl><dt>Fair odds</dt><dd>${odd(1 / p)}</dd>
         <dt>${esc(e.bookmaker?.split(' (')[0] || 'Book')} odds</dt><dd>${bookOdds ? odd(bookOdds) : '<span class="muted">none</span>'}</dd>
-        <dt>Edge</dt><dd class="${ev == null ? '' : ev >= 0 ? 'pos' : 'neg'}">${ev == null ? '—' : `${(ev * 100).toFixed(1)}%`}</dd>
+        <dt title="Estimated return per unit staked">Return</dt><dd class="${ev == null ? '' : ev >= 0 ? 'pos' : 'neg'}">${ev == null ? '—' : `${(ev * 100).toFixed(1)}%`}</dd>
         <dt>Kelly ¼</dt><dd>${ev && ev > 0 ? pc(kelly(p, bookOdds) / 4, 1) : '—'}</dd></dl></div>`;
     };
     const paramChips = Object.entries(a.params || {}).filter(([, v]) => typeof v === 'number').map(([k, v]) => `<div><small>${esc(paramLabel(k, a.params.unit))}</small><b>${k === 'setWin' ? pc(v) : Number.isInteger(v) ? v : v.toFixed(2)}</b></div>`).join('');
@@ -351,7 +358,7 @@ export const views = {
           <button class="watch-btn ${pins().includes(e.id) ? 'on' : ''}" data-pin="${esc(e.id)}">${pinLabel(pins().includes(e.id))}</button></div>
         ${sourcesLine(e)}
       </section>
-      <nav class="subnav reveal">${sections.map(([k, l]) => `<a href="#sec-${k}" data-jump="sec-${k}">${l}</a>`).join('')}</nav>
+      <nav class="subnav reveal" aria-label="Sections">${matchGroups(sections, dos).map(([k, l]) => `<a href="#sec-${k}" data-jump="sec-${k}">${l}</a>`).join('')}</nav>
       ${notice()}
       <section class="panel big reveal" id="sec-overview">
         <h2 class="ph">${e.live ? 'Pre-match ' : ''}Estimated win probability <small>${esc(a.basis)}</small></h2>
@@ -519,12 +526,20 @@ function botdPanel(ev) {
   return `<div class="panel dash-botd reveal"><h2 class="ph">Banker of the day <small>the likeliest single</small></h2>${body}${rec ? `<p class="rec-line">So far: ${rec}</p>` : ''}</div>`;
 }
 
+// The match page's menu: five groups, each jumping to its first section on this page (sections a
+// sport doesn't have are left out, and a group with none is not shown).
+function matchGroups(sections, dos) {
+  const has = new Set(sections.map(([k]) => k)), first = (ids) => sections.find(([k]) => ids.includes(k))?.[0];
+  const groups = [['Overview', ['overview', 'case', 'best']], ['Markets', ['markets', 'book', 'props', 'calc']], ['Team & player evidence', [...dos.map((x) => x.id), 'form', 'model']], ['News & changes', ['history']], ['History & sources', ['notes']]];
+  return groups.map(([l, ids]) => [first(ids.filter((k) => has.has(k))), l]).filter(([k]) => k);
+}
+
 function sourceHealth(ev) {
   const newest = (list, f) => list.reduce((t, x) => Math.max(t, f(x) || 0), 0);
   const espn = ev.filter((e) => e.leaguePath && !e.leaguePath.startsWith('atlas/') && e.source !== 'MLB Stats API');
   const reports = ev.flatMap((e) => (e.probables || []).filter((p) => p.report?.league === 'MLB').map((p) => p.report));
   const rows = [
-    ['Snapshot build', ev.length, S.fetchedAt, 'every league, rebuilt about every 10 min'],
+    ['Snapshot build', ev.length, S.fetchedAt, `every league, rebuilt about every 15 min · ${{ fresh: 'on time', delayed: 'delayed', stale: 'overdue', unknown: 'not known yet' }[buildState()]}`],
     ['ESPN scoreboards', espn.length, newest(espn, (e) => e.fetchedAt), 'fixtures, scores, reference odds'],
     ['NPB official', ev.filter((e) => e.leaguePath === 'atlas/npb').length, newest(ev.filter((e) => e.leaguePath === 'atlas/npb'), (e) => e.fetchedAt), 'schedule, starters'],
     ['KBO official', ev.filter((e) => e.leaguePath === 'atlas/kbo').length, newest(ev.filter((e) => e.leaguePath === 'atlas/kbo'), (e) => e.fetchedAt), 'schedule, starters'],

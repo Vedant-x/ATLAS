@@ -1,6 +1,6 @@
 // Player game logs (data/players.json, written by the build), shared by the player research page and
 // the slip analyser. Loaded on demand and kept current: re-fetched once it is 10 minutes old (the
-// build runs about every 10), the last good copy kept if a re-fetch fails, and a failed first load
+// build runs about every 15), the last good copy kept if a re-fetch fails, and a failed first load
 // retried after a minute (or at once with retryPlayers). The file carries its own build time.
 import { GAMELOG_KEYS } from './props.js';
 
