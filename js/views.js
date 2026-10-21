@@ -20,7 +20,7 @@ import { liveWin } from './live.js';
 import { watch } from './alerts.js';
 import { trackCard, trackStrip, trackStats, trackCalibration, recordLine, ensureTrack, officialParlay } from './trackview.js';
 import { zone as tzZone, tzOf, abbr as tzAbbr, fmt as fmtTime, ZONES } from './tz.js';
-import { rankedBankers, calibrated, SAFE, surestPicks, bestBets, BEST, POTD_ZONES, potdDay, parlayOfDay, recommendationFor, nearTwo } from './track.js';
+import { bestBets, BEST, POTD_ZONES, potdDay, parlayOfDay, recommendationFor } from './track.js';
 import { propLabel, propMarket } from './props.js';
 import { propRow, allProps } from './propsview.js';
 import { coherentBets } from './picks.js';
@@ -395,37 +395,22 @@ export const views = {
 // ---------- pieces ----------
 // Home dashboard: today's shortlist → live → absence changes → source health.
 function dashboard(ev, live) {
-  const minOdds = prefs.get().minOdds;
   const pool = prefFilter(ev);
   ensureTrack(() => S.refresh?.());
   // Matches starting within the chosen window (3 to 48 hours; 12 by default).
   const hrs = researchPrefs().shortHours;
-  const mode = researchPrefs().shortMode || 'best';
-  const ready = (e) => readiness(e, { priceAt: priceTime(e) }).state === 'ready';
-  // Surest: 1.20-1.40 where ATLAS does not claim to beat the price (its own record).
-  const safest = mode === 'safest', best = mode === 'best';
-  // Best bets: the likeliest winners across every sport at a price no shorter than the market's fair
-  // odds (best price across bookmakers where the Odds API gives several), 1.20 to 2.50.
-  const short = orderBets(safest ? surestPicks(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration(), limit: 10 })
-    : best ? bestBets(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration(), limit: 10 })
-    : mode === 'two' ? nearTwo(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration(), limit: 10 })
-    : rankedBankers(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration(), min: 0.6, minOdds, limit: 10, mode, ready })), when2 = `next ${hrs} hours`;
-  const MODES = [['best', 'Best bets', `likeliest winners at a fair price or better, odds ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)}, every sport`], ['likely', 'Highest probability', '60%+ chance, ranked by chance alone: not a value call'], ['two', 'Near 2.00', 'singles at odds 1.70–2.30, likeliest first, at a fair price or better (recorded apart from slips)'], ['safest', 'Surest', `odds ${SAFE.minOdds.toFixed(2)}–${SAFE.maxOdds.toFixed(2)}, the bets that land most often`], ['value', 'Best value', 'ATLAS chance above the price'], ['evidence', 'Best evidence', '60%+ with every key input confirmed']];
-  const empty = { likely: `No strong picks in the next ${hrs} hours right now.${hrs < 48 ? ' Try a longer window, or' : ''} lower the minimum odds / add sports.`,
-    value: `No qualifying selection: every price in the next ${hrs} hours is at or below ATLAS's estimate.`,
-    evidence: `No qualifying selection: no 60%+ pick in the next ${hrs} hours has all its inputs confirmed yet (starters, lineups, a fresh price).`,
-    two: `No single at odds 1.70–2.30 in the next ${hrs} hours is priced at or above its fair odds. No qualifying selection.`,
-    best: `No best bet in the next ${hrs} hours: no ${Math.round(BEST.min * 100)}%+ pick at odds ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)} is priced at or above the market's fair odds.${hrs < 48 ? ' Try a longer window.' : ''}`,
-    safest: `No surest pick at odds ${SAFE.minOdds.toFixed(2)}–${SAFE.maxOdds.toFixed(2)} in the next ${hrs} hours.${hrs < 48 ? ' Try a longer window.' : ''}` }[mode];
-  const rec = safest ? recordLine(trackStats()?.safe) : best ? recordLine(trackStats()?.best) : recordLine(trackStats()?.byType.find((r) => r.key === 'banker'));
+  // One list, no modes: Best bets, the likeliest winners across every sport at a price no shorter than
+  // the market's fair odds (best price across bookmakers where the Odds API gives several), 1.20 to 2.50.
+  const short = orderBets(bestBets(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration(), limit: 10 }));
+  const empty = `No best bet in the next ${hrs} hours: no ${Math.round(BEST.min * 100)}%+ pick at odds ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)} is priced at or above the market's fair odds.${hrs < 48 ? ' Try a longer window in Filters.' : ''}`;
+  const rec = recordLine(trackStats()?.best);
   // Every panel by name, shown in the visitor's saved order with hidden ones left out (Customise).
   const panels = {
     potd: () => potdPanel(pool),
-    // Minimal: the modes, one folded "Filters" control (window, order, odds and sports), one record line.
-    shortlist: () => `<div class="panel dash-short reveal"><h2 class="ph">Shortlist <small title="${esc(MODES.find((m) => m[0] === mode)[2])}">${esc(MODES.find((m) => m[0] === mode)[1])}</small></h2>
-      <div class="win-chips sl-modes" role="group" aria-label="Rank by">${MODES.map(([k, l]) => `<button class="chip ${mode === k ? 'on' : ''}" data-smode="${k}" aria-pressed="${mode === k}" title="${esc(MODES.find((m) => m[0] === k)[2])}">${l}</button>`).join('')}</div>
+    // Minimal: one folded "Filters" control (window, order, odds and sports), one record line.
+    shortlist: () => `<div class="panel dash-short reveal"><h2 class="ph">Best bets <small>likeliest winners at a fair price or better</small></h2>
       <details class="sl-filters"${filtersOpen ? ' open' : ''}><summary>${ico('filter')} Next ${hrs}h · ${esc(orderLabel())}</summary>${windowChips('shours', hrs)}${orderChips()}${prefsBar()}</details>
-      ${rec ? `<p class="rec-line">${safest ? 'Surest' : best ? 'Best bets' : 'Bankers'} so far: ${rec} · <a href="#/track">record</a></p>` : ''}
+      ${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}
       <div class="minilist">${S.loading ? skelRows(4) : short.map((b) => miniPick(b)).join('') || `<p class="muted">${empty}</p>`}</div></div>`,
     live: () => `<div class="panel dash-live reveal"><h2 class="ph">Live now <small>${S.loading ? '' : live.length}</small></h2>
       ${S.loading ? skelRows(3) : live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${esc(e.score || '')}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>`,
@@ -445,7 +430,7 @@ export const setFiltersOpen = (v) => { filtersOpen = Boolean(v); };
 
 // Home panels: order and visibility, saved per visitor (localStorage, best effort). Unknown or missing
 // names fall back to the default order, so a new panel always appears.
-const HOME_PANELS = [['potd', 'Parlay of the day'], ['shortlist', 'Shortlist'], ['live', 'Live now'], ['every', 'Every sport'], ['changes', 'What changed'], ['record', 'Track record'], ['health', 'Source health']];
+const HOME_PANELS = [['potd', 'Parlay of the day'], ['shortlist', 'Best bets'], ['live', 'Live now'], ['every', 'Every sport'], ['changes', 'What changed'], ['record', 'Track record'], ['health', 'Source health']];
 const LAYOUT_KEY = 'atlas-home-layout';
 // Minimal by default: the source-health and what-changed panels start hidden (Customise shows them).
 const DEFAULT_HIDDEN = ['health', 'changes'];

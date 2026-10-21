@@ -527,7 +527,6 @@ document.addEventListener('click', (e) => {
     if (current === 'compare') softRender();
   }
   else if (d.shours) { setResearchPrefs({ shortHours: Number(d.shours) }); softRender(); }
-  else if (d.smode) { setResearchPrefs({ shortMode: d.smode }); softRender(); }
   else if (d.lay) { setHomeLayout(d.lay, d.layKey); softRender(); }
   else if (d.pzone) { setZone(d.pzone); syncTz(); softRender(); }
   else if (d.border) { setResearchPrefs({ betOrder2: d.border }); softRender(); }
