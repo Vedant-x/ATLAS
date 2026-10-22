@@ -16,9 +16,10 @@ permissions:
 
 concurrency:
   group: pages
-  # A push replaces a running build at once; the self-queued refresh and the cron wait their turn
-  # instead, so a finished run is never marked "cancelled" by the next one.
-  cancel-in-progress: ${{ github.event_name == 'push' }}
+  # Nothing cancels a running build: a push waits its turn like the cron and the self-queued refresh
+  # (one waiting run at most; a newer one replaces it). When a push cancelled the build in progress,
+  # merges a few minutes apart cancelled every build in turn and the site went unpublished for hours.
+  cancel-in-progress: false
 
 jobs:
   deploy:
