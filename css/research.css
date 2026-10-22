@@ -226,8 +226,8 @@ main, .foot { overflow-x: clip; }
 @media (max-width: 600px) {
   .mini { padding: 12px; column-gap: 10px; }
   .mini .mini-nums span { min-width: 0; flex: 1 1 calc(50% - 6px); }
-  .dash-short .ph { font-size: 22px; }
-  .dash-short .ph small { display: block; margin-top: 4px; font: 500 12px var(--sans); text-transform: none; letter-spacing: 0; }
+  .dash-short .ph, .dash-value .ph { font-size: 22px; }
+  .dash-short .ph small, .dash-value .ph small { display: block; margin-top: 4px; font: 500 12px var(--sans); text-transform: none; letter-spacing: 0; }
 }
 
 @media (max-width: 420px) {
@@ -261,7 +261,7 @@ main, .foot { overflow-x: clip; }
 .sl-filters > summary::-webkit-details-marker { display: none; }
 .sl-filters > summary .ico { width: 14px; height: 14px; }
 .sl-filters[open] > summary { color: var(--fg); margin-bottom: 8px; }
-.dash-short .rec-line { font-size: 12px; margin: 4px 0 10px; }
+.dash-short .rec-line, .dash-value .rec-line { font-size: 12px; margin: 4px 0 10px; }
 
 /* Phones: the first screen is today's picks, not the poster. */
 @media (max-width: 600px) {

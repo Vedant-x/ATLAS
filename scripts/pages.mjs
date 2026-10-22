@@ -34,6 +34,8 @@ import { UNDERSTAT, understatUrl, understatData, teamsFromJson, teamsData, xgTab
 import { parseGolf, golfForm, golfChances, parseStandings, raceChances, raceResult } from '../js/fields.js';
 import { EUROLEAGUE, LIIGA, SWISS, euroSeason, euroRecords, euroEvent, liigaRecords, liigaEvent, swissRecords, swissEvent } from '../js/europe.js';
 import { ODDS_API, matchOdds, sportOfKey, pairEvents, fixtureFromApi } from '../js/oddsapi.js';
+import { carryOpen, DRIFT } from '../js/movement.js';
+import { valueBets, VALUE } from '../js/track.js';
 import { toDecimal } from '../js/espn.js';
 
 const out = 'dist/pages';
@@ -1082,12 +1084,14 @@ const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents, ...esport
 // since dropped for a match that hasn't finished: announced starters (the NPB page shows only one
 // day's starters and moves on to tomorrow's by mid-afternoon), absences and lineups. Sources can
 // only add or change information, never silently remove it.
+let prevSnapshot = []; // the previous build's events (price movement below reads it too)
 {
   let prev = [];
   try {
     const r = await fetch(process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json', { signal: AbortSignal.timeout(20000) });
     if (r.ok) prev = (await r.json()).events || [];
   } catch (err) { log(`Carry-forward: previous snapshot unavailable (${err.message})`); }
+  prevSnapshot = prev;
   const old = new Map(prev.map((e) => [e.id, e]));
   // A source or league that failed this build keeps its unfinished fixtures from the last good
   // snapshot, marked stale (with the time of their last good update) until fresh data arrives:
@@ -1493,6 +1497,15 @@ if (process.env.ODDS_API_KEY) {
     noteSource('The Odds API', 'the-odds-api.com', 'Fixtures the bookmakers list; best price and consensus fair chance where nothing else prices a match', true, priced, `${priced} matches priced, ${added} added from the bookmakers' lists; ${credits ?? '?'} credits left this month`);
   } catch (e) { log(`Odds API failed: ${e.message}`); noteSource('The Odds API', 'the-odds-api.com', 'Fixtures the bookmakers list; best price and consensus fair chance where nothing else prices a match', false, null, e.message); }
 } else noteSource('The Odds API', 'the-odds-api.com', 'Fixtures the bookmakers list; best price and consensus fair chance where nothing else prices a match', null, null, 'not switched on: add an ODDS_API_KEY repository secret');
+// Price movement: every price remembers the first one seen (movement.js), once all prices are in.
+// Then how many prices beat the sharp market's fair odds right now (Value bets), for the log.
+{
+  const kept = carryOpen(events, prevSnapshot);
+  const moved = events.flatMap((e) => (e.markets || []).flatMap((m) => m.outcomes || [])).filter((o) => o.open > 1 && Math.abs(o.odds / o.open - 1) >= DRIFT);
+  log(`Price movement: ${kept} prices carry their first price; ${moved.length} have moved ${Math.round(DRIFT * 100)}%+ since`);
+  const vb = valueBets(events.filter((e) => !e.live && e.start > Date.now() && e.start < Date.now() + 48 * 36e5), { limit: 200 });
+  log(`Value bets (best price at least ${Math.round(VALUE.min * 100)}% above the sharp fair odds, next 48h): ${vb.length}${vb.length ? `: ${vb.slice(0, 8).map((b) => `${b.pick} ${b.odds} (fair ${(1 / b.fair).toFixed(2)}, ${b.book || '?'})`).join(' · ')}` : ''}`);
+}
 // What is still unpriced in the next 48 hours, by league: the gaps left after every price source.
 {
   const gaps = {};

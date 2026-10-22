@@ -21,6 +21,15 @@ export function siteData(now = Date.now()) {
     // No price in the feed: rated by the model from rankings / records (Every sport page).
     ev('fx-alc-ruu', 'tennis', 'ATP', 'tennis/atp', 'Alcaraz', 'Ruud', 7, [], { markets: [], tennis: { home: { rank: 2, points: 9000 }, away: { rank: 40, points: 1300 } } }),
     ev('fx-ind-ban', 'cricket', 'T20I', 'cricket/t20i', 'India', 'Bangladesh', 10, [], { markets: [], stats: { homeRecord: '9-1', awayRecord: '3-7', homeForm: ['W', 'W', 'W', 'W', 'L'], awayForm: ['L', 'L', 'W', 'L', 'L'] } }),
+    // Priced by many bookmakers (The Odds API): fair chances from Pinnacle, the best price on offer.
+    // Liverpool's best price beats Pinnacle's fair odds (a value bet); Man City's did too, but it has
+    // drifted from 1.42 since first seen, so it is left out.
+    ev('fx-liv-che', 'football', 'Premier League', 'soccer/eng.1', 'Liverpool', 'Chelsea', 20, [], { markets: [{ name: 'Match Result', consensusFrom: 'Pinnacle', outcomes: [
+      { name: 'Liverpool', odds: 1.8, book: 'Unibet', cons: 0.58, open: 1.78 }, { name: 'Draw', odds: 4.1, book: 'Betway', cons: 0.24 }, { name: 'Chelsea', odds: 5.4, book: 'Marathonbet', cons: 0.18 }] }],
+      bookmaker: 'best of 14 bookmakers; fair chance from Pinnacle', oddsSource: 'the-odds-api', quoteType: 'best-available' }),
+    ev('fx-mci-bur', 'football', 'Premier League', 'soccer/eng.1', 'Man City', 'Burnley', 22, [], { markets: [{ name: 'Match Result', consensusFrom: 'Pinnacle', outcomes: [
+      { name: 'Man City', odds: 1.55, book: 'Betway', cons: 0.7, open: 1.42 }, { name: 'Draw', odds: 4.6, book: 'Unibet', cons: 0.19 }, { name: 'Burnley', odds: 9.5, book: '1xBet', cons: 0.11 }] }],
+      bookmaker: 'best of 12 bookmakers; fair chance from Pinnacle', oddsSource: 'the-odds-api', quoteType: 'best-available' }),
     ev('fx-lal-gsw', 'basketball', 'NBA', 'basketball/nba', 'Lakers', 'Warriors', -1, [['Lakers', 1.7], ['Warriors', 2.15]], { live: true, score: '54-49', clock: 'Q3 4:12' }),
   ];
   const events = list.map(({ inHours, ...e }) => ({ ...e, start: now + inHours * H, fetchedAt: now - 2 * 6e4 }));

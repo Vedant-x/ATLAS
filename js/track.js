@@ -9,6 +9,7 @@ import { bankerSlips, legPool } from './picks.js';
 import { localDay } from './engine.js';
 import { selectionId, dueForRead, FINAL } from './settle.js';
 import { recommendation } from './recommendation.js';
+import { drifting } from './movement.js';
 
 export const MIN_ODDS = 1.3;
 // The shortlist's price range: short-priced favourites only. The record, the shortlist and the
@@ -46,6 +47,22 @@ export function bestBets(events, { cal = null, limit = 10 } = {}) {
 // hit rate never stands in for a parlay's). Odds 2.00 within ± tolerance (1.70 to 2.30 by default),
 // the same fair-price rule as Best bets, likeliest first. Fewer, or none, when nothing qualifies.
 export const NEAR_TWO = { target: 2, tolerance: 0.15, min: 0.4 };
+// Value bets: prices above the sharp market's own fair odds. With many bookmakers (oddsapi.js) the
+// fair chance is Pinnacle's with its margin removed (the sharpest book), or the books' median; a best
+// price at least VALUE.min above 1 / fair is one the market as a whole calls too long. Such edges are
+// small (a few percent), and real only at the bookmaker quoting the price: takeAt is the lowest price
+// still worth taking anywhere. The chance shown is the market's, not ATLAS's: in the record, picks
+// ATLAS rated 10-20 points above the market landed slightly below the market's own chance.
+export const VALUE = { min: 0.02, minMedian: 0.03, minFair: 0.3, minOdds: 1.25, maxOdds: 4 };
+export function valueBets(events, { cal = null, limit = 10 } = {}) {
+  const list = bankers(events.filter((e) => !e.live), { min: 0, limit: Infinity })
+    .filter((b) => b.consensus && b.odds >= VALUE.minOdds && b.odds <= VALUE.maxOdds && b.fair >= VALUE.minFair
+      && !blockedSegment(cal, b.event.sport, b.market) && !drifting(b.odds, b.open))
+    .map((b) => ({ ...b, pRaw: b.p, p: b.fair, edge: b.odds * b.fair - 1, ev: b.odds * b.fair - 1, takeAt: +((1 + VALUE.min) / b.fair).toFixed(2) }))
+    .filter((b) => b.edge >= (b.consensusFrom === 'Pinnacle' ? VALUE.min : VALUE.minMedian))
+    .sort((x, y) => y.edge - x.edge);
+  return diversify(list, limit, { familyShare: 0.6, sportShare: 0.6 });
+}
 export function nearTwo(events, { cal = null, limit = 10, tolerance = NEAR_TWO.tolerance } = {}) {
   const good = (b) => (b.consensus ? b.fair * b.odds >= 1 : b.pRaw <= marketChance(b.odds) + BEST.overclaim);
   const lo = NEAR_TWO.target * (1 - tolerance), hi = NEAR_TWO.target * (1 + tolerance);
@@ -73,7 +90,10 @@ export function nearTwo(events, { cal = null, limit = 10, tolerance = NEAR_TWO.t
 //   (1.04-1.25, 85%+).
 // 2026.10.10: nothing below 1.20; the surest tier is 1.20-1.40 where ATLAS does not claim to beat
 //   the price (those land most often).
-export const MODEL_VERSION = '2026.10.10';
+// 2026.10.11: a price 3%+ longer than the first one seen (drifting: the market moving against the
+//   pick) is left out; Value bets (the best price 2%+ above the sharp market's fair odds) are recorded
+//   as their own type; player props on main lines and common types only.
+export const MODEL_VERSION = '2026.10.11';
 
 // Market families the track record learns from: winner, 1X2 result, spread/handicap, totals.
 export const familyOf = (market = '') => (/^Player /.test(market) ? 'prop' : /^Total/.test(market) ? 'total' : market === 'Spread' ? 'spread' : market === 'Match Result' ? 'result' : 'winner');
@@ -305,7 +325,7 @@ export function diversify(list, limit, { familyShare = 0.4, sportShare = 0.5 } =
 // qualifies when every price is below the estimate) and 'evidence' (60%+ picks whose match has every
 // input its sport needs confirmed, `ready(event)` true).
 export function rankedBankers(events, { cal = null, min = 0.6, minOdds = 1, maxOdds = MAX_ODDS, limit = 10, mix = true, mode = 'likely', ready = null } = {}) {
-  const ok = (b) => !blockedSegment(cal, b.event?.sport, b.market);
+  const ok = (b) => !blockedSegment(cal, b.event?.sport, b.market) && !drifting(b.odds, b.open);
   if (mode === 'value') {
     const v = bankers(events, { min: 0.4, minOdds, limit: 2000 }).filter((b) => b.odds <= 3 && ok(b)).map((b) => withCal(b, cal))
       .filter((b) => b.ev > 0 && b.p >= 0.45).sort((x, y) => y.ev - x.ev);
@@ -328,10 +348,12 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
   const row = (type) => (b) => ({ sel: selectionId({ eventId: b.event.id, market: b.market, pick: b.pick, prop: b.prop }), ...quote(b.event), calVersion,
     ...(() => { const r = recommendationFor(b, cal, { now, mode: type, publishedAt: now }); return { recommendationId: r.recommendationId, forecastId: r.forecastId, generatedAt: r.forecastGeneratedAt, uncertaintyRange: r.uncertaintyRange }; })(),
     // The surest list keeps its own record, so its key differs from the same pick on the shortlist.
-    key: `${type === 'safe' ? 'safe|' : type === 'best' ? 'best|' : type === 'two' ? 'two|' : ''}${b.event.id}|${b.market}|${b.pick}`, type, eventId: b.event.id, leaguePath: b.event.leaguePath, compId: b.event.compId,
+    key: `${['safe', 'best', 'two', 'edge'].includes(type) ? `${type}|` : ''}${b.event.id}|${b.market}|${b.pick}`, type, eventId: b.event.id, leaguePath: b.event.leaguePath, compId: b.event.compId,
     sport: b.event.sport, league: b.event.league, home: b.event.home, away: b.event.away, start: b.event.start,
     market: b.market, pick: b.pick, odds: b.odds, p: +b.pRaw.toFixed(4), shown: +b.p.toFixed(4), fair: b.fair == null ? null : +b.fair.toFixed(4),
     recordedAt: now, status: 'pending', model: MODEL_VERSION, ...(b.prop ? { prop: b.prop } : {}),
+    // Value bets: the bookmaker quoting the price and the first price seen for it.
+    ...(type === 'edge' ? { bestBook: b.book || null, open: b.open ?? null } : {}),
   });
   // Matches with no price: the model's pick, at fair odds, kept as its own record (modelpicks.js).
   const modelRow = (b) => ({
@@ -346,6 +368,7 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
     ...surestPicks(soon, { cal, limit: 20 }).map(row('safe')),
     ...bestBets(soon, { cal, limit: 20 }).map(row('best')),
     ...nearTwo(soon, { cal, limit: 10 }).map(row('two')),
+    ...valueBets(soon, { cal, limit: 20 }).map(row('edge')),
     ...modelPicks(soon, { now, hours, record: modelRecord(history) }).slice(0, 40).map(modelRow),
     ...multiPicks(events, now, history),
     ...potdPicks(events, now, history),
@@ -562,7 +585,7 @@ export function summarize(history) {
   const settledAll = history.filter((h) => h.status === 'won' || h.status === 'lost' || h.status === 'push');
   const graded = settledAll.filter(inRecord);
   // botd: the banker of the day, recorded briefly (19-20 Oct) before it was retired; kept out of every list.
-  const outside = settledAll.filter((h) => !['multi', 'safe', 'model', 'best', 'two', 'botd'].includes(h.type) && !inRecord(h));
+  const outside = settledAll.filter((h) => !['multi', 'safe', 'model', 'best', 'two', 'edge', 'botd'].includes(h.type) && !inRecord(h));
   const best = settledAll.filter((h) => h.type === 'best');
   const models = settledAll.filter((h) => h.type === 'model');
   const safe = settledAll.filter((h) => h.type === 'safe');
@@ -599,7 +622,7 @@ export function summarize(history) {
     byType: group((h) => h.type), bySport: group((h) => h.sport), byFamily: group((h) => familyOf(h.market)), byModel: group((h) => h.model || 'before 2026.10.1'), buckets,
     pending: history.filter((h) => h.status === 'pending' && inRecord(h)).sort((a, b) => a.start - b.start),
     unresolved: history.filter((h) => h.status === 'unresolved' && inRecord(h)).length,
-    outside: stat(outside), safe: stat(safe), best: stat(best), two: stat(settledAll.filter((h) => h.type === 'two')),
+    outside: stat(outside), safe: stat(safe), best: stat(best), two: stat(settledAll.filter((h) => h.type === 'two')), edge: stat(settledAll.filter((h) => h.type === 'edge')),
     // Model-only picks (no price): hit rate against forecast and Brier only; their "odds" are fair
     // odds, so profit means nothing for them and is not shown.
     model: { ...stat(models), bySport: Object.entries(models.reduce((m, h) => ((m[h.sport] ||= []).push(h), m), {})).map(([k, l]) => ({ key: k, ...stat(l) })).sort((a, b) => b.picks - a.picks) },
