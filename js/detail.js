@@ -14,7 +14,7 @@ function sideOf(teamId, header) {
   return c?.homeAway || null;
 }
 
-function teamStats(box, header) {
+export function teamStats(box, header) {
   const teams = box?.teams || [];
   const sides = {};
   for (const t of teams) sides[t.homeAway || sideOf(t.team?.id, header)] = t.statistics || [];
@@ -50,7 +50,7 @@ function injuries(list, header) {
   return out;
 }
 
-function leaders(list, header) {
+export function leaders(list, header) {
   const out = { home: [], away: [] };
   for (const t of list || []) {
     const side = sideOf(t.team?.id, header);

@@ -68,6 +68,12 @@ export function dayStartAt(t, z, hour = 0) {
 export const dayKey = (t, z) => new Date(t + offsetMin(z, t) * 6e4).toISOString().slice(0, 10);
 export const weekday = (t, z) => new Date(t + offsetMin(z, t) * 6e4).getUTCDay();
 
+// A date alone in the chosen zone: "20 Oct" (date) or "Monday 20 October" (day).
+export function fmtDate(t, style = 'date', z = zone()) {
+  if (!Number.isFinite(t)) return '';
+  return new Date(t).toLocaleDateString('en-GB', { timeZone: tzOf(z), ...(style === 'day' ? { weekday: 'long', day: 'numeric', month: 'long' } : { day: 'numeric', month: 'short' }) });
+}
+
 // "Mon 20 Oct, 7:30 pm IST" (full) or "Mon 19:30" (short) in the chosen zone.
 export function fmt(t, z = zone(), style = 'full') {
   if (!Number.isFinite(t)) return '';

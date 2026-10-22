@@ -94,7 +94,6 @@
 .potd-result.res-won { background: rgba(61, 220, 132, .12); color: var(--pos, #3ddc84); } .potd-result.res-lost { background: rgba(255, 92, 92, .12); color: var(--neg, #ff5c5c); }
 .leg-side { display: flex; align-items: center; gap: 8px; flex: none; }
 .leg-p { font: 700 13px var(--mono); color: var(--muted); min-width: 36px; text-align: right; }
-.potd-note { font-size: 12px; margin-top: 8px; }
 .potd-legs { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
 .potd-legs li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line, rgba(255,255,255,.08)); border-radius: 10px; }
 .potd-legs li a { display: flex; flex-direction: column; min-width: 0; color: inherit; text-decoration: none; }
@@ -165,7 +164,7 @@
 .age-card small, .age-card small a { color: var(--muted); font-size: 12px; }
 
 /* ---------- track record ---------- */
-.tr-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+.tr-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 16px; }
 .tr-stats > div { padding: 18px; border: 1px solid var(--line); border-radius: 18px; background: rgba(var(--panel-rgb), .92); display: grid; gap: 4px; }
 .tr-stats small, .tr-cal small { color: var(--muted); font: 700 10.5px var(--mono); letter-spacing: 1.5px; text-transform: uppercase; }
 .tr-stats b { font: clamp(30px, 3.4vw, 46px)/1 var(--display); }
@@ -187,7 +186,7 @@
 .tr-won .tr-badge { color: var(--pos); border-color: var(--pos); } .tr-lost .tr-badge { color: var(--neg); border-color: var(--neg); }
 .dash-health .ph .more { margin-left: auto; font: 600 12px var(--sans); text-transform: none; color: var(--accent); }
 @media (max-width: 760px) {
-  .tr-stats { grid-template-columns: 1fr 1fr; }
+  .tr-stats { grid-template-columns: 1fr 1fr; } .tr-stats > div:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .tr-list li { grid-template-columns: 1fr auto auto; } .tr-badge { grid-column: 1 / -1; justify-self: start; }
 }
 

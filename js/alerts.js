@@ -32,7 +32,8 @@ export const watch = {
     for (const e of events) {
       if (!watched.has(e.id)) continue;
       const m = meta[e.id] || {};
-      const next = { ...m, home: e.home, away: e.away, league: e.league, sport: e.sport, start: e.start, score: e.score || m.score || null };
+      // leaguePath and compId: where to read the final score and match report once it has ended.
+      const next = { ...m, home: e.home, away: e.away, league: e.league, sport: e.sport, start: e.start, score: e.score || m.score || null, leaguePath: e.leaguePath || null, compId: e.compId || null };
       if (JSON.stringify(next) !== JSON.stringify(m)) { meta[e.id] = next; dirty = true; }
     }
     if (dirty) save(MKEY, meta);

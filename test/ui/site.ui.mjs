@@ -41,16 +41,14 @@ async function open(route, { viewport = DESK, adult = true, hold = false, feeds 
 const shot = (page, name) => page.screenshot({ path: `${SHOTS}/${name}.png` });
 const noOverflow = (page) => page.evaluate(() => document.scrollingElement.scrollWidth <= innerWidth + 1);
 
-test('home: placeholders while loading, never "0 events" or "no picks"', async () => {
+test('home: placeholders while loading, never "no picks"; no counters, sports grid or fixture list', async () => {
   const { page, ctx, errors, release } = await open('#/', { hold: true });
-  await page.waitForSelector('.stats .skel-num');
-  assert.equal(await page.locator('.stats .skel-num').count(), 3);
+  await page.waitForSelector('.dash-short .skel-row');
   assert.equal(await page.locator('.dash-short .muted').count(), 0, 'no empty-state text while loading');
   await shot(page, 'home-loading');
   release();
-  await page.waitForSelector('.stats b[data-count-to]');
-  assert.equal(await page.getAttribute('.stats b[data-count-to]', 'data-count-to'), String(siteData().events.length));
   await page.waitForSelector('.dash-short .mini');
+  assert.equal(await page.locator('.hero .stats, .grid.sports, .grid.xs, .dash-track').count(), 0, 'minimal: those live on their own pages');
   await shot(page, 'home-desktop');
   assert.deepEqual(errors, []);
   await ctx.close();
@@ -74,7 +72,7 @@ test('home: 30-day record strip and a reason behind each pick', async () => {
 test('phone: minimal first screen (no hero counters, picks in view) and no page scrolls sideways', async () => {
   const { page, ctx, errors } = await open('#/', { viewport: PHONE });
   await page.waitForSelector('.dash-short .mini');
-  assert.equal(await page.$eval('.hero .stats', (el) => getComputedStyle(el).display), 'none', 'hero counters hidden on phones');
+  assert.equal(await page.locator('.hero .stats').count(), 0, 'no hero counters');
   await shot(page, 'home-phone');
   for (const r of ['#/', '#/bankers', '#/edge', '#/x/2', '#/watchlist', '#/track']) {
     await page.goto(BASE + r); await page.waitForTimeout(600);
@@ -139,6 +137,34 @@ test('watchlist: alerts can be set for one match only', async () => {
   assert.match(await page.textContent('.list .al-kinds'), /this match/);
   assert.equal(await page.getAttribute('.alerts-panel [data-alert-kind="cards"]', 'aria-pressed'), 'true', 'other matches keep cards');
   await shot(page, 'watchlist-alerts');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('watchlist: a finished match stays with its final score and opens what happened, until removed', async () => {
+  const sm = {
+    header: { competitions: [{ status: { type: { completed: true, detail: 'FT' } }, competitors: [{ homeAway: 'home', score: '2', team: { id: '1' } }, { homeAway: 'away', score: '1', team: { id: '2' } }] }] },
+    keyEvents: [{ type: { text: 'Goal' }, clock: { displayValue: "23'" }, text: 'Goal! Chelsea 1, Everton 0. Cole Palmer', team: { displayName: 'Chelsea' } }],
+    boxscore: { teams: [{ homeAway: 'home', statistics: [{ name: 'possessionPct', displayName: 'Possession', displayValue: '58' }] }, { homeAway: 'away', statistics: [{ name: 'possessionPct', displayName: 'Possession', displayValue: '42' }] }] },
+  };
+  const { page, ctx, errors } = await open('#/', { feeds: [[/summary\?event=999/, sm]] });
+  await page.waitForSelector('.dash');
+  await page.evaluate((start) => {
+    localStorage.setItem('atlas-watch', JSON.stringify(['fx-old']));
+    localStorage.setItem('atlas-watch-meta', JSON.stringify({ 'fx-old': { home: 'Chelsea', away: 'Everton', league: 'Premier League', sport: 'football', start, leaguePath: 'soccer/eng.1', compId: '999' } }));
+  }, Date.now() - 5 * 36e5);
+  await page.goto(`${BASE}#/watchlist`);
+  await page.reload();
+  await page.waitForSelector('.row.wl.done .fin-score');
+  assert.match(await page.textContent('.row.wl.done'), /Chelsea 2–1 Everton/);
+  await page.click('.row.wl.done .row-link');
+  await page.waitForSelector('.fin-head ~ * .timeline li, .match-final ~ .panel .timeline li');
+  assert.match(await page.textContent('.fin-head'), /Chelsea\s*2 – 1\s*Everton/);
+  assert.match(await page.textContent('#app'), /Cole Palmer[\s\S]*Possession[\s\S]*58/);
+  await shot(page, 'watchlist-final');
+  await page.click('.match-final [data-watch]');
+  await page.waitForFunction(() => location.hash === '#/watchlist');
+  await page.waitForFunction(() => !document.querySelector('.row.wl.done'));
   assert.deepEqual(errors, []);
   await ctx.close();
 });
@@ -244,19 +270,6 @@ test('assistant and dashboard agree: the same picks at the same chance', async (
   assert.ok(said.every((n) => names.includes(n)), JSON.stringify({ said, names }));
   assert.deepEqual(errors, []);
   await ctx.close();
-});
-
-test('home: multiplier cards fit their text on desktop and phone', async () => {
-  for (const viewport of [DESK, PHONE]) {
-    const { page, ctx, errors } = await open('#/', { viewport });
-    await page.waitForSelector('.grid.xs .xcard');
-    const overflow = await page.$$eval('.grid.xs .xcard b', (bs) => bs.filter((b) => b.scrollWidth > b.parentElement.clientWidth).map((b) => b.textContent));
-    assert.deepEqual(overflow, []);
-    await page.locator('.grid.xs').scrollIntoViewIfNeeded();
-    await shot(page, `multipliers-${viewport === PHONE ? 'phone' : 'desk'}`);
-    assert.deepEqual(errors, []);
-    await ctx.close();
-  }
 });
 
 test('navigation: five destinations, Research lit across its pages, Live and Props one tap away', async () => {

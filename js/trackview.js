@@ -5,10 +5,11 @@ import { serviceStats } from './compare.js';
 import { FINAL, independentlyConfirmed } from './settle.js';
 import { localDay } from './engine.js';
 import { modelRecord } from './modelpicks.js';
+import { fmtDate } from './tz.js';
 
 const pct = (x, d = 1) => (x == null ? '—' : `${(x * 100).toFixed(d)}%`);
 const units = (x) => `${x > 0 ? '+' : ''}${x.toFixed(2)}u`;
-const day = (t) => new Date(t).toLocaleDateString([], { day: 'numeric', month: 'short' });
+const day = (t) => fmtDate(t);
 let cache = null;
 
 async function load() {
@@ -61,7 +62,7 @@ const statCards = (s, updatedAt) => `${updatedAt ? `<p class="note reveal">Resul
   <div><small>Profit, 1 unit per pick</small><b class="${s.profit >= 0 ? 'pos' : 'neg'}">${units(s.profit)}</b><span>ROI ${pct(s.roi)}</span></div>
   <div><small>Average odds</small><b>${s.avgOdds ? s.avgOdds.toFixed(2) : '—'}</b><span>range ${MIN_ODDS.toFixed(2)} to ${MAX_ODDS.toFixed(2)}</span></div>
   <div><small>Price vs closing line</small><b class="${s.clvN >= 10 ? (s.clv >= 0 ? 'pos' : 'neg') : ''}">${s.clvN >= 10 ? `${s.clv >= 0 ? '+' : ''}${(s.clv * 100).toFixed(1)}%` : '—'}</b><span>${s.clvN >= 10 ? `saved price beat the close on ${pct(s.beatClose, 0)} of ${s.clvN} picks` : 'closing prices are now saved for every pick; shown after 10 settle'}</span></div>
-  <div><small>Forecast score (Brier)</small><b>${s.brier == null ? '—' : s.brier.toFixed(3)}</b><span>${s.brierN >= 20 ? `market alone ${s.brierMarket.toFixed(3)} on the same ${s.brierN} picks · lower is better` : 'lower is better · market comparison after 20 picks'}</span></div></div>`;
+</div>`;
 
 // Forecast score per row: Brier (lower is better) and, once 10+ picks have a saved market chance,
 // whether ATLAS beat the market's own forecast on those picks.
@@ -116,10 +117,10 @@ function verdict(a) {
   if (!(a.won + a.lost)) return '';
   const beats = a.brierN >= 20 ? a.brierModel <= a.brierMarket : null;
   const head = beats == null ? 'Too few picks with a saved market chance to compare ATLAS with the market yet.'
-    : beats ? `On ${a.brierN} picks with a saved market chance, ATLAS's forecasts were closer to the results than the bookmaker's own (score ${a.brierModel.toFixed(4)} against ${a.brierMarket.toFixed(4)}; lower is better).`
-      : `On ${a.brierN} picks with a saved market chance, the bookmaker's own forecast was closer to the results than ATLAS's (score ${a.brierMarket.toFixed(4)} against ${a.brierModel.toFixed(4)}; lower is better).`;
+    : beats ? `On ${a.brierN} picks, ATLAS's chances were closer to the results than the bookmakers' own.`
+      : `On ${a.brierN} picks, the bookmakers' own chances were closer to the results than ATLAS's.`;
   const money = a.roi == null ? '' : a.roi >= 0 ? ` One unit on every pick would be ${units(a.profit)} up (ROI ${pct(a.roi)}).` : ` One unit on every pick would be ${units(a.profit)} down (ROI ${pct(a.roi)}): a high hit rate at short odds can still lose.`;
-  const take = beats && a.roi >= 0 ? 'That is evidence of an edge on this sample, not proof: results are by model version below.' : 'Until ATLAS both beats the market\'s forecast and shows a profit, treat the picks as research to check, not a proven edge.';
+  const take = beats && a.roi >= 0 ? 'Evidence of an edge on this sample, not proof.' : 'Until ATLAS beats the bookmakers and shows a profit, treat the picks as research, not a proven edge.';
   return `<div class="panel verdict reveal ${beats && a.roi >= 0 ? 'v-ok' : 'v-warn'}"><h3 class="ph">Does ATLAS beat the market?</h3><p>${head}${money} ${take}</p></div>`;
 }
 
@@ -191,27 +192,30 @@ function body(data) {
       ${s.pending.length ? `<div class="panel reveal"><h3 class="ph">Waiting on results <small>${s.pending.length}</small></h3><ul class="tr-list">${s.pending.slice(0, 30).map(pickRow).join('')}</ul></div>` : ''}`;
   }
   const famName = { winner: 'Winner / moneyline', result: '1X2 result', spread: 'Spread / handicap', total: 'Totals (over/under)' };
-  return `${verdict(s.all)}${outOfSample(data.picks || [], s.all)}${statCards(s.all, data.updatedAt)}${s.outside.won + s.outside.lost ? `<p class="note reveal">Shortlist picks only (rated 60%+, odds ${MIN_ODDS.toFixed(2)} to ${MAX_ODDS.toFixed(2)}). ${s.outside.won + s.outside.lost} earlier picks outside these rules (value spots and longer prices, ${s.outside.won} won, ${s.outside.lost} lost) are not counted.</p>` : ''}${s.unresolved ? `<p class="note reveal">${s.unresolved} pick${s.unresolved > 1 ? 's' : ''} could not be graded (no final result found) and ${s.unresolved > 1 ? 'are' : 'is'} left out rather than counted as void.</p>` : ''}
+  // Minimal: the verdict, the numbers and the latest results; every breakdown and check is one tap away.
+  return `${verdict(s.all)}${statCards(s.all, data.updatedAt)}${s.unresolved ? `<p class="note reveal">${s.unresolved} pick${s.unresolved > 1 ? 's' : ''} could not be graded (no final result found) and ${s.unresolved > 1 ? 'are' : 'is'} left out rather than counted as void.</p>` : ''}
+    <div class="panel reveal"><h3 class="ph">Latest results</h3><ul class="tr-list">${s.recent.map(pickRow).join('')}</ul></div>
+    ${s.pending.length ? `<div class="panel reveal"><h3 class="ph">Waiting on results <small>${s.pending.length}</small></h3><ul class="tr-list">${s.pending.slice(0, 20).map(pickRow).join('')}</ul></div>` : ''}
+    <details class="fold reveal tr-more"><summary><h2 class="ph">More detail <small>by sport, market and price · calibration · settlement audit</small></h2></summary>
+    ${s.outside.won + s.outside.lost ? `<p class="note">Shortlist picks only (rated 60%+, odds ${MIN_ODDS.toFixed(2)} to ${MAX_ODDS.toFixed(2)}). ${s.outside.won + s.outside.lost} earlier picks outside these rules (${s.outside.won} won, ${s.outside.lost} lost) are not counted.</p>` : ''}
     <div class="grid two">
-      <div class="panel reveal"><h3 class="ph">By sport</h3>${table(s.bySport.map((r) => ({ ...r, name: `${sportOf(r.key).icon} ${sportOf(r.key).name}` })), 'Sport')}</div>
-      <div class="panel reveal"><h3 class="ph">By market <small>the model needs more confidence where a market has underperformed</small></h3>${table(s.byFamily.map((r) => ({ ...r, name: famName[r.key] || r.key })), 'Market')}</div>
-      
+      <div class="panel"><h3 class="ph">By sport</h3>${table(s.bySport.map((r) => ({ ...r, name: `${sportOf(r.key).icon} ${sportOf(r.key).name}` })), 'Sport')}</div>
+      <div class="panel"><h3 class="ph">By market</h3>${table(s.byFamily.map((r) => ({ ...r, name: famName[r.key] || r.key })), 'Market')}</div>
     </div>
-    <div class="panel reveal"><h3 class="ph">Multipliers and mega <small>separate records</small></h3><p class="muted">Each multiplier keeps its own record on its own page, so slips never mix with single picks here.</p><div class="chip-row">${[2, 3, 4, 5, 10, 20].map((x) => `<a class="chip" href="#/x/${x}">${x}×</a>`).join('')}<a class="chip" href="#/mega">Mega 100× / 1000×</a></div></div>
-    ${s.byModel.length > 1 ? `<div class="panel reveal"><h3 class="ph">By model version <small>each pick is stamped with the model that made it</small></h3>${table(s.byModel.map((r) => ({ ...r, name: r.key })), 'Model')}</div>` : ''}
-    <div class="panel reveal"><h3 class="ph">Are the estimates honest? <small>calibration</small></h3>
-      <p class="muted">When ATLAS says 65%, it should land about 65% of the time. Small samples swing a lot.</p>
+    ${s.byModel.length > 1 ? `<div class="panel"><h3 class="ph">By model version</h3>${table(s.byModel.map((r) => ({ ...r, name: r.key })), 'Model')}</div>` : ''}
+    <div class="panel"><h3 class="ph">Are the estimates honest? <small>when ATLAS says 65%, it should land about 65% of the time</small></h3>
       <div class="tr-cal">${s.buckets.map((b) => `<div><small>Estimated ${b.label}</small>${b.n ? `<div class="tr-bars"><i style="--w:${((b.predicted || 0) * 100).toFixed(0)}%"></i><i class="act" style="--w:${((b.actual || 0) * 100).toFixed(0)}%"></i></div>` : ''}<span>${b.n ? `${pct(b.predicted, 0)} estimated · ${pct(b.actual, 0)} actual · ${b.n} picks` : 'no picks yet'}</span></div>`).join('')}</div></div>
-    ${s.safe?.won + s.safe?.lost ? `<div class="panel reveal"><h3 class="ph">Surest picks <small>odds ${SAFE.minOdds.toFixed(2)}–${SAFE.maxOdds.toFixed(2)}, ATLAS not above the price · its own record</small></h3><p>${recordLine(s.safe)}</p></div>` : ''}
-    ${s.best?.won + s.best?.lost ? `<div class="panel reveal"><h3 class="ph">Best bets <small>odds ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)}, best price across bookmakers, never shorter than the market's fair odds · its own record</small></h3><p>${recordLine(s.best)}</p></div>` : ''}
+    ${s.safe?.won + s.safe?.lost ? `<div class="panel"><h3 class="ph">Surest picks <small>odds ${SAFE.minOdds.toFixed(2)}–${SAFE.maxOdds.toFixed(2)}</small></h3><p>${recordLine(s.safe)}</p></div>` : ''}
+    ${s.best?.won + s.best?.lost ? `<div class="panel"><h3 class="ph">Best bets <small>odds ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)}</small></h3><p>${recordLine(s.best)}</p></div>` : ''}
     ${modesPanel(s)}
     ${modelPanel(s.model)}
-    ${correctionsPanel(data)}
-    ${comparisonPanel(data.picks || [])}
     ${priceBandPanel(data.picks || [])}
+    ${outOfSample(data.picks || [], s.all)}
     ${trustPanel(data.picks || [])}
-    <div class="panel reveal"><h3 class="ph">Latest results</h3><ul class="tr-list">${s.recent.map(pickRow).join('')}</ul></div>
-    ${s.pending.length ? `<div class="panel reveal"><h3 class="ph">Waiting on results <small>${s.pending.length}</small></h3><ul class="tr-list">${s.pending.slice(0, 20).map(pickRow).join('')}</ul></div>` : ''}`;
+    ${comparisonPanel(data.picks || [])}
+    ${correctionsPanel(data)}
+    <div class="panel"><h3 class="ph">Multipliers and mega <small>each keeps its own record on its own page</small></h3><div class="chip-row">${[2, 3, 4, 5, 10, 20].map((x) => `<a class="chip" href="#/x/${x}">${x}×</a>`).join('')}<a class="chip" href="#/mega">Mega 100× / 1000×</a></div></div>
+    </details>`;
 }
 
 export const trackViews = {
@@ -220,11 +224,12 @@ export const trackViews = {
       mode: 'other', accent: '#3dff9a', title: 'Track record',
       html: `<section class="hero small"><p class="kicker reveal">EVERY PICK · LOCKED BEFORE KICK-OFF · GRADED FROM FINAL SCORES</p><h1>TRACK RECORD</h1>
         <p class="lede reveal">Every shortlist pick, saved before kick-off and graded from the final score.</p></section>
-        <div id="track-body">${cache ? body(cache.data) : '<p class="muted">Loading results…</p>'}</div>`,
+        <div id="track-body" data-at="${cache?.data.updatedAt ?? ''}">${cache ? body(cache.data) : '<p class="muted">Loading results…</p>'}</div>`,
       after: () => {
         load().then((d) => {
           const el = document.getElementById('track-body');
-          if (el) { el.innerHTML = body(d); el.querySelectorAll('.reveal').forEach((x) => x.classList.add('in')); }
+          // Drawn only when the record changed, so a refresh never folds away what the visitor opened.
+          if (el && el.dataset.at !== String(d.updatedAt ?? '')) { el.dataset.at = String(d.updatedAt ?? ''); el.innerHTML = body(d); el.querySelectorAll('.reveal').forEach((x) => x.classList.add('in')); }
         }).catch(() => {
           const el = document.getElementById('track-body');
           if (el) el.innerHTML = '<div class="panel"><p class="muted">The track record starts with the next site update: picks are saved before kick-off and graded after the final whistle.</p></div>';

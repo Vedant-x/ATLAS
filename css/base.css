@@ -439,6 +439,7 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .tbl tr.ours td { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .tbl td.win { font-weight: 800; color: var(--pos); }
 .f { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; font: 800 10px var(--sans); font-style: normal; color: #000; margin-right: 2px; background: var(--dim); }
+.f.f-W { background: var(--win); } .f.f-L { background: var(--loss); } .f.f-D { background: var(--draw); }
 .inj { font: 700 11px var(--mono); padding: 2px 8px; border-radius: 6px; border: 1px solid var(--line2); white-space: nowrap; }
 .inj-out, .inj-suspension, .inj-injuredreserve, .inj-dayil, .inj-dayil60, .inj-dayil10, .inj-dayil15 { color: var(--neg); border-color: color-mix(in srgb, var(--neg) 45%, transparent); }
 .inj-questionable, .inj-doubtful, .inj-daytoday { color: var(--draw); border-color: color-mix(in srgb, var(--draw) 45%, transparent); }

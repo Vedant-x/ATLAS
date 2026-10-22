@@ -39,6 +39,18 @@ export const PROP_STATS = {
   },
 };
 export const propDef = (sport, type) => PROP_STATS[sport]?.[String(type || '').replace(/ Milestones$/, '')] || null;
+// The prop types most bookmakers list (Stake among them). Only these are offered; DraftKings' own
+// extras (blocked shots, steals, walks, combined hits + runs + RBIs…) stay gradeable for old picks.
+export const COMMON = {
+  basketball: ['Points', 'Rebounds', 'Assists', '3-Point Field Goals', 'Points + Assists + Rebounds'],
+  baseball: ['Hits', 'Home Runs', 'RBIs'],
+  hockey: ['Points', 'Shots on Goal', 'Goalkeeper Saves', 'Anytime Goalscorer'],
+  soccer: ['Anytime Goalscorer'],
+  football: ['Passing Yards', 'Rushing Yards', 'Receiving Yards', 'Receptions', 'Anytime Touchdown Scorer'],
+};
+// A main line is priced near even money; DraftKings' ladder rungs far below it (1+ shot at 1.20) are
+// alternative lines few other bookmakers carry.
+const MAIN = 1.87, MAIN_RANGE = [1.5, 2.6];
 
 const idOf = (ref) => /\/athletes\/(\d+)/.exec(ref || '')?.[1] || null;
 export const propLabel = (pr) => (pr.yes ? `${pr.player} to score${pr.label === 'touchdown' ? ' a TD' : ''}` : `${pr.player} ${pr.target}+ ${pr.label}`);
@@ -46,21 +58,26 @@ export const propLabel = (pr) => (pr.yes ? `${pr.player} to score${pr.label === 
 export const propOver = (pr) => (pr.yes ? '' : `over ${pr.target - 0.5} ${pr.label}`);
 export const propMarket = (pr) => `Player ${pr.label}`;
 
-// Raw propBets items → props for one match. `who(id)` gives { name, side } for an athlete id.
+// Raw propBets items → props for one match. `who(id)` gives { name, side } for an athlete id. One
+// line per player and stat: the main line (the rung nearest even money), or the anytime scorer price.
 export function parseProps(items, sport, who, { minOdds = 1.15, maxOdds = 3, perEvent = 40 } = {}) {
-  const out = [], seen = new Set();
+  const best = new Map();
   for (const x of items || []) {
-    const def = propDef(sport, x.type?.name);
+    const type = String(x.type?.name || '').replace(/ Milestones$/, '');
+    const def = propDef(sport, type);
     const id = idOf(x.athlete?.$ref);
-    if (!def || !id) continue;
+    if (!def || !id || !COMMON[sport]?.includes(type)) continue;
     const odds = Number(x.odds?.decimal?.value ?? x.current?.over?.decimal);
     const target = def.target ?? Number(x.current?.target?.value);
-    if (!(odds >= minOdds && odds <= maxOdds) || !(target > 0)) continue;
+    const [lo, hi] = def.target != null ? [minOdds, maxOdds] : MAIN_RANGE;
+    if (!(odds >= lo && odds <= hi) || !(target > 0)) continue;
+    const key = `${id}|${def.label}`, was = best.get(key);
+    if (!was || Math.abs(Math.log(odds / MAIN)) < Math.abs(Math.log(was.odds / MAIN))) best.set(key, { x, def, id, odds, target });
+  }
+  const out = [];
+  for (const { x, def, id, odds, target } of best.values()) {
     const p = who(id);
     if (!p?.name) continue;
-    const key = `${id}|${def.label}|${target}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
     out.push({ id, player: p.name, side: p.side || null, type: String(x.type.name).replace(/ Milestones$/, ''), label: def.label, target, yes: def.target != null, odds: +odds.toFixed(2), p: +Math.min(0.97, (1 / odds) * (1 - MARGIN)).toFixed(4), pm: +Math.min(0.97, (1 / odds) * (1 - MARGIN)).toFixed(4) });
   }
   return out.sort((a, b) => b.p - a.p).slice(0, perEvent);

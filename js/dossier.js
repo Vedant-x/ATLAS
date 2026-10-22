@@ -3,7 +3,8 @@ import { standingsTable } from './standings.js';
 import { weatherLine, weatherFlag } from './weather.js';
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const safeHref = (u) => (/^https?:\/\//i.test(String(u || '')) ? esc(u) : '#');
-const dt = (v) => { const t = Date.parse(v); return Number.isFinite(t) ? new Date(t).toLocaleDateString([], { day: 'numeric', month: 'short' }) : esc(v || ''); };
+// A date from a feed: an ISO string or a timestamp (the results history stores milliseconds).
+const dt = (v) => { const t = typeof v === 'number' ? v : Date.parse(v); return Number.isFinite(t) ? new Date(t).toLocaleDateString([], { day: 'numeric', month: 'short' }) : esc(v || ''); };
 const res = (r) => `<i class="f f-${esc(String(r || '').charAt(0).toUpperCase())}">${esc(String(r || '–').charAt(0))}</i>`;
 
 function table(headers, rows, cls = '') {
@@ -110,7 +111,7 @@ export function dossierSections(e, d, hc, ac) {
       return `<div><small>${esc(side(s)[0])}</small>${a ? `<b>${a.r}</b><em>ATLAS rating · ${a.n} result${a.n === 1 ? '' : 's'}${a.n < 10 ? ' (too few to use yet)' : ''}</em>` : '<b>—</b><em>no results on record</em>'}${rest != null ? `<em>${rest === 0 ? 'played today' : rest === 1 ? 'played yesterday (back-to-back)' : `${rest} days' rest`}</em>` : ''}${form?.length ? `<em>form ${form.map(res).join('')}</em>` : ''}</div>`;
     };
     const meets = (e.h2hRecent || []).map((m) => `<tr><td>${dt(m.t)}</td><td class="${m.w === 'home' ? 'win' : ''}">${esc(m.h)}</td><td class="num">${m.hs != null ? `${esc(m.hs)} – ${esc(m.as)}` : esc(m.w === 'draw' ? 'draw' : '')}</td><td class="${m.w === 'away' ? 'win' : ''}">${esc(m.a)}</td></tr>`);
-    S.push({ id: 'history', label: 'Results history', html: `<div class="panel reveal"><h3 class="ph">From ATLAS's results history <small>every finished game ATLAS has seen, last 180 days${e.atlas?.surface ? ` · ratings blended with the ${esc(e.atlas.surface)}-court rating` : ''}</small></h3>
+    S.push({ id: 'atlas-history', label: 'Results history', html: `<div class="panel reveal"><h3 class="ph">From ATLAS's results history <small>every finished game ATLAS has seen, last 180 days${e.atlas?.surface ? ` · ratings blended with the ${esc(e.atlas.surface)}-court rating` : ''}</small></h3>
       <div class="pl-nums hist-nums">${cell('home')}${cell('away')}</div>
       ${meets.length ? `<h4>Last meetings</h4>${table(['Date', 'Home', 'Score', 'Away'], meets, 'tight')}` : ''}</div>` });
   }
@@ -134,7 +135,7 @@ export function dossierSections(e, d, hc, ac) {
     S.push({ id: 'intel', label: 'Match intel', html: '<div class="panel"><p class="muted loading-dots">Loading injuries, team stats, form, head-to-head and standings</p></div>' });
     return S;
   }
-  if (d?.error) { S.push({ id: 'intel', label: 'Match intel', html: `<div class="panel"><p class="muted">Detail feed unavailable right now (${esc(d.error)}).</p></div>` }); return S; }
+  if (d?.error) return S; // the detail feed did not answer: nothing to show, rather than an error
   if (!d || d.native) return S;
 
   // Injuries / absences: ESPN's injury report where it has one, FotMob's unavailable list for soccer.
