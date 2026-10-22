@@ -338,3 +338,16 @@ test('theme: a colour and a background of the visitor\'s own, kept after a reloa
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('best bets: the minimum odds chosen in Filters apply to the list', async () => {
+  const { page, ctx, errors } = await open('#/');
+  await page.waitForSelector('.dash-short .mini');
+  await page.click('.sl-filters > summary');
+  await page.click('.sl-filters [data-pref="minOdds"][data-value="1.5"]');
+  await page.waitForFunction(() => /odds 1\.50\+/.test(document.querySelector('.sl-filters > summary')?.textContent || ''));
+  const odds = await page.$$eval('.dash-short .mini .leg, .dash-short .mini > button', (bs) => bs.map((b) => Number(b.textContent.trim())).filter(Number.isFinite));
+  assert.ok(odds.every((o) => o >= 1.5), JSON.stringify(odds));
+  assert.equal(await page.$('.dash-short .pill-status'), null, 'no status tags on cards');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

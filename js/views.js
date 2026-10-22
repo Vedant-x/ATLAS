@@ -26,7 +26,6 @@ import { propRow, allProps } from './propsview.js';
 import { coherentBets } from './picks.js';
 import { mergeEvent } from './merge.js';
 import { casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips, changesPanel, orderBets, orderChips, orderLabel } from './research.js';
-import { readiness, priceTime } from './readiness.js';
 import { lastVisit } from './timeline.js';
 import { whyLine } from './why.js';
 import { canonStats, standingsTable } from './standings.js';
@@ -401,7 +400,9 @@ function dashboard(ev, live) {
   const hrs = researchPrefs().shortHours;
   // One list, no modes: Best bets, the likeliest winners across every sport at a price no shorter than
   // the market's fair odds (best price across bookmakers where the Odds API gives several), 1.20 to 2.50.
-  const short = orderBets(bestBets(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration(), limit: 10 }));
+  // The visitor's minimum odds apply here as in the assistant (same list, same rule, then the first 10).
+  const minOdds = prefs.get().minOdds || 1;
+  const short = orderBets(bestBets(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration(), limit: 2000 }).filter((b) => b.odds >= minOdds).slice(0, 10));
   const empty = `No best bet in the next ${hrs} hours: no ${Math.round(BEST.min * 100)}%+ pick at odds ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)} is priced at or above the market's fair odds.${hrs < 48 ? ' Try a longer window in Filters.' : ''}`;
   const rec = recordLine(trackStats()?.best);
   // Every panel by name, shown in the visitor's saved order with hidden ones left out (Customise).
@@ -409,7 +410,7 @@ function dashboard(ev, live) {
     potd: () => potdPanel(pool),
     // Minimal: one folded "Filters" control (window, order, odds and sports), one record line.
     shortlist: () => `<div class="panel dash-short reveal"><h2 class="ph">Best bets <small>likeliest winners at a fair price or better</small></h2>
-      <details class="sl-filters"${filtersOpen ? ' open' : ''}><summary>${ico('filter')} Next ${hrs}h · ${esc(orderLabel())}</summary>${windowChips('shours', hrs)}${orderChips()}${prefsBar()}</details>
+      <details class="sl-filters"${filtersOpen ? ' open' : ''}><summary>${ico('filter')} Next ${hrs}h · ${esc(orderLabel())}${minOdds > 1 ? ` · odds ${minOdds.toFixed(2)}+` : ''}</summary>${windowChips('shours', hrs)}${orderChips()}${prefsBar()}</details>
       ${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}
       <div class="minilist">${S.loading ? skelRows(4) : short.map((b) => miniPick(b)).join('') || `<p class="muted">${empty}</p>`}</div></div>`,
     live: () => `<div class="panel dash-live reveal"><h2 class="ph">Live now <small>${S.loading ? '' : live.length}</small></h2>
@@ -576,19 +577,6 @@ function bestBetsPanel(e, a) {
     }).join('')}</div></section>`;
 }
 
-// A two-word status beside a pick when an input it depends on is still pending (details on hover or
-// tap); nothing when every input its sport needs is in.
-const PENDING = { price: 'Price updating', goalies: 'Goalies pending', lineups: 'Lineup pending', lineup: 'Lineup pending', starters: 'Starters pending', pitchers: 'Starters pending', injuries: 'Injury news pending', toss: 'Toss pending' };
-function statusPill(e) {
-  if (e.live) return '';
-  const r = readiness(e, { priceAt: priceTime(e) });
-  if (r.state === 'ready' || (r.state === 'limited' && !e.stale)) return '';
-  const miss = r.checks.find((c) => c.ok === false);
-  const word = e.stale ? 'Feed delayed' : miss ? PENDING[miss.key] || `${miss.label} pending` : r.state === 'limited' ? 'Limited data' : 'Checking';
-  const why = r.checks.filter((c) => c.ok !== true).map((c) => `${c.label}: ${c.note}`).join('\n');
-  return `<small class="pill-status" tabindex="0" title="${esc(why)}">${esc(word)}</small>`;
-}
-
 // A pick, minimal: the pick, the match and when; then ATLAS's chance, what the price needs and the
 // return, on one line. The reasons, the best bookmaker and the market's own chance are on hover / tap
 // (title) and on the match page.
@@ -599,7 +587,7 @@ function miniPick(b) {
   const edge = `${b.ev >= 0 ? '+' : ''}${(b.ev * 100).toFixed(1)}%`;
   const tip = [whyLine(b) && `Why: ${whyLine(b)}`, b.fair != null && `Market (no margin): ${pc(b.fair, 0)}`, b.book && `Best price: ${b.book}`, `Chance range ${pc(rec.uncertaintyRange[0], 0)}–${pc(rec.uncertaintyRange[1], 0)}`, rec.settlementRules].filter(Boolean).join('\n');
   return `<div class="mini reveal" data-rec="${esc(rec.recommendationId)}" title="${esc(tip)}"><span class="mini-ico">${s.icon}</span>
-    <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.event.home)} v ${esc(b.event.away)} · ${b.event.live ? '<span class="live">LIVE</span>' : esc(fmtTime(b.event.start, tzZone(), 'short'))}</small>${statusPill(b.event)}</a>
+    <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.event.home)} v ${esc(b.event.away)} · ${b.event.live ? '<span class="live">LIVE</span>' : esc(fmtTime(b.event.start, tzZone(), 'short'))}</small></a>
     <div class="mini-nums"><b title="ATLAS chance">${pc(b.p, 0)}</b><small><span class="mm-need" title="The chance this price needs to break even">needs ${pc(1 / b.odds, 0)} · </span><span class="${b.ev >= 0 ? 'pos' : 'neg'}" title="Estimated return per unit staked${b.ev < 0 ? ': below break-even at this price' : ''}">${edge}</span></small></div>
     ${legButton(leg, odd(b.odds))}</div>`;
 }
