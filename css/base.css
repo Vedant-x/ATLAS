@@ -58,8 +58,8 @@ body.has-cursor, body.has-cursor a, body.has-cursor button { cursor: none; }
 .cur-ring { width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 50%; border: 1px solid rgba(255,255,255,.7); display: grid; place-items: center; transition: width .35s var(--ease), height .35s var(--ease), margin .35s var(--ease), background .3s; }
 .cur-ring span { font: 700 9px var(--mono); letter-spacing: 1.5px; color: #000; opacity: 0; transition: opacity .2s; }
 .cur-ring.hover { width: 64px; height: 64px; margin: -32px 0 0 -32px; background: rgba(255,255,255,.12); }
-.cur-ring.label { width: 84px; height: 84px; margin: -42px 0 0 -42px; background: #fff; mix-blend-mode: normal; }
-.cur-ring.label span { opacity: 1; }
+/* A labelled target gets the same see-through ring as any link: a solid disc hid what was under it. */
+.cur-ring.label { width: 64px; height: 64px; margin: -32px 0 0 -32px; background: rgba(255,255,255,.12); }
 .cur-ring.down { width: 28px; height: 28px; margin: -14px 0 0 -14px; }
 
 /* ---------- wipe ---------- */
