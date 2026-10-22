@@ -7,8 +7,8 @@ import { liveCenterHtml } from './livecenter.js';
 import { f1View, f1Teaser } from './f1view.js';
 import { fieldView, fieldsTeaser } from './fieldview.js';
 import { applyModel } from './intel.js';
-import { analyse, winProbs, kelly } from './models.js';
-import { probBar, gauge, heatmap, distBars, formStrip, outcomeBars, valueTrack, pc, odd } from './charts.js';
+import { analyse, winProbs } from './models.js';
+import { probBar, gauge, heatmap, distBars, formStrip, outcomeBars, pc, odd } from './charts.js';
 import { split } from './ui.js';
 import { slip } from './slip.js';
 import { CATALOG, sportById, leagueKey, leagueFromKey } from './catalog.js';
@@ -18,8 +18,9 @@ import { fetchAll, LEAGUES, leagueStatus } from './espn.js';
 import { prefs, prefEvents } from './prefs.js';
 import { liveWin } from './live.js';
 import { watch } from './alerts.js';
+import { finalView } from './finalview.js';
 import { trackCard, trackStrip, trackStats, trackCalibration, recordLine, ensureTrack, officialParlay } from './trackview.js';
-import { zone as tzZone, tzOf, abbr as tzAbbr, fmt as fmtTime, ZONES } from './tz.js';
+import { zone as tzZone, tzOf, abbr as tzAbbr, fmt as fmtTime, fmtDate } from './tz.js';
 import { bestBets, BEST, POTD_ZONES, potdDay, parlayOfDay, recommendationFor } from './track.js';
 import { propLabel, propMarket } from './props.js';
 import { propRow, allProps } from './propsview.js';
@@ -92,7 +93,7 @@ export function countdown(ms) {
   if (!Number.isFinite(d)) return 'TBC';
   if (d <= 0) return 'Starting';
   const h = Math.floor(d / 3.6e6), m = Math.floor((d % 3.6e6) / 6e4), s = Math.floor((d % 6e4) / 1000);
-  if (h >= 48) return new Date(ms).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  if (h >= 48) return fmtTime(ms, tzZone(), 'short');
   return `${h ? h + 'h ' : ''}${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
 }
 const confBadge = (c) => `<span class="conf conf-${c}" title="${c === 'high' ? 'From bookmaker prices' : c === 'medium' ? 'ATLAS model from records/form' : 'Baseline only: little data'}">${c === 'high' ? 'MARKET' : c === 'medium' ? 'MODEL' : 'BASELINE'}</span>`;
@@ -179,47 +180,24 @@ function eventRow(e, compact = false) {
 
 
 // ---------- views ----------
-// A hero number: a placeholder bar until the first snapshot lands, so "0" never stands in for "not loaded yet".
-const statNum = (n, cls = '') => (S.loading ? `<b class="skel-num ${cls}" aria-label="loading"></b>` : `<b class="${cls}" data-count-to="${n}">0</b>`);
 const skelRows = (n) => `<div class="skel-list" aria-busy="true" aria-label="Loading">${'<i class="skel-row"></i>'.repeat(n)}</div>`;
 
 export const views = {
   home() {
     const ev = S.events;
     const live = ev.filter((e) => e.live);
-    const upcoming = [...ev].filter((e) => !e.live && e.sport !== 'efootball').sort((a, b) => a.start - b.start); // eSoccer runs round the clock: it has its own page
-    const day = todayEvents(prefFilter(ev)); // next 12 hours
-    const ts = trackStats();
-    const modelled = ev.reduce((n, e) => n + (e.markets?.length ? 1 : 0), 0);
-    const counts = Object.fromEntries(SPORTS.map((s) => [s.id, ev.filter((e) => e.sport === s.id)]));
+    // Minimal: the date, the 30-day record, then the dashboard. Sports, multipliers and fixtures have
+    // their own pages (Research, Build a slip).
     return {
       mode: 'home', accent: '#d2ff00', title: 'Dashboard',
       html: `
       <section class="hero compact today">
         <p class="kicker reveal">TODAY · ${esc(new Date().toLocaleDateString('en-IN', { timeZone: tzOf(tzZone()), weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase())} · ${esc(tzAbbr(tzZone()))}</p>
         <h1>${split('EVERY SPORT. EVERY EDGE.')}</h1>
-        <div class="stats reveal${S.loading ? ' is-loading' : ''}">
-          <div>${statNum(ev.length)}<span>events tracked</span></div>
-          <div>${statNum(modelled)}<span>with prices${S.loading ? '' : ` (${ev.length ? Math.round((modelled / ev.length) * 100) : 0}%)`}</span></div>
-          <div>${statNum(live.length, 'hot')}<span>in play</span></div>
-        </div>
         ${trackStrip(() => S.refresh?.())}
       </section>
       ${notice()}
-      ${dashboard(ev, live)}
-      <section class="sec-block"><h2 class="sec reveal">Sports</h2>
-        <div class="grid sports">${SPORTS.map((s) => {
-          const list = counts[s.id] || [];
-          const next = list.filter((e) => !e.live).sort((a, b) => a.start - b.start)[0];
-          return `<a class="sport tilt reveal" href="#/sport/${s.id}" style="--c:${s.color}" data-cursor="ENTER"><span class="ico">${s.icon}</span><b>${s.name}</b>
-            <small>${s.id === 'f1' ? f1Teaser() : FIELD_SPORTS.has(s.id) ? fieldsTeaser(s.id) : `${list.length} events${list.filter((e) => e.live).length ? ` · <span class="live">${list.filter((e) => e.live).length} live</span>` : ''}`}</small>
-            ${next ? `<small class="next">Next: ${esc(next.home)} v ${esc(next.away)}</small>` : ''}</a>`;
-        }).join('')}</div></section>
-      <section class="sec-block"><h2 class="sec reveal">Multipliers</h2>
-        <div class="grid xs">${[2, 3, 4, 5].map((x) => { const r = ts?.byTarget?.find((t) => t.target === x); return `<a class="xcard tilt reveal" href="#/x/${x}" data-cursor="BUILD"><b>${x}x</b><small>5 slips<br>break-even ${pc(1 / x, 0)}</small>${r && r.won + r.lost ? `<small class="xrec">record ${r.won}–${r.lost} · ${pc(r.hitRate, 0)}</small>` : ''}</a>`; }).join('')}
-        <a class="xcard mega tilt reveal" href="#/mega" data-cursor="DARE"><b>100x+</b><small>Mega accumulators from bankers</small></a>
-        <a class="xcard any tilt reveal" href="#/target" data-cursor="BUILD"><b>Any x</b><small>Pick your own multiplier</small></a></div></section>
-      <section class="sec-block"><h2 class="sec reveal">Up next</h2><div class="list">${upcoming.slice(0, 14).map(eventRow).join('')}</div></section>`,
+      ${dashboard(ev, live)}`,
     };
   },
 
@@ -301,7 +279,7 @@ export const views = {
     const sp = sportById(l.sport);
     const list = S.events.filter((e) => e.leaguePath === l.path).sort((a, b) => (b.live - a.live) || a.start - b.start);
     const days = new Map();
-    list.forEach((e) => { const d = e.live ? 'Live now' : new Date(e.start).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' }); if (!days.has(d)) days.set(d, []); days.get(d).push(e); });
+    list.forEach((e) => { const d = e.live ? 'Live now' : fmtDate(e.start, 'day'); if (!days.has(d)) days.set(d, []); days.get(d).push(e); });
     return {
       mode: 'sport', accent: sp.color, title: l.name, sceneOpts: { sport: l.sport },
       after: () => { loadStandings(l); liveLoad([l.path]); },
@@ -314,7 +292,11 @@ export const views = {
 
   match([id]) {
     const e = S.events.find((x) => x.id === id);
-    if (!e) return views.notfound();
+    if (!e) {
+      // Gone from the feeds: a watched match has ended, so show what happened (finalview.js).
+      const m = watch.meta(id);
+      return m?.home && m.start < Date.now() ? finalView(id, m, { sportOf, refresh: () => S.refresh?.() }) : views.notfound();
+    }
     const s = sportOf(e.sport);
     const a = analysisFor(e);
     const hc = safeColor(e.colors?.home, s.color), ac = safeColor(e.colors?.away, AWAY_COLOR === hc ? '#4fd1ff' : AWAY_COLOR);
@@ -326,15 +308,15 @@ export const views = {
       return `<div class="side reveal">${gauge(p, color, label)}
         <dl><dt>Fair odds</dt><dd>${odd(1 / p)}</dd>
         <dt>${esc(e.bookmaker?.split(' (')[0] || 'Book')} odds</dt><dd>${bookOdds ? odd(bookOdds) : '<span class="muted">none</span>'}</dd>
-        <dt title="Estimated return per unit staked">Return</dt><dd class="${ev == null ? '' : ev >= 0 ? 'pos' : 'neg'}">${ev == null ? '—' : `${(ev * 100).toFixed(1)}%`}</dd>
-        <dt>Kelly ¼</dt><dd>${ev && ev > 0 ? pc(kelly(p, bookOdds) / 4, 1) : '—'}</dd></dl></div>`;
+        <dt title="Estimated return per unit staked">Return</dt><dd class="${ev == null ? '' : ev >= 0 ? 'pos' : 'neg'}">${ev == null ? '—' : `${(ev * 100).toFixed(1)}%`}</dd></dl></div>`;
     };
-    const paramChips = Object.entries(a.params || {}).filter(([, v]) => typeof v === 'number').map(([k, v]) => `<div><small>${esc(paramLabel(k, a.params.unit))}</small><b>${k === 'setWin' ? pc(v) : Number.isInteger(v) ? v : v.toFixed(2)}</b></div>`).join('');
     const d = detailFor(e.id);
     const dos = dossierSections(e, d, hc, ac);
     const rr = researchRow(e);
-    const sections = [['overview', 'Overview'], ['case', 'The case'], ['best', 'Best bets'], ...(e.props?.length ? [['props', 'Player props']] : []), ['history', 'Timeline'], ...dos.map((x) => [x.id, x.label]), ['model', a.kind === 'normal' ? 'Margin model' : a.kind === 'tennis' ? (e.sport === 'esports' ? 'Map model' : 'Set model') : 'Score model'], ['markets', `All markets (${a.marketCount})`], ['book', 'Bookmaker prices'], ['form', 'Records'], ['calc', 'Calculator'], ['notes', 'Model notes']];
-    if (a.kind === 'binary') sections.splice(sections.findIndex((x) => x[0] === 'model'), 1);
+    const timeline = historyPanel(e); // left out until something has changed
+    // In page order. The working detail (every market, the model, the bookmaker table, the calculator
+    // and the notes) is folded at the foot of the page: one tap opens it.
+    const sections = [['overview', 'Overview'], ['case', 'The case'], ['best', 'Best bets'], ...(e.props?.length ? [['props', 'Player props']] : []), ...(timeline ? [['history', 'Timeline']] : []), ...dos.map((x) => [x.id, x.label]), ['form', 'Records'], ['markets', `All markets (${a.marketCount})`], ...(a.kind === 'binary' ? [] : [['model', 'Model']]), ['book', 'Bookmaker prices'], ['calc', 'Calculator'], ['notes', 'Model notes']];
     return {
       mode: 'match', accent: hc, title: `${e.home} v ${e.away}`,
       sceneOpts: { home: hc, away: ac, pHome: w.home, pAway: w.away, sport: e.sport },
@@ -363,24 +345,21 @@ export const views = {
         <h2 class="ph">${e.live ? 'Pre-match ' : ''}Estimated win probability <small>${esc(a.basis)}</small></h2>
         ${probBar([{ label: e.home, p: w.home, color: hc }, ...(twoWay ? [] : [{ label: 'Draw', p: w.draw, color: DRAW_COLOR }]), { label: e.away, p: w.away, color: ac }])}
         <div class="sides ${twoWay ? 'two' : 'three'}">${side(e.home, w.home, hc, book(e.home))}${twoWay ? '' : side('Draw', w.draw, DRAW_COLOR, book('Draw'))}${side(e.away, w.away, ac, book(e.away))}</div>
-        ${paramChips ? `<div class="params">${paramChips}<div><small>Markets priced</small><b>${a.marketCount}</b></div></div>` : ''}
       </section>
       ${casePanel(rr)}
       ${bestBetsPanel(e, a)}
       ${propsPanel(e)}
-      ${historyPanel(e)}
+      ${timeline}
       ${dos.map((x) => `<section id="sec-${x.id}"><h2 class="sec reveal">${esc(x.label)}</h2>${x.html}</section>`).join('')}
-      ${a.kind === 'binary' ? '' : `<section class="panel reveal" id="sec-model">${modelPanel(e, a, hc, ac)}</section>`}
-      <section id="sec-markets"><h2 class="sec reveal">Every market <small>ATLAS fair prices · tap to add</small></h2>
-        <div class="mgroups">${a.groups.map((g) => `<div class="mgroup panel reveal"><h3>${esc(g.group)}</h3>${g.markets.map((m) => `
+      <section class="grid two" id="sec-form">${formPanel(e, hc, ac)}</section>
+      ${fold('markets', `Every market <small>${a.marketCount} · ATLAS fair prices</small>`, `<div class="mgroups">${a.groups.map((g) => `<div class="mgroup"><h3>${esc(g.group)}</h3>${g.markets.map((m) => `
           <div class="mk"><h4>${esc(m.name)}</h4>${m.outcomes.map((o) => `<div class="mo">
             <span class="mo-n">${esc(o.name)}</span><div class="meter"><i class="grow" style="--w:${(o.p * 100).toFixed(1)}%"></i></div>
-            <span class="mo-p">${pc(o.p)}</span>${legButton(fairLeg(e, m, o), odd(o.fair))}</div>`).join('')}</div>`).join('')}</div>`).join('')}</div>
-      </section>
-      <section class="panel reveal" id="sec-book">${bookPanel(e)}</section>
-      <section class="grid two" id="sec-form">${formPanel(e, hc, ac)}</section>
-      <section class="panel reveal" id="sec-calc">${calcPanel(e, w, book)}</section>
-      <section class="panel reveal" id="sec-notes"><h2 class="ph">Model notes</h2>${notes(e, a)}</section>`,
+            <span class="mo-p">${pc(o.p)}</span>${legButton(fairLeg(e, m, o), odd(o.fair))}</div>`).join('')}</div>`).join('')}</div>`).join('')}</div>`)}
+      ${a.kind === 'binary' ? '' : fold('model', ...modelPanel(e, a, hc, ac))}
+      ${fold('book', ...bookPanel(e))}
+      ${fold('calc', 'Stake calculator <small>return and profit at your stake</small>', calcPanel(e, w, book))}
+      ${fold('notes', 'How the numbers are made', notes(e, a))}`,
     };
   },
 
@@ -433,8 +412,9 @@ export const setFiltersOpen = (v) => { filtersOpen = Boolean(v); };
 // names fall back to the default order, so a new panel always appears.
 const HOME_PANELS = [['potd', 'Parlay of the day'], ['shortlist', 'Best bets'], ['live', 'Live now'], ['every', 'Every sport'], ['changes', 'What changed'], ['record', 'Track record'], ['health', 'Source health']];
 const LAYOUT_KEY = 'atlas-home-layout';
-// Minimal by default: the source-health and what-changed panels start hidden (Customise shows them).
-const DEFAULT_HIDDEN = ['health', 'changes'];
+// Minimal by default: source health, what changed and the full record card start hidden (the record
+// is the strip at the top); Customise shows them.
+const DEFAULT_HIDDEN = ['health', 'changes', 'record'];
 // Panel widths on wide screens (phones always show one column): auto is the panel's own width.
 const SIZES = { third: 'Third', half: 'Half', full: 'Full' };
 const SIZE_CYCLE = ['auto', 'third', 'half', 'full'];
@@ -464,7 +444,7 @@ function layoutPanel() {
   const saved = readLayout(), known = HOME_PANELS.map(([k]) => k);
   const order = [...(saved.order || []).filter((k) => known.includes(k)), ...known.filter((k) => !(saved.order || []).includes(k))];
   const name = Object.fromEntries(HOME_PANELS);
-  return `<details class="panel dash-layout reveal"${layoutOpen ? ' open' : ''}><summary>Customise this page</summary><ul class="lay-list">${order.map((k, i) => { const off = (saved.hidden ?? DEFAULT_HIDDEN).includes(k); return `<li class="${off ? 'off' : ''}"><span>${name[k]}</span>
+  return `<details class="dash-layout reveal"${layoutOpen ? ' open' : ''}><summary>${ico('filter')} Customise</summary><ul class="lay-list">${order.map((k, i) => { const off = (saved.hidden ?? DEFAULT_HIDDEN).includes(k); return `<li class="${off ? 'off' : ''}"><span>${name[k]}</span>
     <button class="chip" data-lay="up" data-lay-key="${k}" aria-label="Move ${name[k]} up"${i === 0 ? ' disabled' : ''}>↑</button><button class="chip" data-lay="down" data-lay-key="${k}" aria-label="Move ${name[k]} down"${i === order.length - 1 ? ' disabled' : ''}>↓</button>
     <button class="chip" data-lay="size" data-lay-key="${k}" aria-label="Width of ${name[k]}: ${SIZES[saved.size?.[k]] || 'Auto'} (tap to change)">${SIZES[saved.size?.[k]] || 'Auto'}</button>
     <button class="chip ${off ? '' : 'on'}" data-lay="toggle" data-lay-key="${k}" aria-pressed="${!off}">${off ? 'Hidden' : 'Shown'}</button></li>`; }).join('')}</ul><button class="btn-ghost" data-lay="reset" data-lay-key="">Reset layout</button></details>`;
@@ -494,17 +474,19 @@ function potdPanel(ev) {
   const body = legs.length ? `${done ? `<p class="potd-result res-${saved.status}">${saved.status === 'won' ? `Won · paid ${odd(saved.settledOdds ?? odds)}` : saved.status === 'lost' ? `Lost · ${esc(legs.filter((l) => l.status === 'lost').map((l) => l.pick).join(', '))}` : 'Void'}</p>` : ''}
     <ul class="potd-legs">${legs.map((l) => { const e = byId.get(l.eventId); return `<li class="leg-${esc(l.status || 'pending')}"><a href="#/match/${esc(l.eventId)}"><b>${esc(l.pick)}</b><small>${esc(l.market)} · ${esc(l.home || '')} v ${esc(l.away || '')} · ${esc(fmtTime(l.start, tzZone(), 'short'))}</small></a>
       <span class="leg-side">${resultBadge(l.status, e?.live && e)}<span class="leg-p" title="ATLAS chance for this leg">${pc(l.p, 0)}</span>${legButton({ key: `${l.eventId}|${l.market}|${l.pick}`, eventId: l.eventId, sport: l.sport, match: `${l.home} vs ${l.away}`, market: l.market, pick: l.pick, odds: l.odds, p: l.p }, odd(l.odds))}</span></li>`; }).join('')}</ul>
-    <div class="potd-sum"><span><small>Total odds</small><b>${odd(odds)}</b></span><span><small>ATLAS chance</small><b>${pc(p, 0)}</b></span><span><small>Break-even</small><b>${pc(1 / odds, 0)}</b></span><span><small>Next parlay in</small><b>${nextIn(day)}</b></span></div>
-    <p class="muted potd-note">The likeliest ${legs.length}-leg combination at 1.70 to 2.00 today. At ${odd(odds)} the bookmakers rate a slip like this about ${pc(1 / odds, 0)}: more, shorter legs do not change that. ${(saved || live)?.fairOnly ? 'Every leg is at its fair odds or better.' : 'Some legs are below their fair odds today.'}</p>`
-    : `<p class="muted">${S.loading ? 'Loading…' : `No parlay yet for this day: not enough strong legs before 12:00 ${tzAbbr(rz)}. Next one in ${nextIn(day)}.`}</p>`;
+    <div class="potd-sum"><span><small>Total odds</small><b>${odd(odds)}</b></span><span><small>ATLAS chance</small><b>${pc(p, 0)}</b></span><span title="The chance the bookmakers' price gives a slip at these odds"><small>Break-even</small><b>${pc(1 / odds, 0)}</b></span><span><small>Next parlay in</small><b>${nextIn(day)}</b></span></div>`
+    : `<p class="muted">${S.loading ? 'Loading…' : `None today: not enough strong legs. Next one in ${nextIn(day)}.`}</p>`;
   return `<div class="panel dash-potd reveal"><h2 class="ph">Parlay of the day <small>${legs.length ? `${legs.length} legs · ` : ''}${esc(dayLabel(day))}${saved ? '' : legs.length ? ' · not saved yet' : ''}</small>${zoneLink()}</h2>${body}${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}</div>`;
 }
 
-// The match page's menu: five groups, each jumping to its first section on this page (sections a
+// A folded section: its title is the row to tap; the menu opens it when it jumps there (main.js).
+const fold = (id, title, html) => `<details class="fold reveal" id="sec-${id}"><summary><h2 class="ph">${title}</h2></summary>${html}</details>`;
+
+// The match page's menu: four groups, each jumping to its first section on this page (sections a
 // sport doesn't have are left out, and a group with none is not shown).
 function matchGroups(sections, dos) {
   const has = new Set(sections.map(([k]) => k)), first = (ids) => sections.find(([k]) => ids.includes(k))?.[0];
-  const groups = [['Overview', ['overview', 'case', 'best']], ['Markets', ['markets', 'book', 'props', 'calc']], ['Team & player evidence', [...dos.map((x) => x.id), 'form', 'model']], ['News & changes', ['history']], ['History & sources', ['notes']]];
+  const groups = [['Overview', ['overview', 'case', 'best']], ['Evidence', [...dos.map((x) => x.id), 'form']], ['Changes', ['history']], ['Markets', ['props', 'markets', 'book', 'calc']]];
   return groups.map(([l, ids]) => [first(ids.filter((k) => has.has(k))), l]).filter(([k]) => k);
 }
 
@@ -547,7 +529,7 @@ function sourcesLine(e) {
     d?.ok && !d.native ? ['ESPN summary', d.fetchedAt, 'stats, injuries, form'] : null,
   ].filter(Boolean);
   const down = e.stale ? `<span class="stale"><i></i>Feed down: not updated since ${ago(e.staleSince || e.fetchedAt)}</span>` : '';
-  return `<p class="sources reveal">${down}${parts.map(([n, t, what]) => `<span class="${freshClass(t)}"><i></i>${esc(what)}: ${esc(n)} · ${ago(t)}</span>`).join('')}</p>`;
+  return `<p class="sources reveal">${down}${parts.map(([n, t, what]) => `<span class="${freshClass(t)}"><i></i>${esc(what)}: ${esc(n)}${t ? ` · ${ago(t)}` : ''}</span>`).join('')}</p>`;
 }
 
 export const whyTag = (b) => { const w = whyLine(b); return w ? `<small class="why"><b>Why:</b> ${esc(w)}</small>` : ''; };
@@ -561,14 +543,14 @@ function propsPanel(e) {
   if (!e.props?.length) return '';
   const rows = allProps([e], Date.now(), { any: true }).map((p) => p.x).sort((a, b) => b.p - a.p).slice(0, 16);
   if (!rows.length) return '';
-  return `<section class="sec-block" id="sec-props"><h2 class="sec reveal">Player props <small>${e.live ? 'pre-match prices · ' : ''}DraftKings lines · ATLAS chance vs market · tap a price to add · <a href="#/props">all props</a></small></h2>
+  return `<section class="sec-block" id="sec-props"><h2 class="sec reveal">Player props <small>${e.live ? 'pre-match prices · ' : ''}DraftKings lines · <a href="#/props">all props</a></small></h2>
     <div class="panel reveal props-list2">${rows.map((x) => propRow(e, x)).join('')}</div></section>`;
 }
 
 function bestBetsPanel(e, a) {
   const list = matchBestBets(e, a);
   if (!list.length) return '';
-  return `<section class="sec-block" id="sec-best"><h2 class="sec reveal">Best bets for this match <small>${e.live ? 'pre-match estimates · ' : ''}one consistent view: same side, one goals direction · tap to add</small></h2>
+  return `<section class="sec-block" id="sec-best"><h2 class="sec reveal">Best bets for this match ${e.live ? '<small>pre-match estimates</small>' : ''}</h2>
     <div class="best-bets">${list.map((b) => {
       const leg = b.book ? { key: `${e.id}|${b.market}|${b.pick}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.q }
         : { key: `${e.id}|fair|${b.market}|${b.pick}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: b.market, pick: b.pick, odds: +b.odds.toFixed(2), p: b.q, derived: true };
@@ -592,35 +574,36 @@ function miniPick(b) {
     ${legButton(leg, odd(b.odds))}</div>`;
 }
 
-const paramLabel = (k, unit) => ({ lambdaHome: `Expected ${unit} · home`, lambdaAway: `Expected ${unit} · away`, total: `Expected total ${unit || 'points'}`, margin: 'Expected margin (home)', sigma: 'Margin spread σ', homePoints: 'Home points', awayPoints: 'Away points', setWin: 'Home set-win chance', bestOf: 'Best of' }[k] || k);
-
+// [title, body] for the folded model section.
 function modelPanel(e, a, hc, ac) {
   if (a.kind === 'poisson') {
-    return `<h2 class="ph">Score model <small>Poisson fit to the price · expected ${a.params.unit}: ${a.params.lambdaHome.toFixed(2)} – ${a.params.lambdaAway.toFixed(2)}</small></h2>
-      <div class="model-grid"><div>${heatmap(a.grid, e.home, e.away, hc)}</div>
+    return [`Score model <small>expected ${a.params.unit} ${a.params.lambdaHome.toFixed(2)} – ${a.params.lambdaAway.toFixed(2)}</small>`,
+      `<div class="model-grid"><div>${heatmap(a.grid, e.home, e.away, hc)}</div>
       <div><h3>Most likely scores</h3><ol class="topscores">${a.grid.top.map((c) => `<li><b>${c.h}–${c.a}</b><div class="meter"><i class="grow" style="--w:${(c.p / a.grid.top[0].p * 100).toFixed(0)}%"></i></div><span>${pc(c.p)}</span><em>${odd(1 / c.p)}</em></li>`).join('')}</ol>
-      ${outcomeBars(a.groups.find((g) => g.group.startsWith('Exact')).markets[0].outcomes, hc)}<p class="cap">Exact total ${a.params.unit}</p></div></div>`;
+      ${outcomeBars(a.groups.find((g) => g.group.startsWith('Exact')).markets[0].outcomes, hc)}<p class="cap">Exact total ${a.params.unit}</p></div></div>`];
   }
   if (a.kind === 'normal') {
-    return `<h2 class="ph">Margin model <small>expected margin ${a.params.margin > 0 ? e.home : e.away} by ${Math.abs(a.params.margin).toFixed(1)} · total ${a.params.total.toFixed(1)}</small></h2>
-      ${distBars(a.dist, hc, ac)}
-      <div class="params"><div><small>${esc(e.home)} projected</small><b>${a.params.homePoints.toFixed(1)}</b></div><div><small>${esc(e.away)} projected</small><b>${a.params.awayPoints.toFixed(1)}</b></div><div><small>Margin σ</small><b>${a.params.sigma}</b></div></div>`;
+    return [`Margin model <small>${esc(a.params.margin > 0 ? e.home : e.away)} by ${Math.abs(a.params.margin).toFixed(1)} · total ${a.params.total.toFixed(1)}</small>`,
+      `${distBars(a.dist, hc, ac)}
+      <div class="params"><div><small>${esc(e.home)} projected</small><b>${a.params.homePoints.toFixed(1)}</b></div><div><small>${esc(e.away)} projected</small><b>${a.params.awayPoints.toFixed(1)}</b></div></div>`];
   }
   if (a.kind === 'tennis') {
-    return `<h2 class="ph">Set model <small>${esc(e.home)} wins ${pc(a.params.setWin)} of sets · best of ${a.params.bestOf}</small></h2>${outcomeBars(a.groups[0].markets[0].outcomes, hc)}`;
+    return [`${e.sport === 'esports' ? 'Map' : 'Set'} model <small>${esc(e.home)} wins ${pc(a.params.setWin)} of ${e.sport === 'esports' ? 'maps' : 'sets'} · best of ${a.params.bestOf}</small>`, outcomeBars(a.groups[0].markets[0].outcomes, hc)];
   }
-  return '';
+  return ['Model', ''];
 }
 
+// [title, body] for the folded bookmaker section: each price, the market's own chance (margin
+// removed), ATLAS's, and the return at that price.
 function bookPanel(e) {
-  if (!e.markets?.length) return `<h2 class="ph">Bookmaker prices</h2><p class="muted">No bookmaker has priced this event in the connected feeds. Every number above is an ATLAS model line: compare it with your bookmaker before betting.</p>`;
-  return `<h2 class="ph">Bookmaker prices <small>${esc(e.bookmaker || '')}</small></h2>
-    <div class="table-wrap"><table class="tbl"><thead><tr><th>Market</th><th>Pick</th><th>Odds</th><th>Implied</th><th>Fair</th><th>Model</th><th>Value</th><th>Edge</th><th>Kelly ¼</th><th></th></tr></thead><tbody>
+  if (!e.markets?.length) return ['Bookmaker prices <small>none</small>', '<p class="muted">No bookmaker has priced this match in the connected feeds: every number on this page is an ATLAS model line.</p>'];
+  return [`Bookmaker prices <small>${esc((e.bookmaker || '').split(' (')[0])}</small>`,
+    `<div class="table-wrap"><table class="tbl"><thead><tr><th>Market</th><th>Pick</th><th>Odds</th><th title="The bookmaker's chance with its margin removed">Market</th><th>ATLAS</th><th title="Estimated return per unit staked">Return</th><th></th></tr></thead><tbody>
     ${e.markets.map((m) => { const d = devig(m); return m.outcomes.map((o, i) => {
       const fair = d.outcomes[i].fair, p = o.model ?? fair, ev = p * o.odds - 1;
-      return `<tr><td>${i ? '' : `${esc(m.name)}<small> margin ${(d.margin * 100).toFixed(1)}%${m.consensusFrom ? ` · fair from ${esc(m.consensusFrom)}` : ''}</small>`}</td><td>${esc(o.name)}</td><td class="num">${odd(o.odds)}${o.book ? `<small>${esc(o.book)}</small>` : ''}</td><td class="num">${pc(1 / o.odds)}</td><td class="num">${pc(fair)}</td><td class="num">${o.model != null ? pc(o.model) : '—'}</td>
-        <td>${valueTrack(fair, o.model, o.odds)}</td><td class="num ${ev >= 0 ? 'pos' : 'neg'}">${(ev * 100).toFixed(1)}%</td><td class="num">${ev > 0 ? pc(kelly(p, o.odds) / 4) : '—'}</td><td>${legButton(bookLeg(e, m, o, p), '+')}</td></tr>`;
-    }).join(''); }).join('')}</tbody></table></div>`;
+      return `<tr><td>${i ? '' : esc(m.name)}</td><td>${esc(o.name)}</td><td class="num">${odd(o.odds)}${o.book ? `<small>${esc(o.book)}</small>` : ''}</td><td class="num">${pc(fair)}</td><td class="num">${o.model != null ? pc(o.model) : '—'}</td>
+        <td class="num ${ev >= 0 ? 'pos' : 'neg'}">${(ev * 100).toFixed(1)}%</td><td>${legButton(bookLeg(e, m, o, p), '+')}</td></tr>`;
+    }).join(''); }).join('')}</tbody></table></div>`];
 }
 
 function formPanel(e, hc, ac) {
@@ -633,13 +616,12 @@ function formPanel(e, hc, ac) {
     + (st.starters?.length || e.source ? `<div class="panel reveal span2"><h2 class="ph">Match facts</h2>
       ${st.starters?.length ? `<p><b>Probable starters:</b> ${st.starters.map(esc).join(' · ')}</p>` : ''}
       ${e.source ? `<p><b>Source:</b> <a href="${safeHref(e.sourceUrl)}" target="_blank" rel="noopener noreferrer">${esc(e.source)} ↗</a>${e.official ? ' · official' : ''}${e.stale ? ' · <span class="live">stale</span>' : ''}</p>` : ''}
-      <p><b>Start:</b> ${Number.isFinite(e.start) ? new Date(e.start).toLocaleString() : 'TBC'}</p></div>` : '');
+      <p><b>Start:</b> ${Number.isFinite(e.start) ? esc(ist(e.start)) : 'TBC'}</p></div>` : '');
 }
 
 function calcPanel(e, w, book) {
   const rows = [[e.home, w.home], ...(w.draw ? [['Draw', w.draw]] : []), [e.away, w.away]];
-  return `<h2 class="ph">Stake calculator <small>returns, profit and expected value at your stake</small></h2>
-    <label class="calc-in">Stake <input type="number" min="0" step="1" value="${slip.stake || 10}" data-calc></label>
+  return `<label class="calc-in">Stake <input type="number" min="0" step="1" value="${slip.stake || 10}" data-calc></label>
     <div class="table-wrap"><table class="tbl" data-calc-table><thead><tr><th>Pick</th><th>Odds used</th><th>Chance</th><th>Return</th><th>Profit</th><th>Expected value</th></tr></thead><tbody>
     ${rows.map(([n, p]) => { const o = book(n) || 1 / p; return `<tr data-o="${o}" data-p="${p}"><td>${esc(n)}${book(n) ? '' : ' <small>(fair)</small>'}</td><td class="num">${odd(o)}</td><td class="num">${pc(p)}</td><td class="num" data-ret></td><td class="num" data-pro></td><td class="num" data-ev></td></tr>`; }).join('')}
     </tbody></table></div>`;
@@ -653,7 +635,6 @@ function notes(e, a) {
     a.kind === 'tennis' ? 'Sets are treated as independent with a constant set-win chance solved from the match price. Momentum and retirements are ignored.' : '',
     e.sport === 'hockey' || e.sport === 'baseball' ? 'Winner prices include overtime/extra innings; regulation ties are split evenly when fitting.' : '',
     'Fair odds are 1 ÷ probability: the break-even price. A bookmaker price above fair odds is positive edge if the model is right.',
-    'Kelly ¼ is a quarter of the Kelly-optimal bankroll fraction; it is zero when there is no edge.',
   ].filter(Boolean);
   return `<ul class="notes">${items.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`;
 }

@@ -95,7 +95,8 @@ body.scrolled .bar { height: 52px; padding-block: 0; }
 .list > .al-kinds { margin: -4px 0 12px 16px; }
 .wl-done-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 22px 0 8px; }
 .wl-done-head .ph { margin: 0; }
-.row.wl.done { opacity: .78; }
+.row.wl.done { opacity: .92; }
+.row.wl.done u { text-decoration: none; color: var(--accent); }
 .row.wl.done .odds { display: flex; align-items: center; gap: 10px; }
 .row.wl.done .fin { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .row.wl.done .fin-score { font-size: 13px; white-space: nowrap; }
@@ -385,8 +386,12 @@ details.more-picks summary { cursor: pointer; color: var(--accent); font-weight:
 nav.top a[data-extra] { display: none; }
 
 /* Customise this page: the home panels' order and visibility. */
-.dash-layout { grid-column: 1 / -1; }
-.dash-layout summary { cursor: pointer; font-weight: 600; }
+.dash-layout { grid-column: 1 / -1; justify-self: start; }
+.dash-layout > summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font: 600 12px var(--sans); color: var(--muted); border: 1px solid var(--line2); border-radius: 999px; padding: 6px 12px; }
+.dash-layout > summary::-webkit-details-marker { display: none; }
+.dash-layout > summary .ico { width: 14px; height: 14px; }
+.dash-layout[open] { justify-self: stretch; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: rgba(var(--panel-rgb), .6); }
+.dash-layout[open] > summary { color: var(--fg); }
 .lay-list { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 6px; }
 .lay-list li { display: flex; align-items: center; gap: 8px; }
 .lay-list li span { flex: 1; }
@@ -405,3 +410,20 @@ nav.top a[data-extra] { display: none; }
 .pl-more .chips { margin-bottom: 6px; }
 /* Room under the last control on phones, so the floating assistant never sits on top of it. */
 @media (max-width: 600px) { #app { padding-bottom: 110px; } }
+
+/* A folded section (the match page's working detail): a slim row that opens in place. */
+.fold { margin-top: 10px; border: 1px solid var(--line); border-radius: 16px; background: rgba(var(--panel-rgb), .55); }
+.fold > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 12px; padding: 14px 18px; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::after { content: '+'; margin-left: auto; font: 600 18px var(--mono); color: var(--muted); }
+.fold[open] > summary::after { content: '−'; }
+.fold > summary .ph { margin: 0; font-size: 15px; }
+.fold > summary:hover .ph { color: var(--accent); }
+.fold[open] { padding: 0 18px 18px; }
+.fold[open] > summary { margin: 0 -18px 8px; }
+.fold .mgroup { padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; }
+
+/* A watched match after full time (finalview.js). */
+.fin-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .35em; font-size: clamp(26px, 4.6vw, 60px); line-height: 1.05; }
+.fin-head b { color: var(--accent); white-space: nowrap; }
+.fin-lines td:first-child { white-space: nowrap; }

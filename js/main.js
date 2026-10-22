@@ -335,10 +335,12 @@ function trail() {
 function dock() {
   const el = document.querySelector('.crumbs-dock');
   if (!el) return;
-  const home = parse().name === 'home';
-  el.hidden = home;
-  document.body.classList.toggle('has-dock', !home);
-  el.querySelector('.dock-trail').innerHTML = trail().map(([h, t], i, a) => (h && i < a.length - 1 ? `<a href="${h}">${esc(t)}</a>` : `<b>${esc(t)}</b>`)).join('<i>›</i>');
+  // Only on pages below a menu destination (a sport, league, match, player…): the menu already
+  // reaches the top-level pages.
+  const parts = trail(), top = parts.length <= 2 && !['x', 'target', 'mega', 'slip', 'player'].includes(parse().name);
+  el.hidden = top;
+  document.body.classList.toggle('has-dock', !top);
+  el.querySelector('.dock-trail').innerHTML = parts.map(([h, t], i, a) => (h && i < a.length - 1 ? `<a href="${h}">${esc(t)}</a>` : `<b>${esc(t)}</b>`)).join('<i>›</i>');
 }
 
 function route() {
@@ -518,6 +520,8 @@ document.addEventListener('click', (e) => {
     document.querySelectorAll(`[data-watch="${CSS.escape(d.watch)}"]`).forEach((b) => { b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); b.innerHTML = b.classList.contains('icon-btn') ? ico(on ? 'star-on' : 'star') : watchLabel(on, !b.closest('#qv')); });
     syncPush();
     if (current === 'watchlist') softRender();
+    // A finished match's page exists only while it is watched: removing it goes back to the list.
+    else if (!on && current === 'match' && !state.events.some((x) => x.id === d.watch)) location.hash = '#/watchlist';
   }
   else if (d.pin) {
     e.preventDefault(); e.stopPropagation();
@@ -548,7 +552,7 @@ document.addEventListener('click', (e) => {
   else if ('notifyOn' in d) { requestNotify().then(() => softRender()); }
   else if ('fxToggle' in d) { try { localStorage.setItem('atlas-fx', fxOff ? 'on' : 'off'); } catch { /* storage blocked */ } if (/[?&]lite\b/.test(location.search)) location.search = ''; else location.reload(); }
   else if ('navBack' in d) { if (stack.length > 1) history.back(); else { replacing = true; location.replace(parentOf()); } }
-  else if (d.jump) { e.preventDefault(); document.getElementById(d.jump)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  else if (d.jump) { e.preventDefault(); const to = document.getElementById(d.jump); if (to?.tagName === 'DETAILS') to.open = true; to?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 });
 document.addEventListener('toggle', (e) => { if (e.target.matches?.('.sl-filters')) setFiltersOpen(e.target.open); }, true);
 // One time zone for every time on the site (tz.js): the header menu and Display settings.

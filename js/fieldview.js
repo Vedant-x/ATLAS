@@ -3,11 +3,12 @@
 // chances. Racing: NASCAR Cup and IndyCar, the next race with win / podium / top-10 chances from the
 // season standings. No bookmaker prices: every price shown is ATLAS's own (fair odds).
 import { split } from './ui.js';
+import { fmt } from './tz.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const pc = (p, d = 0) => `${(p * 100).toFixed(d)}%`;
 const par = (x) => (x == null ? '–' : x === 0 ? 'E' : x > 0 ? `+${x}` : String(x));
-const when = (t) => new Date(t).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+const when = (t) => fmt(typeof t === 'number' ? t : Date.parse(t)); // in the visitor's time zone (tz.js)
 
 let cache = null;
 export const fieldsData = () => cache?.data || null;

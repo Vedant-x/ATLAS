@@ -16,6 +16,7 @@ import { changesFor, latestChange, needsReview, changesSince, lastVisit, timelin
 import { FORECAST_NOTE } from './changelog.js';
 import { ORDERS, orderByTime } from './engine.js';
 import { watch, notifyPermission } from './alerts.js';
+import { loadFinal, finalTried } from './finalview.js';
 import { alertPrefs, ALERT_KINDS, QUIET_CHOICES } from './livealerts.js';
 import { pushState } from './pushalerts.js';
 import { pc, odd } from './charts.js';
@@ -140,10 +141,12 @@ export function casePanel(x) {
 }
 
 // Evidence timeline for one match (dossier "History" section).
+// Left out (empty string) until ATLAS has recorded a change for the match.
 export function historyPanel(e) {
   const list = changesFor(e.id);
-  return `<section class="panel reveal" id="sec-history"><h2 class="ph">Evidence timeline <small>every material change ATLAS recorded for this match</small></h2>
-    ${list.length ? `<ol class="timeline">${list.map((c) => `<li><time>${esc(ist(c.at))}</time><b>${kindIco(c.kind)} ${esc(c.text)}</b><small>${c.source ? `Source: ${esc(c.source)}` : ''}${FORECAST_NOTE[c.forecast] ? ` · ${FORECAST_NOTE[c.forecast]}` : ''}</small></li>`).join('')}</ol>` : '<p class="muted">No changes recorded yet: starters, lineups, absences and price moves appear here as they happen.</p>'}
+  if (!list.length) return '';
+  return `<section class="panel reveal" id="sec-history"><h2 class="ph">What changed <small>starters, lineups, absences and price moves</small></h2>
+    <ol class="timeline">${list.map((c) => `<li><time>${esc(ist(c.at))}</time><b>${kindIco(c.kind)} ${esc(c.text)}</b><small>${c.source ? `Source: ${esc(c.source)}` : ''}${FORECAST_NOTE[c.forecast] ? ` · ${FORECAST_NOTE[c.forecast]}` : ''}</small></li>`).join('')}</ol>
   </section>`;
 }
 
@@ -218,10 +221,11 @@ export function alertPanel() {
 const KIND_LABEL = (k, sport) => ({ scores: sport === 'football' ? 'Goals' : 'Scores', cards: 'Cards', periods: 'Breaks', final: 'Full time' }[k]);
 const alertChips = (p, id, label, sport) => `<div class="al-kinds" role="group" aria-label="${esc(label)}"><span>${esc(label)}</span>${ALERT_KINDS.filter((k) => k !== 'cards' || !sport || sport === 'football')
   .map((k) => `<button class="chip ${p[k] ? 'on' : ''}" data-alert-kind="${k}"${id ? ` data-alert-match="${esc(id)}"` : ''} aria-pressed="${Boolean(p[k])}">${KIND_LABEL(k, sport)}</button>`).join('')}</div>`;
-// A watched match that has ended: kept with its result until cleared.
+// A watched match that has ended: kept with its result until removed; it opens the match report.
 const doneRow = (id, m) => `<div class="row wl done reveal">
+        <a class="row-link" href="#/match/${esc(id)}" aria-label="${esc(m.home)} v ${esc(m.away)}: what happened"></a>
         <span class="ico">${sportOf(m.sport).icon}</span>
-        <div class="teams"><b>${esc(m.home)} v ${esc(m.away)}</b><small>${esc(m.league)} · ${esc(ist(m.start))}</small></div>
+        <div class="teams"><b>${esc(m.home)} v ${esc(m.away)}</b><small>${esc(m.league)} · ${esc(ist(m.start))} · <u>what happened →</u></small></div>
         <div class="odds"><span class="fin">Finished</span>${m.result ? `<b class="fin-score">${esc(m.result)}</b>` : m.score ? `<b class="fin-score">${esc(m.home)} ${esc(m.score)} ${esc(m.away)}</b>` : ''}
           <button class="icon-btn on" data-watch="${esc(id)}" aria-pressed="true" aria-label="Remove from watchlist">${ico('star-on')}</button></div></div>`;
 export function watchlistView() {
@@ -232,6 +236,8 @@ export function watchlistView() {
   const done = doneIds.filter((id) => watch.meta(id)?.home).sort((a, b) => watch.meta(b).start - watch.meta(a).start);
   return {
     mode: 'other', accent: '#ffb547', title: 'Watchlist',
+    // Finished matches without a final score yet: read it (once each) and redraw.
+    after: () => { const todo = done.filter((id) => !watch.meta(id).result && !finalTried(id)).slice(0, 6); if (todo.length) Promise.all(todo.map((id) => loadFinal(id, watch.meta(id)))).then(() => S.refresh?.()); },
     html: `<section class="hero small"><p class="kicker reveal">SAVED MATCHES · LIVE ALERTS</p><h1>WATCHLIST</h1></section>
       ${alertPanel()}
       ${rows.length ? `<div class="list">${rows.map((x) => `<a class="row wl reveal ${x.review.length ? 'needs-review' : ''}" href="#/match/${esc(x.e.id)}" data-qv="${esc(x.e.id)}">

@@ -26,6 +26,13 @@ test('props: milestones and anytime scorers parse; ungradeable, team and silly-s
   assert.equal(propLabel(s[0]), 'Bukayo Saka to score'); assert.equal(s[0].target, 1);
 });
 
+test('props: one main line per player and stat (nearest even money), common prop types only', () => {
+  const ladder = [1.12, 1.45, 2.05, 3.4].map((o, i) => ({ athlete: ath(4017837), type: { name: 'Points Milestones' }, odds: { decimal: { value: String(o) } }, current: { target: { value: 5 * (i + 1) } } }));
+  const blocks = { athlete: ath(4396993), type: { name: 'Blocks Milestones' }, odds: { decimal: { value: '1.9' } }, current: { target: { value: 1 } } };
+  const low = { athlete: ath(4396993), type: { name: 'Rebounds Milestones' }, odds: { decimal: { value: '1.2' } }, current: { target: { value: 2 } } };
+  assert.deepEqual(parseProps([...ladder, blocks, low], 'basketball', who).map(propLabel), ['Ivica Zubac 15+ points']);
+});
+
 test('props grade from the box score: over the line wins, under loses, a flagged DNP is dnp, an empty row is unknown', () => {
   const sm = { header: { competitions: [{ status: { type: { completed: true } }, competitors: [{ homeAway: 'home', score: '110', winner: true }, { homeAway: 'away', score: '101' }] }] },
     boxscore: { players: [{ statistics: [{ keys: ['minutes', 'points', 'threePointFieldGoalsMade-threePointFieldGoalsAttempted', 'rebounds'], athletes: [
