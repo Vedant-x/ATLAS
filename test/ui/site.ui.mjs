@@ -294,7 +294,7 @@ test('home: panels can be hidden and reordered, and the layout is kept', async (
   await page.click('[data-lay="toggle"][data-lay-key="potd"]');
   await page.waitForFunction(() => !document.querySelector('.dash-potd'));
   assert.ok(await page.$('.dash-layout[open]'), 'still open after a change');
-  await page.click('[data-lay="up"][data-lay-key="live"]');
+  for (let i = 0; i < 2; i++) await page.click('[data-lay="up"][data-lay-key="live"]'); // above Value bets, then Best bets
   await page.waitForFunction(() => { const ps = [...document.querySelectorAll('.dash > .panel')]; return ps.findIndex((p) => p.classList.contains('dash-live')) < ps.findIndex((p) => p.classList.contains('dash-short')); });
   await page.reload();
   await page.waitForSelector('.dash-live');
@@ -327,7 +327,7 @@ test('home: a panel can be made full width, and every panel takes a size', async
   assert.ok(Math.abs(panel - dash) < 2, `${panel} vs ${dash}`);
   assert.match(await page.textContent('[data-lay="size"][data-lay-key="live"]'), /Full/);
   // Every panel's markup accepts a size (the class goes on its own element).
-  for (const k of ['potd', 'shortlist', 'every', 'changes', 'record', 'health']) await page.click(`[data-lay="size"][data-lay-key="${k}"]`);
+  for (const k of ['potd', 'shortlist', 'value', 'every', 'changes', 'record', 'health']) await page.click(`[data-lay="size"][data-lay-key="${k}"]`);
   const sized = await page.$$eval('.dash > .panel.lay-third', (ps) => ps.length);
   const shown = await page.$$eval('.dash > .panel:not(.dash-layout):not(.lay-full)', (ps) => ps.length);
   assert.equal(sized, shown);
@@ -348,6 +348,19 @@ test('theme: a colour and a background of the visitor\'s own, kept after a reloa
   await page.reload();
   await page.waitForSelector('.dash-short');
   assert.deepEqual(await vars(), ['#00e5ff', '#03060f'], 'kept after a reload');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('value bets: prices above the sharp fair odds, with the edge and the lowest price worth taking; a drifting price is left out', async () => {
+  const { page, ctx, errors } = await open('#/');
+  await page.waitForSelector('.dash-value .mini');
+  const rows = await page.$$eval('.dash-value .mini', (rs) => rs.map((r) => [r.querySelector('.mini-main b').textContent, r.querySelector('.mini-nums').textContent.replace(/\s+/g, ' ').trim(), r.title]));
+  assert.deepEqual(rows.map((r) => r[0]), ['Liverpool'], 'Man City drifted from 1.42 to 1.55: left out');
+  assert.match(rows[0][1], /\+4\.4%\s*take 1\.76\+/);
+  assert.match(rows[0][2], /Fair odds 1\.72 \(Pinnacle[\s\S]*Best price 1\.80 at Unibet[\s\S]*First seen at 1\.78/);
+  await page.locator('.dash-value').scrollIntoViewIfNeeded();
+  await shot(page, 'value-bets');
   assert.deepEqual(errors, []);
   await ctx.close();
 });

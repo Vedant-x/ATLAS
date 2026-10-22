@@ -21,7 +21,7 @@ import { watch } from './alerts.js';
 import { finalView } from './finalview.js';
 import { trackCard, trackStrip, trackStats, trackCalibration, recordLine, ensureTrack, officialParlay } from './trackview.js';
 import { zone as tzZone, tzOf, abbr as tzAbbr, fmt as fmtTime, fmtDate } from './tz.js';
-import { bestBets, BEST, POTD_ZONES, potdDay, parlayOfDay, recommendationFor } from './track.js';
+import { bestBets, BEST, POTD_ZONES, potdDay, parlayOfDay, recommendationFor, valueBets } from './track.js';
 import { propLabel, propMarket } from './props.js';
 import { propRow, allProps } from './propsview.js';
 import { coherentBets } from './picks.js';
@@ -392,6 +392,7 @@ function dashboard(ev, live) {
       <details class="sl-filters"${filtersOpen ? ' open' : ''}><summary>${ico('filter')} Next ${hrs}h · ${esc(orderLabel())}${minOdds > 1 ? ` · odds ${minOdds.toFixed(2)}+` : ''}</summary>${windowChips('shours', hrs)}${orderChips()}${prefsBar()}</details>
       ${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}
       <div class="minilist">${S.loading ? skelRows(4) : short.map((b) => miniPick(b)).join('') || `<p class="muted">${empty}</p>`}</div></div>`,
+    value: () => valuePanel(pool),
     live: () => `<div class="panel dash-live reveal"><h2 class="ph">Live now <small>${S.loading ? '' : live.length}</small></h2>
       ${S.loading ? skelRows(3) : live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${esc(e.score || '')}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>`,
     every: () => everyTeaser(),
@@ -410,7 +411,7 @@ export const setFiltersOpen = (v) => { filtersOpen = Boolean(v); };
 
 // Home panels: order and visibility, saved per visitor (localStorage, best effort). Unknown or missing
 // names fall back to the default order, so a new panel always appears.
-const HOME_PANELS = [['potd', 'Parlay of the day'], ['shortlist', 'Best bets'], ['live', 'Live now'], ['every', 'Every sport'], ['changes', 'What changed'], ['record', 'Track record'], ['health', 'Source health']];
+const HOME_PANELS = [['potd', 'Parlay of the day'], ['shortlist', 'Best bets'], ['value', 'Value bets'], ['live', 'Live now'], ['every', 'Every sport'], ['changes', 'What changed'], ['record', 'Track record'], ['health', 'Source health']];
 const LAYOUT_KEY = 'atlas-home-layout';
 // Minimal by default: source health, what changed and the full record card start hidden (the record
 // is the strip at the top); Customise shows them.
@@ -557,6 +558,29 @@ function bestBetsPanel(e, a) {
       const yn = /^(Yes|No|Over|Under)$/.test(b.pick);
       return `<div class="bb panel reveal"><small>${esc(b.label)}</small><b>${esc(yn ? `${b.market}: ${b.pick}` : b.pick)}</b><p class="muted bb-m">${yn ? '' : `${esc(b.market)} · `}${b.book ? 'bookmaker odds' : 'ATLAS fair odds'}</p>${e.live ? '' : istTag(e.start)}<div class="bb-row"><span>${pc(b.q, 0)}</span><em>${esc(b.why || '')}</em>${legButton(leg, odd(b.odds))}</div></div>`;
     }).join('')}</div></section>`;
+}
+
+// Value bets (track.js valueBets): prices above the sharp market's fair odds in the next 48 hours,
+// biggest edge first. Each shows the edge at the best price and the lowest price still worth taking
+// at any bookmaker; the fair odds, their source and the bookmaker quoting the price are in the tip.
+function valuePanel(pool) {
+  const list = valueBets(todayEvents(pool, Date.now(), 48), { cal: trackCalibration(), limit: 8 });
+  const rec = recordLine(trackStats()?.edge);
+  const shopped = pool.some((e) => e.markets?.some((m) => m.consensusFrom));
+  return `<div class="panel dash-value reveal"><h2 class="ph">Value bets <small>priced above the sharp market's fair odds</small></h2>
+    ${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}
+    <div class="minilist">${S.loading ? skelRows(3) : list.map(valuePick).join('') || `<p class="muted">${shopped ? 'No price beats the sharp market in the next 48 hours right now. These come and go as bookmakers move; the list updates with every price check.' : 'Needs prices from several bookmakers: none for the next 48 hours yet.'}</p>`}</div></div>`;
+}
+function valuePick(b) {
+  const s = sportOf(b.event.sport);
+  const rec = recommendationFor(b, trackCalibration());
+  const leg = { key: `${b.event.id}|${b.market}|${b.pick}`, eventId: b.event.id, sport: b.event.sport, match: `${b.event.home} vs ${b.event.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p, recommendationId: rec.recommendationId };
+  const tip = [`Fair odds ${odd(1 / b.fair)} (${b.consensusFrom || 'the books\' median'}, margin removed): a ${pc(b.fair, 0)} chance`, b.book && `Best price ${odd(b.odds)} at ${b.book}`,
+    `Worth taking at ${odd(b.takeAt)} or more at any bookmaker`, b.open > 1 && b.open !== b.odds ? `First seen at ${odd(b.open)}` : ''].filter(Boolean).join('\n');
+  return `<div class="mini reveal" data-rec="${esc(rec.recommendationId)}" title="${esc(tip)}"><span class="mini-ico">${s.icon}</span>
+    <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.event.home)} v ${esc(b.event.away)} · ${esc(fmtTime(b.event.start, tzZone(), 'short'))}${b.book ? ` · ${esc(b.book)}` : ''}</small></a>
+    <div class="mini-nums"><b class="pos" title="Expected return at the best price">+${(b.edge * 100).toFixed(1)}%</b><small title="The lowest price still worth taking">take ${odd(b.takeAt)}+</small></div>
+    ${legButton(leg, odd(b.odds))}</div>`;
 }
 
 // A pick, minimal: the pick, the match and when; then ATLAS's chance, what the price needs and the

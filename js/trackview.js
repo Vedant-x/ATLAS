@@ -126,7 +126,7 @@ function verdict(a) {
 
 // Bankers, Surest and the unpriced model picks side by side: each is its own way of recommending.
 function modesPanel(s) {
-  const rows = [['Bankers (shortlist)', s.all, true], ['Surest', s.safe, true], ['Best bets', s.best, true], ['Singles near 2.00', s.two, true], ['Model only (no price)', s.model, false]].filter(([, r]) => r && r.won + r.lost);
+  const rows = [['Bankers (shortlist)', s.all, true], ['Surest', s.safe, true], ['Best bets', s.best, true], ['Value bets', s.edge, true], ['Singles near 2.00', s.two, true], ['Model only (no price)', s.model, false]].filter(([, r]) => r && r.won + r.lost);
   if (rows.length < 2) return '';
   return `<div class="panel reveal"><h3 class="ph">By recommendation type <small>each kept as its own record</small></h3>
     <table class="tbl tight"><thead><tr><th>Type</th><th class="num">Settled</th><th class="num">Hit rate</th><th class="num">Estimated</th><th class="num">Profit</th><th class="num" title="Mean squared error of the chance shown; lower is better">Brier</th></tr></thead>
@@ -136,7 +136,7 @@ function modesPanel(s) {
 // ATLAS's own ledger in the format a fair comparison with another service would use (compare.js), and
 // the honest state of any comparison: none has been run.
 function comparisonPanel(picks) {
-  const rows = [['Best bets (singles)', 'best'], ['Singles near 2.00', 'two'], ['Shortlist bankers', 'banker']].map(([label, type]) => [label, serviceStats({ service: 'ATLAS', evidence: 'ledger', selections: picks.filter((h) => h.type === type && ['won', 'lost', 'push', 'void'].includes(h.status)).map((h) => ({ date: new Date(h.start).toISOString(), odds: h.odds, status: h.status, p: h.shown ?? h.p, close: h.close })) })]).filter(([, st]) => st.selections);
+  const rows = [['Best bets (singles)', 'best'], ['Value bets', 'edge'], ['Singles near 2.00', 'two'], ['Shortlist bankers', 'banker']].map(([label, type]) => [label, serviceStats({ service: 'ATLAS', evidence: 'ledger', selections: picks.filter((h) => h.type === type && ['won', 'lost', 'push', 'void'].includes(h.status)).map((h) => ({ date: new Date(h.start).toISOString(), odds: h.odds, status: h.status, p: h.shown ?? h.p, close: h.close })) })]).filter(([, st]) => st.selections);
   if (!rows.length) return '';
   const f = (x, d = 2) => (x == null ? '—' : x.toFixed(d));
   return `<div class="panel reveal"><h3 class="ph">ATLAS in the comparison format <small>reproduced from its complete ledger · no comparison with another service has been run</small></h3>
@@ -207,6 +207,7 @@ function body(data) {
       <div class="tr-cal">${s.buckets.map((b) => `<div><small>Estimated ${b.label}</small>${b.n ? `<div class="tr-bars"><i style="--w:${((b.predicted || 0) * 100).toFixed(0)}%"></i><i class="act" style="--w:${((b.actual || 0) * 100).toFixed(0)}%"></i></div>` : ''}<span>${b.n ? `${pct(b.predicted, 0)} estimated · ${pct(b.actual, 0)} actual · ${b.n} picks` : 'no picks yet'}</span></div>`).join('')}</div></div>
     ${s.safe?.won + s.safe?.lost ? `<div class="panel"><h3 class="ph">Surest picks <small>odds ${SAFE.minOdds.toFixed(2)}–${SAFE.maxOdds.toFixed(2)}</small></h3><p>${recordLine(s.safe)}</p></div>` : ''}
     ${s.best?.won + s.best?.lost ? `<div class="panel"><h3 class="ph">Best bets <small>odds ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)}</small></h3><p>${recordLine(s.best)}</p></div>` : ''}
+    ${s.edge?.won + s.edge?.lost ? `<div class="panel"><h3 class="ph">Value bets <small>best price above the sharp market's fair odds</small></h3><p>${recordLine(s.edge)}</p></div>` : ''}
     ${modesPanel(s)}
     ${modelPanel(s.model)}
     ${priceBandPanel(data.picks || [])}
