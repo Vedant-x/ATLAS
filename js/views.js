@@ -586,12 +586,12 @@ function valuePick(b) {
 // A pick, minimal: the pick, the match and when; then ATLAS's chance, what the price needs and the
 // return, on one line. The reasons, the best bookmaker and the market's own chance are on hover / tap
 // (title) and on the match page.
-function miniPick(b) {
+export function miniPick(b) {
   const s = sportOf(b.event.sport);
   const rec = recommendationFor(b, trackCalibration());
   const leg = { key: `${b.event.id}|${b.market}|${b.pick}`, eventId: b.event.id, sport: b.event.sport, match: `${b.event.home} vs ${b.event.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p, recommendationId: rec.recommendationId, ...(b.prop ? { prop: b.prop } : {}) };
   const edge = `${b.ev >= 0 ? '+' : ''}${(b.ev * 100).toFixed(1)}%`;
-  const tip = [whyLine(b) && `Why: ${whyLine(b)}`, b.fair != null && `Market (no margin): ${pc(b.fair, 0)}`, b.book && `Best price: ${b.book}`, `Chance range ${pc(rec.uncertaintyRange[0], 0)}–${pc(rec.uncertaintyRange[1], 0)}`, rec.settlementRules].filter(Boolean).join('\n');
+  const tip = [`${b.market} · ${b.event.league}`, whyLine(b) && `Why: ${whyLine(b)}`, b.fair != null && `Market (no margin): ${pc(b.fair, 0)}`, b.book && `Best price: ${b.book}`, `Chance range ${pc(rec.uncertaintyRange[0], 0)}–${pc(rec.uncertaintyRange[1], 0)}`, rec.settlementRules].filter(Boolean).join('\n');
   return `<div class="mini reveal" data-rec="${esc(rec.recommendationId)}" title="${esc(tip)}"><span class="mini-ico">${s.icon}</span>
     <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.event.home)} v ${esc(b.event.away)} · ${b.event.live ? '<span class="live">LIVE</span>' : esc(fmtTime(b.event.start, tzZone(), 'short'))}</small></a>
     <div class="mini-nums"><b title="ATLAS chance">${pc(b.p, 0)}</b><small><span class="mm-need" title="The chance this price needs to break even">needs ${pc(1 / b.odds, 0)} · </span><span class="${b.ev >= 0 ? 'pos' : 'neg'}" title="Estimated return per unit staked${b.ev < 0 ? ': below break-even at this price' : ''}">${edge}</span></small></div>

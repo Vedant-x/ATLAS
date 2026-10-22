@@ -10,9 +10,11 @@ import { trackStats, trackCalibration, trackModelRecord, recordLine, ensureTrack
 import { modelPicks } from './modelpicks.js';
 import { coverage, COVERAGE_FIELDS } from './coverage.js';
 import { rankedBankers, slipPolicy, MAX_ODDS } from './track.js';
-import { orderBets, orderChips } from './research.js';
+import { orderBets, orderChips, orderLabel } from './research.js';
+import { ico } from './icons.js';
 import { fmt, zone } from './tz.js';
-import { views, esc, sportOf, notice, when, istTag, legButton, legIndex, whyTag, prefsBar, prefFilter, bookLeg } from './views.js';
+import { whyLine } from './why.js';
+import { views, esc, sportOf, notice, when, istTag, legButton, legIndex, prefsBar, prefFilter, bookLeg, miniPick } from './views.js';
 
 let S;
 export function bindPicks(state) { S = state; }
@@ -102,23 +104,10 @@ function smartBankers(events, { min = 0.7, limit = 10, minOdds = 1 } = {}) {
   return rankedBankers(events, { cal: trackCalibration(), min, minOdds, limit });
 }
 
-// Likely is not the same as good value: the chance a pick needs just to break even at its price, and
-// the market's own margin-free chance, next to ATLAS's estimate.
-const priceCheck = (b) => `ATLAS chance ${pc(b.p, 0)}${b.fair != null ? ` · market (no margin) ${pc(b.fair, 0)}` : ''} · break-even ${pc(1 / b.odds, 0)}`;
-
-function bigPick(b, value) {
-  const e = b.event, s = sportOf(e.sport);
-  const leg = { key: `${e.id}|${b.market}|${b.pick}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p, ...(b.prop ? { prop: b.prop } : {}) };
-  return `<article class="row tilt reveal" style="--c:${s.color}">
-    <a class="row-link" href="#/match/${esc(e.id)}" data-cursor="OPEN" aria-label="${esc(b.pick)}"></a>
-    <span class="ico">${s.icon}</span>
-    <div class="teams"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(e.home)} v ${esc(e.away)} · ${esc(e.league)} · ${when(e)}</small><small class="pcheck">${priceCheck(b)}</small>${whyTag(b)}</div>
-    <div class="row-prob">${gaugeMini(b.p)}</div>
-    <div class="odds"><span class="stat"><small>chance</small>${pc(b.p, 1)}</span><span class="stat ${b.ev >= 0 ? 'pos' : ''}" title="Estimated return per unit staked"><small>return</small>${b.ev >= 0 ? '+' : ''}${(b.ev * 100).toFixed(1)}%</span>${legButton(leg, `<small>odds</small>${odd(b.odds)}`)}</div>
-    ${value ? '<span class="conf conf-high">VALUE</span>' : b.ev < 0 ? '<span class="conf conf-low" title="Likely, but ATLAS rates the price below break-even">BELOW BREAK-EVEN</span>' : '<span class="conf conf-medium">HIGH PROBABILITY</span>'}
-  </article>`;
-}
-const gaugeMini = (p) => `<div class="meter tall"><i class="grow" style="--w:${(p * 100).toFixed(1)}%"></i></div>`;
+// A priced pick, as simple as on the home page (views.js miniPick): the pick, the match and when,
+// ATLAS's chance with what the price needs and the return, and the price. The reasons and the
+// market's own chance are in the tip and on the match page.
+const bigPick = (b) => miniPick(b);
 
 export function edgeTable(f) {
   const rows = [];
@@ -144,28 +133,24 @@ export function edgeTable(f) {
 }
 
 // ---------- every sport ----------
-// A model-only pick: no price in our feeds, so its fair odds and "worth it at X or better".
+// A model-only pick (no price in our feeds), as simple: the pick, the match and when, ATLAS's chance
+// and the lowest price worth taking. The evidence it rests on is in the tip.
 function modelCard(b) {
   const e = b.event, s = sportOf(e.sport);
   const leg = { key: `${e.id}|fair|${b.market}|${b.pick}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: b.market, pick: b.pick, odds: b.fairOdds, p: b.p, derived: true };
-  return `<article class="row tilt reveal model-pick" style="--c:${s.color}">
-    <a class="row-link" href="#/match/${esc(e.id)}" data-cursor="OPEN" aria-label="${esc(b.pick)}"></a>
-    <span class="ico">${s.icon}</span>
-    <div class="teams"><b>${esc(b.pick)}</b><small>${esc(b.market)} · ${esc(e.home)} v ${esc(e.away)} · ${esc(e.league)} · ${when(e)}</small>
-      <small class="pcheck">ATLAS ${pc(b.p, 0)} · no bookmaker price in our feeds · <b>worth it at ${odd(b.fairOdds)} or better</b></small>${whyTag(b)}<small class="basis">${esc(String(b.basis).replace(/ \(no bookmaker price\)$/, ''))}</small></div>
-    <div class="row-prob">${gaugeMini(b.p)}</div>
-    <div class="odds"><span class="stat"><small>chance</small>${pc(b.p, 1)}</span><span class="stat"><small>fair odds</small>${odd(b.fairOdds)}</span>${legButton(leg, '<small>add at fair</small>+')}</div>
-    <span class="conf conf-low" title="Rated by ATLAS's model from the evidence named, with no bookmaker price to check it against">MODEL</span>
-  </article>`;
+  const tip = [`${b.market} · ${e.league}`, 'No bookmaker price in our feeds: rated by the ATLAS model', whyLine(b) && `Why: ${whyLine(b)}`, String(b.basis || '').replace(/ \(no bookmaker price\)$/, '')].filter(Boolean).join('\n');
+  return `<div class="mini reveal model-pick" title="${esc(tip)}"><span class="mini-ico">${s.icon}</span>
+    <a class="mini-main" href="#/match/${esc(e.id)}"><b>${esc(b.pick)}</b><small>${esc(e.home)} v ${esc(e.away)} · ${esc(fmt(e.start, zone(), 'short'))}</small></a>
+    <div class="mini-nums"><b>${pc(b.p, 0)}</b><small>worth it at ${odd(b.fairOdds)}+</small></div>
+    ${legButton(leg, '+')}</div>`;
 }
 const covDot = (state) => `<i class="cov-dot" aria-hidden="true"></i><span class="sr-only">${state}: </span>`;
 function coverageTable(cov) {
   const sports = SPORTS.filter((s) => cov[s.id]);
   if (!sports.length) return '';
-  return `<div class="panel reveal"><h2 class="ph">What ATLAS knows, by sport <small>matches live or in the next 48 hours</small></h2>
-    <p class="cov-key"><span class="cov-available">${covDot('available')}available</span><span class="cov-partial">${covDot('partial')}partial</span><span class="cov-stale">${covDot('stale')}stale</span><span class="cov-unavailable">${covDot('unavailable')}unavailable</span></p>
+  return `<p class="cov-key"><span class="cov-available">${covDot('available')}available</span><span class="cov-partial">${covDot('partial')}partial</span><span class="cov-stale">${covDot('stale')}stale</span><span class="cov-unavailable">${covDot('unavailable')}unavailable</span></p>
     <div class="table-wrap"><table class="tbl tight coverage"><thead><tr><th>Sport</th>${COVERAGE_FIELDS.map(([, l]) => `<th>${l}</th>`).join('')}</tr></thead>
-    <tbody>${sports.map((s) => `<tr><td><b>${s.icon} ${esc(s.name)}</b></td>${COVERAGE_FIELDS.map(([k]) => { const f = cov[s.id].fields[k]; return `<td class="cov-${f.state}" title="${esc(f.state)}">${covDot(f.state)}${esc(f.note)}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div></div>`;
+    <tbody>${sports.map((s) => `<tr><td><b>${s.icon} ${esc(s.name)}</b></td>${COVERAGE_FIELDS.map(([k]) => { const f = cov[s.id].fields[k]; return `<td class="cov-${f.state}" title="${esc(f.state)}">${covDot(f.state)}${esc(f.note)}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
 // Every sport's best picks for the next 48 hours: priced picks through the shortlist's own rules,
 // and, for matches no bookmaker prices, the model's pick from real evidence.
@@ -218,15 +203,15 @@ function everySport() {
       return `${head}<p class="muted reveal">No pick: ${why}. ATLAS doesn't invent a favourite.</p>`;
     }
     const top = x.all.slice(0, 6), rest = x.all.slice(6);
-    return `${head}<div class="list">${top.map(card).join('')}</div>${rest.length ? `<details class="more-picks reveal"><summary>${rest.length} more ${esc(x.s.name)} pick${rest.length === 1 ? '' : 's'}</summary><div class="list">${rest.map(card).join('')}</div></details>` : ''}`;
+    return `${head}<div class="minilist">${top.map(card).join('')}</div>${rest.length ? `<details class="more-picks reveal"><summary>${rest.length} more ${esc(x.s.name)} pick${rest.length === 1 ? '' : 's'}</summary><div class="minilist">${rest.map(card).join('')}</div></details>` : ''}`;
   };
   return {
     mode: 'bankers', accent: '#00ffc3', title: 'Every sport',
     html: `<section class="hero small"><p class="kicker reveal">EVERY SPORT · NEXT ${H} HOURS · ${total} PICKS</p><h1>${split('EVERY SPORT')}</h1>${builderNav('every')}
-      <p class="lede reveal">The strongest pick ATLAS can make for each match, sport by sport. <b>Priced</b> picks are rated against a bookmaker's price: HIGH PROBABILITY when the price is at least break-even for ATLAS's chance, BELOW BREAK-EVEN when it is likely but poorly priced. <b>Model</b> picks are for matches no bookmaker in our feeds prices: ATLAS rates them from rankings, ratings, records, form and starters, shows the fair odds, and they are worth taking only at that price or better. Model picks keep their own track record.</p></section>
+      <p class="lede reveal">The strongest pick for each match, sport by sport. Unpriced matches show the lowest price worth taking.</p></section>
       ${notice()}
       ${jump ? `<nav class="win-chips every-jump reveal" aria-label="Sports">${jump}</nav>` : ''}
-      ${coverageTable(cov)}
+      ${coverageTable(cov) ? `<details class="fold reveal"><summary><h2 class="ph">What ATLAS knows, by sport <small>live or in the next 48 hours</small></h2></summary>${coverageTable(cov)}</details>` : ''}
       ${sections.map(block).join('')}
       ${sections.length ? '' : '<p class="muted reveal">Nothing scheduled in the next 48 hours.</p>'}`,
   };
@@ -311,9 +296,9 @@ export const picksViews = {
     return {
       mode: 'bankers', accent: '#00ffc3', title: 'Bankers',
       html: `<section class="hero small"><p class="kicker reveal">NEXT 12 HOURS · ODDS ${minOdds.toFixed(2)}–${MAX_ODDS.toFixed(2)}</p><h1>${split('BANKERS')}</h1>${builderNav('bankers')}</section>
-        ${notice()}${prefsBar()}${orderChips()}
-        <p class="note reveal">Highest estimated probability: the likeliest outcomes, ranked by ATLAS's chance alone. A likely pick is not always a good bet: <b>Below break-even</b> marks prices too short for ATLAS's chance. For picks at a fair price or better, see <a href="#/">Best bets</a>.</p>
-        <div class="list">${list.map((b) => bigPick(b)).join('') || '<p class="muted">No 70%+ favourites in the next 12 hours right now. The board refreshes as new matches come into range.</p>'}</div>
+        ${notice()}
+        <details class="sl-filters reveal"><summary>${ico('filter')} Filters · ${esc(orderLabel())}${minOdds > 1 ? ` · odds ${minOdds.toFixed(2)}+` : ''}</summary>${orderChips()}${prefsBar()}</details>
+        <div class="minilist">${list.map((b) => bigPick(b)).join('') || '<p class="muted">No 70%+ favourites in the next 12 hours right now. The board refreshes as new matches come into range.</p>'}</div>
         ${recordLine(ts?.all) ? `<p class="rec-line reveal">Track record · ${recordLine(ts.all)} · <a href="#/track">see every pick</a></p>` : ''}`,
     };
   },

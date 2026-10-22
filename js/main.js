@@ -559,6 +559,8 @@ document.addEventListener('toggle', (e) => { if (e.target.matches?.('.sl-filters
 function syncTz() { for (const sel of document.querySelectorAll('[data-tz-select]')) sel.innerHTML = tzOptions(); }
 document.addEventListener('change', (e) => {
   if (!e.target.matches('[data-tz-select]')) return;
+  // The menu keeps focus after a choice, and a redraw waits while a field has focus (typing): let go of it.
+  e.target.blur();
   setZone(e.target.value); syncTz(); softRender();
   toast(`Times now in ${ZONES[e.target.value].label}`);
 });

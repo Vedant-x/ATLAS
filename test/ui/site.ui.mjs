@@ -106,7 +106,7 @@ test('Picks: one menu entry lit across bankers, edge board and the builder', asy
 test('slip: bankroll gives a stake suggestion, and a share link opens the same legs', async () => {
   const { page, ctx, errors } = await open('#/bankers');
   await page.waitForSelector('button.leg');
-  const legs = page.locator('.list button.leg');
+  const legs = page.locator('.minilist button.leg');
   await legs.nth(0).click(); await legs.nth(1).click();
   await page.click('.slip-btn');
   await page.fill('[data-slip-bankroll]', '1000');
@@ -189,11 +189,13 @@ test('league table: GP, W, D, L, GD, Pts in rank order, whatever order the feed 
 
 test('Every sport: priced and model picks for each sport, and what ATLAS knows about each', async () => {
   const { page, ctx, errors } = await open('#/every');
-  await page.waitForSelector('.tbl.coverage');
+  await page.waitForSelector('.model-pick');
+  // What ATLAS knows per sport is one tap away (folded), not in the way of the picks.
+  assert.equal(await page.$eval('.tbl.coverage', (t) => t.closest('details')?.open), false);
   // A model pick for each unpriced match with evidence, with fair odds and its basis.
-  const model = await page.$$eval('.model-pick', (rows) => rows.map((r) => r.querySelector('.teams b').textContent));
+  const model = await page.$$eval('.model-pick', (rows) => rows.map((r) => r.querySelector('.mini-main b').textContent));
   assert.deepEqual(model.sort(), ['Alcaraz', 'India']);
-  assert.match(await page.textContent('.model-pick'), /worth it at \d\.\d\d or better/);
+  assert.match(await page.textContent('.model-pick'), /worth it at \d\.\d\d\+/);
   // Priced picks alongside, and every sport on the board has a section.
   assert.ok(await page.locator('#sec-every-tennis').count());
   assert.ok(await page.locator('#sec-every-cricket').count());
@@ -237,6 +239,8 @@ test('time zone: one setting for every time; the parlay of the day follows it', 
   const { page, ctx, errors } = await open('#/');
   await page.waitForSelector('.dash-potd');
   assert.match(await page.textContent('.dash-potd'), /12:00 to 12:00 IST/);
+  // As a visitor does it: the menu has focus while the choice is made (and keeps it after).
+  await page.focus('.bar [data-tz-select]');
   await page.selectOption('.bar [data-tz-select]', 'GMT');
   await page.waitForFunction(() => /12:00 to 12:00 GMT/.test(document.querySelector('.dash-potd')?.textContent || ''));
   // A zone with no recorded day follows the IST day, shown in the visitor's own time too.
