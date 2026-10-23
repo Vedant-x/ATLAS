@@ -36,10 +36,10 @@ export function siteData(now = Date.now()) {
   return { events, fetchedAt: now - 2 * 6e4, leagueStatus: {} };
 }
 
-// 12 settled shortlist picks in the last 30 days: 9 won, 3 lost, each with a closing price.
+// 12 settled Best bets in the last 30 days: 9 won, 3 lost, each with a closing price.
 export function trackData(now = Date.now()) {
   const picks = Array.from({ length: 12 }, (_, i) => ({
-    key: `fx-${i}|Winner|Team ${i}`, type: 'banker', sport: 'football', market: 'Winner', pick: `Team ${i}`, home: `Team ${i}`, away: `Rival ${i}`,
+    key: `fx-${i}|Winner|Team ${i}`, type: 'best', sport: 'football', market: 'Winner', pick: `Team ${i}`, home: `Team ${i}`, away: `Rival ${i}`,
     odds: 1.45, p: 0.72, shown: 0.72, fair: 0.66, close: i % 3 ? 1.4 : 1.5, start: now - (i + 1) * 2 * D, recordedAt: now - (i + 1) * 2 * D - H,
     status: i % 4 === 3 ? 'lost' : 'won',
   }));

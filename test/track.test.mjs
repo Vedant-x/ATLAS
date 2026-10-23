@@ -29,7 +29,7 @@ test('ESPN summaries become results; postponed games wait, cancelled games are v
 
 test('picks are recorded once, at the first price, only before kick-off', () => {
   const now = Date.now();
-  const ev = (id, start, odds) => ({ id, compId: id, leaguePath: 'soccer/eng.1', sport: 'football', league: 'EPL', home: 'A', away: 'B', start, live: false, stats: {}, markets: [{ name: 'Winner', outcomes: [{ name: 'A', odds }, { name: 'B', odds: 4.5 }] }] });
+  const ev = (id, start, odds) => ({ id, compId: id, leaguePath: 'soccer/eng.1', sport: 'football', league: 'EPL', home: 'A', away: 'B', start, live: false, stats: {}, markets: [{ name: 'Winner', outcomes: [{ name: 'A', odds }, { name: 'B', odds: 3.2 }] }] });
   const first = selectPicks([ev('1', now + 36e5, 1.35), ev('2', now - 60e3, 1.35), ev('3', now + 30 * 36e5, 1.35)], now);
   assert.deepEqual([...new Set(first.map((p) => p.eventId))], ['1']); // started and far-future games skipped
   const h1 = addPicks([], first);
@@ -38,34 +38,38 @@ test('picks are recorded once, at the first price, only before kick-off', () => 
   assert.equal(h2[0].odds, 1.35);
 });
 
-test('summary: hit rate, flat-stake profit and calibration (shortlist picks only)', () => {
+test('summary: the live lists (Best bets, Value bets) are the headline; retired lists keep their final record', () => {
   const h = [
-    { status: 'won', odds: 1.5, p: 0.65, type: 'banker', sport: 'football', start: 1 },
-    { status: 'won', odds: 1.4, p: 0.68, type: 'banker', sport: 'football', start: 2 },
-    { status: 'lost', odds: 1.6, p: 0.62, type: 'banker', sport: 'hockey', start: 3 },
-    { status: 'push', odds: 1.7, p: 0.61, type: 'banker', sport: 'hockey', start: 4 },
-    { status: 'pending', odds: 1.3, p: 0.7, type: 'banker', sport: 'football', start: 5 },
-    // Outside the shortlist rules: a value spot and a banker above 1.80. Counted apart, win or lose.
-    { status: 'lost', odds: 4.5, p: 0.24, type: 'value', sport: 'football', start: 6 },
-    { status: 'won', odds: 1.95, p: 0.6, type: 'banker', sport: 'football', start: 7 },
+    { status: 'won', odds: 1.5, p: 0.65, type: 'best', sport: 'football', start: 1 },
+    { status: 'won', odds: 1.4, p: 0.68, type: 'best', sport: 'football', start: 2 },
+    { status: 'lost', odds: 1.6, p: 0.62, type: 'edge', sport: 'hockey', start: 3 },
+    { status: 'push', odds: 1.7, p: 0.61, type: 'best', sport: 'hockey', start: 4 },
+    { status: 'pending', odds: 1.3, p: 0.7, type: 'best', sport: 'football', start: 5 },
+    // Retired: a shortlist banker and a surest pick, counted in their own final records only.
+    { status: 'won', odds: 1.45, p: 0.7, type: 'banker', sport: 'football', start: 6 },
+    { status: 'lost', odds: 1.3, p: 0.75, type: 'safe', sport: 'football', start: 7 },
+    { status: 'pending', odds: 1.45, p: 0.7, type: 'banker', sport: 'football', start: 8 },
+    // Unseen probes are never in any list.
+    { status: 'lost', odds: 1.5, p: 0.66, type: 'probe', sport: 'hockey', start: 9 },
   ];
   const s = summarize(h);
-  assert.equal(s.all.won, 2); assert.equal(s.all.lost, 1); assert.equal(s.all.push, 1);
-  assert.ok(Math.abs(s.all.hitRate - 2 / 3) < 1e-9);
-  assert.equal(s.all.profit, -0.1); // +0.5 +0.4 -1
-  assert.equal(s.pending.length, 1);
+  assert.equal(s.live.won, 2); assert.equal(s.live.lost, 1); assert.equal(s.live.push, 1);
+  assert.ok(Math.abs(s.live.hitRate - 2 / 3) < 1e-9);
+  assert.equal(s.live.profit, -0.1); // +0.5 +0.4 -1
+  assert.equal(s.pending.length, 1, 'pending: live lists only');
   assert.equal(s.buckets.find((b) => b.label === '60–70%').n, 3);
-  assert.equal(s.outside.won, 1); assert.equal(s.outside.lost, 1);
+  assert.deepEqual(s.retired.map((r) => [r.name.split(' (')[0], r.won, r.lost]), [['Shortlist bankers', 1, 0], ['Surest', 0, 1]]);
+  assert.equal(s.outside.won + s.outside.lost, 0);
 });
 
-test('official picks: shortlist bankers (1.30 to 1.80), the surest list (1.20 to 1.40), best bets (1.20 to 2.50) and singles near 2.00 (1.70 to 2.30), no value spots', async () => {
+test('official picks: Best bets (1.20 to 2.50) and Value bets only; nothing from the retired lists', async () => {
   const { selectPicks } = await import('../js/track.js');
   const now = Date.parse('2026-10-07T08:00:00Z');
   const ev = (id, a, b) => ({ id, compId: id, sport: 'basketball', league: 'NBA', home: `H${id}`, away: `A${id}`, start: now + 36e5, markets: [{ name: 'Winner', outcomes: [{ name: `H${id}`, odds: a }, { name: `A${id}`, odds: b }] }] });
   const picks = selectPicks([ev('1', 1.35, 3.3), ev('2', 1.25, 4.1), ev('3', 1.62, 2.35), ev('4', 1.9, 1.95)], now, 12, []).filter((p) => p.type !== 'multi');
   assert.ok(picks.length > 0);
-  assert.ok(picks.every((p) => (p.type === 'banker' && p.odds >= 1.3 && p.odds <= 1.8) || (p.type === 'safe' && p.odds >= 1.2 && p.odds <= 1.4) || (p.type === 'best' && p.odds >= 1.2 && p.odds <= 2.5) || (p.type === 'two' && p.odds >= 1.7 && p.odds <= 2.3)), JSON.stringify(picks.map((p) => [p.type, p.odds])));
-  assert.equal(new Set(picks.map((p) => p.key)).size, picks.length, 'a pick on both lists keeps two records');
+  assert.ok(picks.every((p) => (p.type === 'best' && p.odds >= 1.2 && p.odds <= 2.5) || p.type === 'edge'), JSON.stringify(picks.map((p) => [p.type, p.odds])));
+  assert.equal(new Set(picks.map((p) => p.key)).size, picks.length, 'one record per list');
 });
 
 test('settlement: legs of a slip that already lost keep being graded', async () => {
@@ -132,14 +136,3 @@ test('parlay of the day: a day runs 12:00 to 12:00 in the chosen zone; one slip 
 });
 
 
-test('singles near 2.00: only odds 1.70 to 2.30, at a fair price or better, likeliest first; none rather than out-of-band', async () => {
-  const { nearTwo } = await import('../js/track.js');
-  const now = Date.parse('2026-10-07T08:00:00Z');
-  const ev = (id, odds, cons, oddsB, consB) => ({ id, compId: id, sport: 'basketball', league: 'L', leaguePath: 'basketball/l', home: `H${id}`, away: `A${id}`, start: now + 36e5,
-    markets: [{ name: 'Winner', outcomes: [{ name: `H${id}`, odds, cons, book: 'x' }, { name: `A${id}`, odds: oddsB, cons: consB, book: 'y' }] }] });
-  const list = nearTwo([ev('1', 1.95, 0.53, 2.0, 0.47), ev('2', 1.8, 0.52, 2.15, 0.48), ev('3', 1.3, 0.79, 4.0, 0.21)]);
-  assert.ok(list.length > 0);
-  assert.ok(list.every((b) => b.odds >= 1.7 && b.odds <= 2.3), JSON.stringify(list.map((b) => b.odds)));
-  assert.ok(list.every((b) => b.fair * b.odds >= 1), 'never shorter than fair');
-  assert.deepEqual(nearTwo([ev('3', 1.3, 0.79, 4.0, 0.21)]), []);
-});

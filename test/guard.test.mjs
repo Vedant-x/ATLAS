@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calibration, blockedSegment, rankedBankers, SAFE, surestPicks } from '../js/track.js';
+import { calibration, blockedSegment, rankedBankers, probePicks } from '../js/track.js';
 
 // 40 hockey spreads at 1.40 (price says ~68%) that landed only 20 times.
 const spreads = Array.from({ length: 40 }, (_, i) => ({ type: 'banker', eventId: `h${i}`, sport: 'hockey', market: 'Spread', pick: `T${i} +1.5`, odds: 1.4, p: 0.7, status: i < 20 ? 'won' : 'lost' }));
@@ -25,14 +25,12 @@ test('the shortlist leaves held-back bet types out', () => {
   assert.ok(list.every((b) => b.market !== 'Spread'), JSON.stringify(list.map((b) => b.market)));
 });
 
-test('surest: 1.20-1.40 only, and never a pick ATLAS rates above the price', () => {
-  assert.equal(SAFE.minOdds, 1.2);
-  const now = Date.now();
-  const mk = (id, odds, model) => ({ id, compId: id, sport: 'esports', league: 'L', home: `H${id}`, away: `A${id}`, start: now + 36e5,
-    markets: [{ name: 'Winner', outcomes: [{ name: `H${id}`, odds, model }, { name: `A${id}`, odds: 4, model: 1 - model }] }] });
-  const ev = [mk('1', 1.25, 0.76), mk('2', 1.3, 0.86), mk('3', 1.12, 0.9), mk('4', 1.35, 0.7)];
-  const picks = surestPicks(ev, { limit: 10 }).map((b) => b.pick);
-  assert.ok(picks.includes('H1') && picks.includes('H4'), JSON.stringify(picks));
-  assert.ok(!picks.includes('H2'), 'ATLAS 86% against a 74% price: left out');
-  assert.ok(!picks.includes('H3'), 'below 1.20: left out');
+test('a blocked bet type is still measured: probes are recorded unseen, so the block can lift', () => {
+  const cal = calibration([...spreads, ...winners]);
+  const e = { id: 'x', compId: '1', sport: 'hockey', league: 'NHL', home: 'Leafs', away: 'Sabres', start: Date.now() + 36e5, markets: [
+    { name: 'Spread', outcomes: [{ name: 'Leafs -1.5', odds: 1.6, line: -1.5 }, { name: 'Sabres +1.5', odds: 2.4, line: 1.5 }] },
+    { name: 'Winner', outcomes: [{ name: 'Leafs', odds: 1.4 }, { name: 'Sabres', odds: 2.9 }] }] };
+  const probes = probePicks([e], { cal });
+  assert.ok(probes.length && probes.every((b) => b.market === 'Spread'), JSON.stringify(probes.map((b) => b.market)));
+  assert.deepEqual(probePicks([e], { cal: null }), [], 'no calibration, nothing blocked, no probes');
 });

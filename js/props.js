@@ -309,6 +309,15 @@ export function propHistory(sport, type, target, rows, { opp = null, home = null
   };
 }
 
+// A line the player cleared in nearly every one of his last 20 games, priced as if it were a coin
+// flip or worse, is not a real line: a stale ladder rung, two players' ladders mixed, or a line the
+// book has already moved. Shipping one would show a 95% "hit rate" at 1.80 that no bookmaker offers.
+export const SUSPECT = { rate: 0.95, minGames: 15, minOdds: 1.5 };
+export function suspectProp(pr) {
+  const [hit, n] = pr?.hist?.l20 || [0, 0];
+  return n >= SUSPECT.minGames && hit / n >= SUSPECT.rate && pr.odds >= SUSPECT.minOdds;
+}
+
 // P(X >= t) for a count with this mean and variance: Poisson, or negative binomial when the games
 // vary more than a Poisson would.
 export function countTail(mean, variance, t) {

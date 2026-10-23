@@ -16,19 +16,22 @@ import { sourcesView } from './sourcesview.js';
 import { loadPlayers, playersData } from './playerdata.js';
 // The Research area: one tab bar across its pages (props and player research, Picks, compare,
 // and sports and leagues).
-const PICKS = ['bankers', 'every', 'edge', 'x', 'target', 'mega'];
-const RESEARCH = new Set(['props', 'player', 'bankers', 'every', 'x', 'target', 'mega', 'edge', 'compare', 'sports', 'sport', 'league', 'live']);
-const R_TABS = [['sports', '#/sports', 'Sports', ['sports', 'sport', 'league']], ['live', '#/live', 'Live', ['live']], ['props', '#/props', 'Props', ['props', 'player']], ['compare', '#/compare', 'Compare', ['compare']], ['picks', '#/bankers', 'Build a slip', PICKS]];
-// Picks pages carry their own tab row (Bankers, Edge board, Multipliers, Target, Mega) instead.
+const PICKS = ['picks', 'value', 'x'];
+const RESEARCH = new Set(['props', 'player', ...PICKS, 'compare', 'sports', 'sport', 'league', 'live']);
+const R_TABS = [['sports', '#/sports', 'Sports', ['sports', 'sport', 'league']], ['live', '#/live', 'Live', ['live']], ['props', '#/props', 'Props', ['props', 'player']], ['compare', '#/compare', 'Compare', ['compare']], ['picks', '#/picks', 'Picks', PICKS]];
+// Picks pages carry their own tab row (Best bets, Value bets, Slips) instead.
+// Old addresses of retired pages (bookmarks, shared links) land on what replaced them.
+const MOVED = { bankers: '#/picks', every: '#/picks', edge: '#/value', target: '#/x/2', mega: '#/x/2' };
+const movedTo = ({ name, args }) => MOVED[name] || (name === 'x' && !['2', '3'].includes(args[0]) ? '#/x/2' : null);
 const withTabs = (name, html) => { if (!RESEARCH.has(name) || PICKS.includes(name)) return html; const i = html.indexOf('</section>'); return i < 0 ? researchTabs(name) + html : html.slice(0, i + 10) + researchTabs(name) + html.slice(i + 10); };
 const researchTabs = (name) => `<nav class="research-tabs" aria-label="Research">${R_TABS.map(([k, h, l, on]) => `<a class="${on.includes(name) ? 'on' : ''}" href="${h}"${on.includes(name) ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>`;
 
 // "More": every page in one sheet (phones and tablets, where the bar holds only the main ones). The
 // tiles reuse the menu's own links and icons.
 const MORE_INFO = {
-  '#/': 'Shortlist, live strip and what is next', '#/live': 'Everything in play now', '#/watchlist': 'Matches you follow, with alerts',
+  '#/': 'Parlay of the day, Best bets, Value bets, live', '#/live': 'Everything in play now', '#/watchlist': 'Matches you follow, with alerts',
   '#/sports': 'Every sport and competition', '#/props': 'Player lines, hit rates, research',
-  '#/bankers': 'Bankers, edge board and slips from 2x to 1000x', '#/compare': 'Pinned matches side by side', '#/track': 'Track record of every pick',
+  '#/picks': 'Best bets, Value bets, 2x and 3x slips', '#/compare': 'Pinned matches side by side', '#/track': 'Track record of every pick',
 };
 const sheet = document.getElementById('more-sheet');
 function fillMore() {
@@ -76,7 +79,7 @@ import { applyModel } from './intel.js';
 import { fetchLineups, fetchSummary } from './espn.js';
 import { startLiveAlerts, alertPrefs } from './livealerts.js';
 import { morph } from './morph.js';
-import { views, bind, legIndex, edgeTable, countdown, esc, sportOf, ist, setHomeLayout, setFiltersOpen } from './views.js';
+import { views, bind, legIndex, countdown, esc, sportOf, ist, setHomeLayout, setFiltersOpen } from './views.js';
 import { enablePush, disablePush, syncPush } from './pushalerts.js';
 import { slip } from './slip.js';
 import { preloader, cursor, wipe, magnetic, tilt, countUp, reveal, fitTitles } from './ui.js';
@@ -279,9 +282,9 @@ function render(animate) {
   pageAccent = v.accent;
   applyAccent();
   scene.setMode(v.mode, v.sceneOpts);
-  // Deeper pages keep their section lit: matches and leagues under Sports, player research under Props, the builder and edge board under Picks.
+  // Deeper pages keep their section lit: matches and leagues under Sports, player research under Props, Value bets and slips under Picks.
   // Research (Sports, Props, Compare, Live and the pages under them) lights the Research entry.
-  const tab = ['sport', 'league', 'match', 'player', 'props', 'compare', 'live'].includes(name) ? 'sports' : PICKS.includes(name) ? 'bankers' : name;
+  const tab = ['sport', 'league', 'match', 'player', 'props', 'compare', 'live'].includes(name) ? 'sports' : PICKS.includes(name) ? 'picks' : name;
   document.querySelectorAll('nav.top a').forEach((a) => { const h = a.getAttribute('href'); a.classList.toggle('on', h.startsWith('#/') && (h.split('/')[1] || 'home') === tab); });
   // On phones and tablets, More is lit when the page's own menu item is folded into it.
   const lit = document.querySelector('nav.top a.on:not([data-more])');
@@ -328,7 +331,7 @@ function trail() {
   if (sp) parts.push([`#/sport/${sp.id}`, sp.name]);
   if (l) parts.push([`#/league/${leagueKey(l.path)}`, l.short || l.name]);
   if (e) parts.push(['', `${e.home} v ${e.away}`]);
-  const label = { edge: 'Edge board', props: 'Player props', player: 'Player', x: 'Multipliers', target: 'Target', mega: 'Mega bets', bankers: 'Bankers', live: 'Live', watchlist: 'Watchlist', compare: 'Compare' }[name];
+  const label = { props: 'Player props', player: 'Player', x: 'Slips', picks: 'Best bets', value: 'Value bets', live: 'Live', watchlist: 'Watchlist', compare: 'Compare' }[name];
   if (label) parts.push(['', label]);
   return parts;
 }
@@ -337,7 +340,7 @@ function dock() {
   if (!el) return;
   // Only on pages below a menu destination (a sport, league, match, player…): the menu already
   // reaches the top-level pages.
-  const parts = trail(), top = parts.length <= 2 && !['x', 'target', 'mega', 'slip', 'player'].includes(parse().name);
+  const parts = trail(), top = parts.length <= 2 && !['x', 'slip', 'player'].includes(parse().name);
   el.hidden = top;
   document.body.classList.toggle('has-dock', !top);
   el.querySelector('.dock-trail').innerHTML = parts.map(([h, t], i, a) => (h && i < a.length - 1 ? `<a href="${h}">${esc(t)}</a>` : `<b>${esc(t)}</b>`)).join('<i>›</i>');
@@ -345,6 +348,8 @@ function dock() {
 
 function route() {
   if (!location.hash.startsWith('#/')) return; // in-page anchors
+  const moved = movedTo(parse());
+  if (moved) { location.replace(moved); return; }
   const { name } = parse();
   // Research: picking a player beside the props list (or going back to the list) patches the page
   // in place, so the list keeps its scroll position; on phones the panel opens at the top.
@@ -356,7 +361,7 @@ function route() {
     dock();
     return;
   }
-  const label = { home: 'TODAY', live: 'LIVE', watchlist: 'WATCHLIST', compare: 'COMPARE', track: 'RESULTS', sports: 'ALL SPORTS', sport: 'SPORT', league: 'LEAGUE', match: 'MATCH DOSSIER', edge: 'EDGE BOARD', props: 'PLAYER PROPS', player: 'PLAYER RESEARCH', x: 'MULTIPLIERS', target: 'TARGET', mega: 'MEGA BETS', bankers: 'BANKERS' }[name] || '';
+  const label = { home: 'TODAY', live: 'LIVE', watchlist: 'WATCHLIST', compare: 'COMPARE', track: 'RESULTS', sports: 'ALL SPORTS', sport: 'SPORT', league: 'LEAGUE', match: 'MATCH DOSSIER', props: 'PLAYER PROPS', player: 'PLAYER RESEARCH', x: 'SLIPS', picks: 'BEST BETS', value: 'VALUE BETS' }[name] || '';
   const h = location.hash || '#/';
   if (replacing) { stack[stack.length - 1] = h; replacing = false; } else if (stack.length > 1 && stack[stack.length - 2] === h) stack.pop(); else stack.push(h);
   // instant: html has scroll-behavior:smooth, and a smooth scroll still running when a live refresh
@@ -368,7 +373,6 @@ function route() {
 function softRender() {
   const a = document.activeElement;
   if (a && /INPUT|SELECT|TEXTAREA/.test(a.tagName)) return;
-  if (current === 'edge') { refreshEdge(); return; }
   const y = scrollY;
   const open = [...app.querySelectorAll('details[open] > summary')].map((s) => s.textContent);
   const { name, v } = build();
@@ -483,13 +487,6 @@ function calc() {
   });
 }
 
-// ---------- edge filters ----------
-function refreshEdge() {
-  const f = {};
-  app.querySelectorAll('[data-ef]').forEach((el) => { f[el.dataset.ef] = el.type === 'checkbox' ? el.checked : el.value; });
-  const box = document.getElementById('edge-table');
-  if (box) { legIndex.clear(); box.innerHTML = edgeTable(f); }
-}
 
 // ---------- events ----------
 function openSlip(open) { drawer.classList.toggle('open', open); document.body.classList.toggle('slip-open', open); }
@@ -575,7 +572,6 @@ document.addEventListener('input', (e) => {
     drawer.querySelector('[data-stake-tip]').innerHTML = stakeTip();
   }
   if (e.target.matches('[data-slip-bankroll]')) { slip.bankroll = e.target.value; drawer.querySelector('[data-stake-tip]').innerHTML = stakeTip(); }
-  if (e.target.matches('[data-ef]')) refreshEdge();
   if (e.target.matches('[data-props-search]')) { propsSearch(e.target.value); const box = document.querySelector('[data-props-list]'); if (box) box.innerHTML = propsList(state.events, decodeURIComponent(parse().args[0] || '')); }
   playerInput(e.target, state.events);
 });
@@ -623,14 +619,6 @@ function toast(text, href) {
   const t = document.createElement('a'); t.className = 'toast'; t.href = href || '#/'; t.innerHTML = `<span>${ico('compare')}</span><p></p>`; t.querySelector('p').textContent = text;
   box.append(t); setTimeout(() => t.classList.add('out'), 4000); setTimeout(() => t.remove(), 4600);
 }
-// Target page: any multiplier from 1.2x up.
-document.addEventListener('submit', (e) => {
-  const f = e.target.closest('[data-xtarget]');
-  if (!f) return;
-  e.preventDefault();
-  const t = Number(f.elements.t.value);
-  if (t >= 1.2 && t <= 100000) location.hash = `#/target/${Math.round(t * 100) / 100}`;
-});
 
 // Clocks: countdowns + "updated Xs ago".
 setInterval(() => {
@@ -696,6 +684,8 @@ if (ageGate()) document.getElementById('preloader')?.remove();
 cursor();
 tilt();
 renderSlip();
+// A retired page's address (a bookmark or shared link) opens what replaced it.
+{ const moved = movedTo(parse()); if (moved) history.replaceState(null, '', moved); }
 // First paint doesn't wait for the full data file: after a short beat the page renders with what it
 // has and fills in when the snapshot arrives.
 const firstData = loadEvents();

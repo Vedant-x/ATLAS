@@ -9,9 +9,9 @@ import { loadDetail, detailFor } from '../detail.js';
 import { CATALOG, ALL_LEAGUES, sportById } from '../catalog.js';
 import { prefs, prefEvents } from '../prefs.js';
 import { liveWin } from '../live.js';
-import { calibrated, shownProp, rankedBankers, bestBets, MAX_ODDS, recommendationFor } from '../track.js';
+import { calibrated, shownProp, rankedBankers, bestBets, valueBets, recommendationFor } from '../track.js';
 import { bankers } from '../intel.js';
-import { trackCalibration } from '../trackview.js';
+import { trackCalibration, trackStats } from '../trackview.js';
 import { researchRow, caseFor, researchPrefs } from '../research.js';
 import { changesSince, lastVisit, needsReview, timelineUpdatedAt } from '../timeline.js';
 import { watch } from '../alerts.js';
@@ -126,22 +126,21 @@ export function createKnowledge(S) {
     return out;
   }
 
-  // The same selection engine as the dashboard (track.js), so the assistant and the cards always
-  // agree: balanced = Best bets (the home shortlist's default), safe = Most likely (60%+), value =
-  // Best value (ATLAS above the price). Matches no bookmaker prices follow, at model fair odds,
-  // unless the visitor shows priced matches only. The visitor's saved filters apply: minimum odds,
-  // and preferred sports when none is named. Odds limits asked for are hard rules on every pick.
+  // The same selection engine as the site's lists (track.js), so the assistant and the cards always
+  // agree: balanced = Best bets, safe = Best bets rated 60%+ (likeliest first), value = Value bets
+  // (prices above the sharp market's fair odds; ATLAS's own "edge" was retired with the model-only
+  // picks: it lost). The visitor's saved filters apply: minimum odds, and preferred sports when none
+  // is named. Odds limits asked for are hard rules on every pick.
   function picks({ sport, league, today = false, mode = 'balanced', limit = 5, minOdds = prefs.get().minOdds, maxOdds, from, to, exclude, skip = [], markets = null, noProps = false } = {}) {
     let list = filterEvents({ sport, league, today, from, to, exclude }).filter((e) => !e.live);
     if (!sport && !league) list = prefEvents(list);
     const cal = trackCalibration();
     const lo = minOdds || 1;
-    const ranked = mode === 'value' ? rankedBankers(list, { cal, minOdds: lo, limit: 2000, mix: false, mode: 'value' })
-      : mode === 'safe' ? rankedBankers(list, { cal, min: 0.6, minOdds: lo, maxOdds: maxOdds ?? (lo > MAX_ODDS ? 50 : MAX_ODDS), limit: 2000, mix: false })
+    const ranked = mode === 'value' ? valueBets(list, { cal, limit: 2000 }).filter((b) => b.odds >= lo)
+      : mode === 'safe' ? bestBets(list, { cal, limit: 2000 }).filter((b) => b.p >= 0.6)
         : bestBets(list, { cal, limit: 2000 });
     let c = ranked.map((b) => ({ e: b.event, market: b.market, pick: b.pick, odds: b.odds, p: b.p, fair: b.fair, ev: b.p * b.odds - 1, priced: true, book: b.book || null, recommendationId: recommendationFor(b, cal).recommendationId,
       ...(b.prop ? { prop: { ...b.prop, id: String(b.prop.id), league: b.event.leaguePath?.split('/')[1] } } : {}) }));
-    if (!prefs.get().pricedOnly && mode !== 'value') c = [...c, ...candidates(list).filter((x) => !x.priced && x.p >= (mode === 'safe' ? 0.6 : 0.55)).sort((a, b) => b.p - a.p)];
     if (minOdds) c = c.filter((x) => x.odds >= minOdds);
     if (maxOdds) c = c.filter((x) => x.odds <= maxOdds);
     c = c.filter((x) => marketOk({ markets, noProps }, x));
@@ -263,5 +262,12 @@ export function createKnowledge(S) {
 
   const catalog = () => CATALOG.map((s) => ({ id: s.id, name: s.name, matches: S.events.filter((e) => e.sport === s.id).length }));
 
-  return { route, currentEvent, currentScope, eventById, sportIn, leagueIn, eventsIn, filterEvents, picks, nearMisses, pickId, candidates, matchSummary, injuriesOf, startersOf, slips, catalog, norm, caseOf, readinessOf, changes, reviewList, freshness, lastVisit, minOdds: () => prefs.get().minOdds, zone: () => tzZone(), playerResearch, slipSummary, sourcesFor, SPORT_WORDS, LEAGUE_WORDS };
+  // The retired longer slips' final record, for answers to "give me a 10x slip".
+  const retiredSlips = () => {
+    const r = (trackStats()?.retired || []).filter((x) => /slips/i.test(x.name));
+    const won = r.reduce((a, x) => a + x.won, 0), n = r.reduce((a, x) => a + x.won + x.lost, 0);
+    return n ? `${won} won of ${n}` : null;
+  };
+
+  return { route, currentEvent, retiredSlips, currentScope, eventById, sportIn, leagueIn, eventsIn, filterEvents, picks, nearMisses, pickId, candidates, matchSummary, injuriesOf, startersOf, slips, catalog, norm, caseOf, readinessOf, changes, reviewList, freshness, lastVisit, minOdds: () => prefs.get().minOdds, zone: () => tzZone(), playerResearch, slipSummary, sourcesFor, SPORT_WORDS, LEAGUE_WORDS };
 }

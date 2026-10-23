@@ -5,13 +5,11 @@
   .bar, body.scrolled .bar { backdrop-filter: none; transform: none; background: var(--bg); }
   body.scrolled .ticker { top: 52px; }
   .subnav, body.scrolled .subnav, body.hide-bar .subnav { top: 98px; }
-  .sports, .xs { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .sports { grid-template-columns: 1fr 1fr; gap: 10px; }
   .sport { min-height: 138px; padding: 16px; }
   .sport b { font-size: 22px; }
   .sport .ico { font-size: 30px; top: 14px; right: 14px; }
   .sport .next { display: none; }
-  .xcard { min-height: 120px; padding: 16px; }
-  .xcard b { font-size: 56px; } .xcard.mega b { font-size: 40px; }
   .side { flex-direction: column; align-items: stretch; }
   .gauge { margin: 0 auto; }
   .foot { padding-bottom: 170px; }
@@ -54,21 +52,8 @@
   .ai-launch { width: 70px; height: 70px; }
   .ai-panel { left: 0; right: 0; bottom: 0; width: 100%; height: min(82vh, calc(100vh - 60px)); border-radius: 22px 22px 0 0; padding-bottom: env(safe-area-inset-bottom); z-index: 95; }
 
-  /* Edge board: each price becomes a compact card instead of a 10-column table */
-  .edge-tbl thead { display: none; }
-  .edge-tbl, .edge-tbl tbody { display: block; }
-  .edge-tbl tr { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px 8px; padding: 14px 2px; border-bottom: 1px solid var(--line); }
-  .edge-tbl td { border: 0; padding: 0; background: none !important; }
-  .edge-tbl td.ic { display: none; }
-  .edge-tbl td.mt { grid-column: 1 / -1; font-weight: 600; }
-  .edge-tbl td.mt a { display: block; padding: 6px 0 2px; }
   .kicker a { padding: 10px 0; }
   .note a { display: inline-block; padding: 10px 0; }
-  .edge-tbl td.mk { grid-column: 1 / 3; color: var(--muted); font-size: 12px; align-self: center; }
-  .edge-tbl td.pk { grid-column: 3 / 5; align-self: center; }
-  .edge-tbl td.add { grid-column: 5; grid-row: 2; justify-self: end; }
-  .edge-tbl td.num { text-align: left; font-size: 13px; }
-  .edge-tbl td.num::before { content: attr(data-l); display: block; font: 700 10px var(--mono); letter-spacing: 1px; color: var(--muted); text-transform: uppercase; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -337,7 +322,6 @@
 .dt-types { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; margin: 10px 0; }
 .dt-types li { padding: 6px 8px; border-radius: 10px; background: rgba(255, 255, 255, .04); display: grid; }
 .dt-types span { font-size: 11px; color: var(--muted); } .dt-types b { font: 18px var(--display); } .dt-types small { font: 600 10px var(--mono); color: var(--muted); }
-.xcard .xrec { color: var(--pos); font-family: var(--mono); }
 .minilist.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 8px; }
 .bb-m { font-size: 12px; margin: -4px 0 8px; }
 
