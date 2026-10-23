@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseProps, boxStats, gradeProp, propLabel } from '../js/props.js';
+import { parseProps, boxStats, gradeProp, propLabel, propOver, totalType } from '../js/props.js';
 import { gradePick, resultFromSummary, familyOf } from '../js/track.js';
 import { bankers } from '../js/intel.js';
 
@@ -18,7 +18,7 @@ const who = (id) => ({ 4017837: { name: 'Ivica Zubac', side: 'home' }, 4396993: 
 
 test('props: milestones and anytime scorers parse; ungradeable, team and silly-short lines are left out', () => {
   const p = parseProps(nba, 'basketball', who);
-  assert.deepEqual(p.map(propLabel).sort(), ['Aaron Nesmith 2+ threes', 'Ivica Zubac 8+ points']);
+  assert.deepEqual(p.map(propLabel).sort(), ['Aaron Nesmith over 1.5 threes', 'Ivica Zubac over 7.5 points']);
   const z = p.find((x) => x.player === 'Ivica Zubac');
   assert.equal(z.target, 8); assert.equal(z.odds, 1.57);
   assert.ok(z.p < 1 / 1.57 && z.p > 0.58); // the price's chance less the margin
@@ -30,7 +30,32 @@ test('props: one main line per player and stat (nearest even money), common prop
   const ladder = [1.12, 1.45, 2.05, 3.4].map((o, i) => ({ athlete: ath(4017837), type: { name: 'Points Milestones' }, odds: { decimal: { value: String(o) } }, current: { target: { value: 5 * (i + 1) } } }));
   const blocks = { athlete: ath(4396993), type: { name: 'Blocks Milestones' }, odds: { decimal: { value: '1.9' } }, current: { target: { value: 1 } } };
   const low = { athlete: ath(4396993), type: { name: 'Rebounds Milestones' }, odds: { decimal: { value: '1.2' } }, current: { target: { value: 2 } } };
-  assert.deepEqual(parseProps([...ladder, blocks, low], 'basketball', who).map(propLabel), ['Ivica Zubac 15+ points']);
+  assert.deepEqual(parseProps([...ladder, blocks, low], 'basketball', who).map(propLabel), ['Ivica Zubac over 14.5 points']);
+});
+
+test('props: the over/under main line, as Stake writes it (over first, its fair chance from both prices)', () => {
+  // Shapes from the feed (23 Oct 2026): two items, same line, no side named; plus a milestone ladder.
+  const ou = (type, line, odds) => ({ athlete: ath(3032976), type: { name: type }, odds: { decimal: { value: String(odds) }, total: { value: String(line) } }, current: { target: { value: line } } });
+  const rung = (t, odds) => ({ athlete: ath(3032976), type: { name: 'Rebounds Milestones' }, odds: { decimal: { value: String(odds) } }, current: { target: { value: t } } });
+  const who2 = (id) => (id === '3032976' ? { name: 'Rudy Gobert', side: 'away' } : null);
+  const check = { agree: 0, disagree: 0 };
+  const p = parseProps([ou('Total Rebounds', 11.5, 1.8), ou('Total Rebounds', 11.5, 1.95), ou('Total Points, Rebounds, and Assists', 23.5, 1.9), ou('Total Points, Rebounds, and Assists', 23.5, 1.83),
+    rung(10, 1.34), rung(11, 1.52), rung(12, 1.78), rung(13, 2.14)], 'basketball', who2, { check });
+  const reb = p.find((x) => x.type === 'Rebounds');
+  assert.equal(reb.target, 12); assert.equal(reb.line, 11.5); assert.equal(reb.odds, 1.8);
+  assert.equal(propOver(reb), 'over 11.5 rebounds');
+  assert.equal(+reb.pm.toFixed(3), +((1 / 1.8) / (1 / 1.8 + 1 / 1.95)).toFixed(3));
+  assert.equal(p.find((x) => x.type === 'Points + Assists + Rebounds').target, 24);
+  assert.deepEqual(check, { agree: 1, disagree: 0 }); // the over price matches the ladder's 12+ rung
+  assert.equal(p.filter((x) => x.type === 'Rebounds').length, 1); // the ladder is not used on top of the main line
+});
+
+test('props: a muddled ladder (two players\' rungs under one player) is not used', () => {
+  const rung = (t, odds) => ({ athlete: ath(4017837), type: { name: 'Rebounds Milestones' }, odds: { decimal: { value: String(odds) } }, current: { target: { value: t } } });
+  const mixed = [[2, 1.1], [3, 1.32], [4, 1.75], [5, 2.57], [6, 4.13], [6, 1.04], [7, 1.07], [8, 1.13], [10, 1.34], [12, 1.78]].map(([t, o]) => rung(t, o));
+  assert.deepEqual(parseProps(mixed, 'basketball', who), []);
+  assert.equal(totalType('Total Points and Rebounds', 'basketball'), 'Points + Rebounds');
+  assert.equal(totalType('Total Steals and Blocks', 'basketball'), null);
 });
 
 test('props grade from the box score: over the line wins, under loses, a flagged DNP is dnp, an empty row is unknown', () => {
@@ -63,7 +88,7 @@ test('props join the shortlist as their own bet type', () => {
   const e = { id: 'n1', sport: 'basketball', leaguePath: 'basketball/nba', home: 'Clippers', away: 'Pacers', start: Date.now() + 36e5, markets: [],
     props: parseProps(nba, 'basketball', who) };
   const b = bankers([e], { min: 0.55 });
-  assert.ok(b.some((x) => x.pick === 'Ivica Zubac 8+ points' && x.market === 'Player points' && x.prop?.target === 8));
+  assert.ok(b.some((x) => x.pick === 'Ivica Zubac over 7.5 points' && x.market === 'Player points' && x.prop?.target === 8));
   assert.equal(familyOf('Player points'), 'prop');
 });
 
@@ -158,7 +183,7 @@ test('prop alerts: re-rated with the reason, lines pulled, injury status changes
   const now = snapshot({ ...base, props: [pr('1', 'Nikola Jokic', 0.66, 'without Jamal Murray (out)')], injuries: { home: [{ name: 'Jamal Murray', status: 'Out' }], away: [] } });
   const ch = diff(base, before, now);
   const t = ch.map((c) => c.text);
-  assert.ok(t.includes('Nikola Jokic 25+ points: ATLAS 58% → 66% (without Jamal Murray (out))'), t.join(' | '));
+  assert.ok(t.includes('Nikola Jokic over 24.5 points: ATLAS 58% → 66% (without Jamal Murray (out))'), t.join(' | '));
   assert.ok(t.some((x) => /^Lines pulled for Jamal Murray/.test(x)));
   const inj = ch.find((c) => c.kind === 'injury');
   assert.equal(inj.text, 'Jamal Murray: Questionable → Out');

@@ -585,7 +585,8 @@ async function playerProps(events) {
     if (!athletes.has(ref)) athletes.set(ref, getJson(ref).then((a) => ({ name: a.displayName, team: /\/teams\/(\d+)/.exec(a.team?.$ref || '')?.[1] || null })).catch(() => null));
     return athletes.get(ref);
   };
-  let lines = 0, matched = 0, failed = 0, propSample = null;
+  let lines = 0, matched = 0, failed = 0;
+  const sideCheck = { agree: 0, disagree: 0 }; // over/under order against the ladder (props.js)
   const queue = [...due];
   await Promise.all(Array.from({ length: 6 }, async () => {
     while (queue.length) {
@@ -599,12 +600,6 @@ async function playerProps(events) {
         for (let pg = 2; pg <= Math.min(j.pageCount || 1, 3); pg++) items.push(...((await getJson(`${url}&page=${pg}`)).items || []));
       } catch (err) { if (!/404/.test(err.message)) failed++; continue; }
       if (!items.length) continue;
-      // What the feed's rebound lines look like (one NBA match per build): line, price and fields.
-      if (sport === 'basketball' && !propSample) {
-        const who1 = items.find((x) => /Rebounds/.test(x.type?.name || ''))?.athlete?.$ref;
-        propSample = [JSON.stringify(items.find((x) => /Rebounds/.test(x.type?.name || ''))), ...items.filter((x) => x.athlete?.$ref === who1).slice(0, 40).map((x) => JSON.stringify({ type: x.type?.name, odds: x.odds?.decimal?.value, total: x.odds?.total?.value, target: x.current?.target, over: x.current?.over, under: x.current?.under }))];
-        if (propSample.length) log(`  prop feed sample (${e.home} v ${e.away}):\n    ${propSample.join('\n    ')}`);
-      }
       const [h, a] = await Promise.all([roster(e.leaguePath, e.teamIds.home), roster(e.leaguePath, e.teamIds.away)]);
       const extra = new Map();
       // Only player references (a team or other ref has no athlete id, and used to stop the whole step).
@@ -612,11 +607,12 @@ async function playerProps(events) {
       const refs = [...new Set(items.map((x) => x.athlete?.$ref).filter((r) => idOf(r) && !h.has(idOf(r)) && !a.has(idOf(r))))].slice(0, 25);
       for (const r of refs) { const x = await athlete(r); if (x?.name) extra.set(idOf(r), { name: x.name, side: x.team === String(e.teamIds.home) ? 'home' : x.team === String(e.teamIds.away) ? 'away' : null }); }
       const who = (id) => (h.has(id) ? { name: h.get(id), side: 'home' } : a.has(id) ? { name: a.get(id), side: 'away' } : extra.get(id) || null);
-      e.props = parseProps(items, sport, who);
+      e.props = parseProps(items, sport, who, { check: sideCheck });
       if (e.props.length) { matched++; lines += e.props.length; }
     }
   }));
-  log(`Player props (DraftKings via ESPN): ${lines} lines on ${matched} of ${due.length} matches in the next 36h${failed ? `, ${failed} lookup(s) failed` : ''}`);
+  log(`Player props (DraftKings via ESPN): ${lines} lines on ${matched} of ${due.length} matches in the next 36h${failed ? `, ${failed} lookup(s) failed` : ''}; over/under order check: ${sideCheck.agree} agree, ${sideCheck.disagree} disagree with the ladder`);
+  if (sideCheck.disagree > sideCheck.agree) problems.push(`Player props: the over/under order looks reversed (${sideCheck.disagree} of ${sideCheck.agree + sideCheck.disagree} disagree with the ladder)`);
   // Player history: each player's last 20 games from his ESPN game log (last season too while this
   // one is under 10 games old). It gives the props page its hit rates, splits and charts, and the
   // ATLAS chance (propChance): the price as a prior, moved by how the player's recent games went.
