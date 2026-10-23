@@ -601,7 +601,8 @@ async function playerProps(events) {
       if (!items.length) continue;
       // What the feed's rebound lines look like (one NBA match per build): line, price and fields.
       if (sport === 'basketball' && !propSample) {
-        propSample = items.filter((x) => /Rebounds/.test(x.type?.name || '')).slice(0, 8).map((x) => JSON.stringify({ type: x.type, athlete: x.athlete?.$ref?.split('/athletes/')[1]?.split('?')[0], odds: x.odds, current: x.current, open: x.open, total: x.total, keys: Object.keys(x) }));
+        const who1 = items.find((x) => /Rebounds/.test(x.type?.name || ''))?.athlete?.$ref;
+        propSample = [JSON.stringify(items.find((x) => /Rebounds/.test(x.type?.name || ''))), ...items.filter((x) => x.athlete?.$ref === who1).slice(0, 40).map((x) => JSON.stringify({ type: x.type?.name, odds: x.odds?.decimal?.value, total: x.odds?.total?.value, target: x.current?.target, over: x.current?.over, under: x.current?.under }))];
         if (propSample.length) log(`  prop feed sample (${e.home} v ${e.away}):\n    ${propSample.join('\n    ')}`);
       }
       const [h, a] = await Promise.all([roster(e.leaguePath, e.teamIds.home), roster(e.leaguePath, e.teamIds.away)]);
