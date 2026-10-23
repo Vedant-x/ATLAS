@@ -93,8 +93,8 @@ export function nearTwo(events, { cal = null, limit = 10, tolerance = NEAR_TWO.t
 // 2026.10.11: a price 3%+ longer than the first one seen (drifting: the market moving against the
 //   pick) is left out; Value bets (the best price 2%+ above the sharp market's fair odds) are recorded
 //   as their own type; player props on main lines and common types only.
-// 2026.10.12: NBA picks wait until 90 minutes before tip-off and while a key player's status is
-//   unresolved; props of players on the injury report are left out (newsgate.js).
+// 2026.10.12: NBA picks wait while a key player's status is unresolved; props of players on the
+//   injury report are left out (newsgate.js).
 export const MODEL_VERSION = '2026.10.12';
 
 // Market families the track record learns from: winner, 1X2 result, spread/handicap, totals.
