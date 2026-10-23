@@ -35,6 +35,7 @@ import { parseGolf, golfForm, golfChances, parseStandings, raceChances, raceResu
 import { EUROLEAGUE, LIIGA, SWISS, euroSeason, euroRecords, euroEvent, liigaRecords, liigaEvent, swissRecords, swissEvent } from '../js/europe.js';
 import { ODDS_API, matchOdds, sportOfKey, pairEvents, fixtureFromApi } from '../js/oddsapi.js';
 import { carryOpen, DRIFT } from '../js/movement.js';
+import { pendingNews } from '../js/newsgate.js';
 import { valueBets, VALUE } from '../js/track.js';
 import { toDecimal } from '../js/espn.js';
 
@@ -617,8 +618,9 @@ async function playerProps(events) {
   // questionable tonight, by athlete id, so their absence can be read from the game logs.
   const INJ = /^(out|doubtful|questionable|day-to-day|injured reserve|suspension)/i;
   const withProps = due.filter((e) => e.props?.length);
-  const sq = [...withProps];
-  let injured = 0;
+  // Every NBA game too, props or not: its picks wait on the injury report (newsgate.js).
+  const sq = due.filter((e) => e.props?.length || e.leaguePath === 'basketball/nba');
+  let injured = 0, pending = 0, pulled = 0;
   await Promise.all(Array.from({ length: 6 }, async () => {
     while (sq.length) {
       const e = sq.shift();
@@ -633,10 +635,21 @@ async function playerProps(events) {
             .filter((x) => x.id && x.name && INJ.test(x.status));
         }
         if (inj.home.length || inj.away.length) { e.injuries = { ...inj, source: 'ESPN', at: Date.now() }; injured += inj.home.length + inj.away.length; }
+        if (e.leaguePath === 'basketball/nba') {
+          // Key players: each team's season leaders (points, rebounds, assists) in the summary.
+          const leaders = new Set((sm.leaders || []).flatMap((t) => (t.leaders || []).flatMap((c) => (c.leaders || []).map((l) => String(l.athlete?.id ?? '')))).filter(Boolean));
+          const names = pendingNews(e.injuries, leaders);
+          if (names.length) { e.newsPending = names; pending++; }
+          // A player on the injury report (out, doubtful, questionable) has no props here: he may not
+          // play, or play limited minutes.
+          const listed = new Set(['home', 'away'].flatMap((s) => (e.injuries?.[s] || []).map((x) => x.id)));
+          const before = e.props?.length || 0;
+          if (before) { e.props = e.props.filter((p) => !listed.has(String(p.id))); pulled += before - e.props.length; }
+        }
       } catch { /* no injury report */ }
     }
   }));
-  log(`Injury reports (ESPN): ${injured} players out, doubtful or questionable across ${withProps.filter((e) => e.injuries).length} of ${withProps.length} prop matches`);
+  log(`Injury reports (ESPN): ${injured} players out, doubtful or questionable across ${withProps.filter((e) => e.injuries).length} of ${withProps.length} prop matches; NBA: ${pending} game(s) waiting on a key player's status, ${pulled} prop(s) of listed players left out`);
 
   // Player history: each player's last 20 games from his ESPN game log (last season too while this
   // one is under 10 games old). It gives the props page its hit rates, splits and charts, and the

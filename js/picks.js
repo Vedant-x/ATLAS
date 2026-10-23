@@ -5,6 +5,7 @@
 //    than a few long shots. For a target T it picks the legs that give the most win chance per unit
 //    of odds (maximise the product of probabilities for the product of odds), so 1000x might be
 //    forty 1.2s, and 2x two or three short favourites.
+import { newsHold } from './newsgate.js';
 import { devig, allLegs } from './engine.js';
 import { propLabel, propMarket } from './props.js';
 import { calibrated, blockedSegment } from './track.js';
@@ -89,7 +90,7 @@ const propLegs = (events) => events.filter((e) => !e.live).flatMap((e) => (e.pro
 })));
 export function legPool(events, { minP = 0.55, minOdds = 1.04, maxOdds = 1.6, cal = null, positiveOnly = false } = {}) {
   const best = new Map();
-  for (const l of [...allLegs(events.filter((e) => e.markets?.length && !e.live)), ...propLegs(events)]) {
+  for (const l of [...allLegs(events.filter((e) => e.markets?.length && !e.live && !newsHold(e))), ...propLegs(events.filter((e) => !newsHold(e)))]) {
     const p = calibrated(l.p, l.market, cal, l.sport, l.derived ? null : l.odds);
     // A banker is a clear favourite at a fair-ish price: short odds and an estimate close to the price.
     if (l.cushion || l.odds < minOdds || l.odds > maxOdds || p < minP || p * l.odds < (positiveOnly ? 1.000001 : 0.93) || blockedSegment(cal, l.sport, l.market)) continue;
