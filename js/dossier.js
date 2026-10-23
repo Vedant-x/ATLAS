@@ -113,6 +113,7 @@ export function dossierSections(e, d, hc, ac) {
     const meets = (e.h2hRecent || []).map((m) => `<tr><td>${dt(m.t)}</td><td class="${m.w === 'home' ? 'win' : ''}">${esc(m.h)}</td><td class="num">${m.hs != null ? `${esc(m.hs)} – ${esc(m.as)}` : esc(m.w === 'draw' ? 'draw' : '')}</td><td class="${m.w === 'away' ? 'win' : ''}">${esc(m.a)}</td></tr>`);
     S.push({ id: 'atlas-history', label: 'Results history', html: `<div class="panel reveal"><h3 class="ph">From ATLAS's results history <small>every finished game ATLAS has seen, last 180 days${e.atlas?.surface ? ` · ratings blended with the ${esc(e.atlas.surface)}-court rating` : ''}</small></h3>
       <div class="pl-nums hist-nums">${cell('home')}${cell('away')}</div>
+      ${e.atlas?.games ? `<p class="note">In this sport these ratings have picked the winner ${Math.round(e.atlas.right * 100)}% of the time (${e.atlas.games} games)${e.atlas.trusted ? '.' : ': not reliable enough, so they are shown here but not used for any chance.'}</p>` : ''}
       ${meets.length ? `<h4>Last meetings</h4>${table(['Date', 'Home', 'Score', 'Away'], meets, 'tight')}` : ''}</div>` });
   }
 

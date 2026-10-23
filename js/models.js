@@ -113,7 +113,8 @@ function baselineWin(event) {
   // ATLAS's own ratings, from every result in its history (ratings.js): used once both sides have
   // TRUST_GAMES results, after the published ratings below (Tennis Abstract, ClubElo, World Elo).
   const at = event.atlas;
-  const atlasOk = at && at.home.n >= TRUST_GAMES && at.away.n >= TRUST_GAMES;
+  // Only for sports whose ratings have called results well enough (ratings.js sportTrusted).
+  const atlasOk = at && at.trusted !== false && at.home.n >= TRUST_GAMES && at.away.n >= TRUST_GAMES;
   const atlasNote = atlasOk ? `ATLAS rating ${at.home.r} vs ${at.away.r} (from ${at.home.n} and ${at.away.n} results${at.surface ? `, ${at.surface} court` : ''})` : null;
   // Tennis has no bookmaker price in the feed: Elo where there is one, else the official rankings.
   if (event.sport === 'tennis' && event.tennis) {

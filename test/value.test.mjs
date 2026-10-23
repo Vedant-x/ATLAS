@@ -55,3 +55,30 @@ test('value bets are recorded as their own type and counted apart from the short
   assert.equal(s.edge.won + s.edge.lost, 2);
   assert.equal(s.outside.won + s.outside.lost, 0);
 });
+
+test('value bets: one the typical price across books also beats comes first (not one book\'s line); an old sharp line is no reference', () => {
+  const evs = [
+    // +5.6% at the best price, but the typical book (1.95) is below fair (2.08): only at one book.
+    event('w1', [mk([{ name: 'Home', odds: 2.2, cons: 0.48, book: 'Betway', med: 1.95 }, { name: 'Draw', odds: 3.3, cons: 0.28 }, { name: 'Away', odds: 4.2, cons: 0.24 }])]),
+    // +3.2%, and the typical price 1.78 also clears the fair 1.72 by 2%+: widely available.
+    event('w2', [mk([{ name: 'Home', odds: 1.8, cons: 0.5733, book: 'DraftKings', med: 1.78 }, { name: 'Draw', odds: 4.1, cons: 0.24 }, { name: 'Away', odds: 5.4, cons: 0.18 }])]),
+    // A sharp line laid over the feed 11 hours ago: too old to judge a price by.
+    event('w3', [mk([{ name: 'Home', odds: 2.2, cons: 0.48, med: 2.2 }, { name: 'Draw', odds: 3.3, cons: 0.28 }, { name: 'Away', odds: 4.2, cons: 0.24 }])], { sharpAt: Date.now() - 11 * H, oddsSource: null }),
+  ];
+  const v = valueBets(evs, { limit: 10 });
+  assert.deepEqual(v.map((b) => [b.event.id, b.wide]), [['w2', true], ['w1', false]]);
+});
+
+test('a pick the record could never grade is never offered (eSoccer, the cricket feed, no match id)', async () => {
+  const { gradable } = await import('../js/settle.js');
+  assert.equal(gradable({ compId: '1', leaguePath: 'soccer/eng.1' }), true);
+  assert.equal(gradable({ compId: '1', leaguePath: 'atlas/cs2' }), true);
+  assert.equal(gradable({ compId: '1', leaguePath: 'atlas/esoccer' }), false);
+  assert.equal(gradable({ compId: '1', leaguePath: 'atlas/cricket-intl' }), false);
+  assert.equal(gradable({ leaguePath: 'soccer/eng.1' }), false);
+  const evs = [
+    event('g1', [mk([{ name: 'Home', odds: 2.2, cons: 0.48 }, { name: 'Draw', odds: 3.3, cons: 0.28 }, { name: 'Away', odds: 4.2, cons: 0.24 }])], { leaguePath: 'atlas/esoccer', sport: 'efootball' }),
+    event('g2', [mk([{ name: 'Home', odds: 2.2, cons: 0.48 }, { name: 'Draw', odds: 3.3, cons: 0.28 }, { name: 'Away', odds: 4.2, cons: 0.24 }])]),
+  ];
+  assert.deepEqual(valueBets(evs).map((b) => b.event.id), ['g2']);
+});

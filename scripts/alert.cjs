@@ -3,10 +3,13 @@
 // problem must be present in PERSIST builds in a row before it alerts. Each alert is one email: the
 // issue mentions the owner (no separate assignment email), a comment only when a new lasting problem
 // appears, and a quiet close (no comment) after RECOVER builds in a row with no problem at all.
+// A problem that comes back within a week reopens the same issue rather than opening another: a
+// flapping feed once opened a dozen issues in a week. A source down for a day or more alerts once
+// ("ClubElo down for a day or more"), and stays in the open issue until it works again.
 // Streaks are kept in track/alert-state.json, saved with the track record.
 // Run by actions/github-script in .github/workflows/pages.yml.
 const PERSIST = 3;
-const RECOVER = 2;
+const RECOVER = 6; // about two hours with no problem at all
 // "Formula 1 data failed: The operation was aborted" and "…: fetch failed" are the same problem.
 const keyOf = (p) => String(p).split(':')[0].trim();
 
@@ -26,9 +29,10 @@ module.exports = async ({ github, context, core }, file = 'track/alert-state.jso
   try { health = JSON.parse(fs.readFileSync('dist/pages/data/health.json', 'utf8')); } catch { core.info('no health report'); return; }
   let prev = null;
   try { prev = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* first run */ }
-  const { state, lasting } = step(prev, health.problems || []);
+  const problems = health.alerts || health.problems || [];
+  const { state, lasting } = step(prev, problems);
   try { fs.writeFileSync(file, JSON.stringify(state)); } catch (e) { core.info(`alert state not saved: ${e.message}`); }
-  for (const p of health.problems || []) core.info(`problem (${state.counts[keyOf(p)]}/${PERSIST} builds): ${p}`);
+  for (const p of problems) core.info(`problem (${state.counts[keyOf(p)]}/${PERSIST} builds): ${p}`);
 
   const { owner, repo } = context.repo;
   const label = 'data-alert';
@@ -47,8 +51,15 @@ module.exports = async ({ github, context, core }, file = 'track/alert-state.jso
   const list = lasting.map((p) => `- ${p}`).join('\n');
   const body = `@${owner} the site build has had data problems for ${PERSIST}+ builds in a row (about half an hour). Visitors may see missing or stale fixtures until this is fixed.\n\n${list}\n\nESPN games loaded: ${health.espnGames}. [Build log](${run})\n\n${sig}`;
   if (!open) {
-    await github.rest.issues.createLabel({ owner, repo, name: label, color: 'd93f0b', description: 'Automatic: the site data has a lasting problem' }).catch(() => {});
-    await github.rest.issues.create({ owner, repo, title: 'ATLAS data alert: the site is missing data', body, labels: [label] });
+    // Back within a week: the same issue again, so the history stays in one place.
+    const recent = (await github.rest.issues.listForRepo({ owner, repo, labels: label, state: 'closed', sort: 'updated', direction: 'desc', per_page: 1 })).data[0];
+    if (recent && Date.now() - Date.parse(recent.closed_at || 0) < 7 * 864e5) {
+      await github.rest.issues.update({ owner, repo, issue_number: recent.number, state: 'open', body });
+      await github.rest.issues.createComment({ owner, repo, issue_number: recent.number, body: `Back again:\n\n${list}\n\n[Build log](${run})` });
+    } else {
+      await github.rest.issues.createLabel({ owner, repo, name: label, color: 'd93f0b', description: 'Automatic: the site data has a lasting problem' }).catch(() => {});
+      await github.rest.issues.create({ owner, repo, title: 'ATLAS data alert: the site is missing data', body, labels: [label] });
+    }
     core.setOutput('notify', 'true');
   } else {
     const known = (/<!-- keys:([^ ]*) -->/.exec(open.body || '')?.[1] || '');

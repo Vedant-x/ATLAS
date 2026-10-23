@@ -24,8 +24,8 @@ jobs:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           ODDS_MAX_SPORTS: '0'
           ODDS_REGIONS: eu
-          # TheSportsDB's free key is shared and rate limited: test builds reuse the live site's copy.
-          TSDB_KEEP_MIN: '1440'
+          # TheSportsDB's free key is shared and rate limited: test builds only reuse the live site's cache.
+          TSDB_BUDGET: '0'
       - name: Track record dry run (empty history, live results)
         run: node scripts/record.mjs /tmp/track/picks.json dist/pages/data/index.json /tmp/track/track.json /tmp/track/audit.json
       - name: Second results source against real picks (the baseline's final results, confirmed live)

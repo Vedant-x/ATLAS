@@ -6,7 +6,7 @@ import { applyModel, bankers } from './intel.js';
 import { boxStats, gradeProp } from './props.js';
 import { bankerSlips, legPool } from './picks.js';
 import { localDay } from './engine.js';
-import { selectionId, dueForRead, FINAL } from './settle.js';
+import { selectionId, dueForRead, FINAL, gradable } from './settle.js';
 import { recommendation } from './recommendation.js';
 import { drifting } from './movement.js';
 
@@ -28,7 +28,7 @@ export const FLOOR_ODDS = 1.2;
 export const BEST = { minOdds: 1.2, maxOdds: 2.5, min: 0.55, overclaim: 0.02 };
 export function bestBets(events, { cal = null, limit = 10 } = {}) {
   const good = (b) => (b.consensus ? b.fair * b.odds >= 1 : b.pRaw <= marketChance(b.odds) + BEST.overclaim);
-  const list = rankedBankers(events, { cal, min: BEST.min, minOdds: BEST.minOdds, maxOdds: BEST.maxOdds, limit: 2000, mix: false }).filter(good);
+  const list = rankedBankers(events.filter(gradable), { cal, min: BEST.min, minOdds: BEST.minOdds, maxOdds: BEST.maxOdds, limit: 2000, mix: false }).filter(good);
   return diversify(list, limit).sort((x, y) => y.p - x.p);
 }
 // Value bets: prices above the sharp market's own fair odds. With many bookmakers (oddsapi.js) the
@@ -37,14 +37,18 @@ export function bestBets(events, { cal = null, limit = 10 } = {}) {
 // small (a few percent), and real only at the bookmaker quoting the price: takeAt is the lowest price
 // still worth taking anywhere. The chance shown is the market's, not ATLAS's: in the record, picks
 // ATLAS rated 10-20 points above the market landed slightly below the market's own chance.
-export const VALUE = { min: 0.02, minMedian: 0.03, minFair: 0.3, minOdds: 1.25, maxOdds: 4 };
+// sharpAge: a sharp line laid over another feed's price (overlayOdds, football-data) is a reference
+// only while fresh; an older one may just be a line the market has since moved past.
+export const VALUE = { min: 0.02, minMedian: 0.03, minFair: 0.3, minOdds: 1.25, maxOdds: 4, sharpAge: 10 * 36e5 };
 export function valueBets(events, { cal = null, limit = 10 } = {}) {
-  const list = bankers(events.filter((e) => !e.live), { min: 0, limit: Infinity })
+  const list = bankers(events.filter((e) => !e.live && gradable(e)), { min: 0, limit: Infinity })
     .filter((b) => b.consensus && b.odds >= VALUE.minOdds && b.odds <= VALUE.maxOdds && b.fair >= VALUE.minFair
-      && !blockedSegment(cal, b.event.sport, b.market) && !drifting(b.odds, b.open))
-    .map((b) => ({ ...b, pRaw: b.p, p: b.fair, edge: b.odds * b.fair - 1, ev: b.odds * b.fair - 1, takeAt: +((1 + VALUE.min) / b.fair).toFixed(2) }))
-    .filter((b) => b.edge >= (b.consensusFrom === 'Pinnacle' ? VALUE.min : VALUE.minMedian))
-    .sort((x, y) => y.edge - x.edge);
+      && !blockedSegment(cal, b.event.sport, b.market) && !drifting(b.odds, b.open) && !(b.event.sharpAt && Date.now() - b.event.sharpAt > VALUE.sharpAge))
+    // wide: the typical price across books also beats the fair odds, so the value does not hang on
+    // one bookmaker (most books, Stake among them, should have it). Those come first.
+    .map((b) => ({ ...b, pRaw: b.p, p: b.fair, edge: b.odds * b.fair - 1, ev: b.odds * b.fair - 1, takeAt: +((1 + VALUE.min) / b.fair).toFixed(2), wide: b.med > 1 ? b.med * b.fair - 1 >= VALUE.min : null }))
+    .filter((b) => b.edge >= (/^Pinnacle/.test(b.consensusFrom || '') ? VALUE.min : VALUE.minMedian))
+    .sort((x, y) => Number(Boolean(y.wide)) - Number(Boolean(x.wide)) || y.edge - x.edge);
   return diversify(list, limit, { familyShare: 0.6, sportShare: 0.6 });
 }
 // Stamped on every recorded pick, so results can be split by the model that made them.
@@ -330,7 +334,7 @@ export function rankedBankers(events, { cal = null, min = 0.6, minOdds = 1, maxO
 export function probePicks(events, { cal = null, limit = 10 } = {}) {
   if (!cal) return [];
   const good = (b) => (b.consensus ? b.fair * b.odds >= 1 : b.pRaw <= marketChance(b.odds) + BEST.overclaim);
-  return bankers(events, { min: BEST.min * 0.9, minOdds: BEST.minOdds, limit: 2000 })
+  return bankers(events.filter(gradable), { min: BEST.min * 0.9, minOdds: BEST.minOdds, limit: 2000 })
     .filter((b) => b.odds <= BEST.maxOdds && blockedSegment(cal, b.event?.sport, b.market) && !drifting(b.odds, b.open)).map((b) => withCal(b, cal))
     // Judged on the price's own chance: the shown chance carries the blocked type's penalty, which
     // would keep it out for good.

@@ -349,6 +349,10 @@ body.scrolled .bar { height: 52px; padding-block: 0; }
 .sources-tbl .src-failed .src-state { color: var(--neg); }
 .sources-tbl .src-empty .src-state { color: #ffb547; }
 .sources-tbl .src-off .src-state { color: var(--muted); }
+.sources-tbl .src-paused .src-state { color: #ffb547; }
+dl.missing { display: grid; gap: 4px 0; margin: 8px 0 0; }
+dl.missing dt { font-weight: 700; margin-top: 10px; }
+dl.missing dd { margin: 0; color: var(--muted); line-height: 1.5; }
 .hist-nums em { display: block; font-style: normal; color: var(--muted); font-size: 12px; }
 .panel.warn-weather { border-color: #ffb54766; }
 

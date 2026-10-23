@@ -13,6 +13,11 @@ import { normClub } from './clubelo.js';
 
 export const START = 1500;
 export const TRUST_GAMES = 10; // results each side needs before a rating is used
+// A sport's ratings are used for a chance only once they have called enough of its results well: 150+
+// games and a Brier score of 0.23 or less (a coin flip scores 0.25). In October 2026 baseball (56%
+// right, 0.246) and tennis (57%, 0.241) fell short, hockey too: their ratings are shown, not used.
+export const TRUSTED = { games: 150, brier: 0.23 };
+export const sportTrusted = (q) => Boolean(q && q.n >= TRUSTED.games && q.brier <= TRUSTED.brier);
 const P = {
   football: { k: 20, home: 65, margin: true, draws: true }, hockey: { k: 14, home: 35, margin: true }, basketball: { k: 18, home: 70, margin: true },
   americanfootball: { k: 24, home: 50, margin: true }, baseball: { k: 5, home: 24 }, tennis: { k: 32, home: 0 }, cricket: { k: 24, home: 60 },
@@ -82,8 +87,11 @@ export function annotate(events, R, now = Date.now()) {
     const surface = e.sport === 'tennis' ? surfaceOf(e.tennis, e.start) : null;
     const blend = (k, x) => { const s = surface && R.surf.get(`${k}|${surface}`); return s?.n >= 3 ? Math.round((x.r + s.r) / 2) : Math.round(x.r); };
     if (H && A) {
-      e.atlas = { home: { r: blend(kh, H), n: H.n }, away: { r: blend(ka, A), n: A.n }, ...(surface ? { surface } : {}) };
-      if (H.n >= TRUST_GAMES && A.n >= TRUST_GAMES) n++;
+      const q = R.quality?.[e.sport];
+      e.atlas = { home: { r: blend(kh, H), n: H.n }, away: { r: blend(ka, A), n: A.n }, ...(surface ? { surface } : {}),
+        // How well this sport's ratings have called results; untrusted ones are shown, never used.
+        ...(q ? { right: +q.right.toFixed(3), brier: +q.brier.toFixed(3), games: q.n } : {}), trusted: sportTrusted(q) };
+      if (H.n >= TRUST_GAMES && A.n >= TRUST_GAMES && e.atlas.trusted) n++;
     }
     const st = (e.stats ||= {});
     const rest = (k) => (R.last.has(k) && R.last.get(k) < e.start ? Math.floor((e.start - R.last.get(k)) / 864e5) : null);

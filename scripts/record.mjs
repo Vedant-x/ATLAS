@@ -6,7 +6,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { selectPicks, addPicks, updateClosing, gradePick, resultFromSummary, resultFromScoreboard, resultFromBo3, settleMulti, duePicks, observations } from '../js/track.js';
 import { applyRead, selectionId, awaitingConfirm, independentlyConfirmed } from '../js/settle.js';
-import { secondReader } from '../js/results2.js';
+import { secondReader, NBA_SCHEDULE, nbaBoxUrl, nbaGameId, nbaPropResult } from '../js/results2.js';
 import { BO3, BO3_GAMES } from '../js/esports.js';
 
 const [historyPath = 'track/picks.json', eventsPath = 'dist/pages/data/index.json', outPath = 'dist/pages/data/track.json', auditPath = 'track/audit.json'] = process.argv.slice(2);
@@ -85,6 +85,24 @@ const second = secondReader(async (url) => {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 });
+// NBA player props: confirmed from the NBA's own box score (results2.js nbaPropResult), the game found
+// through the NBA's schedule. undefined: the NBA's files could not be read; null: game not found.
+const nbaGet = async (url) => {
+  const res = await fetch(url, { signal: AbortSignal.timeout(20000), headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', Accept: 'application/json', Referer: 'https://www.nba.com/', Origin: 'https://www.nba.com' } });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+};
+let nbaSchedule = null;
+const nbaBoxes = new Map();
+const nbaBox = async (p) => {
+  try {
+    nbaSchedule ||= nbaGet(NBA_SCHEDULE);
+    const id = nbaGameId(p, await nbaSchedule);
+    if (!id) return null;
+    if (!nbaBoxes.has(id)) nbaBoxes.set(id, nbaGet(nbaBoxUrl(id)));
+    return await nbaBoxes.get(id);
+  } catch (e) { second.errors['NBA box score'] = e.message; return undefined; }
+};
 const secondStats = {};
 const tally = (src, k) => { (secondStats[src] ||= { agree: 0, disagree: 0, 'not found': 0, failed: 0 })[k]++; };
 // One read per pick: a result, postponed, void, or nothing to grade yet (settle.js decides what that
@@ -103,7 +121,17 @@ for (const [key, picks] of Object.entries(byMatch)) {
   else if (alt && !alt.result) tally(alt.source, 'not found');
   const altReads = new Map();
   if (alt?.result) for (const p of wants) { const read = readOf(p, alt.result); if (read.status != null) altReads.set(p, read); else tally(alt.source, 'not found'); }
-  const primary = picks.filter((p) => !(altReads.has(p) && awaitingConfirm(p)));
+  // NBA props waiting for their confirming read: the NBA's box score.
+  const propReads = new Map();
+  const propWants = leaguePath === 'basketball/nba' ? picks.filter((p) => p.prop && awaitingConfirm(p)) : [];
+  if (propWants.length) {
+    const box = await nbaBox(propWants[0]);
+    for (const p of propWants) {
+      const st = box ? nbaPropResult(p, box) : null;
+      if (st) propReads.set(p, { status: st, score: p.score }); else tally('NBA box score', box === undefined ? 'failed' : 'not found');
+    }
+  }
+  const primary = picks.filter((p) => !(altReads.has(p) && awaitingConfirm(p)) && !propReads.has(p));
   if (primary.length) {
     let r, source;
     if (leaguePath.startsWith('atlas/')) { r = resultFromBo3(bo3.get(compId)); source = 'bo3.gg'; }
@@ -124,6 +152,7 @@ for (const [key, picks] of Object.entries(byMatch)) {
     if (awaitingConfirm(p)) tally(alt.source, read.status === p.status ? 'agree' : 'disagree');
     apply(p, read, alt.source);
   }
+  for (const [p, read] of propReads) { tally('NBA box score', read.status === p.status ? 'agree' : 'disagree'); apply(p, read, 'NBA box score'); }
 }
 // Settle multiplier slips whose legs are all in (or one has lost).
 let multis = 0;

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { consensus, marketsFromOdds, matchOdds, normName, sportOfKey, pairEvents, fixtureFromApi, sameSide } from '../js/oddsapi.js';
+import { consensus, marketsFromOdds, matchOdds, normName, sportOfKey, pairEvents, fixtureFromApi, sameSide, overlayOdds } from '../js/oddsapi.js';
 
 const bk = (title, markets) => ({ key: title, title, markets });
 const h2h = (a, pa, b, pb, d = null) => bk('b', [{ key: 'h2h', outcomes: [{ name: a, price: pa }, { name: b, price: pb }, ...(d ? [{ name: 'Draw', price: d }] : [])] }]);
@@ -162,4 +162,31 @@ test('spreads pair a home line only with its mirror; a soccer match never loses 
   matchOdds([e], [{ id: 'o', commence_time: new Date(start).toISOString(), home_team: 'Arsenal', away_team: 'Chelsea', bookmakers: [h2h('Arsenal', 1.5, 'Chelsea', 2.6)] }], { force: true });
   assert.deepEqual(e.markets.map((m) => m.name), ['Match Result']);
   assert.ok(e.markets[0].outcomes.some((o) => o.name === 'Draw'));
+});
+
+test('sharp overlay: the feed keeps its own price; each outcome gains the sharp fair chance, the typical and the best price', () => {
+  const t = Date.now() + 5 * 36e5;
+  const ev = { id: 'nba1', sport: 'basketball', home: 'Boston Celtics', away: 'Miami Heat', start: t, bookmaker: 'DraftKings',
+    markets: [{ name: 'Moneyline', outcomes: [{ name: 'Boston Celtics', odds: 1.55 }, { name: 'Miami Heat', odds: 2.5 }] }, { name: 'Total 210.5', outcomes: [{ name: 'Over 210.5', odds: 1.91 }, { name: 'Under 210.5', odds: 1.91 }] }] };
+  const api = { id: 'o1', commence_time: new Date(t).toISOString(), home_team: 'Boston Celtics', away_team: 'Miami Heat', bookmakers: [
+    { key: 'pinnacle', title: 'Pinnacle', last_update: new Date().toISOString(), markets: [{ key: 'h2h', outcomes: [{ name: 'Boston Celtics', price: 1.6 }, { name: 'Miami Heat', price: 2.45 }] }, { key: 'totals', outcomes: [{ name: 'Over', price: 1.95, point: 212.5 }, { name: 'Under', price: 1.88, point: 212.5 }] }] },
+    { key: 'unibet', title: 'Unibet', last_update: new Date().toISOString(), markets: [{ key: 'h2h', outcomes: [{ name: 'Boston Celtics', price: 1.62 }, { name: 'Miami Heat', price: 2.35 }] }] },
+    { key: 'betway', title: 'Betway', last_update: new Date().toISOString(), markets: [{ key: 'h2h', outcomes: [{ name: 'Boston Celtics', price: 1.57 }, { name: 'Miami Heat', price: 2.4 }] }] },
+  ] };
+  assert.equal(overlayOdds([ev], [api]), 1);
+  const [cel, mia] = ev.markets[0].outcomes;
+  assert.equal(cel.odds, 1.55, 'the feed\'s own price stays');
+  assert.equal(ev.markets[0].consensusFrom, 'Pinnacle');
+  assert.ok(Math.abs(cel.cons - (1 / 1.6) / (1 / 1.6 + 1 / 2.45)) < 1e-3);
+  assert.equal(cel.med, 1.6);
+  assert.equal(cel.best, 1.62);
+  assert.equal(cel.bestBook, 'Unibet');
+  assert.equal(mia.best, undefined, 'the feed already has the best price');
+  assert.equal(cel.book, 'DraftKings');
+  // A total at another line is a different bet: left alone.
+  assert.equal(ev.markets[1].outcomes[0].cons, undefined);
+  // Old quotes are no sharp price at all.
+  const old = { ...ev, id: 'nba2', markets: [{ name: 'Moneyline', outcomes: [{ name: 'Boston Celtics', odds: 1.55 }, { name: 'Miami Heat', odds: 2.5 }] }] };
+  const stale = { ...api, bookmakers: api.bookmakers.map((b) => ({ ...b, last_update: new Date(Date.now() - 20 * 36e5).toISOString() })) };
+  assert.equal(overlayOdds([old], [stale]), 0);
 });

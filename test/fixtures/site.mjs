@@ -18,7 +18,7 @@ export function siteData(now = Date.now()) {
     ev('fx-bos-nyk', 'basketball', 'NBA', 'basketball/nba', 'Celtics', 'Knicks', 8, [['Celtics', 1.48], ['Knicks', 2.7]]),
     ev('fx-sin-dra', 'tennis', 'ATP', 'tennis/atp', 'Sinner', 'Draper', 4, [['Sinner', 1.32], ['Draper', 3.4]]),
     ev('fx-tor-mtl', 'hockey', 'NHL', 'hockey/nhl', 'Maple Leafs', 'Canadiens', 9, [['Maple Leafs', 1.62], ['Canadiens', 2.3]]),
-    // No price in the feed: rated by the model from rankings / records (Every sport page).
+    // No price in the feed: rated by the model from rankings / records (match page only).
     ev('fx-alc-ruu', 'tennis', 'ATP', 'tennis/atp', 'Alcaraz', 'Ruud', 7, [], { markets: [], tennis: { home: { rank: 2, points: 9000 }, away: { rank: 40, points: 1300 } } }),
     ev('fx-ind-ban', 'cricket', 'T20I', 'cricket/t20i', 'India', 'Bangladesh', 10, [], { markets: [], stats: { homeRecord: '9-1', awayRecord: '3-7', homeForm: ['W', 'W', 'W', 'W', 'L'], awayForm: ['L', 'L', 'W', 'L', 'L'] } }),
     // Priced by many bookmakers (The Odds API): fair chances from Pinnacle, the best price on offer.
@@ -32,7 +32,8 @@ export function siteData(now = Date.now()) {
       bookmaker: 'best of 12 bookmakers; fair chance from Pinnacle', oddsSource: 'the-odds-api', quoteType: 'best-available' }),
     ev('fx-lal-gsw', 'basketball', 'NBA', 'basketball/nba', 'Lakers', 'Warriors', -1, [['Lakers', 1.7], ['Warriors', 2.15]], { live: true, score: '54-49', clock: 'Q3 4:12' }),
   ];
-  const events = list.map(({ inHours, ...e }) => ({ ...e, start: now + inHours * H, fetchedAt: now - 2 * 6e4 }));
+  // Every match has its feed's match id, as ESPN's do (picks are only offered where a result can be read).
+  const events = list.map(({ inHours, ...e }, i) => ({ compId: String(401000000 + i), ...e, start: now + inHours * H, fetchedAt: now - 2 * 6e4 }));
   return { events, fetchedAt: now - 2 * 6e4, leagueStatus: {} };
 }
 

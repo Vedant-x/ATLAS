@@ -132,10 +132,13 @@ jobs:
           mkdir -p lane && cd lane && git init -q && git checkout -q --orphan live-data
           git config user.name "atlas-bot" && git config user.email "atlas-bot@users.noreply.github.com"
           git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          # Pushed only when the file changed (a score moved, or the 2-minute heartbeat while games are on).
           for i in $(seq 1 20); do
-            node ../scripts/live-lane.mjs live.json || true
-            git add live.json && git commit -q --amend --allow-empty -m "Live scores" 2>/dev/null || git commit -q -m "Live scores"
-            git push -q -f origin HEAD:live-data || true
+            timeout 60 node ../scripts/live-lane.mjs live.json ../dist/pages/data/index.json || true
+            if [ -f live.json ] && { ! git rev-parse -q --verify HEAD >/dev/null || ! git diff --quiet HEAD -- live.json; }; then
+              git add live.json && { git commit -q --amend -m "Live scores" 2>/dev/null || git commit -q -m "Live scores"; }
+              git push -q -f origin HEAD:live-data || true
+            fi
             sleep 18
           done
           cd ..

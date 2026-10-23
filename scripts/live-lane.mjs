@@ -1,13 +1,23 @@
 // Fast lane for live scores from sites that block browsers: NPB, KBO, esports (bo3.gg) and eSoccer
 // (EsportsBattle). Run every 20 seconds by the deploy workflow between rebuilds; writes live.json,
 // which the workflow pushes to the live-data branch for the site to poll.
-//   node scripts/live-lane.mjs <out.json>
-import { writeFile } from 'node:fs/promises';
+//   node scripts/live-lane.mjs <out.json> [board index.json]
+// Only the feeds with a game on the board from 6 hours ago to the next 2 hours are read (NPB used to
+// time out every 30 seconds through its off-season), a feed that fails 3 runs in a row rests for 10
+// (lane-state.json), and live.json is rewritten only when a score changes, or every 2 minutes while
+// games are on (the site ignores a file over 5 minutes old): the workflow pushes only a changed file.
+import { writeFile, readFile } from 'node:fs/promises';
 import { parseNpbScoreboard, kboLive } from '../js/asia-live.js';
-import { BO3, ESB, bo3Live, esbLive } from '../js/esports.js';
+import { BO3, ESB, BO3_GAMES, bo3Live, esbLive } from '../js/esports.js';
 import { KHL_API, khlLive } from '../js/khl.js';
 
 const out = process.argv[2] || 'live.json';
+const board = process.argv[3] ? await readFile(process.argv[3], 'utf8').then((t) => JSON.parse(t).events || []).catch(() => null) : null;
+const STATE = 'lane-state.json';
+const state = await readFile(STATE, 'utf8').then(JSON.parse).catch(() => ({}));
+// Which board leagues each feed serves (null: always read when there is no board to go by).
+const SERVES = { NPB: ['atlas/npb'], KBO: ['atlas/kbo'], KHL: ['atlas/khl'], 'bo3.gg': Object.values(BO3_GAMES).map((g) => g.path), eSoccer: ['atlas/esoccer'] };
+const near = (name) => !board || board.some((e) => SERVES[name]?.includes(e.leaguePath) && (e.live || (e.start > Date.now() - 6 * 36e5 && e.start < Date.now() + 2 * 36e5)));
 const UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36' };
 const get = async (u, opt = {}) => {
   const r = await fetch(u, { headers: UA, signal: AbortSignal.timeout(10000), ...opt, ...(opt.headers ? { headers: { ...UA, ...opt.headers } } : {}) });
@@ -51,7 +61,19 @@ const lanes = [
   }],
 ];
 const counts = await Promise.all(lanes.map(async ([name, run]) => {
-  try { const g = await run(); games.push(...g); return `${name} ${g.filter((x) => x.status === 'live').length}`; } catch (e) { return `${name} failed (${e.message})`; }
+  const st = (state[name] ||= { fails: 0, rest: 0 });
+  if (!near(name)) return `${name} no games`;
+  if (st.rest > 0) { st.rest--; return `${name} resting`; }
+  try { const g = await run(); games.push(...g); st.fails = 0; return `${name} ${g.filter((x) => x.status === 'live').length}`; } catch (e) {
+    if (++st.fails >= 3) { st.rest = 10; st.fails = 0; }
+    return `${name} failed (${e.message})`;
+  }
 }));
-await writeFile(out, JSON.stringify({ at: Date.now(), games }));
-console.log(`live lane: ${games.length} entries · live: ${counts.join(', ')}`);
+await writeFile(STATE, JSON.stringify(state));
+const prev = await readFile(out, 'utf8').then(JSON.parse).catch(() => null);
+const same = prev && JSON.stringify(prev.games) === JSON.stringify(games);
+if (same && (!games.length || prev.at > Date.now() - 2 * 6e4)) console.log(`live lane: unchanged (${games.length} entries) · ${counts.join(', ')}`);
+else {
+  await writeFile(out, JSON.stringify({ at: Date.now(), games }));
+  console.log(`live lane: ${games.length} entries · live: ${counts.join(', ')}`);
+}

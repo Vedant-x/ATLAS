@@ -50,3 +50,19 @@ test('a golf round or race (no two sides) is skipped; boxing keeps boxing, not M
   assert.equal(tsdbEvent(ev({ strLeague: 'UFC' }), boxing), null);
   assert.ok(tsdbEvent(ev({ strLeague: 'Boxing' }), boxing));
 });
+
+test('TheSportsDB reads a little at a time: only the reads due, stalest first, within the budget', async () => {
+  const { dueReads, slim, packResult, unpackResult, TSDB_TTL } = await import('../js/sportsdb.js');
+  const now = Date.parse('2026-10-23T12:00:00Z');
+  const cache = { a: { at: now - 10 * 6e4 }, b: { at: now - 50 * 6e4 }, c: { at: now - 4 * 36e5 }, d: { at: now - 2 * 36e5 } };
+  const wanted = [{ path: 'a', ttl: TSDB_TTL.recent }, { path: 'b', ttl: TSDB_TTL.recent }, { path: 'c', ttl: TSDB_TTL.ahead }, { path: 'd', ttl: TSDB_TTL.ahead }, { path: 'e', ttl: TSDB_TTL.season }];
+  assert.deepEqual(dueReads(cache, wanted, now, 10).map((w) => w.path), ['e', 'c', 'b']); // never read, then the oldest
+  assert.deepEqual(dueReads(cache, wanted, now, 2).map((w) => w.path), ['e', 'c']);
+  assert.deepEqual(dueReads(cache, wanted, now, 0), []);
+  // A cached event keeps only what the parsers read; a finished game packs to a row and back.
+  const x = { idEvent: '9', strHomeTeam: 'A', strAwayTeam: 'B', intHomeScore: '3', intAwayScore: '1', strStatus: 'FT', strTimestamp: '2026-10-20T19:00:00', strDescriptionEN: 'long text', strThumb: 'x.jpg' };
+  assert.deepEqual(Object.keys(slim(x)).sort(), ['idEvent', 'intAwayScore', 'intHomeScore', 'strAwayTeam', 'strHomeTeam', 'strStatus', 'strTimestamp']);
+  const back = unpackResult(packResult(x));
+  assert.equal(back.intHomeScore, 3);
+  assert.equal(Date.parse(back.strTimestamp), Date.parse('2026-10-20T19:00:00Z'));
+});

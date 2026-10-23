@@ -146,14 +146,16 @@ export function bankers(events, { min = 0.7, limit = 24, minOdds = 1, cushions =
           // The first price seen for it (movement.js), to tell a drifting price.
           ...(m.outcomes[i].open > 1 ? { open: m.outcomes[i].open } : {}),
           // Many bookmakers: the best price's bookmaker, and a fair chance that is the market consensus.
-          ...(Number.isFinite(m.outcomes[i].cons) ? { consensus: true, book: m.outcomes[i].book || null, consensusFrom: m.consensusFrom || null } : {}) });
+          ...(Number.isFinite(m.outcomes[i].cons) ? { consensus: true, book: m.outcomes[i].book || null, consensusFrom: m.consensusFrom || null } : {}),
+          // The typical price across books, and a better one elsewhere (oddsapi.js overlayOdds).
+          ...(m.outcomes[i].med > 1 ? { med: m.outcomes[i].med } : {}), ...(m.outcomes[i].best > 1 ? { best: m.outcomes[i].best, bestBook: m.outcomes[i].bestBook || null } : {}) });
       });
     }
     // Player props (milestones, anytime scorers): one-way prices, chance net of the margin.
     for (const pr of e.props || []) {
       if (pr.p < min || pr.odds < minOdds) continue;
       out.push({ event: e, market: propMarket(pr), pick: propLabel(pr), odds: pr.odds, p: pr.p, fair: pr.pm ?? pr.p, ev: pr.p * pr.odds - 1, agree: pr.form ? pr.p >= (pr.pm ?? pr.p) : null,
-        prop: { id: pr.id, type: pr.type, target: pr.target } });
+        prop: { id: pr.id, type: pr.type, target: pr.target, name: pr.player } });
     }
   }
   return out.sort((a, b) => b.p - a.p).slice(0, limit);

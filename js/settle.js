@@ -21,6 +21,11 @@ export const UNRESOLVED_AFTER_DAYS = 4;
 export const RETRY_DAYS = 30;
 export const RETRY_HOURS = 6;
 export const CONFIRM_AFTER_HOURS = 3;
+// Leagues whose results the record can read (scripts/record.mjs): ESPN's (summary or scoreboard) and
+// bo3.gg's esports. A pick the record could never grade is never offered: eSoccer's and the cricket
+// feed's picks sat "pending" for good, 148 of them by 22 Oct 2026.
+const GRADED_FEEDS = /^atlas\/(cs2|valorant|lol|dota2)$/;
+export const gradable = (e) => Boolean(e?.compId) && (!String(e?.leaguePath || '').startsWith('atlas/') || GRADED_FEEDS.test(e.leaguePath));
 // A final result still waiting for its confirming read.
 export const awaitingConfirm = (p) => FINAL.has(p.status) && !p.confirmedAt;
 // Confirmed by a source other than the one that settled it (results2.js). Records settled before
