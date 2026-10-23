@@ -9,7 +9,7 @@ export function sharedSlipView(code, events) {
   const head = (h) => `<section class="hero small"><p class="kicker reveal">SHARED SLIP</p><h1>${h}</h1></section>`;
   if (!legs.length) {
     return { mode: 'edge', accent: '#d2ff00', title: 'Shared slip',
-      html: `${head('SLIP NOT FOUND')}<div class="panel reveal"><p class="muted">This link holds no readable slip. Ask for the link again, or build your own from <a href="#/bankers">Picks</a>.</p></div>` };
+      html: `${head('SLIP NOT FOUND')}<div class="panel reveal"><p class="muted">This link holds no readable slip. Ask for the link again, or build your own from <a href="#/picks">Picks</a>.</p></div>` };
   }
   const byId = new Map(events.map((e) => [e.id, e]));
   const odds = legs.reduce((a, l) => a * l.odds, 1), p = legs.reduce((a, l) => a * l.p, 1);

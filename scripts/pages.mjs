@@ -18,7 +18,7 @@ import { validateReport } from '../js/validate.js';
 import { mkdir, copyFile, cp, writeFile, rm, readFile } from 'node:fs/promises';
 import { fetchAll, LEAGUES, fetchErrors, leagueStatus } from '../js/espn.js';
 import { leagueByPath } from '../js/catalog.js';
-import { CORE, PROVIDER, PROP_STATS, GAMELOG_KEYS, OPPORTUNITY, parseProps, gamelogRows, previousSeason, formFor, propHistory, propChance, withoutTeammate, hasForm } from '../js/props.js';
+import { CORE, PROVIDER, PROP_STATS, GAMELOG_KEYS, OPPORTUNITY, parseProps, gamelogRows, previousSeason, formFor, propHistory, propChance, withoutTeammate, hasForm, suspectProp } from '../js/props.js';
 import { KHL_API, khlEvent, khlRecords } from '../js/khl.js';
 import { TSDB, TSDB_SPORTS, tsdbEvent, tsdbRecords } from '../js/sportsdb.js';
 import { CLUBELO, parseClubElo, eloIndex, isEuropean } from '../js/clubelo.js';
@@ -702,6 +702,7 @@ async function playerProps(events) {
   };
   const OUT = /^(out|doubtful|injured reserve|suspension)/i;
   let formed = 0, adjusted = 0;
+  const suspect = [];
   for (const e of due) {
     const [sport, league] = e.leaguePath.split('/');
     for (const pr of e.props || []) {
@@ -728,8 +729,11 @@ async function playerProps(events) {
       if (top && Math.abs(pr.p - pr.pBase) >= 0.02) { pr.why = `without ${top.name} (${top.status.toLowerCase()})`; adjusted++; }
       formed++;
     }
+    const bad = (e.props || []).filter(suspectProp);
+    if (bad.length) { e.props = e.props.filter((pr) => !suspectProp(pr)); suspect.push(...bad.map((pr) => `${pr.player} over ${pr.target - 0.5} ${pr.label} @${pr.odds} (cleared ${pr.hist.l20[0]} of ${pr.hist.l20[1]})`)); }
     e.props?.sort((a, b) => b.p - a.p);
   }
+  if (suspect.length) log(`  SUSPECT LINES dropped (${suspect.length}): ${suspect.slice(0, 6).join(' · ')}`);
   // Every prop player's game log (and his injured teammates') for the player research page
   // (data/players.json, loaded on demand): per game the date, opponent, home/away, this season or
   // last, minutes (or at-bats), the game and team ids (for with/without a teammate) and each stat a

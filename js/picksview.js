@@ -1,20 +1,15 @@
-// Picks: the bankers list, the edge board and the multiplier builder (2x to 20x, any target, 100x
-// and 1000x), one menu entry with these pages as its tabs.
-import { SPORTS } from './data.js';
-import { devig, todayEvents } from './engine.js';
-import { kelly } from './models.js';
-import { pc, odd } from './charts.js';
+// Picks: Best bets (the likeliest winners at a fair price or better), Value bets (prices above the
+// sharp market's fair odds) and 2x / 3x slips, one menu entry with these pages as its tabs.
+import { todayEvents } from './engine.js';
+import { pc } from './charts.js';
 import { split } from './ui.js';
 import { prefs } from './prefs.js';
-import { trackStats, trackCalibration, trackModelRecord, recordLine, ensureTrack, slipHistory, officialSlip } from './trackview.js';
-import { modelPicks } from './modelpicks.js';
-import { coverage, COVERAGE_FIELDS } from './coverage.js';
-import { rankedBankers, slipPolicy, MAX_ODDS } from './track.js';
-import { orderBets, orderChips, orderLabel } from './research.js';
+import { trackStats, trackCalibration, recordLine, ensureTrack, slipHistory, officialSlip } from './trackview.js';
+import { slipPolicy, bestBets, valueBets, MULTI_TARGETS } from './track.js';
+import { orderBets, orderChips, orderLabel, researchPrefs, windowChips } from './research.js';
 import { ico } from './icons.js';
 import { fmt, zone } from './tz.js';
-import { whyLine } from './why.js';
-import { views, esc, sportOf, notice, when, istTag, legButton, legIndex, prefsBar, prefFilter, bookLeg, miniPick } from './views.js';
+import { views, esc, sportOf, notice, istTag, legIndex, prefsBar, prefFilter, miniPick, valuePick } from './views.js';
 
 let S;
 export function bindPicks(state) { S = state; }
@@ -66,7 +61,7 @@ function slipCard(s, i, target, all) {
 }
 
 // Picks: one menu entry, these pages as its tabs.
-const builderNav = (on) => `<nav class="builder-nav reveal" aria-label="Picks">${[['bankers', '#/bankers', 'Bankers'], ['every', '#/every', 'Every sport'], ['edge', '#/edge', 'Edge board'], ['x', '#/x/2', 'Multipliers'], ['target', '#/target', 'Target'], ['mega', '#/mega', 'Mega']].map(([k, h, l]) => `<a class="chip ${k === on ? 'on' : ''}" href="${h}"${k === on ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>`;
+const builderNav = (on) => `<nav class="builder-nav reveal" aria-label="Picks">${[['picks', '#/picks', 'Best bets'], ['value', '#/value', 'Value bets'], ['x', '#/x/2', 'Slips']].map(([k, h, l]) => `<a class="chip ${k === on ? 'on' : ''}" href="${h}"${k === on ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>`;
 
 // Today's official slip for a tracked target, exactly as saved to the record (legs, odds, chance).
 // Where a builder's legs come from, for the page kicker (track.js slipPolicy).
@@ -89,6 +84,12 @@ function recordSummary(target, r) {
   const n = (r?.won || 0) + (r?.lost || 0);
   return `<p class="rec-line reveal">${target}x record: ${n ? `${recordLine(r)} · ${n} settled slip${n === 1 ? '' : 's'}${n < 50 ? ' (a small sample: no conclusion yet)' : ''}` : 'no settled slips yet'} · each slip needs ${pc(1 / target, 1)} to break even</p>`;
 }
+// The retired longer slips, with their final record (from the Results data).
+function retiredNote() {
+  const r = (trackStats()?.retired || []).filter((x) => /slips/i.test(x.name));
+  const won = r.reduce((a, x) => a + x.won, 0), n = r.reduce((a, x) => a + x.won + x.lost, 0);
+  return n ? `<p class="muted reveal">Longer slips (4x to 1000x) were retired after winning ${won} of ${n}: <a href="#/track">their record</a>.</p>` : '';
+}
 // Fewer options than asked for: say why, never pad the list.
 const fewNote = (list, target, want = 5) => (list.length && list.length < want ? `<p class="muted reveal">Only ${list.length} slip${list.length === 1 ? '' : 's'} meet${list.length === 1 ? 's' : ''} the rules right now (legs ATLAS rates likely enough, your minimum odds per leg, no two legs sharing a team, matches ${windowLabel(target).toLowerCase().replace('next', 'in the next')}). ATLAS doesn't add weaker slips to fill the page.</p>` : '');
 // Why no slip could be built: name the rule that blocked it instead of quietly loosening it.
@@ -97,209 +98,55 @@ function emptySlips(target) {
   return `<p class="muted">No slip reaches about ${target}x within the rules, even with the wider search (legs rated 35%+ after the track-record check, total within 20% of the target): minimum odds ${mo.toFixed(2)} per leg${prefs.get().sports?.length ? ', your selected sports only' : ''}, no two legs sharing a team, matches ${windowLabel(target).toLowerCase().replace('next', 'in the next')}. ${mo > 1.2 ? 'Lowering your minimum odds or ' : ''}A smaller target will usually work.</p>`;
 }
 
-// Bankers filtered through the track record: market types that have underperformed their estimates
-// need a stronger estimate to make the list (see calibration in track.js).
-// Same function the official record uses, so a pick shows the same chance here and on the Record page.
-function smartBankers(events, { min = 0.7, limit = 10, minOdds = 1 } = {}) {
-  return rankedBankers(events, { cal: trackCalibration(), min, minOdds, limit });
-}
-
-// A priced pick, as simple as on the home page (views.js miniPick): the pick, the match and when,
-// ATLAS's chance with what the price needs and the return, and the price. The reasons and the
-// market's own chance are in the tip and on the match page.
-const bigPick = (b) => miniPick(b);
-
-export function edgeTable(f) {
-  const rows = [];
-  for (const e of S.events) {
-    if (f.sport && e.sport !== f.sport) continue;
-    for (const m of e.markets || []) {
-      const d = devig(m);
-      m.outcomes.forEach((o, i) => {
-        const fair = d.outcomes[i].fair, p = o.model ?? fair, ev = p * o.odds - 1;
-        rows.push({ e, m, o, fair, p, ev });
-      });
-    }
-  }
-  const min = Number(f.min) || 1, max = Number(f.max) || 1000, q = (f.q || '').toLowerCase();
-  const list = rows.filter((r) => r.o.odds >= min && r.o.odds <= max && (!f.pos || r.ev > 0)
-    && (!q || `${r.e.home} ${r.e.away} ${r.e.league} ${r.m.name} ${r.o.name}`.toLowerCase().includes(q)))
-    .sort((a, b) => (f.sort === 'p' ? b.p - a.p : f.sort === 'odds' ? a.o.odds - b.o.odds : f.sort === 'start' ? a.e.start - b.e.start : f.sort === 'start-desc' ? b.e.start - a.e.start : b.ev - a.ev))
-    .slice(0, 300);
-  return `<p class="cap">${list.length} of ${rows.length} prices</p><table class="tbl edge-tbl"><thead><tr><th></th><th>Match</th><th>Market</th><th>Pick</th><th>Odds</th><th>Fair</th><th>Model</th><th>Edge</th><th>Kelly ¼</th><th></th></tr></thead><tbody>
-    ${list.map((r) => `<tr><td class="ic">${sportOf(r.e.sport).icon}</td><td class="mt"><a href="#/match/${esc(r.e.id)}">${esc(r.e.home)} v ${esc(r.e.away)}</a><small>${esc(r.e.league)} · ${when(r.e)}</small></td><td class="mk">${esc(r.m.name)}</td><td class="pk"><b>${esc(r.o.name)}</b></td>
-      <td class="num" data-l="Odds">${odd(r.o.odds)}</td><td class="num" data-l="Fair">${pc(r.fair)}</td><td class="num" data-l="Model">${r.o.model != null ? pc(r.o.model) : '—'}</td><td class="num ${r.ev >= 0 ? 'pos' : 'neg'}" data-l="Edge">${(r.ev * 100).toFixed(1)}%</td><td class="num" data-l="Kelly ¼">${r.ev > 0 ? pc(kelly(r.p, r.o.odds) / 4) : '—'}</td><td class="add">${legButton(bookLeg(r.e, r.m, r.o, r.p), '+')}</td></tr>`).join('')}
-    </tbody></table>`;
-}
-
-// ---------- every sport ----------
-// A model-only pick (no price in our feeds), as simple: the pick, the match and when, ATLAS's chance
-// and the lowest price worth taking. The evidence it rests on is in the tip.
-function modelCard(b) {
-  const e = b.event, s = sportOf(e.sport);
-  const leg = { key: `${e.id}|fair|${b.market}|${b.pick}`, eventId: e.id, sport: e.sport, match: `${e.home} vs ${e.away}`, market: b.market, pick: b.pick, odds: b.fairOdds, p: b.p, derived: true };
-  const tip = [`${b.market} · ${e.league}`, 'No bookmaker price in our feeds: rated by the ATLAS model', whyLine(b) && `Why: ${whyLine(b)}`, String(b.basis || '').replace(/ \(no bookmaker price\)$/, '')].filter(Boolean).join('\n');
-  return `<div class="mini reveal model-pick" title="${esc(tip)}"><span class="mini-ico">${s.icon}</span>
-    <a class="mini-main" href="#/match/${esc(e.id)}"><b>${esc(b.pick)}</b><small>${esc(e.home)} v ${esc(e.away)} · ${esc(fmt(e.start, zone(), 'short'))}</small></a>
-    <div class="mini-nums"><b>${pc(b.p, 0)}</b><small>worth it at ${odd(b.fairOdds)}+</small></div>
-    ${legButton(leg, '+')}</div>`;
-}
-const covDot = (state) => `<i class="cov-dot" aria-hidden="true"></i><span class="sr-only">${state}: </span>`;
-function coverageTable(cov) {
-  const sports = SPORTS.filter((s) => cov[s.id]);
-  if (!sports.length) return '';
-  return `<p class="cov-key"><span class="cov-available">${covDot('available')}available</span><span class="cov-partial">${covDot('partial')}partial</span><span class="cov-stale">${covDot('stale')}stale</span><span class="cov-unavailable">${covDot('unavailable')}unavailable</span></p>
-    <div class="table-wrap"><table class="tbl tight coverage"><thead><tr><th>Sport</th>${COVERAGE_FIELDS.map(([, l]) => `<th>${l}</th>`).join('')}</tr></thead>
-    <tbody>${sports.map((s) => `<tr><td><b>${s.icon} ${esc(s.name)}</b></td>${COVERAGE_FIELDS.map(([k]) => { const f = cov[s.id].fields[k]; return `<td class="cov-${f.state}" title="${esc(f.state)}">${covDot(f.state)}${esc(f.note)}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`;
-}
-// Every sport's best picks for the next 48 hours: priced picks through the shortlist's own rules,
-// and, for matches no bookmaker prices, the model's pick from real evidence.
-// Worked out once a minute (or when the board changes), not on every redraw: live scores redraw the
-// page every few seconds and the model picks are not free on a board of a thousand-plus matches.
-let everyMemo = null;
-export function everyData() {
-  const now = Date.now(), H = 48;
-  const sig = `${S.events.length}|${S.fetchedAt}|${trackModelRecord() ? Object.keys(trackModelRecord()).length : 0}`;
-  if (everyMemo && everyMemo.sig === sig && now - everyMemo.at < 6e4) return everyMemo.data;
-  const soon = S.events.filter((e) => !e.live && e.start > now && e.start < now + H * 36e5);
-  const cal = trackCalibration(), record = trackModelRecord();
-  const cov = coverage(S.events, { now, hours: H, fetchedAt: S.fetchedAt });
-  const sections = SPORTS.map((s) => {
-    const evs = soon.filter((e) => e.sport === s.id);
-    if (!evs.length) return null;
-    const priced = rankedBankers(evs, { cal, min: 0.6, limit: 12, mix: true });
-    const model = modelPicks(evs, { now, hours: H, record });
-    const all = [...priced.map((b) => ({ b, kind: 'priced' })), ...model.map((b) => ({ b, kind: 'model' }))].sort((x, y) => y.b.p - x.b.p);
-    return { s, evs, all, priced: priced.length, model: model.length };
-  }).filter(Boolean);
-  const data = { H, cov, sections, total: sections.reduce((n, x) => n + x.all.length, 0) };
-  everyMemo = { sig, at: now, data };
-  return data;
-}
-
-// Home: one line per sport with picks, linking into the Every sport page.
-export function everyTeaser() {
-  if (S.loading) return '';
-  const { sections, total } = everyData();
-  const withPicks = sections.filter((x) => x.all.length);
-  if (!withPicks.length) return '';
-  return `<div class="panel every-teaser reveal"><h2 class="ph">Every sport <small>${total} picks across ${withPicks.length} sport${withPicks.length === 1 ? '' : 's'} · next 48 hours, priced and model-rated</small></h2>
-    <nav class="win-chips" aria-label="Picks by sport">${withPicks.map((x) => `<a class="chip" href="#/every" data-every="${x.s.id}">${x.s.icon} ${esc(x.s.name)} <b>${x.all.length}</b></a>`).join('')}<a class="chip on" href="#/every">See them all →</a></nav></div>`;
-}
-
-function everySport() {
-  const { H, cov, sections, total } = everyData();
-  const card = (y) => (y.kind === 'model' ? modelCard(y.b) : bigPick(y.b));
-  const jump = sections.filter((x) => x.all.length).map((x) => `<a class="chip" href="#sec-every-${x.s.id}" data-jump="sec-every-${x.s.id}">${x.s.icon} ${esc(x.s.name)} <b>${x.all.length}</b></a>`).join('');
-  const block = (x) => {
-    const head = `<h2 class="sec reveal" id="sec-every-${x.s.id}"><span>${x.all.length}</span>${x.s.icon} ${esc(x.s.name)} <small>${x.evs.length} match${x.evs.length === 1 ? '' : 'es'} · ${x.priced} priced pick${x.priced === 1 ? '' : 's'} · ${x.model} model pick${x.model === 1 ? '' : 's'}</small></h2>`;
-    if (!x.all.length) {
-      const f = cov[x.s.id]?.fields;
-      const unpriced = x.evs.filter((e) => !e.markets?.length).length;
-      const why = [
-        unpriced < x.evs.length ? 'no priced selection reaches 60%' : 'no bookmaker prices in our feeds',
-        unpriced ? (f?.model.state === 'unavailable' ? 'not enough evidence (rankings, ratings, records, form) for the model to rate the unpriced matches' : 'the model rates none of the unpriced matches at 60% or more') : null,
-      ].filter(Boolean).join(', and ');
-      return `${head}<p class="muted reveal">No pick: ${why}. ATLAS doesn't invent a favourite.</p>`;
-    }
-    const top = x.all.slice(0, 6), rest = x.all.slice(6);
-    return `${head}<div class="minilist">${top.map(card).join('')}</div>${rest.length ? `<details class="more-picks reveal"><summary>${rest.length} more ${esc(x.s.name)} pick${rest.length === 1 ? '' : 's'}</summary><div class="minilist">${rest.map(card).join('')}</div></details>` : ''}`;
-  };
-  return {
-    mode: 'bankers', accent: '#00ffc3', title: 'Every sport',
-    html: `<section class="hero small"><p class="kicker reveal">EVERY SPORT · NEXT ${H} HOURS · ${total} PICKS</p><h1>${split('EVERY SPORT')}</h1>${builderNav('every')}
-      <p class="lede reveal">The strongest pick for each match, sport by sport. Unpriced matches show the lowest price worth taking.</p></section>
-      ${notice()}
-      ${jump ? `<nav class="win-chips every-jump reveal" aria-label="Sports">${jump}</nav>` : ''}
-      ${coverageTable(cov) ? `<details class="fold reveal"><summary><h2 class="ph">What ATLAS knows, by sport <small>live or in the next 48 hours</small></h2></summary>${coverageTable(cov)}</details>` : ''}
-      ${sections.map(block).join('')}
-      ${sections.length ? '' : '<p class="muted reveal">Nothing scheduled in the next 48 hours.</p>'}`,
-  };
-}
-
 export const picksViews = {
-  every: everySport,
-
-  edge() {
+  // Best bets: the likeliest winners at a fair price or better (track.js bestBets), the full list.
+  picks() {
+    const ev = prefFilter(S.events), minOdds = prefs.get().minOdds || 1, hrs = researchPrefs().shortHours;
+    ensureTrack(() => S.refresh?.());
+    const list = orderBets(bestBets(todayEvents(ev, Date.now(), hrs), { cal: trackCalibration(), limit: 2000 }).filter((b) => b.odds >= minOdds).slice(0, 40));
+    const rec = recordLine(trackStats()?.best);
     return {
-      mode: 'edge', accent: '#4fd1ff', title: 'Edge board',
-      html: `<section class="hero small"><p class="kicker reveal">EVERY PRICE · EVERY SPORT · RANKED</p><h1>${split('EDGE BOARD')}</h1>${builderNav('edge')}
-        <p class="lede reveal">Every bookmaker outcome on the board with its fair probability (margin removed), the ATLAS model probability, edge and quarter-Kelly stake.</p></section>
+      mode: 'bankers', accent: '#00ffc3', title: 'Best bets',
+      html: `<section class="hero small"><p class="kicker reveal">NEXT ${hrs} HOURS · LIKELIEST AT A FAIR PRICE</p><h1>${split('BEST BETS')}</h1>${builderNav('picks')}</section>
         ${notice()}
-        <div class="filters panel reveal">
-          <label>Sport<select data-ef="sport"><option value="">All</option>${SPORTS.map((s) => `<option value="${s.id}">${s.name}</option>`).join('')}</select></label>
-          <label>Min odds<input data-ef="min" type="number" step="0.05" value="1.01" min="1"></label>
-          <label>Max odds<input data-ef="max" type="number" step="0.5" value="20" min="1"></label>
-          <label>Sort<select data-ef="sort"><option value="ev">Edge</option><option value="p">Win chance</option><option value="odds">Odds</option><option value="start" selected>Start: soonest first</option><option value="start-desc">Start: latest first</option></select></label>
-          <label class="grow1">Search<input data-ef="q" type="search" placeholder="Team, league, market…"></label>
-          <label class="chk"><input data-ef="pos" type="checkbox"> Positive edge only</label>
-        </div>
-        <div class="panel table-wrap reveal" id="edge-table">${edgeTable({ sort: 'start' })}</div>`,
+        <details class="sl-filters reveal"><summary>${ico('filter')} Next ${hrs}h · ${esc(orderLabel())}${minOdds > 1 ? ` · odds ${minOdds.toFixed(2)}+` : ''}</summary>${windowChips('shours', hrs)}${orderChips()}${prefsBar()}</details>
+        ${rec ? `<p class="rec-line reveal">So far: ${rec} · <a href="#/track">every result</a></p>` : ''}
+        <div class="minilist">${list.map((b) => miniPick(b)).join('') || `<p class="muted">Nothing in the next ${hrs} hours is both likely enough and priced at the market's fair odds or better.${hrs < 48 ? ' A longer window may find some.' : ''}</p>`}</div>`,
     };
   },
 
+  // Value bets: prices above the sharp market's fair odds (track.js valueBets), the full list.
+  value() {
+    ensureTrack(() => S.refresh?.());
+    const list = valueBets(todayEvents(prefFilter(S.events), Date.now(), 48), { cal: trackCalibration(), limit: 40 });
+    const rec = recordLine(trackStats()?.edge);
+    return {
+      mode: 'bankers', accent: '#3dff9a', title: 'Value bets',
+      html: `<section class="hero small"><p class="kicker reveal">NEXT 48 HOURS · PRICED ABOVE THE SHARP MARKET</p><h1>${split('VALUE BETS')}</h1>${builderNav('value')}
+        <p class="lede reveal">A bookmaker paying more than the market's fair odds (Pinnacle's, margin removed). Good at the price shown, or at any bookmaker from the "good at" price up.</p></section>
+        ${notice()}
+        ${rec ? `<p class="rec-line reveal">So far: ${rec} · <a href="#/track">every result</a></p>` : ''}
+        <div class="minilist">${list.map(valuePick).join('') || '<p class="muted">No price beats the sharp market in the next 48 hours right now. They come and go as bookmakers move; this list updates with every price check.</p>'}</div>`,
+    };
+  },
+
+  // 2x and 3x slips (longer ones were retired: see their record on the Results page).
   x([n]) {
     const target = Math.round(Number(n) * 100) / 100;
-    if (![2, 3, 4, 5, 10, 20].includes(target)) return views.notfound();
+    if (!MULTI_TARGETS.includes(target)) return views.notfound();
     const list = S.slips(target, { count: 5 });
     ensureTrack(() => S.refresh?.());
     const r = trackStats()?.byTarget?.find((t) => t.target === target);
     return {
-      mode: 'x', accent: ['#d2ff00', '#00ffc3', '#4fd1ff', '#b08cff'][[2, 3, 4, 5].indexOf(target)] || '#ff9f43', title: `${target}x slips`,
-      html: `<section class="hero small"><p class="kicker reveal">MULTIPLIER · BREAK-EVEN ${pc(1 / target, target >= 100 ? 2 : 1)} · ${windowLabel(target)}</p><h1>${split(`${target}X SLIPS`)}</h1>${builderNav('x')}
-        <nav class="tabs reveal">${[2, 3, 4, 5, 10, 20].map((x) => `<a href="#/x/${x}" class="${x === target ? 'on' : ''}">${x}x</a>`).join('')}</nav></section>
+      mode: 'x', accent: target === 2 ? '#d2ff00' : '#00ffc3', title: `${target}x slips`,
+      html: `<section class="hero small"><p class="kicker reveal">SLIPS · BREAK-EVEN ${pc(1 / target, 1)} · ${windowLabel(target)}</p><h1>${split(`${target}X SLIPS`)}</h1>${builderNav('x')}
+        <nav class="tabs reveal">${MULTI_TARGETS.map((x) => `<a href="#/x/${x}" class="${x === target ? 'on' : ''}">${x}x</a>`).join('')}</nav></section>
         ${notice()}${recordSummary(target, r)}${orderChips()}
         ${officialBlock(target)}
-        <h2 class="sec reveal">Available now <small>legs treated as independent; same-match links are not modelled here (the slip check measures them)</small></h2>
+        <h2 class="sec reveal">Available now</h2>
         <section class="grid slips">${list.map((s, i, arr) => slipCard(s, i, target, arr)).join('') || emptySlips(target)}</section>${fewNote(list, target)}
-        ${recordBlock(`Settled ${target}x slips`, r)}`,
-    };
-  },
-
-  // Target: the user picks any multiplier and gets the best slips for it, built from bankers.
-  target([n]) {
-    const t = Math.round(Number(n) * 100) / 100;
-    const has = t >= 1.2 && t <= 100000;
-    const list = has ? S.slips(t, { count: 5 }) : [];
-    const presets = [1.5, 2.5, 7.5, 15, 50, 250];
-    return {
-      mode: 'x', accent: '#ff9f43', title: has ? `Target ${t}x` : 'Target',
-      html: `<section class="hero small"><p class="kicker reveal">${has ? `BREAK-EVEN ${pc(1 / t, t >= 100 ? 2 : 1)} · ${windowLabel(t)}` : 'ANY MULTIPLIER'}</p><h1>${split(has ? `TARGET ${t}X` : 'TARGET')}</h1>${builderNav('target')}
-        <form class="xtarget reveal" data-xtarget><label>Target multiplier<input type="number" name="t" min="1.2" max="100000" step="0.1" value="${has ? t : ''}" placeholder="e.g. 7.5" inputmode="decimal" aria-label="Target multiplier"></label><button class="btn">Build slips</button></form>
-        <nav class="tabs reveal">${presets.map((x) => `<a href="#/target/${x}" class="${x === t ? 'on' : ''}">${x}x</a>`).join('')}</nav></section>
-        ${notice()}${has ? orderChips() : ''}
-        ${has ? `<section class="grid slips">${list.map((s, i, arr) => slipCard(s, i, t, arr)).join('') || emptySlips(t)}</section>` : ''}`,
-    };
-  },
-
-  mega() {
-    ensureTrack(() => S.refresh?.());
-    const ts = trackStats();
-    return {
-      mode: 'mega', accent: '#ff3d6e', title: 'Mega bets',
-      html: `<section class="hero small"><p class="kicker reveal">100X AND 1000X · ${windowLabel(100)}</p><h1>${split('MEGA BETS')}</h1>${builderNav('mega')}
-</section>
-        ${notice()}${orderChips()}
-        ${[100, 1000].map((t) => { return `<h2 class="sec reveal">${t}x</h2>
-          ${officialBlock(t)}
-          <section class="grid slips">${S.slips(t, { count: 3 }).map((s, i, arr) => slipCard(s, i, t, arr)).join('') || emptySlips(t)}</section>`; }).join('')}
-        ${recordBlock('Mega track record', ts?.mega)}`,
-    };
-  },
-
-  bankers() {
-    const ev = prefFilter(S.events), minOdds = prefs.get().minOdds;
-    ensureTrack(() => S.refresh?.());
-    const day = todayEvents(ev); // next 12 hours
-    const list = orderBets(smartBankers(day, { limit: 40, minOdds }));
-    const ts = trackStats();
-    return {
-      mode: 'bankers', accent: '#00ffc3', title: 'Bankers',
-      html: `<section class="hero small"><p class="kicker reveal">NEXT 12 HOURS · ODDS ${minOdds.toFixed(2)}–${MAX_ODDS.toFixed(2)}</p><h1>${split('BANKERS')}</h1>${builderNav('bankers')}</section>
-        ${notice()}
-        <details class="sl-filters reveal"><summary>${ico('filter')} Filters · ${esc(orderLabel())}${minOdds > 1 ? ` · odds ${minOdds.toFixed(2)}+` : ''}</summary>${orderChips()}${prefsBar()}</details>
-        <div class="minilist">${list.map((b) => bigPick(b)).join('') || '<p class="muted">No 70%+ favourites in the next 12 hours right now. The board refreshes as new matches come into range.</p>'}</div>
-        ${recordLine(ts?.all) ? `<p class="rec-line reveal">Track record · ${recordLine(ts.all)} · <a href="#/track">see every pick</a></p>` : ''}`,
+        ${recordBlock(`Settled ${target}x slips`, r)}
+        ${retiredNote()}`,
     };
   },
 };

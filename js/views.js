@@ -30,9 +30,8 @@ import { casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips,
 import { lastVisit } from './timeline.js';
 import { whyLine } from './why.js';
 import { canonStats, standingsTable } from './standings.js';
-// Picks pages (bankers, edge board, multipliers): picksview.js, which also uses the helpers here.
-import { picksViews, bindPicks, edgeTable, everyTeaser } from './picksview.js';
-export { edgeTable };
+// Picks pages (Best bets, Value bets, 2x / 3x slips): picksview.js, which also uses the helpers here.
+import { picksViews, bindPicks } from './picksview.js';
 // Golf and motor racing: a field of players or drivers, drawn by fieldview.js.
 const FIELD_SPORTS = new Set(['golf', 'motorsport']);
 
@@ -187,13 +186,13 @@ export const views = {
     const ev = S.events;
     const live = ev.filter((e) => e.live);
     // Minimal: the date, the 30-day record, then the dashboard. Sports, multipliers and fixtures have
-    // their own pages (Research, Build a slip).
+    // their own pages (Research, Picks).
     return {
       mode: 'home', accent: '#d2ff00', title: 'Dashboard',
       html: `
       <section class="hero compact today">
         <p class="kicker reveal">TODAY · ${esc(new Date().toLocaleDateString('en-IN', { timeZone: tzOf(tzZone()), weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase())} · ${esc(tzAbbr(tzZone()))}</p>
-        <h1>${split('EVERY SPORT. EVERY EDGE.')}</h1>
+        <h1>${split('PRICES. CHANCES. RESULTS.')}</h1>
         ${trackStrip(() => S.refresh?.())}
       </section>
       ${notice()}
@@ -395,7 +394,6 @@ function dashboard(ev, live) {
     value: () => valuePanel(pool),
     live: () => `<div class="panel dash-live reveal"><h2 class="ph">Live now <small>${S.loading ? '' : live.length}</small></h2>
       ${S.loading ? skelRows(3) : live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${esc(e.score || '')}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>`,
-    every: () => everyTeaser(),
     changes: () => `${changesPanel(ev, { title: lastVisit() ? 'Since your last visit' : 'What changed', limit: 6, hideEmpty: true })}`,
     record: () => `${trackCard(() => S.refresh?.())}`,
     health: () => `<div class="panel dash-health reveal"><h2 class="ph">Source health <small><a href="#/sources">every source →</a></small></h2>${sourceHealth(ev)}</div>`,
@@ -411,7 +409,7 @@ export const setFiltersOpen = (v) => { filtersOpen = Boolean(v); };
 
 // Home panels: order and visibility, saved per visitor (localStorage, best effort). Unknown or missing
 // names fall back to the default order, so a new panel always appears.
-const HOME_PANELS = [['potd', 'Parlay of the day'], ['shortlist', 'Best bets'], ['value', 'Value bets'], ['live', 'Live now'], ['every', 'Every sport'], ['changes', 'What changed'], ['record', 'Track record'], ['health', 'Source health']];
+const HOME_PANELS = [['potd', 'Parlay of the day'], ['shortlist', 'Best bets'], ['value', 'Value bets'], ['live', 'Live now'], ['changes', 'What changed'], ['record', 'Track record'], ['health', 'Source health']];
 const LAYOUT_KEY = 'atlas-home-layout';
 // Minimal by default: source health, what changed and the full record card start hidden (the record
 // is the strip at the top); Customise shows them.
@@ -571,7 +569,7 @@ function valuePanel(pool) {
     ${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}
     <div class="minilist">${S.loading ? skelRows(3) : list.map(valuePick).join('') || `<p class="muted">${shopped ? 'No price beats the sharp market in the next 48 hours right now. These come and go as bookmakers move; the list updates with every price check.' : 'Needs prices from several bookmakers: none for the next 48 hours yet.'}</p>`}</div></div>`;
 }
-function valuePick(b) {
+export function valuePick(b) {
   const s = sportOf(b.event.sport);
   const rec = recommendationFor(b, trackCalibration());
   const leg = { key: `${b.event.id}|${b.market}|${b.pick}`, eventId: b.event.id, sport: b.event.sport, match: `${b.event.home} vs ${b.event.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p, recommendationId: rec.recommendationId };

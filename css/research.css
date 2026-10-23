@@ -99,7 +99,7 @@
 .dp-row span { width: 70px; font: 600 12px var(--sans); color: var(--muted, #9aa3ad); }
 .dp-row .chip { padding: 6px 12px; cursor: pointer; color: #e8e8ec; }
 
-/* Builder sub-navigation (multipliers, target, mega, bankers). */
+/* Picks sub-navigation (Best bets, Value bets, slips). */
 .builder-nav { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 14px; }
 
 /* Desktop: navigation as a left rail, so it stays put while the workspace scrolls. */

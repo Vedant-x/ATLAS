@@ -179,7 +179,9 @@ export function createBrain(K) {
   function multiplier(q) {
     const c = parseConstraints(q, K);
     const t = c.target || (/mega|long ?shot/.test(q) ? 100 : 3);
-    const mega = t >= 100;
+    // Only 2x and 3x slips are offered: the longer ones were retired for their record.
+    if (t > 3) return { text: `**Slips above 3x were retired.** Their record: ${K.retiredSlips?.() || 'they lost nearly every time'}. A 3x slip is the longest ATLAS still builds: ask for "a 3x slip".`, chips: chipsOf({ ...c, target: t }), followups: ['Give me a 3x slip', 'Best bets today'] };
+    const mega = false;
     // One request for every rule shown in the chips; the result is checked against them again.
     const list = slipsOk(c, K.slips(t, !mega && !c.from, slipRequest(c)));
     const chips = chipsOf({ ...c, target: t });
@@ -187,7 +189,7 @@ export function createBrain(K) {
     const s = list[0];
     remember(s.legs.map((l) => ({ e: K.eventById?.(l.eventId), market: l.market, pick: l.pick, odds: l.odds, p: l.p, ev: l.p * l.odds - 1, priced: !l.derived, prop: l.prop })).filter((x) => x.e), c);
     return {
-      text: `**Top ${t}x slip**: ${s.legs.length} legs at **${od(s.odds)}x**, estimated **${pc(s.p)}** if the legs are unrelated (the slip check in your slip measures same-match legs).\n\n${s.legs.map((l) => `- **${l.pick}** · ${l.market} · ${l.match} @ ${od(l.odds)} (${pc(l.p)})`).join('\n')}\n\n${list.length > 1 ? `${list.length - 1} more on the [${t}x page](#/${mega ? 'mega' : [2, 3, 4, 5, 10, 20].includes(t) ? `x/${t}` : `target/${t}`}).` : ''}`,
+      text: `**Top ${t}x slip**: ${s.legs.length} legs at **${od(s.odds)}x**, estimated **${pc(s.p)}** if the legs are unrelated (the slip check in your slip measures same-match legs).\n\n${s.legs.map((l) => `- **${l.pick}** · ${l.market} · ${l.match} @ ${od(l.odds)} (${pc(l.p)})`).join('\n')}\n\n${list.length > 1 ? `${list.length - 1} more on the [${t}x page](#/x/${[2, 3].includes(t) ? t : 3}).` : ''}`,
       cards: s.legs.map((l) => ({ type: 'leg', leg: l, at: Date.now() })), chips, followups: ['Explain the risk', 'Which leg is weakest?'],
     };
   }
@@ -269,7 +271,7 @@ export function createBrain(K) {
   }
 
   const help = () => ({
-    text: `I answer from ATLAS's own data: matches, prices, the model's chances, injuries, starters, player game logs and slips. I can't search the wider web. Try:\n- **"best bets today"** or **"3 safe NBA bets"**\n- **"one bet with odds at least 1.80 tomorrow, no NBA"** (I keep every filter you set)\n- **"positive edge bets only"** (no substitutes if none qualify)\n- **"the second one"**, **"explain the risk"**, **"what about tomorrow?"**\n- a player's name for his props and recent games\n- **"check my slip"**\n- **"value bets in the Premier League"**\n- **"injuries in this match"** (on a match page)\n- **"who wins Yankees vs Rays"**\n- **"starters"** for MLB/NPB/KBO games\n- **"give me a 3x slip"** or **"mega 100x"**\n- **"what's live"**\n- **"what changed?"** · **"which saved matches need review?"**\n- **"confirmed lineups"** · **"which sports have incomplete data?"**\n\nProbabilities are model estimates, not guarantees. Picks follow your saved filters (minimum odds, sports).`,
+    text: `I answer from ATLAS's own data: matches, prices, the model's chances, injuries, starters, player game logs and slips. I can't search the wider web. Try:\n- **"best bets today"** or **"3 safe NBA bets"**\n- **"one bet with odds at least 1.80 tomorrow, no NBA"** (I keep every filter you set)\n- **"positive edge bets only"** (no substitutes if none qualify)\n- **"the second one"**, **"explain the risk"**, **"what about tomorrow?"**\n- a player's name for his props and recent games\n- **"check my slip"**\n- **"value bets in the Premier League"**\n- **"injuries in this match"** (on a match page)\n- **"who wins Yankees vs Rays"**\n- **"starters"** for MLB/NPB/KBO games\n- **"give me a 2x or 3x slip"**\n- **"what's live"**\n- **"what changed?"** · **"which saved matches need review?"**\n- **"confirmed lineups"** · **"which sports have incomplete data?"**\n\nProbabilities are model estimates, not guarantees. Picks follow your saved filters (minimum odds, sports).`,
   });
 
   async function answer(raw) {

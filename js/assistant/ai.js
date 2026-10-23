@@ -96,8 +96,9 @@ export async function buildContext(K, text, max = 6000, mem = null) {
   // Slips at the multiplier asked for (not rounded to a preset), under the same constraints as the
   // picks above, from the same builder as the multiplier pages and the built-in assistant.
   if (c.target || /\b(slip|parlay|acca|accumulator|multi|mega)\b/.test(q)) {
-    const target = c.target || 3;
-    const slips = slipsOk(c, K.slips(target, target < 100 && !c.from, slipRequest(c)));
+    const target = Math.min(c.target || 3, 3); // only 2x and 3x slips are offered
+    if ((c.target || 0) > 3) lines.push('SLIPS ABOVE 3x: retired after losing almost every time; offer a 3x slip instead and say why.');
+    const slips = slipsOk(c, K.slips(target, !c.from, slipRequest(c)));
     slips.slice(0, 2).forEach((s, i) => lines.push(`${target}x SLIP ${i + 1}: total ${od(s.odds)}, est. ${pc(s.p)} — ${s.legs.map((l) => `${l.pick} @ ${od(l.odds)} (${l.match})`).join('; ')}`));
     if (!slips.length) lines.push(`${target}x SLIP: none can be built under these constraints. Say so; do not loosen them.`);
   }

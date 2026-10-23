@@ -1,10 +1,9 @@
 // Record page: every official ATLAS pick (locked before kick-off) and how it turned out.
 import { esc, sportOf, ist } from './views.js';
-import { summarize, MIN_ODDS, MAX_ODDS, calibration, marketChance, SAFE, BEST, potdDay, walkForward } from './track.js';
+import { summarize, calibration, marketChance, BEST, VALUE, potdDay, walkForward } from './track.js';
 import { serviceStats } from './compare.js';
 import { FINAL, independentlyConfirmed } from './settle.js';
 import { localDay } from './engine.js';
-import { modelRecord } from './modelpicks.js';
 import { fmtDate } from './tz.js';
 
 const pct = (x, d = 1) => (x == null ? '—' : `${(x * 100).toFixed(d)}%`);
@@ -25,8 +24,6 @@ async function load() {
 // is re-fetched in the background every 5 minutes, so a page left open keeps up with new results.
 export const trackStats = () => (cache ? summarize(cache.data.picks || []) : null);
 export const trackCalibration = () => (cache ? calibration(cache.data.picks || []) : null);
-// How the unpriced model picks have done per sport (modelpicks.js trusts a sport after 30 results).
-export const trackModelRecord = () => (cache ? modelRecord(cache.data.picks || []) : {});
 let reloading = false;
 export function ensureTrack(refresh) {
   if (cache && Date.now() - cache.at < 5 * 6e4) return;
@@ -60,7 +57,7 @@ const statCards = (s, updatedAt) => `${updatedAt ? `<p class="note reveal">Resul
   <div><small>Settled picks</small><b>${s.won + s.lost}</b><span>${s.won} won · ${s.lost} lost${s.push ? ` · ${s.push} push` : ''}</span></div>
   <div><small>Hit rate</small><b>${pct(s.hitRate)}</b><span>ATLAS estimated ${pct(s.expected)}</span></div>
   <div><small>Profit, 1 unit per pick</small><b class="${s.profit >= 0 ? 'pos' : 'neg'}">${units(s.profit)}</b><span>ROI ${pct(s.roi)}</span></div>
-  <div><small>Average odds</small><b>${s.avgOdds ? s.avgOdds.toFixed(2) : '—'}</b><span>range ${MIN_ODDS.toFixed(2)} to ${MAX_ODDS.toFixed(2)}</span></div>
+  <div><small>Average odds</small><b>${s.avgOdds ? s.avgOdds.toFixed(2) : '—'}</b><span>Best bets ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)} · Value bets to ${VALUE.maxOdds.toFixed(2)}</span></div>
   <div><small>Price vs closing line</small><b class="${s.clvN >= 10 ? (s.clv >= 0 ? 'pos' : 'neg') : ''}">${s.clvN >= 10 ? `${s.clv >= 0 ? '+' : ''}${(s.clv * 100).toFixed(1)}%` : '—'}</b><span>${s.clvN >= 10 ? `saved price beat the close on ${pct(s.beatClose, 0)} of ${s.clvN} picks` : 'closing prices are now saved for every pick; shown after 10 settle'}</span></div>
 </div>`;
 
@@ -69,10 +66,11 @@ const statCards = (s, updatedAt) => `${updatedAt ? `<p class="note reveal">Resul
 const vsMarket = (r) => (r.brierN >= 10 ? `<span class="${r.brierModel <= r.brierMarket ? 'pos' : 'neg'}">${r.brierModel <= r.brierMarket ? 'beats' : 'trails'} market</span>` : '<span class="muted">—</span>');
 const table = (rows, label) => (rows.length ? `<div class="table-wrap"><table class="tr-table"><thead><tr><th>${label}</th><th>Picks</th><th>Hit rate</th><th>Estimated</th><th>Profit</th><th title="Brier score: mean squared error of the chance shown. Lower is better.">Brier</th><th title="Same score for the bookmaker's margin-free chance on the same picks">vs market</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${r.won + r.lost}</td><td>${pct(r.hitRate)}</td><td>${pct(r.expected)}</td><td class="${r.profit >= 0 ? 'pos' : 'neg'}">${units(r.profit)}</td><td>${r.brier == null ? '—' : r.brier.toFixed(3)}</td><td>${vsMarket(r)}</td></tr>`).join('')}</tbody></table></div>` : '');
 
+const TYPE_NAME = { best: 'Best bets', edge: 'Value bets', banker: 'shortlist (retired)', safe: 'surest (retired)', two: 'near 2.00 (retired)', model: 'model only (retired)', value: 'value spot (retired)' };
 const pickRow = (h) => (h.type === 'multi' ? `<li class="tr-${h.status}"><span class="tr-badge">${h.status === 'pending' ? day(h.start) : h.status.toUpperCase()}</span>
   <div><b>${h.target === 'potd' ? 'Parlay of the day' : `${esc(h.target)}x slip`} · ${h.legs.length} legs</b><details class="tr-legs"><summary>${h.legs.map((l) => `<i class="leg-dot leg-${esc(l.status)}" title="${esc(`${l.pick}: ${l.status}`)}"></i>`).join('')}<span>legs</span><span class="sr-only"> ${esc(h.key)}</span></summary><ul>${h.legs.map((l) => `<li><i class="leg-dot leg-${esc(l.status)}"></i><b>${esc(l.pick)}</b><small>${esc(l.home)} v ${esc(l.away)} · ${esc(ist(l.start))}</small></li>`).join('')}</ul></details></div>
   <em>${Number(h.odds).toFixed(2)}</em><i>${pct(h.p, 0)}</i></li>` : `<li class="tr-${h.status}"><span class="tr-badge">${h.status === 'pending' ? day(h.start) : h.status.toUpperCase()}</span>
-  <div><b>${esc(h.pick)}</b><small>${sportOf(h.sport).icon} ${esc(h.home)} v ${esc(h.away)} · ${esc(ist(h.start))} · ${esc(h.market)}${h.score ? ` · final ${esc(h.score)}` : ''} · ${h.type === 'value' ? 'value spot' : 'banker'}</small></div>
+  <div><b>${esc(h.pick)}</b><small>${sportOf(h.sport).icon} ${esc(h.home)} v ${esc(h.away)} · ${esc(ist(h.start))} · ${esc(h.market)}${h.score ? ` · final ${esc(h.score)}` : ''} · ${esc(TYPE_NAME[h.type] || h.type)}</small></div>
   <em>${Number(h.odds).toFixed(2)}</em><i>${pct(h.shown ?? h.p, 0)}</i></li>`);
 
 // How far the shown chance trusts ATLAS's own estimate against the price, per sport and market, as
@@ -124,19 +122,10 @@ function verdict(a) {
   return `<div class="panel verdict reveal ${beats && a.roi >= 0 ? 'v-ok' : 'v-warn'}"><h3 class="ph">Does ATLAS beat the market?</h3><p>${head}${money} ${take}</p></div>`;
 }
 
-// Bankers, Surest and the unpriced model picks side by side: each is its own way of recommending.
-function modesPanel(s) {
-  const rows = [['Bankers (shortlist)', s.all, true], ['Surest', s.safe, true], ['Best bets', s.best, true], ['Value bets', s.edge, true], ['Singles near 2.00', s.two, true], ['Model only (no price)', s.model, false]].filter(([, r]) => r && r.won + r.lost);
-  if (rows.length < 2) return '';
-  return `<div class="panel reveal"><h3 class="ph">By recommendation type <small>each kept as its own record</small></h3>
-    <table class="tbl tight"><thead><tr><th>Type</th><th class="num">Settled</th><th class="num">Hit rate</th><th class="num">Estimated</th><th class="num">Profit</th><th class="num" title="Mean squared error of the chance shown; lower is better">Brier</th></tr></thead>
-    <tbody>${rows.map(([name, r, priced]) => `<tr><td>${name}</td><td class="num">${r.won + r.lost}</td><td class="num">${pct(r.hitRate)}</td><td class="num">${pct(r.expected)}</td><td class="num ${priced ? (r.profit >= 0 ? 'pos' : 'neg') : ''}">${priced ? units(r.profit) : 'no price'}</td><td class="num">${r.brier == null ? '—' : r.brier.toFixed(3)}</td></tr>`).join('')}</tbody></table></div>`;
-}
-
 // ATLAS's own ledger in the format a fair comparison with another service would use (compare.js), and
 // the honest state of any comparison: none has been run.
 function comparisonPanel(picks) {
-  const rows = [['Best bets (singles)', 'best'], ['Value bets', 'edge'], ['Singles near 2.00', 'two'], ['Shortlist bankers', 'banker']].map(([label, type]) => [label, serviceStats({ service: 'ATLAS', evidence: 'ledger', selections: picks.filter((h) => h.type === type && ['won', 'lost', 'push', 'void'].includes(h.status)).map((h) => ({ date: new Date(h.start).toISOString(), odds: h.odds, status: h.status, p: h.shown ?? h.p, close: h.close })) })]).filter(([, st]) => st.selections);
+  const rows = [['Best bets', 'best'], ['Value bets', 'edge'], ['Shortlist bankers (retired)', 'banker']].map(([label, type]) => [label, serviceStats({ service: 'ATLAS', evidence: 'ledger', selections: picks.filter((h) => h.type === type && ['won', 'lost', 'push', 'void'].includes(h.status)).map((h) => ({ date: new Date(h.start).toISOString(), odds: h.odds, status: h.status, p: h.shown ?? h.p, close: h.close })) })]).filter(([, st]) => st.selections);
   if (!rows.length) return '';
   const f = (x, d = 2) => (x == null ? '—' : x.toFixed(d));
   return `<div class="panel reveal"><h3 class="ph">ATLAS in the comparison format <small>reproduced from its complete ledger · no comparison with another service has been run</small></h3>
@@ -162,16 +151,6 @@ function correctionsPanel(data) {
     ${log.length ? `<table class="tbl tight"><thead><tr><th>When</th><th>Selection</th><th>From</th><th>To</th><th>Why</th></tr></thead><tbody>${log.slice(-20).reverse().map((c) => `<tr><td>${when(c.at)}</td><td>${esc(c.key || c.sel || '')}</td><td>${esc(c.from)}${c.prevScore ? ` <small>${esc(c.prevScore)}</small>` : ''}</td><td>${esc(c.to)}${c.score ? ` <small>${esc(c.score)}</small>` : ''}</td><td>${esc(c.reason || '')} <small>${esc(c.source || '')}</small></td></tr>`).join('')}</tbody></table>` : ''}</div>`;
 }
 
-// Picks on matches no bookmaker priced: hit rate against their own forecasts, by sport. No profit:
-// there was no price to take.
-function modelPanel(m) {
-  if (!m || !(m.won + m.lost)) return '';
-  return `<div class="panel reveal"><h3 class="ph">Model-only picks <small>matches with no bookmaker price · ${m.won}–${m.lost} · ${pct(m.hitRate, 0)} landed against ${pct(m.expected, 0)} forecast</small></h3>
-    <p class="muted">Rated by ATLAS from rankings, ratings, records and form, shown with fair odds on <a href="#/every">Every sport</a>. A sport's model picks are trusted fully only after 30 results; until then they are pulled toward 50/50.</p>
-    <table class="tbl tight"><thead><tr><th>Sport</th><th class="num">Settled</th><th class="num">Hit rate</th><th class="num">Forecast</th><th class="num">Brier</th></tr></thead>
-    <tbody>${m.bySport.map((r) => `<tr><td>${sportOf(r.key).icon} ${esc(sportOf(r.key).name)}</td><td class="num">${r.won + r.lost}</td><td class="num">${pct(r.hitRate)}</td><td class="num">${pct(r.expected)}</td><td class="num">${r.brier == null ? '—' : r.brier.toFixed(3)}</td></tr>`).join('')}</tbody></table></div>`;
-}
-
 function trustPanel(picks) {
   const cal = calibration(picks);
   const famName = { winner: 'winner', result: '1X2 result', spread: 'handicap', total: 'totals', prop: 'player props' };
@@ -185,37 +164,47 @@ function trustPanel(picks) {
     }).join('')}</tbody></table></div>`;
 }
 
+// Each list the site shows, with its own record: the first thing on the page.
+function listsTable(s) {
+  const t = (k) => s.byTarget.find((x) => x.target === k);
+  const rows = [['Best bets', s.best, '#/picks'], ['Value bets', s.edge, '#/value'], ['Parlay of the day', s.potd, '#/'], ['2x slips', t(2), '#/x/2'], ['3x slips', t(3), '#/x/3']];
+  return `<div class="panel reveal"><h3 class="ph">Every list, its record <small>each pick saved before the start, graded from the final score</small></h3>
+    <div class="table-wrap"><table class="tbl tight tr-lists"><thead><tr><th>List</th><th class="num">Won–lost</th><th class="num">Hit rate</th><th class="num">Profit (1 unit each)</th><th class="num" title="How often the price we took was better than the closing price">Beat the close</th></tr></thead><tbody>
+    ${rows.map(([name, r, href]) => `<tr><td><a href="${href}">${name}</a></td><td class="num">${r && r.won + r.lost ? `${r.won}–${r.lost}` : '—'}</td><td class="num">${r && r.won + r.lost ? pct(r.hitRate, 0) : '—'}</td><td class="num ${r && r.won + r.lost ? (r.profit >= 0 ? 'pos' : 'neg') : ''}">${r && r.won + r.lost ? `${units(r.profit)} (${r.roi >= 0 ? '+' : ''}${(r.roi * 100).toFixed(1)}%)` : 'no results yet'}</td><td class="num">${r?.clvN >= 10 ? pct(r.beatClose, 0) : '—'}</td></tr>`).join('')}</tbody></table></div></div>`;
+}
+// Retired lists: cut on 23 Oct 2026 for losing money, each with its final record, kept for honesty.
+function retiredTable(s) {
+  if (!s.retired?.length) return '';
+  return `<div class="panel"><h3 class="ph">Retired lists <small>cut on 23 Oct 2026 for losing money · final records</small></h3>
+    <div class="table-wrap"><table class="tbl tight"><thead><tr><th>List</th><th class="num">Won–lost</th><th class="num">Hit rate</th><th class="num">Claimed</th><th class="num">Profit</th></tr></thead><tbody>
+    ${s.retired.map((r) => `<tr><td>${esc(r.name)}</td><td class="num">${r.won}–${r.lost}</td><td class="num">${pct(r.hitRate, 0)}</td><td class="num">${pct(r.expected, 0)}</td><td class="num ${r.profit >= 0 ? 'pos' : 'neg'}">${units(r.profit)} (${r.roi >= 0 ? '+' : ''}${(r.roi * 100).toFixed(1)}%)</td></tr>`).join('')}</tbody></table></div></div>`;
+}
+
 function body(data) {
   const s = summarize(data.picks || []);
-  if (!s.all.won && !s.all.lost) {
-    return `<div class="panel reveal"><h3 class="ph">Tracking has started</h3><p class="muted">Every shortlist pick (rated 60%+, odds ${MIN_ODDS.toFixed(2)} to ${MAX_ODDS.toFixed(2)}) is saved before kick-off and graded from the final score. Results appear here as matches finish.</p></div>
+  if (!s.live.won && !s.live.lost && !s.retired.length) {
+    return `<div class="panel reveal"><h3 class="ph">Tracking has started</h3><p class="muted">Every Best bet and Value bet is saved before the start and graded from the final score. Results appear here as matches finish.</p></div>
       ${s.pending.length ? `<div class="panel reveal"><h3 class="ph">Waiting on results <small>${s.pending.length}</small></h3><ul class="tr-list">${s.pending.slice(0, 30).map(pickRow).join('')}</ul></div>` : ''}`;
   }
-  const famName = { winner: 'Winner / moneyline', result: '1X2 result', spread: 'Spread / handicap', total: 'Totals (over/under)' };
-  // Minimal: the verdict, the numbers and the latest results; every breakdown and check is one tap away.
-  return `${verdict(s.all)}${statCards(s.all, data.updatedAt)}${s.unresolved ? `<p class="note reveal">${s.unresolved} pick${s.unresolved > 1 ? 's' : ''} could not be graded (no final result found) and ${s.unresolved > 1 ? 'are' : 'is'} left out rather than counted as void.</p>` : ''}
-    <div class="panel reveal"><h3 class="ph">Latest results</h3><ul class="tr-list">${s.recent.map(pickRow).join('')}</ul></div>
+  const famName = { winner: 'Winner / moneyline', result: '1X2 result', spread: 'Spread / handicap', total: 'Totals (over/under)', prop: 'Player props' };
+  // The lists the site shows, their records, then the latest results; everything else one tap away.
+  return `${listsTable(s)}${verdict(s.live)}${statCards(s.live, data.updatedAt)}${s.unresolved ? `<p class="note reveal">${s.unresolved} pick${s.unresolved > 1 ? 's' : ''} could not be graded (no final result found) and ${s.unresolved > 1 ? 'are' : 'is'} left out rather than counted as void.</p>` : ''}
+    ${s.recent.length ? `<div class="panel reveal"><h3 class="ph">Latest results</h3><ul class="tr-list">${s.recent.map(pickRow).join('')}</ul></div>` : ''}
     ${s.pending.length ? `<div class="panel reveal"><h3 class="ph">Waiting on results <small>${s.pending.length}</small></h3><ul class="tr-list">${s.pending.slice(0, 20).map(pickRow).join('')}</ul></div>` : ''}
-    <details class="fold reveal tr-more"><summary><h2 class="ph">More detail <small>by sport, market and price · calibration · settlement audit</small></h2></summary>
-    ${s.outside.won + s.outside.lost ? `<p class="note">Shortlist picks only (rated 60%+, odds ${MIN_ODDS.toFixed(2)} to ${MAX_ODDS.toFixed(2)}). ${s.outside.won + s.outside.lost} earlier picks outside these rules (${s.outside.won} won, ${s.outside.lost} lost) are not counted.</p>` : ''}
+    <details class="fold reveal tr-more"><summary><h2 class="ph">More detail <small>by sport and market · calibration · retired lists · settlement audit</small></h2></summary>
     <div class="grid two">
       <div class="panel"><h3 class="ph">By sport</h3>${table(s.bySport.map((r) => ({ ...r, name: `${sportOf(r.key).icon} ${sportOf(r.key).name}` })), 'Sport')}</div>
       <div class="panel"><h3 class="ph">By market</h3>${table(s.byFamily.map((r) => ({ ...r, name: famName[r.key] || r.key })), 'Market')}</div>
     </div>
     ${s.byModel.length > 1 ? `<div class="panel"><h3 class="ph">By model version</h3>${table(s.byModel.map((r) => ({ ...r, name: r.key })), 'Model')}</div>` : ''}
-    <div class="panel"><h3 class="ph">Are the estimates honest? <small>when ATLAS says 65%, it should land about 65% of the time</small></h3>
+    <div class="panel"><h3 class="ph">Are the chances honest? <small>when ATLAS says 65%, it should land about 65% of the time</small></h3>
       <div class="tr-cal">${s.buckets.map((b) => `<div><small>Estimated ${b.label}</small>${b.n ? `<div class="tr-bars"><i style="--w:${((b.predicted || 0) * 100).toFixed(0)}%"></i><i class="act" style="--w:${((b.actual || 0) * 100).toFixed(0)}%"></i></div>` : ''}<span>${b.n ? `${pct(b.predicted, 0)} estimated · ${pct(b.actual, 0)} actual · ${b.n} picks` : 'no picks yet'}</span></div>`).join('')}</div></div>
-    ${s.safe?.won + s.safe?.lost ? `<div class="panel"><h3 class="ph">Surest picks <small>odds ${SAFE.minOdds.toFixed(2)}–${SAFE.maxOdds.toFixed(2)}</small></h3><p>${recordLine(s.safe)}</p></div>` : ''}
-    ${s.best?.won + s.best?.lost ? `<div class="panel"><h3 class="ph">Best bets <small>odds ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)}</small></h3><p>${recordLine(s.best)}</p></div>` : ''}
-    ${s.edge?.won + s.edge?.lost ? `<div class="panel"><h3 class="ph">Value bets <small>best price above the sharp market's fair odds</small></h3><p>${recordLine(s.edge)}</p></div>` : ''}
-    ${modesPanel(s)}
-    ${modelPanel(s.model)}
+    ${retiredTable(s)}
     ${priceBandPanel(data.picks || [])}
-    ${outOfSample(data.picks || [], s.all)}
+    ${outOfSample(data.picks || [], s.live)}
     ${trustPanel(data.picks || [])}
     ${comparisonPanel(data.picks || [])}
     ${correctionsPanel(data)}
-    <div class="panel"><h3 class="ph">Multipliers and mega <small>each keeps its own record on its own page</small></h3><div class="chip-row">${[2, 3, 4, 5, 10, 20].map((x) => `<a class="chip" href="#/x/${x}">${x}×</a>`).join('')}<a class="chip" href="#/mega">Mega 100× / 1000×</a></div></div>
     </details>`;
 }
 
@@ -247,7 +236,7 @@ export function trackStrip(refresh) {
   ensureTrack(refresh);
   if (!cache) return '';
   const since = Date.now() - 30 * 864e5;
-  const a = summarize((cache.data.picks || []).filter((h) => h.start >= since)).all;
+  const a = summarize((cache.data.picks || []).filter((h) => h.start >= since)).live;
   if (a.won + a.lost < 10) return '';
   // Minimal: record, hit rate and ROI; the rest (estimate, average odds, closing line) on hover / tap.
   const tip = [`Hit rate estimated ${pct(a.expected, 0)}`, `Average odds ${a.avgOdds.toFixed(2)}`, a.clvN >= 10 ? `Price beat the close on ${pct(a.beatClose, 0)}` : '', 'Every pick saved before kick-off'].filter(Boolean).join(' · ');
@@ -260,7 +249,7 @@ export function trackCard(refresh) {
   ensureTrack(refresh);
   if (!cache) return '';
   const s = summarize(cache.data.picks || []);
-  const a = s.all;
+  const a = s.live;
   if (!a.won && !a.lost) return `<a class="panel dash-track reveal" href="#/track"><h2 class="ph">Track record <small>tracking started</small></h2><p class="muted">${s.pending.length} picks locked before kick-off, waiting on results.</p></a>`;
   const last = s.recent.slice(0, 10).map((h) => `<i class="tr-dot ${h.status}" title="${esc(h.pick)}: ${h.status}"></i>`).join('');
   return `<a class="panel dash-track reveal" href="#/track"><h2 class="ph">Track record <small>every pick, locked before kick-off</small></h2>

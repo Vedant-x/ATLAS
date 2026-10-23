@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseProps, boxStats, gradeProp, propLabel, propOver, totalType } from '../js/props.js';
+import { parseProps, boxStats, gradeProp, propLabel, propOver, totalType, suspectProp } from '../js/props.js';
 import { gradePick, resultFromSummary, familyOf } from '../js/track.js';
 import { bankers } from '../js/intel.js';
 
@@ -198,4 +198,14 @@ test('game log: hockey time on ice "18:32" reads as 18.5 minutes', async () => {
   const [r] = gamelogRows(g, 5);
   assert.equal(r.timeOnIcePerGame, 18.5);
   assert.equal(r[OPPORTUNITY.hockey], 18.5);
+});
+
+test('a line cleared in nearly every recent game but priced like a coin flip is dropped as suspect', () => {
+  const pr = (hit, n, odds) => ({ player: 'X', target: 6, label: 'rebounds', odds, hist: { l20: [hit, n] } });
+  assert.equal(suspectProp(pr(20, 20, 1.85)), true); // 100% at 1.85: no book prices that
+  assert.equal(suspectProp(pr(19, 20, 1.6)), true);
+  assert.equal(suspectProp(pr(19, 20, 1.3)), false); // short price: plausible
+  assert.equal(suspectProp(pr(17, 20, 1.85)), false); // 85%: plausible
+  assert.equal(suspectProp(pr(10, 10, 1.85)), false); // too few games to judge
+  assert.equal(suspectProp({ odds: 2 }), false); // no history
 });

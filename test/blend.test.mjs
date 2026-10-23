@@ -20,7 +20,9 @@ test('few settled picks barely move the estimate; no price means no blend', () =
   const cal = calibration(settled(12));
   const r = cal['hockey:winner'];
   assert.ok(r.w > 0.75, `a small sample keeps most weight on ATLAS: ${r.w}`);
-  assert.equal(calibrated(0.7, 'Moneyline', {}, 'hockey', 1.5), 0.7, 'no record: unchanged');
+  // No record: unchanged, except never more than 3 points above the price's own chance.
+  assert.equal(calibrated(0.7, 'Moneyline', {}, 'hockey', 1.5), Math.min(0.7, 1 / 1.5 / 1.045 + 0.03));
+  assert.equal(calibrated(0.6, 'Moneyline', {}, 'hockey', 1.5), 0.6, 'below the cap: unchanged');
   assert.equal(calibrated(0.7, 'Moneyline', { winner: { factor: 1, w: 0.2, blendFactor: 1 } }, 'hockey'), 0.7, 'no price: not blended');
 });
 

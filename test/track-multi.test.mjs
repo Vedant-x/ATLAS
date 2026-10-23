@@ -67,8 +67,8 @@ test('one chance per pick: ranked bankers carry the calibrated chance, the raw e
 
 test('unresolved legs keep a slip unresolved; it is never counted', () => {
   assert.equal(settleMulti({ legs: [{ status: 'won', odds: 1.2 }, { status: 'unresolved', odds: 1.3 }] }).status, 'unresolved');
-  const st = summarize([{ type: 'banker', status: 'unresolved', p: 0.7, odds: 1.4, market: 'Winner', sport: 'x' }, { type: 'banker', status: 'won', p: 0.7, odds: 1.4, market: 'Winner', sport: 'x' }]);
-  assert.equal(st.all.won + st.all.lost, 1);
+  const st = summarize([{ type: 'best', status: 'unresolved', p: 0.7, odds: 1.4, market: 'Winner', sport: 'x' }, { type: 'best', status: 'won', p: 0.7, odds: 1.4, market: 'Winner', sport: 'x' }]);
+  assert.equal(st.live.won + st.live.lost, 1);
   assert.equal(st.unresolved, 1);
 });
 
