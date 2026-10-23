@@ -15,11 +15,7 @@ export function siteData(now = Date.now()) {
     ev('fx-rma-get', 'football', 'LaLiga', 'soccer/esp.1', 'Real Madrid', 'Getafe', 5, [['Real Madrid', 1.42], ['Draw', 4.6], ['Getafe', 8.0]]),
     ev('fx-nyy-tb', 'baseball', 'MLB', 'baseball/mlb', 'Yankees', 'Rays', 6, [['Yankees', 1.55], ['Rays', 2.5]],
       { probables: [{ side: 'home', name: 'G. Cole', report: { season: { era: 2.9 } } }, { side: 'away', name: 'Z. Eflin', report: { season: { era: 4.4 } } }] }),
-    ev('fx-bos-nyk', 'basketball', 'NBA', 'basketball/nba', 'Celtics', 'Knicks', 8, [['Celtics', 1.48], ['Knicks', 2.7]], { compId: '401', props: [
-      { id: '4065648', player: 'Jayson Tatum', side: 'home', type: 'Points', label: 'points', target: 25, yes: false, odds: 1.9, p: 0.58, pm: 0.5,
-        hist: { l5: [4, 5], l10: [8, 10], l20: [14, 20], avg: 27.4, last: [[31, 'NYK', 1], [22, 'MIA', 0], [28, 'PHI', 1]] } },
-      { id: '3934672', player: 'Jalen Brunson', side: 'away', type: 'Assists', label: 'assists', target: 7, yes: false, odds: 1.95, p: 0.47, pm: 0.49,
-        hist: { l5: [2, 5], l10: [5, 10], l20: [9, 20], avg: 6.8, last: [[6, 'BOS', 0], [9, 'TOR', 1]] } }] }),
+    ev('fx-bos-nyk', 'basketball', 'NBA', 'basketball/nba', 'Celtics', 'Knicks', 8, [['Celtics', 1.48], ['Knicks', 2.7]]),
     ev('fx-sin-dra', 'tennis', 'ATP', 'tennis/atp', 'Sinner', 'Draper', 4, [['Sinner', 1.32], ['Draper', 3.4]]),
     ev('fx-tor-mtl', 'hockey', 'NHL', 'hockey/nhl', 'Maple Leafs', 'Canadiens', 9, [['Maple Leafs', 1.62], ['Canadiens', 2.3]]),
     // No price in the feed: rated by the model from rankings / records (Every sport page).

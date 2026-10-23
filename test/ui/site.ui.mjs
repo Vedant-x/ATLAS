@@ -283,7 +283,7 @@ test('navigation: five destinations, Research lit across its pages, Live and Pro
     const shown = await page.$$eval('nav.top a', (as) => as.filter((a) => getComputedStyle(a).display !== 'none').map((a) => a.dataset.m));
     assert.deepEqual(shown, ['Today', 'Research', 'Build a slip', 'Watchlist', 'Results', ...(viewport === PHONE ? ['More'] : [])]);
     assert.equal(await page.getAttribute('nav.top a[href="#/sports"]', 'class'), 'on');
-    assert.deepEqual(await page.$$eval('.research-tabs a', (as) => as.map((a) => a.textContent)), ['Sports', 'Live', 'Props', 'NBA', 'Compare', 'Build a slip']);
+    assert.deepEqual(await page.$$eval('.research-tabs a', (as) => as.map((a) => a.textContent)), ['Sports', 'Live', 'Props', 'Compare', 'Build a slip']);
     await shot(page, `nav-${viewport === PHONE ? 'phone' : 'desk'}`);
     assert.deepEqual(errors, []);
     await ctx.close();
@@ -298,7 +298,7 @@ test('home: panels can be hidden and reordered, and the layout is kept', async (
   await page.click('[data-lay="toggle"][data-lay-key="potd"]');
   await page.waitForFunction(() => !document.querySelector('.dash-potd'));
   assert.ok(await page.$('.dash-layout[open]'), 'still open after a change');
-  for (let i = 0; i < 3; i++) await page.click('[data-lay="up"][data-lay-key="live"]'); // above NBA, Value bets, then Best bets
+  for (let i = 0; i < 2; i++) await page.click('[data-lay="up"][data-lay-key="live"]'); // above Value bets, then Best bets
   await page.waitForFunction(() => { const ps = [...document.querySelectorAll('.dash > .panel')]; return ps.findIndex((p) => p.classList.contains('dash-live')) < ps.findIndex((p) => p.classList.contains('dash-short')); });
   await page.reload();
   await page.waitForSelector('.dash-live');
@@ -331,7 +331,7 @@ test('home: a panel can be made full width, and every panel takes a size', async
   assert.ok(Math.abs(panel - dash) < 2, `${panel} vs ${dash}`);
   assert.match(await page.textContent('[data-lay="size"][data-lay-key="live"]'), /Full/);
   // Every panel's markup accepts a size (the class goes on its own element).
-  for (const k of ['potd', 'shortlist', 'value', 'nba', 'every', 'changes', 'record', 'health']) await page.click(`[data-lay="size"][data-lay-key="${k}"]`);
+  for (const k of ['potd', 'shortlist', 'value', 'every', 'changes', 'record', 'health']) await page.click(`[data-lay="size"][data-lay-key="${k}"]`);
   const sized = await page.$$eval('.dash > .panel.lay-third', (ps) => ps.length);
   const shown = await page.$$eval('.dash > .panel:not(.dash-layout):not(.lay-full)', (ps) => ps.length);
   assert.equal(sized, shown);
@@ -365,23 +365,6 @@ test('value bets: prices above the sharp fair odds, with the edge and the lowest
   assert.match(rows[0][2], /Fair odds 1\.72 \(Pinnacle[\s\S]*Best price 1\.80 at Unibet[\s\S]*First seen at 1\.78/);
   await page.locator('.dash-value').scrollIntoViewIfNeeded();
   await shot(page, 'value-bets');
-  assert.deepEqual(errors, []);
-  await ctx.close();
-});
-
-test('NBA: tonight\'s games with a pick and the best props, lines written as bookmakers write them', async () => {
-  const { page, ctx, errors } = await open('#/');
-  await page.waitForSelector('.dash-nba .nba-prop');
-  assert.match(await page.textContent('.dash-nba .ph'), /NBA tonight\s*2 games/);
-  await page.click('.dash-nba a[href="#/nba"]');
-  await page.waitForSelector('.nba-game');
-  const best = await page.$$eval('.nba-best .nba-prop .mini-main', (rs) => rs.map((r) => r.textContent.replace(/\s+/g, ' ').trim()));
-  assert.match(best[0], /^Jayson Tatum over 24\.5 points\s*L10 8\/10 · avg 27\.4 · Knicks @ Celtics/);
-  assert.equal(await page.locator('.nba-game').count(), 2);
-  const blocks = await page.$$eval('.nba-game', (bs) => bs.map((b) => b.textContent.replace(/\s+/g, ' ')));
-  assert.match(blocks[0], /Warriors @ Lakers LIVE 54-49/); // in play first
-  assert.match(blocks[1], /Knicks @ Celtics[\s\S]*Jayson Tatum over 24.5 points/);
-  await shot(page, 'nba');
   assert.deepEqual(errors, []);
   await ctx.close();
 });
