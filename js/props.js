@@ -42,7 +42,7 @@ export const propDef = (sport, type) => PROP_STATS[sport]?.[String(type || '').r
 // The prop types most bookmakers list (Stake among them). Only these are offered; DraftKings' own
 // extras (blocked shots, steals, walks, combined hits + runs + RBIs…) stay gradeable for old picks.
 export const COMMON = {
-  basketball: ['Points', 'Rebounds', 'Assists', '3-Point Field Goals', 'Points + Assists + Rebounds'],
+  basketball: ['Points', 'Rebounds', 'Assists', '3-Point Field Goals', 'Points + Assists + Rebounds', 'Points + Rebounds', 'Points + Assists', 'Rebounds + Assists'],
   baseball: ['Hits', 'Home Runs', 'RBIs'],
   hockey: ['Points', 'Shots on Goal', 'Goalkeeper Saves', 'Anytime Goalscorer'],
   soccer: ['Anytime Goalscorer'],
@@ -52,34 +52,104 @@ export const COMMON = {
 // alternative lines few other bookmakers carry.
 const MAIN = 1.87, MAIN_RANGE = [1.5, 2.6];
 
+// The feed's over/under types ("Total Rebounds", "Total Points, Rebounds, and Assists") as our prop
+// types. Basketball combinations are read by their words, in any order.
+const COMBO = { points: 'Points', rebounds: 'Rebounds', assists: 'Assists', 'assists|points': 'Points + Assists', 'points|rebounds': 'Points + Rebounds', 'assists|rebounds': 'Rebounds + Assists', 'assists|points|rebounds': 'Points + Assists + Rebounds' };
+export function totalType(name, sport) {
+  const m = /^Total (.+)$/i.exec(String(name || ''));
+  if (!m) return null;
+  const rest = m[1].trim();
+  if (sport === 'basketball') {
+    if (/three|3-point|3pt/i.test(rest)) return '3-Point Field Goals';
+    const words = [...new Set(rest.toLowerCase().match(/points|rebounds|assists/g) || [])].sort().join('|');
+    if (COMBO[words] && !/steal|block|turnover/i.test(rest)) return COMBO[words];
+  }
+  return PROP_STATS[sport]?.[rest] ? rest : null;
+}
+
 const idOf = (ref) => /\/athletes\/(\d+)/.exec(ref || '')?.[1] || null;
-export const propLabel = (pr) => (pr.yes ? `${pr.player} to score${pr.label === 'touchdown' ? ' a TD' : ''}` : `${pr.player} ${pr.target}+ ${pr.label}`);
+// Written as Stake and most bookmakers write it: "Rudy Gobert over 11.5 rebounds" (stored as 12+).
+export const propLabel = (pr) => (pr.yes ? `${pr.player} to score${pr.label === 'touchdown' ? ' a TD' : ''}` : `${pr.player} over ${pr.target - 0.5} ${pr.label}`);
 // The same prop as most bookmakers write it: "over 24.5 points" for 25+.
 export const propOver = (pr) => (pr.yes ? '' : `over ${pr.target - 0.5} ${pr.label}`);
 export const propMarket = (pr) => `Player ${pr.label}`;
 
 // Raw propBets items → props for one match. `who(id)` gives { name, side } for an athlete id. One
-// line per player and stat: the main line (the rung nearest even money), or the anytime scorer price.
-export function parseProps(items, sport, who, { minOdds = 1.15, maxOdds = 3, perEvent = 40 } = {}) {
-  const best = new Map();
+// line per player and stat, the line most bookmakers list:
+// 1. The over/under main line ("Total Rebounds 11.5"), the line Stake and most books offer. The feed
+//    gives it as two items with the same line and no side named: the over first, then the under (the
+//    build log checks this against the ladder). Over 11.5 is kept as 12+, its fair chance from both
+//    prices.
+// 2. Otherwise the milestone ladder's rung nearest even money, but only from a clean ladder: the feed
+//    has put two players' ladders under one player (2+ to 8+ and 6+ to 14+ rebounds), so a ladder
+//    with a line twice, or prices that don't rise with the line, is not used.
+// 3. Anytime scorers (yes / no props) at their price.
+// `check`, if given, counts how often the over price agrees with the clean ladder's price at the same
+// line (agree / disagree), to confirm the over-first order.
+export function parseProps(items, sport, who, { minOdds = 1.15, maxOdds = 3, perEvent = 40, check = null } = {}) {
+  const totals = new Map(), ladders = new Map(), yes = new Map();
   for (const x of items || []) {
+    const id = idOf(x.athlete?.$ref);
+    if (!id) continue;
+    const odds = Number(x.odds?.decimal?.value ?? x.current?.over?.decimal);
+    if (!(odds > 1)) continue;
+    const tt = totalType(x.type?.name, sport);
+    if (tt) {
+      const line = Number(x.current?.target?.value ?? x.odds?.total?.value);
+      if (!(line > 0) || !COMMON[sport]?.includes(tt)) continue;
+      const k = `${id}|${tt}|${line}`;
+      (totals.get(k) || totals.set(k, { id, type: tt, line, prices: [] }).get(k)).prices.push(odds);
+      continue;
+    }
     const type = String(x.type?.name || '').replace(/ Milestones$/, '');
     const def = propDef(sport, type);
-    const id = idOf(x.athlete?.$ref);
-    if (!def || !id || !COMMON[sport]?.includes(type)) continue;
-    const odds = Number(x.odds?.decimal?.value ?? x.current?.over?.decimal);
-    const target = def.target ?? Number(x.current?.target?.value);
-    const [lo, hi] = def.target != null ? [minOdds, maxOdds] : MAIN_RANGE;
-    if (!(odds >= lo && odds <= hi) || !(target > 0)) continue;
-    const key = `${id}|${def.label}`, was = best.get(key);
-    if (!was || Math.abs(Math.log(odds / MAIN)) < Math.abs(Math.log(was.odds / MAIN))) best.set(key, { x, def, id, odds, target });
+    if (!def || !COMMON[sport]?.includes(type)) continue;
+    if (def.target != null) { if (odds >= minOdds && odds <= maxOdds && !yes.has(`${id}|${type}`)) yes.set(`${id}|${type}`, { id, type, def, odds }); continue; }
+    const target = Number(x.current?.target?.value);
+    if (!(target > 0)) continue;
+    const k = `${id}|${type}`;
+    (ladders.get(k) || ladders.set(k, { id, type, def, rungs: [] }).get(k)).rungs.push({ target, odds });
   }
-  const out = [];
-  for (const { x, def, id, odds, target } of best.values()) {
+  const clean = (rungs) => {
+    const r = [...rungs].sort((a, b) => a.target - b.target);
+    return r.every((x, i) => i === 0 || (x.target > r[i - 1].target && x.odds > r[i - 1].odds)) ? r : null;
+  };
+  const out = [], seen = new Set();
+  const push = (id, type, def, target, odds, pm, extra = {}) => {
     const p = who(id);
-    if (!p?.name) continue;
-    out.push({ id, player: p.name, side: p.side || null, type: String(x.type.name).replace(/ Milestones$/, ''), label: def.label, target, yes: def.target != null, odds: +odds.toFixed(2), p: +Math.min(0.97, (1 / odds) * (1 - MARGIN)).toFixed(4), pm: +Math.min(0.97, (1 / odds) * (1 - MARGIN)).toFixed(4) });
+    if (!p?.name) return;
+    seen.add(`${id}|${type}`);
+    out.push({ id, player: p.name, side: p.side || null, type, label: def.label, target, yes: def.target != null, odds: +odds.toFixed(2), p: +pm.toFixed(4), pm: +pm.toFixed(4), ...extra });
+  };
+  const oneWay = (odds) => Math.min(0.97, (1 / odds) * (1 - MARGIN));
+  // 1. Over/under main lines: the line nearest even money when a player has several.
+  const mains = new Map();
+  for (const t of totals.values()) {
+    if (t.prices.length !== 2) continue; // an over and an under, nothing else
+    const [over, under] = t.prices;
+    const k = `${t.id}|${t.type}`, was = mains.get(k);
+    if (!was || Math.abs(Math.log(over / under)) < Math.abs(Math.log(was.over / was.under))) mains.set(k, { ...t, over, under });
   }
+  for (const t of mains.values()) {
+    const def = propDef(sport, t.type), target = Math.floor(t.line) + 1;
+    if (!(t.over >= MAIN_RANGE[0] - 0.2 && t.over <= MAIN_RANGE[1] + 0.4)) continue;
+    if (check) {
+      const lad = ladders.get(`${t.id}|${t.type}`), r = lad && clean(lad.rungs)?.find((x) => x.target === target);
+      if (r) check[Math.abs(Math.log(r.odds / t.over)) <= Math.abs(Math.log(r.odds / t.under)) ? 'agree' : 'disagree']++;
+    }
+    const fair = (1 / t.over) / (1 / t.over + 1 / t.under);
+    push(t.id, t.type, def, target, t.over, Math.min(0.97, fair), { line: t.line });
+  }
+  // 2. Clean ladders, for player stats with no over/under line.
+  for (const l of ladders.values()) {
+    if (seen.has(`${l.id}|${l.type}`)) continue;
+    const r = clean(l.rungs)?.filter((x) => x.odds >= MAIN_RANGE[0] && x.odds <= MAIN_RANGE[1]);
+    if (!r?.length) continue;
+    const best = r.reduce((a, b) => (Math.abs(Math.log(b.odds / MAIN)) < Math.abs(Math.log(a.odds / MAIN)) ? b : a));
+    push(l.id, l.type, l.def, best.target, best.odds, oneWay(best.odds));
+  }
+  // 3. Anytime scorers.
+  for (const y of yes.values()) push(y.id, y.type, y.def, y.def.target, y.odds, oneWay(y.odds));
   return out.sort((a, b) => b.p - a.p).slice(0, perEvent);
 }
 

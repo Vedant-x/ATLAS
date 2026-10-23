@@ -1,6 +1,7 @@
 // "Self intelligence": a light model layered on the market price.
 // The market is the strongest single predictor, so the model starts from the de-vigged price and nudges it
 // toward each side's season record and recent form. Disagreement between the two shows up as value (EV).
+import { newsHold } from './newsgate.js';
 import { devig, underdogCushion } from './engine.js';
 import { propLabel, propMarket } from './props.js';
 import { normCdf } from './models.js';
@@ -133,6 +134,7 @@ function propagate(e, base, model, inputs) {
 export function bankers(events, { min = 0.7, limit = 24, minOdds = 1, cushions = false } = {}) {
   const out = [];
   for (const e of events) {
+    if (newsHold(e)) continue; // NBA: waiting on the injury report (newsgate.js)
     for (const m of e.markets || []) {
       const { outcomes } = devig(m);
       outcomes.forEach((o, i) => {

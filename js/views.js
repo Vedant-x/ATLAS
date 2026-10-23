@@ -32,8 +32,6 @@ import { whyLine } from './why.js';
 import { canonStats, standingsTable } from './standings.js';
 // Picks pages (bankers, edge board, multipliers): picksview.js, which also uses the helpers here.
 import { picksViews, bindPicks, edgeTable, everyTeaser } from './picksview.js';
-// NBA: tonight's games, picks and player props (nbaview.js).
-import { nbaViews, nbaPanel, bindNba } from './nbaview.js';
 export { edgeTable };
 // Golf and motor racing: a field of players or drivers, drawn by fieldview.js.
 const FIELD_SPORTS = new Set(['golf', 'motorsport']);
@@ -50,7 +48,7 @@ const DRAW_COLOR = '#8b8b92';
 // ---------- shared state handed in by main.js ----------
 let S;
 export const legIndex = new Map();
-export function bind(state) { S = state; bindPicks(state); bindNba(state); }
+export function bind(state) { S = state; bindPicks(state); }
 
 const analysisCache = new Map();
 export function analysisFor(e) {
@@ -366,7 +364,6 @@ export const views = {
   },
 
   ...picksViews,
-  ...nbaViews,
 
   notfound() {
     return { mode: 'other', accent: '#d2ff00', title: 'Not found', html: `<section class="hero"><h1>${split('404')}</h1><p class="reveal"><a class="btn" href="#/">Back to dashboard</a></p></section>` };
@@ -396,7 +393,6 @@ function dashboard(ev, live) {
       ${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}
       <div class="minilist">${S.loading ? skelRows(4) : short.map((b) => miniPick(b)).join('') || `<p class="muted">${empty}</p>`}</div></div>`,
     value: () => valuePanel(pool),
-    nba: () => nbaPanel(),
     live: () => `<div class="panel dash-live reveal"><h2 class="ph">Live now <small>${S.loading ? '' : live.length}</small></h2>
       ${S.loading ? skelRows(3) : live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${esc(e.score || '')}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>`,
     every: () => everyTeaser(),
@@ -415,7 +411,7 @@ export const setFiltersOpen = (v) => { filtersOpen = Boolean(v); };
 
 // Home panels: order and visibility, saved per visitor (localStorage, best effort). Unknown or missing
 // names fall back to the default order, so a new panel always appears.
-const HOME_PANELS = [['potd', 'Parlay of the day'], ['shortlist', 'Best bets'], ['value', 'Value bets'], ['nba', 'NBA tonight'], ['live', 'Live now'], ['every', 'Every sport'], ['changes', 'What changed'], ['record', 'Track record'], ['health', 'Source health']];
+const HOME_PANELS = [['potd', 'Parlay of the day'], ['shortlist', 'Best bets'], ['value', 'Value bets'], ['live', 'Live now'], ['every', 'Every sport'], ['changes', 'What changed'], ['record', 'Track record'], ['health', 'Source health']];
 const LAYOUT_KEY = 'atlas-home-layout';
 // Minimal by default: source health, what changed and the full record card start hidden (the record
 // is the strip at the top); Customise shows them.

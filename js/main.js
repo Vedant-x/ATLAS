@@ -17,8 +17,8 @@ import { loadPlayers, playersData } from './playerdata.js';
 // The Research area: one tab bar across its pages (props and player research, Picks, compare,
 // and sports and leagues).
 const PICKS = ['bankers', 'every', 'edge', 'x', 'target', 'mega'];
-const RESEARCH = new Set(['nba', 'props', 'player', 'bankers', 'every', 'x', 'target', 'mega', 'edge', 'compare', 'sports', 'sport', 'league', 'live']);
-const R_TABS = [['sports', '#/sports', 'Sports', ['sports', 'sport', 'league']], ['live', '#/live', 'Live', ['live']], ['props', '#/props', 'Props', ['props', 'player']], ['nba', '#/nba', 'NBA', ['nba']], ['compare', '#/compare', 'Compare', ['compare']], ['picks', '#/bankers', 'Build a slip', PICKS]];
+const RESEARCH = new Set(['props', 'player', 'bankers', 'every', 'x', 'target', 'mega', 'edge', 'compare', 'sports', 'sport', 'league', 'live']);
+const R_TABS = [['sports', '#/sports', 'Sports', ['sports', 'sport', 'league']], ['live', '#/live', 'Live', ['live']], ['props', '#/props', 'Props', ['props', 'player']], ['compare', '#/compare', 'Compare', ['compare']], ['picks', '#/bankers', 'Build a slip', PICKS]];
 // Picks pages carry their own tab row (Bankers, Edge board, Multipliers, Target, Mega) instead.
 const withTabs = (name, html) => { if (!RESEARCH.has(name) || PICKS.includes(name)) return html; const i = html.indexOf('</section>'); return i < 0 ? researchTabs(name) + html : html.slice(0, i + 10) + researchTabs(name) + html.slice(i + 10); };
 const researchTabs = (name) => `<nav class="research-tabs" aria-label="Research">${R_TABS.map(([k, h, l, on]) => `<a class="${on.includes(name) ? 'on' : ''}" href="${h}"${on.includes(name) ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>`;
