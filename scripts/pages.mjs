@@ -585,7 +585,7 @@ async function playerProps(events) {
     if (!athletes.has(ref)) athletes.set(ref, getJson(ref).then((a) => ({ name: a.displayName, team: /\/teams\/(\d+)/.exec(a.team?.$ref || '')?.[1] || null })).catch(() => null));
     return athletes.get(ref);
   };
-  let lines = 0, matched = 0, failed = 0;
+  let lines = 0, matched = 0, failed = 0, propSample = null;
   const queue = [...due];
   await Promise.all(Array.from({ length: 6 }, async () => {
     while (queue.length) {
@@ -599,6 +599,11 @@ async function playerProps(events) {
         for (let pg = 2; pg <= Math.min(j.pageCount || 1, 3); pg++) items.push(...((await getJson(`${url}&page=${pg}`)).items || []));
       } catch (err) { if (!/404/.test(err.message)) failed++; continue; }
       if (!items.length) continue;
+      // What the feed's rebound lines look like (one NBA match per build): line, price and fields.
+      if (sport === 'basketball' && !propSample) {
+        propSample = items.filter((x) => /Rebounds/.test(x.type?.name || '')).slice(0, 8).map((x) => JSON.stringify({ type: x.type, athlete: x.athlete?.$ref?.split('/athletes/')[1]?.split('?')[0], odds: x.odds, current: x.current, open: x.open, total: x.total, keys: Object.keys(x) }));
+        if (propSample.length) log(`  prop feed sample (${e.home} v ${e.away}):\n    ${propSample.join('\n    ')}`);
+      }
       const [h, a] = await Promise.all([roster(e.leaguePath, e.teamIds.home), roster(e.leaguePath, e.teamIds.away)]);
       const extra = new Map();
       // Only player references (a team or other ref has no athlete id, and used to stop the whole step).
