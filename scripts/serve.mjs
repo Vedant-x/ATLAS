@@ -17,8 +17,10 @@ createServer(async (req, res) => {
     // Only site files: never .env, Git history or scripts.
     const top = new Set(['/', '/index.html', '/favicon.svg', '/manifest.webmanifest', '/sw.js', '/robots.txt', '/sitemap.xml']);
     const asset = /^\/(js|css|vendor|icons|data)\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_.-]+\.(js|mjs|css|json|svg|png)$/.test(pathname) && !pathname.includes('..');
-    if (!top.has(pathname) && !asset) { res.writeHead(404); res.end('Not found'); return; }
-    const file = join(root, pathname === '/' ? 'index.html' : pathname);
+    // The search pages (js/staticpages.js): sports/<id>/ and leagues/<key>/.
+    const page = /^\/(sports|leagues)\/[a-zA-Z0-9_.~-]+\/$/.test(pathname) && !pathname.includes('..');
+    if (!top.has(pathname) && !asset && !page) { res.writeHead(404); res.end('Not found'); return; }
+    const file = join(root, pathname === '/' ? 'index.html' : page ? `${pathname}index.html` : pathname);
     const body = await readFile(file);
     res.writeHead(200, { ...headers, 'Content-Type': types[extname(file)] || 'application/octet-stream' });
     res.end(req.method === 'HEAD' ? '' : body);

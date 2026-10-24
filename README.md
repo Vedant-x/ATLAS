@@ -25,6 +25,7 @@ in public.
 | `#/track` | Results: every pick, locked before the start, graded from the final score; retired lists with their final records |
 | `#/sources` | Every data source, how it did on the last build, and what ATLAS does not cover |
 | `#/slip/<code>` | A shared slip |
+| `sports/<id>/`, `leagues/<key>/` | Plain pages for search engines (and shared links): the week's fixtures, chances and prices; each links into the app |
 
 Old addresses (`#/bankers`, `#/edge`, `#/every`, `#/mega`, `#/x/10` …) lead to the list that replaced them.
 

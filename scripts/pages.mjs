@@ -16,7 +16,8 @@ import { enrichMlb, formOf } from '../js/mlbstats.js';
 import { validateReport } from '../js/validate.js';
 import { mkdir, copyFile, cp, writeFile, rm, readFile } from 'node:fs/promises';
 import { fetchAll, LEAGUES, fetchErrors, leagueStatus } from '../js/espn.js';
-import { leagueByPath } from '../js/catalog.js';
+import { leagueByPath, CATALOG } from '../js/catalog.js';
+import { leaguePage, sportPage, sitemap } from '../js/staticpages.js';
 import { CLUBELO, parseClubElo, eloIndex, isEuropean } from '../js/clubelo.js';
 import { FD_FIXTURES, parseFixtures, applyFixtures } from '../js/footballdata.js';
 import { ELO_WORLD, ELO_TEAMS, eloratingsIndex, applyEloratings, isInternational } from '../js/eloratings.js';
@@ -46,7 +47,7 @@ import { stakePrices } from './sources/stake.mjs';
 
 await rm(out, { recursive: true, force: true });
 await mkdir(`${out}/data`, { recursive: true });
-for (const f of ['index.html', 'favicon.svg', 'manifest.webmanifest', 'robots.txt', 'sitemap.xml']) await copyFile(f, `${out}/${f}`);
+for (const f of ['index.html', 'favicon.svg', 'manifest.webmanifest', 'robots.txt']) await copyFile(f, `${out}/${f}`);
 for (const d of ['vendor', 'icons']) await cp(d, `${out}/${d}`, { recursive: true });
 // Service worker, stamped with this build so visitors pick up new code on the next visit.
 // The worker's version is the code version (commit), not the build time: data refreshes every few
@@ -632,6 +633,28 @@ if (tsdbFile) await writeFile(`${out}/data/sportsdb.json`, JSON.stringify(tsdbFi
 }
 await writeFile(`${out}/data/sources.json`, JSON.stringify({ at: Date.now(), sources }));
 await writeFile(`${out}/data/index.json`, JSON.stringify({ source: 'ATLAS snapshot', fetchedAt: Date.now(), leagueStatus: Object.fromEntries(leagueStatus), events }));
+// Pages search engines can read (js/staticpages.js): one per league and per sport with fixtures in the
+// next 7 days, at real addresses, and the sitemap listing them.
+{
+  const now = Date.now(), leagues = new Map(), bySport = {}, written = [];
+  for (const e of events) if (e.leaguePath && !e.final && e.start > now - 3 * 36e5 && e.start < now + 7 * 864e5 && !leagues.has(e.leaguePath)) leagues.set(e.leaguePath, { path: e.leaguePath, name: e.league || e.leaguePath, sport: e.sport });
+  for (const l of leagues.values()) {
+    const sp = CATALOG.find((x) => x.id === l.sport);
+    const pg = leaguePage({ ...l, sportName: sp?.name }, events, { now });
+    await mkdir(`${out}/${pg.path}`, { recursive: true });
+    await writeFile(`${out}/${pg.path}index.html`, pg.html);
+    written.push(pg.path);
+    (bySport[l.sport] ||= []).push({ ...l, count: pg.count });
+  }
+  for (const [id, list] of Object.entries(bySport)) {
+    const pg = sportPage(CATALOG.find((x) => x.id === id) || { id, name: id }, list);
+    await mkdir(`${out}/${pg.path}`, { recursive: true });
+    await writeFile(`${out}/${pg.path}index.html`, pg.html);
+    written.push(pg.path);
+  }
+  await writeFile(`${out}/sitemap.xml`, sitemap(written.sort(), { at: now }));
+  log(`Search pages: ${leagues.size} leagues and ${Object.keys(bySport).length} sports at real addresses, all in sitemap.xml`);
+}
 if (fetchErrors.length) log('ESPN errors (first 20):', fetchErrors.join(' | '));
 log(`ESPN: ${espn.length} events`);
 {

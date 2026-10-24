@@ -17,6 +17,7 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== location.origin) return;
   if (url.pathname.endsWith('/vendor/web-llm.mjs')) return; // large, versioned by the browser cache
+  if (/\/(leagues|sports)\//.test(url.pathname)) return; // the search pages (staticpages.js): new every build
   if (url.pathname.includes('/data/')) {
     // Network first: always the newest snapshot. Only a good response is kept, under the file's
     // name without the ?t= cache-buster, so the last good copy is served when the network or the
