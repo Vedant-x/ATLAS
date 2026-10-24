@@ -43,6 +43,11 @@ jobs:
           # Stake's prices: test builds reuse the live site's, and spend none of the month's requests.
           ODDSPAPI_KEY: ${{ secrets.ODDSPAPI_KEY }}
           ODDSPAPI_BUDGET: '0'
+      - name: TEMPORARY which secret and variable names this workflow sees (names only, never values)
+        env:
+          SECRET_JSON: ${{ toJSON(secrets) }}
+          VAR_JSON: ${{ toJSON(vars) }}
+        run: node -e "console.log('Secret names:', Object.keys(JSON.parse(process.env.SECRET_JSON)).join(', ')); console.log('Variable names:', Object.keys(JSON.parse(process.env.VAR_JSON || '{}')).join(', ') || 'none')"
       - name: Data contract (the real build's data, not the test board)
         run: node scripts/check-data.mjs dist/pages/data --min-events 300
       - name: Track record dry run (empty history, live results)
