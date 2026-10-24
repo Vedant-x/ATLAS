@@ -52,7 +52,8 @@ jobs:
       # as a warning, never blocking (the last good site stays up either way).
       - name: Data contract
         continue-on-error: true
-        run: node scripts/check-data.mjs dist/pages/data --min-events 300 || { echo "::warning::The data contract check failed: see the step log"; exit 1; }
+        run: |
+          node scripts/check-data.mjs dist/pages/data --min-events 300 || { echo "::warning::The data contract check failed (details in this step's log)"; exit 1; }
       # Track record: history lives on the track-record branch (created on the first run). If the
       # branch exists, its history must load: record.mjs stops the build otherwise, so a failed
       # checkout can never restart the record from empty.
