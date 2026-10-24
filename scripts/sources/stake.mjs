@@ -1,5 +1,6 @@
 // Build source (run by scripts/pages.mjs): Stake's own prices, and Pinnacle's, from OddsPapi
-// (js/oddspapi.js). Off until the ODDSPAPI_KEY repository secret is set (a free oddspapi.io account).
+// (js/oddspapi.js). Off until the ODDS_PAPI_API_KEY repository secret is set (a free oddspapi.io account;
+// the workflows pass it in as ODDSPAPI_KEY).
 // The free plan's requests are few (ODDSPAPI_MONTHLY, default 240 a month), so: one request a time
 // for every league at once, only while one of them has a match in the next 36 hours and the prices
 // held are 3+ hours old, spent at an even pace to the end of the month. The prices and the month's
@@ -14,7 +15,7 @@ const MAX_AGE = 12 * 36e5; // older prices are not shown
 
 export async function stakePrices(events) {
   const key = process.env.ODDSPAPI_KEY;
-  if (!key) { noteSource(NAME, SITE, WHAT, null, null, 'not switched on: add an ODDSPAPI_KEY repository secret (a free oddspapi.io account)'); return; }
+  if (!key) { noteSource(NAME, SITE, WHAT, null, null, 'not switched on: add an ODDS_PAPI_API_KEY repository secret (a free oddspapi.io account)'); return; }
   let cache = { month: null, used: 0, spentAt: 0, at: 0, events: [] };
   try {
     const r = await fetch((process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json').replace('index.json', 'stake.json'), { signal: AbortSignal.timeout(15000) });

@@ -44,8 +44,8 @@ jobs:
           # an even pace, region eu (Pinnacle and a dozen books), each sport refreshed when 12 hours old).
           # Empty values leave the defaults.
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
-          # Stake's own prices (OddsPapi): the ODDSPAPI_KEY repository secret turns them on.
-          ODDSPAPI_KEY: ${{ secrets.ODDSPAPI_KEY }}
+          # Stake's own prices (OddsPapi): the ODDS_PAPI_API_KEY repository secret turns them on.
+          ODDSPAPI_KEY: ${{ secrets.ODDS_PAPI_API_KEY || secrets.ODDSPAPI_KEY }}
           ODDSPAPI_MONTHLY: ${{ vars.ODDSPAPI_MONTHLY }}
           ODDS_HOURS: ${{ vars.ODDS_HOURS }}
           ODDS_MARKETS: ${{ vars.ODDS_MARKETS }}

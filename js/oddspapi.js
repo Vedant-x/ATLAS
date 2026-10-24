@@ -1,6 +1,6 @@
 // Stake's own prices (and Pinnacle's) from OddsPapi (oddspapi.io), the one odds service found that
 // carries Stake, the book ATLAS's users bet at. Nothing here runs unless the build has an
-// ODDSPAPI_KEY repository secret (a free account: about 250 requests a month). Prices sit by
+// ODDS_PAPI_API_KEY repository secret (a free account: about 250 requests a month). Prices sit by
 // bookmaker, then market id, then outcome id, then a player key ("0" for a match market):
 //   fixture.bookmakerOdds.stake.markets["101"].outcomes["101"].players["0"].price
 // Market 101 is football's full-time result (outcomes 101 home, 102 draw, 103 away). Tournament ids
