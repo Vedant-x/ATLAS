@@ -3,6 +3,17 @@
 What was decided, why, and what it replaced. Anything that reverses an earlier decision says so here
 first, with the evidence. A change that flips a decision without an entry here should not merge.
 
+## 2026-10-24 · Stake's own prices; value bets at Stake are recorded at Stake's price
+
+- **Decided:** Stake's prices come from OddsPapi (the one odds service found that carries Stake;
+  The Odds API does not), beside each price on the main football leagues. A value bet whose Stake
+  price clears the fair odds is taken and recorded at Stake's price, and listed first (model 2026.10.14).
+- **Why:** ATLAS's users bet at Stake from India; a price at another book is one they cannot take,
+  and a record kept at it is not one they could have had.
+- **Limits:** the free plan allows about 250 requests a month, so one request covers every league,
+  spent at an even pace (about one every 3 hours). Other sports join once their market ids are read
+  from a live response.
+
 ## 2026-10-24 · Engineering: dependencies from npm, a linter, one CI run per pull request
 
 - **Decided:** three.js, GSAP and WebLLM come from pinned npm packages (`scripts/vendor.mjs` builds

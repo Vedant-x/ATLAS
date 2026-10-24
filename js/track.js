@@ -39,16 +39,21 @@ export function bestBets(events, { cal = null, limit = 10 } = {}) {
 // ATLAS rated 10-20 points above the market landed slightly below the market's own chance.
 // sharpAge: a sharp line laid over another feed's price (overlayOdds, football-data) is a reference
 // only while fresh; an older one may just be a line the market has since moved past.
+// At Stake: where Stake's own price (oddspapi.js) clears the fair odds, it is the price taken and
+// recorded (atStake): the book ATLAS's users bet at, so the record is what they could have had.
 export const VALUE = { min: 0.02, minMedian: 0.03, minFair: 0.3, minOdds: 1.25, maxOdds: 4, sharpAge: 10 * 36e5 };
 export function valueBets(events, { cal = null, limit = 10 } = {}) {
+  const need = (b) => (/^Pinnacle/.test(b.consensusFrom || '') ? VALUE.min : VALUE.minMedian);
+  const fresh = (t) => !(t && Date.now() - t > VALUE.sharpAge);
   const list = bankers(events.filter((e) => !e.live && gradable(e)), { min: 0, limit: Infinity })
-    .filter((b) => b.consensus && b.odds >= VALUE.minOdds && b.odds <= VALUE.maxOdds && b.fair >= VALUE.minFair
-      && !blockedSegment(cal, b.event.sport, b.market) && !drifting(b.odds, b.open) && !(b.event.sharpAt && Date.now() - b.event.sharpAt > VALUE.sharpAge))
+    .filter((b) => b.consensus && b.fair >= VALUE.minFair && !blockedSegment(cal, b.event.sport, b.market) && !drifting(b.odds, b.open) && fresh(b.event.sharpAt))
+    .map((b) => (b.stake > 1 && fresh(b.event.stakeAt) && b.stake * b.fair - 1 >= need(b) ? { ...b, odds: b.stake, book: 'Stake', atStake: true } : b))
+    .filter((b) => b.odds >= VALUE.minOdds && b.odds <= VALUE.maxOdds)
     // wide: the typical price across books also beats the fair odds, so the value does not hang on
-    // one bookmaker (most books, Stake among them, should have it). Those come first.
+    // one bookmaker. Value at Stake comes first, then wide, then the biggest edge.
     .map((b) => ({ ...b, pRaw: b.p, p: b.fair, edge: b.odds * b.fair - 1, ev: b.odds * b.fair - 1, takeAt: +((1 + VALUE.min) / b.fair).toFixed(2), wide: b.med > 1 ? b.med * b.fair - 1 >= VALUE.min : null }))
-    .filter((b) => b.edge >= (/^Pinnacle/.test(b.consensusFrom || '') ? VALUE.min : VALUE.minMedian))
-    .sort((x, y) => Number(Boolean(y.wide)) - Number(Boolean(x.wide)) || y.edge - x.edge);
+    .filter((b) => b.edge >= need(b))
+    .sort((x, y) => Number(Boolean(y.atStake)) - Number(Boolean(x.atStake)) || Number(Boolean(y.wide)) - Number(Boolean(x.wide)) || y.edge - x.edge);
   return diversify(list, limit, { familyShare: 0.6, sportShare: 0.6 });
 }
 // Stamped on every recorded pick, so results can be split by the model that made them.
@@ -80,7 +85,9 @@ export function valueBets(events, { cal = null, limit = 10 } = {}) {
 // 2026.10.13: two lists (Best bets, Value bets), 2x / 3x slips and the parlay of the day; shortlist
 //   bankers, Surest, Near 2.00, model-only picks, 4x+ and mega slips retired; no chance shown more
 //   than 3 points above the price's own; unseen probes keep blocked bet types measured.
-export const MODEL_VERSION = '2026.10.13';
+// 2026.10.14: Stake's own price (OddsPapi) on the main football leagues; a value bet whose Stake price
+//   clears the fair odds is taken and recorded at Stake's price, and listed first.
+export const MODEL_VERSION = '2026.10.14';
 
 // Market families the track record learns from: winner, 1X2 result, spread/handicap, totals.
 export const familyOf = (market = '') => (/^Player /.test(market) ? 'prop' : /^Total/.test(market) ? 'total' : market === 'Spread' ? 'spread' : market === 'Match Result' ? 'result' : 'winner');
@@ -358,7 +365,7 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
     market: b.market, pick: b.pick, odds: b.odds, p: +b.pRaw.toFixed(4), shown: +b.p.toFixed(4), fair: b.fair == null ? null : +b.fair.toFixed(4),
     recordedAt: now, status: 'pending', model: MODEL_VERSION, ...(b.prop ? { prop: b.prop } : {}),
     // Value bets: the bookmaker quoting the price and the first price seen for it.
-    ...(type === 'edge' ? { bestBook: b.book || null, open: b.open ?? null } : {}),
+    ...(type === 'edge' ? { bestBook: b.book || null, open: b.open ?? null, ...(b.atStake ? { atStake: true } : {}) } : {}),
   });
   // What the site shows is what is recorded: Best bets, Value bets, 2x / 3x slips and the parlay of
   // the day (plus unseen probes). The shortlist bankers, Surest, Near 2.00 and model-only picks were

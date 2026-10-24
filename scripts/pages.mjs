@@ -42,6 +42,7 @@ import { tsdbFile, sportsdb, tsdbStatus } from './sources/sportsdb.mjs';
 import { fields } from './sources/fields.mjs';
 import { europe } from './sources/europe.mjs';
 import { mmaOdds } from './sources/mma.mjs';
+import { stakePrices } from './sources/stake.mjs';
 
 await rm(out, { recursive: true, force: true });
 await mkdir(`${out}/data`, { recursive: true });
@@ -596,6 +597,9 @@ if (process.env.ODDS_API_KEY) {
     noteSource('The Odds API', 'the-odds-api.com', 'Many bookmakers\' prices: the sharp fair chance and typical price on the main leagues, and a price where nothing else has one', true, priced + sharp, `${sharp} matches with the sharp line, ${priced} priced, ${added} added from the bookmakers' lists; ${credits ?? '?'} credits left this month`);
   } catch (e) { log(`Odds API failed: ${e.message}`); noteSource('The Odds API', 'the-odds-api.com', 'Fixtures the bookmakers list; best price and consensus fair chance where nothing else prices a match', false, null, e.message); }
 } else noteSource('The Odds API', 'the-odds-api.com', 'Fixtures the bookmakers list; best price and consensus fair chance where nothing else prices a match', null, null, 'not switched on: add an ODDS_API_KEY repository secret');
+// Stake's own prices (OddsPapi, ODDSPAPI_KEY): beside each main-league price, and Pinnacle's fair
+// chance where the match has no sharp line yet (sources/stake.mjs).
+try { await stakePrices(events); } catch (e) { log(`Stake (OddsPapi) failed: ${e.message}`); noteSource('Stake (OddsPapi)', 'oddspapi.io', "Stake's own prices on the main football leagues", false, null, e.message); }
 // Price movement: every price remembers the first one seen (movement.js), once all prices are in.
 // Then how many prices beat the sharp market's fair odds right now (Value bets), for the log.
 {

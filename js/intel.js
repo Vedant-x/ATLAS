@@ -148,7 +148,9 @@ export function bankers(events, { min = 0.7, limit = 24, minOdds = 1, cushions =
           // Many bookmakers: the best price's bookmaker, and a fair chance that is the market consensus.
           ...(Number.isFinite(m.outcomes[i].cons) ? { consensus: true, book: m.outcomes[i].book || null, consensusFrom: m.consensusFrom || null } : {}),
           // The typical price across books, and a better one elsewhere (oddsapi.js overlayOdds).
-          ...(m.outcomes[i].med > 1 ? { med: m.outcomes[i].med } : {}), ...(m.outcomes[i].best > 1 ? { best: m.outcomes[i].best, bestBook: m.outcomes[i].bestBook || null } : {}) });
+          ...(m.outcomes[i].med > 1 ? { med: m.outcomes[i].med } : {}), ...(m.outcomes[i].best > 1 ? { best: m.outcomes[i].best, bestBook: m.outcomes[i].bestBook || null } : {}),
+          // Stake's own price (oddspapi.js), the book ATLAS's users bet at.
+          ...(m.outcomes[i].stake > 1 ? { stake: m.outcomes[i].stake } : {}) });
       });
     }
     // Player props (milestones, anytime scorers): one-way prices, chance net of the margin.

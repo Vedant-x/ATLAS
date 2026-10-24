@@ -33,7 +33,8 @@ Old addresses (`#/bankers`, `#/edge`, `#/every`, `#/mega`, `#/x/10` …) lead to
 - **Best bets:** the likeliest outcomes at odds 1.20 and up, only where the price is at least the
   market's fair price. A chance shown is never more than 3 points above the price's own.
 - **Value bets:** a bookmaker's price at least 2% above Pinnacle's fair odds (3% above the books'
-  median where Pinnacle has none). Ones the typical price across books also clears come first.
+  median where Pinnacle has none). Where Stake's own price clears the fair odds, the bet is taken and
+  recorded at Stake's price and listed first; then ones the typical price across books also clears.
 - **2x and 3x slips** and **the parlay of the day** (one slip at 1.70 to 2.00).
 - Every pick is saved before the start and graded from the final score, read twice (from a second,
   independent source where one covers the league). Bet types whose results fall short of their prices
@@ -45,6 +46,7 @@ Old addresses (`#/bankers`, `#/edge`, `#/every`, `#/mega`, `#/x/10` …) lead to
 |---|---|
 | ESPN public APIs | Fixtures, scores, one bookmaker's prices (DraftKings) and match summaries for 150+ competitions; player props; injury lists |
 | The Odds API (own key) | Pinnacle's fair line and the typical price across a dozen books on the main leagues; prices where nothing else has one |
+| OddsPapi (own key) | Stake's own prices on the main football leagues, beside each price; value bets taken at Stake's price where it clears the fair odds |
 | football-data.co.uk | Pinnacle odds for European leagues: a price where none, the sharp line where ESPN prices |
 | NBA (official.nba.com, cdn.nba.com) | The league's injury report; box scores to confirm NBA prop results |
 | MLB Stats API, NHL API, FotMob, OpenDota | Starters and pitcher reports; second results sources; soccer team news and line-ups |
