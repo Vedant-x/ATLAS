@@ -42,7 +42,7 @@ jobs:
           TSDB_BUDGET: '0'
           # Stake's prices: test builds reuse the live site's, and spend none of the month's requests.
           ODDSPAPI_KEY: ${{ secrets.ODDS_PAPI_API_KEY || secrets.ODDSPAPI_KEY }}
-          ODDSPAPI_BUDGET: 'force' # TEMPORARY: one live read to check the reader (back to '0' before merge)
+          ODDSPAPI_BUDGET: '0'
       - name: Data contract (the real build's data, not the test board)
         run: node scripts/check-data.mjs dist/pages/data --min-events 300
       - name: Track record dry run (empty history, live results)

@@ -69,9 +69,12 @@ export async function stakePrices(events) {
         log(`Stake (OddsPapi) participants for sport ${sportId}: HTTP ${r.status}, ${Object.keys(got).length} names${Object.keys(got).length ? '' : `; ${body.replace(/\s+/g, ' ').slice(0, 300)}`}`);
       } catch (e) { log(`Stake (OddsPapi) participants for sport ${sportId} failed: ${e.message}`); }
     }
+    // Only the names these fixtures use are kept (the lists hold tens of thousands).
+    const used = new Set(list.flatMap((f) => [f.participant1Id, f.participant2Id]).map(String));
+    cache.names = Object.fromEntries(Object.entries(names).filter(([id]) => used.has(String(id))));
     if (list.length || !errors.length) {
       fetched = list;
-      const evs = stakeEvents(list, STAKE_LEAGUES, names);
+      const evs = stakeEvents(list, STAKE_LEAGUES, cache.names);
       cache = { ...cache, at: now, events: evs, seen: describe(list) };
       log(`Stake (OddsPapi): ${list.length} fixtures read in ${groups.length} request(s); by league: ${Object.entries(cache.seen).map(([t, x]) => `${STAKE_LEAGUES.find((l) => l.id === Number(t))?.name || t} ${x.fixtures} (${x.named} named, ${x.stake} with Stake; markets ${Object.entries(x.markets).map(([m, n]) => `${m}:${n}`).join(' ') || 'none'})`).join(' · ') || 'none'}`);
       // The first fixture's keys, while the reader is new: what the response holds when names are missing.
