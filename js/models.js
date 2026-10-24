@@ -402,7 +402,7 @@ export function winProbs(event) {
 // ---------- entry point ----------
 export function analyse(event) {
   const view = priceView(event);
-  let win = view.win, confidence = 'high', basis = 'Bookmaker price, margin removed';
+  let win = view.win, confidence = 'high', basis = 'Bookmaker price, with its cut taken out';
   if (!win && event.predictor) {
     win = predictorWin(event); confidence = 'medium'; basis = 'ESPN matchup predictor (no bookmaker price)';
   }

@@ -5,7 +5,7 @@ export const odd = (o) => (Number.isFinite(o) ? (o >= 100 ? o.toFixed(0) : o.toF
 
 // Horizontal stacked probability bar: [{label, p, color}]
 export function probBar(parts) {
-  return `<div class="pbar">${parts.map((x) => `<i class="grow" style="--w:${(x.p * 100).toFixed(2)}%;--c:${x.color}" title="${esc(x.label)} ${pc(x.p)}"></i>`).join('')}</div>`;
+  return `<div class="pbar">${parts.map((x) => `<i class="grow" style="--w:${(x.p * 100).toFixed(2)}%;--c:${x.color}" data-tip="${esc(x.label)} ${pc(x.p)}"></i>`).join('')}</div>`;
 }
 
 // Radial gauge for a single probability.
@@ -16,11 +16,21 @@ export function gauge(p, color, label) {
     <figcaption><b>${pc(p, 0)}</b><small>${esc(label)}</small></figcaption></figure>`;
 }
 
+// Relative luminance of a colour mixed at share `a` over the dark card (sRGB mix, as color-mix does).
+function cellLum(hex, a) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim());
+  const rgb = m ? [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)) : [210, 255, 0];
+  const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const [r, g, b] = rgb.map((v) => lin(v * a + 19 * (1 - a)));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
 // Correct-score heatmap from {size, cells:[{h,a,p}]}
 export function heatmap(grid, home, away, color) {
   const n = grid.size + 1;
   const max = Math.max(...grid.cells.map((c) => c.p));
-  const cell = (c) => `<i style="--a:${(0.08 + 0.92 * (c.p / max)).toFixed(3)};--c:${color}" title="${c.h}-${c.a} · ${pc(c.p)}"><span>${c.p >= 0.005 ? (c.p * 100).toFixed(c.p < 0.1 ? 1 : 0) : ''}</span></i>`;
+  // Dark text on the bright cells, light text on the faint ones: the cell's own colour (the team's
+  // colour mixed over the dark card) decides, so every number keeps at least 4.5:1.
+  const cell = (c) => { const a = 0.08 + 0.92 * (c.p / max); return `<i class="${cellLum(color, a) > 0.17 ? 'hi' : ''}" style="--a:${a.toFixed(3)};--c:${color}" data-tip="${c.h}-${c.a} · ${pc(c.p)}"><span>${c.p >= 0.005 ? (c.p * 100).toFixed(c.p < 0.1 ? 1 : 0) : ''}</span></i>`; };
   const head = Array.from({ length: n }, (_, j) => `<b>${j}</b>`).join('');
   let rows = '';
   for (let i = 0; i < n; i++) rows += `<b>${i}</b>${grid.cells.filter((c) => c.h === i).map(cell).join('')}`;
@@ -30,7 +40,7 @@ export function heatmap(grid, home, away, color) {
 // Distribution bars, e.g. points margin [{x, p}]
 export function distBars(dist, colorPos, colorNeg) {
   const max = Math.max(...dist.map((d) => d.p));
-  return `<div class="dist">${dist.map((d) => `<i class="grow-y" style="--h:${((d.p / max) * 100).toFixed(1)}%;--c:${d.x > 0 ? colorPos : d.x < 0 ? colorNeg : '#888'}" title="margin ${d.x > 0 ? '+' : ''}${d.x}: ${pc(d.p)}"></i>`).join('')}</div>
+  return `<div class="dist">${dist.map((d) => `<i class="grow-y" style="--h:${((d.p / max) * 100).toFixed(1)}%;--c:${d.x > 0 ? colorPos : d.x < 0 ? colorNeg : '#888'}" data-tip="margin ${d.x > 0 ? '+' : ''}${d.x}: ${pc(d.p)}"></i>`).join('')}</div>
     <div class="dist-axis"><span>${dist[0].x}</span><span>0</span><span>+${dist[dist.length - 1].x}</span></div>`;
 }
 
@@ -50,7 +60,7 @@ export function outcomeBars(outcomes, color) {
 export function valueTrack(fairP, modelP, odds) {
   const implied = 1 / odds;
   const pos = (p) => `${Math.min(100, p * 100).toFixed(1)}%`;
-  return `<div class="vtrack"><i class="vt-imp" style="left:${pos(implied)}" title="Price implies ${pc(implied)}"></i>
-    <i class="vt-fair" style="left:${pos(fairP)}" title="Fair ${pc(fairP)}"></i>
-    ${modelP != null ? `<i class="vt-model" style="left:${pos(modelP)}" title="Model ${pc(modelP)}"></i>` : ''}</div>`;
+  return `<div class="vtrack"><i class="vt-imp" style="left:${pos(implied)}" data-tip="Price implies ${pc(implied)}"></i>
+    <i class="vt-fair" style="left:${pos(fairP)}" data-tip="Fair ${pc(fairP)}"></i>
+    ${modelP != null ? `<i class="vt-model" style="left:${pos(modelP)}" data-tip="Model ${pc(modelP)}"></i>` : ''}</div>`;
 }

@@ -45,10 +45,10 @@ function slipCard(s, i, target, all) {
     <div class="sc-stats">
       <div><small>Chance</small><b>${pc(s.p, s.p < 0.01 ? 2 : 1)}</b></div>
       <div><small>Break-even</small><b>${pc(1 / s.odds, s.odds >= 100 ? 2 : 1)}</b></div>
-      <div title="Estimated return per unit staked"><small>Return</small><b class="${edge >= 0 ? 'pos' : 'neg'}">${edge >= 0 ? '+' : ''}${(edge * 100).toFixed(1)}%</b></div>
-      <div><small>Sports</small><b class="sc-sp" title="${esc(sports.map((x) => sportOf(x).name).join(', '))}">${sports.slice(0, 3).map((x) => sportOf(x).icon).join('')}${sports.length > 3 ? `<small>+${sports.length - 3}</small>` : ''}</b></div>
+      <div data-tip="Estimated return per unit staked"><small>Return</small><b class="${edge >= 0 ? 'pos' : 'neg'}">${edge >= 0 ? '+' : ''}${(edge * 100).toFixed(1)}%</b></div>
+      <div><small>Sports</small><b class="sc-sp" data-tip="${esc(sports.map((x) => sportOf(x).name).join(', '))}">${sports.slice(0, 3).map((x) => sportOf(x).icon).join('')}${sports.length > 3 ? `<small>+${sports.length - 3}</small>` : ''}</b></div>
     </div>
-    <div class="sc-strip" role="img" aria-label="${s.legs.length} legs by chance">${legs.map((l) => `<i class="${chanceTone(l.p)}" title="${esc(`${l.pick} · ${pc(l.p, 0)} · ${l.odds.toFixed(2)}`)}"></i>`).join('')}</div>
+    <div class="sc-strip" role="img" aria-label="${s.legs.length} legs by chance">${legs.map((l) => `<i class="${chanceTone(l.p)}" data-tip="${esc(`${l.pick} · ${pc(l.p, 0)} · ${l.odds.toFixed(2)}`)}"></i>`).join('')}</div>
     <p class="sc-line">${times.length ? `<span>${esc(hourMin(times[0]))}${times.length > 1 && times.at(-1) - times[0] > 36e5 ? ` → ${esc(hourMin(times.at(-1)))}` : ''}</span>` : ''}${weakest ? `<span>Weakest: <b>${esc(weakest.pick)}</b> ${pc(weakest.p, 0)}</span>` : ''}</p>
     ${overlapNote(s, i, all)}
     <details class="sc-legs"${open ? ' open' : ''}><summary><span>${s.legs.length} legs</span><span class="sr-only"> of slip ${target}x #${i + 1} at ${s.odds.toFixed(2)}</span><i aria-hidden="true"></i></summary>
@@ -123,7 +123,7 @@ export const picksViews = {
     return {
       mode: 'bankers', accent: '#3dff9a', title: 'Value bets',
       html: `<section class="hero small"><p class="kicker reveal">NEXT 48 HOURS · PRICED ABOVE THE SHARP MARKET</p><h1>${split('VALUE BETS')}</h1>${builderNav('value')}
-        <p class="lede reveal">A bookmaker paying more than the market's fair odds (Pinnacle's, margin removed). Good at the price shown, or at any bookmaker from the "good at" price up.</p></section>
+        <p class="lede reveal">A bookmaker paying more than the market's fair odds (Pinnacle's, with its cut taken out). Good at the price shown, or at any bookmaker from the "good at" price up.</p></section>
         ${notice()}
         ${rec ? `<p class="rec-line reveal">So far: ${rec} · <a href="#/track">every result</a></p>` : ''}
         <div class="minilist">${list.map(valuePick).join('') || '<p class="muted">No price beats the sharp market in the next 48 hours right now. They come and go as bookmakers move; this list updates with every price check.</p>'}</div>`,

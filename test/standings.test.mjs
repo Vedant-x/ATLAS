@@ -33,6 +33,6 @@ test('league table: full ESPN names and US sports', () => {
     { name: 'overtimeLosses', abbreviation: 'OTL', displayValue: '1' }, { name: 'points', abbreviation: 'PTS', displayValue: '17' }, { name: 'pointsFor', abbreviation: 'GF', displayValue: '40' }, { name: 'pointsAgainst', abbreviation: 'GA', displayValue: '30' }]);
   assert.deepEqual(usedColumns([{ stats: nhl }]).map((c) => c.key), ['GP', 'W', 'L', 'OTL', 'GF', 'GA', 'PTS']);
   const nfl = standingsTable([{ team: 'Bills', stats: canonStats([{ abbreviation: 'T', displayValue: '1' }, { abbreviation: 'W', displayValue: '5' }, { abbreviation: 'L', displayValue: '2' }, { abbreviation: 'PF', displayValue: '200' }]) }]);
-  assert.match(nfl, /<abbr title="Tied">T<\/abbr>/);
-  assert.match(nfl, /<abbr title="Points for">PF<\/abbr>/);
+  assert.match(nfl, /<abbr data-tip="Tied">T<\/abbr>/);
+  assert.match(nfl, /<abbr data-tip="Points for">PF<\/abbr>/);
 });

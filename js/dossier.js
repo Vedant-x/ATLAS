@@ -1,10 +1,12 @@
 // Match-dossier sections built from js/detail.js output (ESPN) or native NPB/KBO starter data.
 import { standingsTable } from './standings.js';
+import { fmtDate, fmt as fmtTime, zone as tzZone } from './tz.js';
 import { weatherLine, weatherFlag } from './weather.js';
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const safeHref = (u) => (/^https?:\/\//i.test(String(u || '')) ? esc(u) : '#');
 // A date from a feed: an ISO string or a timestamp (the results history stores milliseconds).
-const dt = (v) => { const t = typeof v === 'number' ? v : Date.parse(v); return Number.isFinite(t) ? new Date(t).toLocaleDateString([], { day: 'numeric', month: 'short' }) : esc(v || ''); };
+// Dates and times in the zone chosen in Display (tz.js), never the device's own.
+const dt = (v) => { const t = typeof v === 'number' ? v : Date.parse(v); return Number.isFinite(t) ? fmtDate(t) : esc(v || ''); };
 const res = (r) => `<i class="f f-${esc(String(r || '').charAt(0).toUpperCase())}">${esc(String(r || '–').charAt(0))}</i>`;
 
 function table(headers, rows, cls = '') {
@@ -47,7 +49,7 @@ function reportCard(p, team, color) {
     ${r.season ? `<h4>${esc(r.season.label)}</h4><div class="statline">${chips(r.season, KEYS)}</div>` : '<p class="muted">No season line yet (debut or no innings).</p>'}
     ${r.form3 || r.form5 ? `<h4>Recent form</h4><div class="form-row">${formBadge(r.form3, r.season?.era, 'Last 3 starts')}${formBadge(r.form5, r.season?.era, 'Last 5 starts')}</div>` : ''}
     ${r.post ? `<h4>${esc(r.post.label)}</h4><div class="statline">${chips(r.post, KEYS)}</div>` : ''}
-    ${r.recent?.length ? `<h4>Last ${r.recent.length} outings</h4>${table(['Date', 'Opp', 'Res', 'IP', 'H', 'ER', 'BB', 'SO', ...(showHr ? ['HR'] : []), ...(showP ? ['P'] : [])], r.recent.map((g) => `<tr${g.start ? '' : ' class="relief"'}><td>${dt(g.date)}${g.post ? ' <small>PS</small>' : ''}</td><td title="${esc(g.opp)}">${esc(g.ha || '')} ${esc(String(g.opp).split(' ').pop())}</td><td>${esc(g.result || (g.start ? 'ND' : '—'))}</td>${[g.ip, g.h, g.er, g.bb, g.so, ...(showHr ? [g.hr] : []), ...(showP ? [g.pitches] : [])].map((c) => `<td class="num">${esc(v(c))}</td>`).join('')}</tr>`), 'tight')}${r.recentNote ? `<p class="cap">${esc(r.recentNote)}</p>` : ''}` : ''}
+    ${r.recent?.length ? `<h4>Last ${r.recent.length} outings</h4>${table(['Date', 'Opp', 'Res', 'IP', 'H', 'ER', 'BB', 'SO', ...(showHr ? ['HR'] : []), ...(showP ? ['P'] : [])], r.recent.map((g) => `<tr${g.start ? '' : ' class="relief"'}><td>${dt(g.date)}${g.post ? ' <small>PS</small>' : ''}</td><td data-tip="${esc(g.opp)}">${esc(g.ha || '')} ${esc(String(g.opp).split(' ').pop())}</td><td>${esc(g.result || (g.start ? 'ND' : '—'))}</td>${[g.ip, g.h, g.er, g.bb, g.so, ...(showHr ? [g.hr] : []), ...(showP ? [g.pitches] : [])].map((c) => `<td class="num">${esc(v(c))}</td>`).join('')}</tr>`), 'tight')}${r.recentNote ? `<p class="cap">${esc(r.recentNote)}</p>` : ''}` : ''}
     ${r.vsOpp ? `<h4>vs ${esc(r.vsOpp.opp)}${r.vsOpp.label ? ` · ${esc(r.vsOpp.label)}` : ' · career'}</h4><div class="statline">${chips(r.vsOpp, [['g', 'G'], ['pa', 'PA'], ['ip', 'IP'], ['era', 'ERA'], ['avg', 'AVG'], ['ops', 'OPS'], ['hr', 'HR'], ['so', 'SO'], ['bb', 'BB']])}</div>` : ''}
     ${r.splits?.length ? `<h4>Splits</h4>${table(['Split', 'IP', 'ERA', 'WHIP', 'AVG', 'OPS', 'SO', 'BB'], r.splits.map((x) => `<tr><td>${esc(x.label)}</td>${[x.ip, x.era, x.whip, x.avg, x.ops, x.so, x.bb].map((c) => `<td class="num">${esc(v(c))}</td>`).join('')}</tr>`), 'tight')}` : ''}
     ${r.years?.length ? `<h4>Year by year</h4>${table(['Year', 'Team', 'G', 'W-L', 'IP', 'ERA', 'WHIP', 'K/9', 'BB/9'], r.years.map((y) => `<tr><td>${esc(y.year)}</td><td>${esc(y.team || '')}</td><td class="num">${esc(v(y.g))}</td><td class="num">${esc(v(y.w))}-${esc(v(y.l))}</td><td class="num">${esc(v(y.ip))}</td><td class="num">${esc(v(y.era))}</td><td class="num">${esc(v(y.whip))}</td><td class="num">${esc(v(y.k9))}</td><td class="num">${esc(v(y.bb9))}</td></tr>`), 'tight')}` : ''}
@@ -87,7 +89,7 @@ export function dossierSections(e, d, hc, ac) {
   // NHL starting goalies (Daily Faceoff), with how sure the report is.
   if (e.goalies) {
     const g = e.goalies, row = (s) => `<div><small>${esc(side(s)[0])}</small><b>${esc(g[s].name)}</b><em>${esc(g[s].status || 'unconfirmed')}</em></div>`;
-    S.push({ id: 'goalies-df', label: 'Starting goalies', html: `<div class="panel reveal"><h3 class="ph">Starting goalies <small>Daily Faceoff · ${esc(new Date(g.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</small></h3><div class="pl-nums hist-nums">${row('home')}${row('away')}</div></div>` });
+    S.push({ id: 'goalies-df', label: 'Starting goalies', html: `<div class="panel reveal"><h3 class="ph">Starting goalies <small>Daily Faceoff · ${esc(fmtTime(g.at, tzZone(), 'time'))}</small></h3><div class="pl-nums hist-nums">${row('home')}${row('away')}</div></div>` });
   }
 
   // Expected goals (Understat): chances made and conceded, season and last six, against actual goals.

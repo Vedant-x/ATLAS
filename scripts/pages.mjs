@@ -1019,7 +1019,7 @@ async function mmaOdds(events) {
 // ---------- build ----------
 await rm(out, { recursive: true, force: true });
 await mkdir(`${out}/data`, { recursive: true });
-for (const f of ['index.html', 'favicon.svg', 'manifest.webmanifest']) await copyFile(f, `${out}/${f}`);
+for (const f of ['index.html', 'favicon.svg', 'manifest.webmanifest', 'robots.txt', 'sitemap.xml']) await copyFile(f, `${out}/${f}`);
 for (const d of ['js', 'css', 'vendor', 'icons']) await cp(d, `${out}/${d}`, { recursive: true });
 // Service worker, stamped with this build so visitors pick up new code on the next visit.
 // The worker's version is the code version (commit), not the build time: data refreshes every few

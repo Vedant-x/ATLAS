@@ -78,7 +78,7 @@ export function prefsBar() {
   const p = prefs.get();
   const sports = SPORTS.filter((s) => S.events.some((e) => e.sport === s.id));
   return `<div class="prefs reveal"><span class="pl">Min odds</span>${[1.2, 1.3, 1.5, 1.8].map((o) => `<button class="pchip ${p.minOdds === o ? 'on' : ''}" data-pref="minOdds" data-value="${o}">${o.toFixed(2)}</button>`).join('')}
-    <span class="pl">Sports</span><button class="pchip ${p.sports.length ? '' : 'on'}" data-pref="sport" data-value="all">All</button>${sports.map((s) => `<button class="pchip ${p.sports.includes(s.id) ? 'on' : ''}" data-pref="sport" data-value="${s.id}" title="${esc(s.name)}">${s.icon}</button>`).join('')}
+    <span class="pl">Sports</span><button class="pchip ${p.sports.length ? '' : 'on'}" data-pref="sport" data-value="all">All</button>${sports.map((s) => `<button class="pchip ${p.sports.includes(s.id) ? 'on' : ''}" data-pref="sport" data-value="${s.id}" aria-label="${esc(s.name)}">${s.icon}</button>`).join('')}
     <button class="pchip ${p.pricedOnly ? 'on' : ''}" data-pref="priced" data-value="1">Bookmaker-priced only</button></div>`;
 }
 export const prefFilter = (list) => { const p = prefs.get(); const ev = prefEvents(list); return p.pricedOnly ? ev.filter((e) => e.markets?.length) : ev; };
@@ -95,18 +95,18 @@ export function countdown(ms) {
   if (h >= 48) return fmtTime(ms, tzZone(), 'short');
   return `${h ? h + 'h ' : ''}${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
 }
-const confBadge = (c) => `<span class="conf conf-${c}" title="${c === 'high' ? 'From bookmaker prices' : c === 'medium' ? 'ATLAS model from records/form' : 'Baseline only: little data'}">${c === 'high' ? 'MARKET' : c === 'medium' ? 'MODEL' : 'BASELINE'}</span>`;
+const confBadge = (c) => `<span class="conf conf-${c}" data-tip="${c === 'high' ? 'From bookmaker prices' : c === 'medium' ? 'ATLAS model from records/form' : 'Baseline only: little data'}">${c === 'high' ? 'MARKET' : c === 'medium' ? 'MODEL' : 'BASELINE'}</span>`;
 
 // Status box removed from pages; it only appears when live feeds failed and sample data is shown.
 // How fresh the whole snapshot is: fresh within 30 minutes of the last build (builds run about every
-// 15), delayed to 75, stale after. Shown at the top of working pages whenever it is not fresh.
+// 20), delayed to 75, stale after. Shown at the top of working pages whenever it is not fresh.
 export const buildAge = () => (S.fetchedAt ? Date.now() - S.fetchedAt : null);
 export const buildState = (age = buildAge()) => (age == null ? 'unknown' : age < 30 * 6e4 ? 'fresh' : age < 75 * 6e4 ? 'delayed' : 'stale');
 export function notice() {
   if (S.loading) return '<div class="notice reveal"><span class="loading-dots">Loading today\'s fixtures</span></div>';
   if (S.demo) return '<div class="notice reveal"><span class="led"></span><b>DEMO DATA</b> · live feeds unreachable, prices are simulated.</div>';
   const st = buildState();
-  if (st === 'delayed' || st === 'stale') return `<div class="notice notice-${st} reveal"><span class="led"></span><b>${st === 'stale' ? 'DATA STALE' : 'DATA DELAYED'}</b> · last update ${Math.round(buildAge() / 6e4)} min ago (normally about every 15 min). Prices and team news may have moved; live scores still update.</div>`;
+  if (st === 'delayed' || st === 'stale') return `<div class="notice notice-${st} reveal"><span class="led"></span><b>${st === 'stale' ? 'DATA STALE' : 'DATA DELAYED'}</b> · last update ${Math.round(buildAge() / 6e4)} min ago (normally about every 20 min). Prices and team news may have moved; live scores still update.</div>`;
   return '';
 }
 
@@ -116,7 +116,7 @@ const seedTag = (x) => (x?.seed ? ` <i class="seed">[${esc(x.seed)}]</i>` : '');
 const tennisLine = (t) => [t.tournament, t.location, t.drawName, t.round, t.court].filter(Boolean).join(' · ');
 const slugId = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-');
 const DRAWS = ['Singles', 'Doubles', 'Mixed doubles'];
-const span = (a, b) => { const f = (v) => new Date(v).toLocaleDateString([], { day: 'numeric', month: 'short' }); return a && b ? `${f(a)} – ${f(Date.parse(b) - 1)}` : ''; };
+const span = (a, b) => { const f = (v) => fmtDate(typeof v === 'number' ? v : Date.parse(v)); return a && b ? `${f(a)} – ${f(Date.parse(b) - 1)}` : ''; };
 
 function tournamentsOf(list) {
   const m = new Map();
@@ -307,14 +307,16 @@ export const views = {
       return `<div class="side reveal">${gauge(p, color, label)}
         <dl><dt>Fair odds</dt><dd>${odd(1 / p)}</dd>
         <dt>${esc(e.bookmaker?.split(' (')[0] || 'Book')} odds</dt><dd>${bookOdds ? odd(bookOdds) : '<span class="muted">none</span>'}</dd>
-        <dt title="Estimated return per unit staked">Return</dt><dd class="${ev == null ? '' : ev >= 0 ? 'pos' : 'neg'}">${ev == null ? '—' : `${(ev * 100).toFixed(1)}%`}</dd></dl></div>`;
+        <dt data-tip="Estimated return per unit staked">Return</dt><dd class="${ev == null ? '' : ev >= 0 ? 'pos' : 'neg'}">${ev == null ? '—' : `${(ev * 100).toFixed(1)}%`}</dd></dl></div>`;
     };
     const d = detailFor(e.id);
     const dos = dossierSections(e, d, hc, ac);
     const rr = researchRow(e);
     const timeline = historyPanel(e); // left out until something has changed
-    // In page order. The working detail (every market, the model, the bookmaker table, the calculator
-    // and the notes) is folded at the foot of the page: one tap opens it.
+    // In page order. The chance, the case and the best bets stay open; everything else (the dossier,
+    // records, every market, the model, the bookmaker table, the calculator and the notes) is folded:
+    // one tap opens it, and the section menu opens the one it jumps to. On a phone the page was four
+    // screens of detail before the first fold.
     const sections = [['overview', 'Overview'], ['case', 'The case'], ['best', 'Best bets'], ...(e.props?.length ? [['props', 'Player props']] : []), ...(timeline ? [['history', 'Timeline']] : []), ...dos.map((x) => [x.id, x.label]), ['form', 'Records'], ['markets', `All markets (${a.marketCount})`], ...(a.kind === 'binary' ? [] : [['model', 'Model']]), ['book', 'Bookmaker prices'], ['calc', 'Calculator'], ['notes', 'Model notes']];
     return {
       mode: 'match', accent: hc, title: `${e.home} v ${e.away}`,
@@ -349,8 +351,8 @@ export const views = {
       ${bestBetsPanel(e, a)}
       ${propsPanel(e)}
       ${timeline}
-      ${dos.map((x) => `<section id="sec-${x.id}"><h2 class="sec reveal">${esc(x.label)}</h2>${x.html}</section>`).join('')}
-      <section class="grid two" id="sec-form">${formPanel(e, hc, ac)}</section>
+      ${dos.map((x) => fold(x.id, esc(x.label), x.html)).join('')}
+      ${fold('form', 'Records <small>season record and recent form</small>', `<div class="grid two">${formPanel(e, hc, ac)}</div>`)}
       ${fold('markets', `Every market <small>${a.marketCount} · ATLAS fair prices</small>`, `<div class="mgroups">${a.groups.map((g) => `<div class="mgroup"><h3>${esc(g.group)}</h3>${g.markets.map((m) => `
           <div class="mk"><h4>${esc(m.name)}</h4>${m.outcomes.map((o) => `<div class="mo">
             <span class="mo-n">${esc(o.name)}</span><div class="meter"><i class="grow" style="--w:${(o.p * 100).toFixed(1)}%"></i></div>
@@ -409,7 +411,7 @@ export const setFiltersOpen = (v) => { filtersOpen = Boolean(v); };
 
 // Home panels: order and visibility, saved per visitor (localStorage, best effort). Unknown or missing
 // names fall back to the default order, so a new panel always appears.
-const HOME_PANELS = [['potd', 'Parlay of the day'], ['shortlist', 'Best bets'], ['value', 'Value bets'], ['live', 'Live now'], ['changes', 'What changed'], ['record', 'Track record'], ['health', 'Source health']];
+const HOME_PANELS = [['potd', 'Parlay of the day'], ['shortlist', 'Best bets'], ['value', 'Value bets'], ['live', 'Live now'], ['changes', 'What changed'], ['record', 'Results'], ['health', 'Source health']];
 const LAYOUT_KEY = 'atlas-home-layout';
 // Minimal by default: source health, what changed and the full record card start hidden (the record
 // is the strip at the top); Customise shows them.
@@ -472,8 +474,8 @@ function potdPanel(ev) {
   const done = saved && RESULT[saved.status];
   const body = legs.length ? `${done ? `<p class="potd-result res-${saved.status}">${saved.status === 'won' ? `Won · paid ${odd(saved.settledOdds ?? odds)}` : saved.status === 'lost' ? `Lost · ${esc(legs.filter((l) => l.status === 'lost').map((l) => l.pick).join(', '))}` : 'Void'}</p>` : ''}
     <ul class="potd-legs">${legs.map((l) => { const e = byId.get(l.eventId); return `<li class="leg-${esc(l.status || 'pending')}"><a href="#/match/${esc(l.eventId)}"><b>${esc(l.pick)}</b><small>${esc(l.market)} · ${esc(l.home || '')} v ${esc(l.away || '')} · ${esc(fmtTime(l.start, tzZone(), 'short'))}</small></a>
-      <span class="leg-side">${resultBadge(l.status, e?.live && e)}<span class="leg-p" title="ATLAS chance for this leg">${pc(l.p, 0)}</span>${legButton({ key: `${l.eventId}|${l.market}|${l.pick}`, eventId: l.eventId, sport: l.sport, match: `${l.home} vs ${l.away}`, market: l.market, pick: l.pick, odds: l.odds, p: l.p }, odd(l.odds))}</span></li>`; }).join('')}</ul>
-    <div class="potd-sum"><span><small>Total odds</small><b>${odd(odds)}</b></span><span><small>ATLAS chance</small><b>${pc(p, 0)}</b></span><span title="The chance the bookmakers' price gives a slip at these odds"><small>Break-even</small><b>${pc(1 / odds, 0)}</b></span><span><small>Next parlay in</small><b>${nextIn(day)}</b></span></div>`
+      <span class="leg-side">${resultBadge(l.status, e?.live && e)}<span class="leg-p" data-tip="ATLAS chance for this leg">${pc(l.p, 0)}</span>${legButton({ key: `${l.eventId}|${l.market}|${l.pick}`, eventId: l.eventId, sport: l.sport, match: `${l.home} vs ${l.away}`, market: l.market, pick: l.pick, odds: l.odds, p: l.p }, odd(l.odds))}</span></li>`; }).join('')}</ul>
+    <div class="potd-sum"><span><small>Total odds</small><b>${odd(odds)}</b></span><span><small>ATLAS chance</small><b>${pc(p, 0)}</b></span><span data-tip="The chance the bookmakers' price gives a slip at these odds"><small>Break-even</small><b>${pc(1 / odds, 0)}</b></span><span><small>Next parlay in</small><b>${nextIn(day)}</b></span></div>`
     : `<p class="muted">${S.loading ? 'Loading…' : `None today: not enough strong legs. Next one in ${nextIn(day)}.`}</p>`;
   return `<div class="panel dash-potd reveal"><h2 class="ph">Parlay of the day <small>${legs.length ? `${legs.length} legs · ` : ''}${esc(dayLabel(day))}${saved ? '' : legs.length ? ' · not saved yet' : ''}</small>${zoneLink()}</h2>${body}${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}</div>`;
 }
@@ -494,7 +496,7 @@ function sourceHealth(ev) {
   const espn = ev.filter((e) => e.leaguePath && !e.leaguePath.startsWith('atlas/') && e.source !== 'MLB Stats API');
   const reports = ev.flatMap((e) => (e.probables || []).filter((p) => p.report?.league === 'MLB').map((p) => p.report));
   const rows = [
-    ['Snapshot build', ev.length, S.fetchedAt, `every league, rebuilt about every 15 min · ${{ fresh: 'on time', delayed: 'delayed', stale: 'overdue', unknown: 'not known yet' }[buildState()]}`],
+    ['Snapshot build', ev.length, S.fetchedAt, `every league, rebuilt about every 20 min · ${{ fresh: 'on time', delayed: 'delayed', stale: 'overdue', unknown: 'not known yet' }[buildState()]}`],
     ['ESPN scoreboards', espn.length, newest(espn, (e) => e.fetchedAt), 'fixtures, scores, reference odds'],
     ['NPB official', ev.filter((e) => e.leaguePath === 'atlas/npb').length, newest(ev.filter((e) => e.leaguePath === 'atlas/npb'), (e) => e.fetchedAt), 'schedule, starters'],
     ['KBO official', ev.filter((e) => e.leaguePath === 'atlas/kbo').length, newest(ev.filter((e) => e.leaguePath === 'atlas/kbo'), (e) => e.fetchedAt), 'schedule, starters'],
@@ -573,14 +575,14 @@ export function valuePick(b) {
   const s = sportOf(b.event.sport);
   const rec = recommendationFor(b, trackCalibration());
   const leg = { key: `${b.event.id}|${b.market}|${b.pick}`, eventId: b.event.id, sport: b.event.sport, match: `${b.event.home} vs ${b.event.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p, recommendationId: rec.recommendationId };
-  const tip = [`Fair odds ${odd(1 / b.fair)} (${b.consensusFrom || 'the books\' median'}, margin removed): a ${pc(b.fair, 0)} chance`, b.book && `Price ${odd(b.odds)} at ${b.book}`,
+  const tip = [`Fair odds ${odd(1 / b.fair)} (${b.consensusFrom || 'the books\' median'}, the bookmaker's cut taken out): a ${pc(b.fair, 0)} chance`, b.book && `Price ${odd(b.odds)} at ${b.book}`,
     b.best > b.odds && `Better price ${odd(b.best)} at ${b.bestBook}`,
     b.med > 1 && `Typical price across bookmakers ${odd(b.med)}: ${b.wide ? 'the value holds at most of them' : 'below the line worth taking, so check your bookmaker\'s price first'}`,
     `Worth taking at ${odd(b.takeAt)} or more at any bookmaker`, b.open > 1 && b.open !== b.odds ? `First seen at ${odd(b.open)}` : ''].filter(Boolean).join('\n');
   const where = b.wide ? 'most bookmakers' : b.book;
-  return `<div class="mini reveal" data-rec="${esc(rec.recommendationId)}" title="${esc(tip)}"><span class="mini-ico">${s.icon}</span>
+  return `<div class="mini reveal" data-rec="${esc(rec.recommendationId)}" data-tip="${esc(tip)}"><span class="mini-ico">${s.icon}</span>
     <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.event.home)} v ${esc(b.event.away)} · ${esc(fmtTime(b.event.start, tzZone(), 'short'))}${where ? ` · ${esc(where)}` : ''}</small></a>
-    <div class="mini-nums"><b class="pos" title="Expected return at the best price">+${(b.edge * 100).toFixed(1)}%</b><small title="The lowest price still worth taking">take ${odd(b.takeAt)}+</small></div>
+    <div class="mini-nums"><b class="pos" data-tip="Expected return at the best price">+${(b.edge * 100).toFixed(1)}%</b><small data-tip="The lowest price still worth taking">take ${odd(b.takeAt)}+</small></div>
     ${legButton(leg, odd(b.odds))}</div>`;
 }
 
@@ -592,10 +594,10 @@ export function miniPick(b) {
   const rec = recommendationFor(b, trackCalibration());
   const leg = { key: `${b.event.id}|${b.market}|${b.pick}`, eventId: b.event.id, sport: b.event.sport, match: `${b.event.home} vs ${b.event.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p, recommendationId: rec.recommendationId, ...(b.prop ? { prop: b.prop } : {}) };
   const edge = `${b.ev >= 0 ? '+' : ''}${(b.ev * 100).toFixed(1)}%`;
-  const tip = [`${b.market} · ${b.event.league}`, whyLine(b) && `Why: ${whyLine(b)}`, b.fair != null && `Market (no margin): ${pc(b.fair, 0)}`, b.book && `Price at ${b.book}`, b.best > b.odds && `Better price ${odd(b.best)} at ${b.bestBook}`, `Chance range ${pc(rec.uncertaintyRange[0], 0)}–${pc(rec.uncertaintyRange[1], 0)}`, rec.settlementRules].filter(Boolean).join('\n');
-  return `<div class="mini reveal" data-rec="${esc(rec.recommendationId)}" title="${esc(tip)}"><span class="mini-ico">${s.icon}</span>
+  const tip = [`${b.market} · ${b.event.league}`, whyLine(b) && `Why: ${whyLine(b)}`, b.fair != null && `Bookmakers' chance (their cut taken out): ${pc(b.fair, 0)}`, b.book && `Price at ${b.book}`, b.best > b.odds && `Better price ${odd(b.best)} at ${b.bestBook}`, `Chance range ${pc(rec.uncertaintyRange[0], 0)}–${pc(rec.uncertaintyRange[1], 0)}`, rec.settlementRules].filter(Boolean).join('\n');
+  return `<div class="mini reveal" data-rec="${esc(rec.recommendationId)}" data-tip="${esc(tip)}"><span class="mini-ico">${s.icon}</span>
     <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.event.home)} v ${esc(b.event.away)} · ${b.event.live ? '<span class="live">LIVE</span>' : esc(fmtTime(b.event.start, tzZone(), 'short'))}</small></a>
-    <div class="mini-nums"><b title="ATLAS chance">${pc(b.p, 0)}</b><small><span class="mm-need" title="The chance this price needs to break even">needs ${pc(1 / b.odds, 0)} · </span><span class="${b.ev >= 0 ? 'pos' : 'neg'}" title="Estimated return per unit staked${b.ev < 0 ? ': below break-even at this price' : ''}">${edge}</span></small></div>
+    <div class="mini-nums"><b data-tip="ATLAS chance">${pc(b.p, 0)}</b><small><span class="mm-need" data-tip="The chance this price needs to break even">needs ${pc(1 / b.odds, 0)} · </span><span class="${b.ev >= 0 ? 'pos' : 'neg'}" data-tip="Estimated return per unit staked${b.ev < 0 ? ': below break-even at this price' : ''}">${edge}</span></small></div>
     ${legButton(leg, odd(b.odds))}</div>`;
 }
 
@@ -623,7 +625,7 @@ function modelPanel(e, a, hc, ac) {
 function bookPanel(e) {
   if (!e.markets?.length) return ['Bookmaker prices <small>none</small>', '<p class="muted">No bookmaker has priced this match in the connected feeds: every number on this page is an ATLAS model line.</p>'];
   return [`Bookmaker prices <small>${esc((e.bookmaker || '').split(' (')[0])}</small>`,
-    `<div class="table-wrap"><table class="tbl"><thead><tr><th>Market</th><th>Pick</th><th>Odds</th><th title="The bookmaker's chance with its margin removed">Market</th><th>ATLAS</th><th title="Estimated return per unit staked">Return</th><th></th></tr></thead><tbody>
+    `<div class="table-wrap"><table class="tbl"><thead><tr><th>Market</th><th>Pick</th><th>Odds</th><th data-tip="The bookmaker's chance with its cut taken out">Bookmaker</th><th>ATLAS</th><th data-tip="Estimated return per unit staked">Return</th><th></th></tr></thead><tbody>
     ${e.markets.map((m) => { const d = devig(m); return m.outcomes.map((o, i) => {
       const fair = d.outcomes[i].fair, p = o.model ?? fair, ev = p * o.odds - 1;
       return `<tr><td>${i ? '' : esc(m.name)}</td><td>${esc(o.name)}</td><td class="num">${odd(o.odds)}${o.book ? `<small>${esc(o.book)}</small>` : ''}</td><td class="num">${pc(fair)}</td><td class="num">${o.model != null ? pc(o.model) : '—'}</td>
@@ -659,7 +661,7 @@ function notes(e, a) {
     a.kind === 'normal' ? `Final margin is modelled as normal with σ ${a.params.sigma}${e.markets?.some((m) => m.name === 'Spread') ? ', centred on the spread' : ', centred to match the moneyline'}. Totals use σ ${e.sport === 'basketball' ? 18 : 10}.` : '',
     a.kind === 'tennis' ? 'Sets are treated as independent with a constant set-win chance solved from the match price. Momentum and retirements are ignored.' : '',
     e.sport === 'hockey' || e.sport === 'baseball' ? 'Winner prices include overtime/extra innings; regulation ties are split evenly when fitting.' : '',
-    'Fair odds are 1 ÷ probability: the break-even price. A bookmaker price above fair odds is positive edge if the model is right.',
+    'Fair odds are 1 ÷ probability: the break-even price. A bookmaker price above the fair odds pays more than the chance says it should, if the model is right.',
   ].filter(Boolean);
   return `<ul class="notes">${items.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`;
 }

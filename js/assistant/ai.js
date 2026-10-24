@@ -7,12 +7,13 @@
 // AI_URL (js/config.js) can point at a hosted model later (worker/atlas-ai.js); if it fails, the
 // on-device model takes over without telling the visitor anything about quotas.
 import { AI_URL } from '../config.js';
+import { fmt as fmtTime, zone as tzZone } from '../tz.js';
 import { parseConstraints, constraintChips, slipRequest, slipsOk, legOk } from './constraints.js';
 import { verifyAnswer } from './verify.js';
 
 const pc = (p) => (Number.isFinite(p) ? `${Math.round(p * 100)}%` : '?');
 const od = (o) => (Number.isFinite(o) ? Number(o).toFixed(2) : '?');
-const when = (t) => new Date(t).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+const when = (t) => fmtTime(t, tzZone(), 'short');
 
 const SYSTEM = `You are the assistant on ATLAS, a sports-betting research site. Talk like a sharp, friendly analyst:
 natural sentences in your own words, never a template. Answer the question first, then the reasons that matter.
@@ -34,7 +35,7 @@ RULES:
 export async function buildContext(K, text, max = 6000, mem = null) {
   const tags = {};
   const q = K.norm(text);
-  const lines = [`Now: ${new Date().toLocaleString()}. Page: ${K.route().name}.`];
+  const lines = [`Now: ${fmtTime(Date.now(), tzZone())} (the visitor's chosen time zone). Page: ${K.route().name}.`];
   const scope = (() => {
     const league = K.leagueIn(text), sport = K.sportIn(text);
     if (league) return { league };

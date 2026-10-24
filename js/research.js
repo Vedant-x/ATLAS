@@ -91,9 +91,9 @@ export function caseFor(x) {
   if (main.book) {
     pro.push(`Bookmaker price ${odd(main.odds)} implies ${pc(main.fair, 0)} once the margin is removed.`);
     if (main.q < 1 / main.odds) con.push(`At ${odd(main.odds)} it needs ${pc(1 / main.odds, 0)} just to break even; ATLAS has ${pc(main.q, 0)}. Likely, but poor value at this price.`);
-    else pro.push(`ATLAS ${pc(main.q, 0)} is above the ${pc(1 / main.odds, 0)} break-even: +${(main.ev * 100).toFixed(1)}% estimated edge.`);
+    else pro.push(`ATLAS ${pc(main.q, 0)} is above the ${pc(1 / main.odds, 0)} break-even: +${(main.ev * 100).toFixed(1)}% estimated return.`);
     if (main.q < main.p - 0.01) con.push('This market type has landed less often than estimated in the track record, so ATLAS marks it down.');
-    invalid.push(`The price shortens below ${odd(1 / main.q)} (no edge left) or the market chance moves 4+ points against it.`);
+    invalid.push(`The price shortens below ${odd(1 / main.q)} (no value left) or the market chance moves 4+ points against it.`);
   } else con.push('No bookmaker price: the chance comes from ATLAS\'s own model only, which is less reliable than a market.');
   if (leanSide) {
     const rh = rate(e.stats?.[`${leanSide}Record`]), ro = rate(e.stats?.[`${other}Record`]);
@@ -116,7 +116,7 @@ export function caseFor(x) {
   if (e.sport === 'tennis') invalid.push('A withdrawal or injury report for either player.');
   for (const c of r.checks) if (c.ok === false) unknown.push(`${c.label}: ${c.note}.`); else if (c.ok === null) unknown.push(`${c.label}: ${c.note} (not in our feeds).`);
   const inside = [
-    ['Bookmaker price, margin removed', Boolean(e.markets?.length)],
+    ['Bookmaker price, its cut taken out', Boolean(e.markets?.length)],
     ['Season record and recent form (a small nudge, at most 8 points)', Boolean(e.markets?.length && e.stats?.homeRecord)],
     ['Track-record correction for this market type', true],
     ['Starting pitchers (only when there is no price; otherwise the price already reflects them)', e.sport === 'baseball' && !e.markets?.length],
@@ -161,7 +161,7 @@ export function quickView(id) {
     <h2>${esc(e.home)} <small>v</small> ${esc(e.away)}</h2>
     <p class="muted">${e.live ? `<span class="live">LIVE ${esc(e.score || '')}</span>` : esc(ist(e.start))}</p>
     <div class="qv-probs">${[[e.home, w.home], ...(w.draw ? [['Draw', w.draw]] : []), [e.away, w.away]].map(([n, p]) => `<div><small>${esc(n)}</small><b>${pc(p, 0)}</b></div>`).join('')}</div>
-    ${x.picks.length ? `<h3>Picks</h3><ul class="qv-picks">${x.picks.map((p) => `<li><b>${esc(p.pick)}</b><small>${esc(p.market)} · ${p.book ? `odds ${odd(p.odds)} · market ${pc(p.fair, 0)} · ` : 'fair odds · '}ATLAS ${pc(p.q, 0)}${p.book ? ` · edge ${(p.ev * 100).toFixed(1)}%` : ''}</small></li>`).join('')}</ul>` : ''}
+    ${x.picks.length ? `<h3>Picks</h3><ul class="qv-picks">${x.picks.map((p) => `<li><b>${esc(p.pick)}</b><small>${esc(p.market)} · ${p.book ? `odds ${odd(p.odds)} · market ${pc(p.fair, 0)} · ` : 'fair odds · '}ATLAS ${pc(p.q, 0)}${p.book ? ` · return ${(p.ev * 100).toFixed(1)}%` : ''}</small></li>`).join('')}</ul>` : ''}
     <h3>Evidence ${readyBadge(x.r)}</h3>
     <ul class="qv-checks">${x.r.checks.map((c) => `<li class="${c.ok === true ? 'ok' : c.ok === false ? 'no' : 'na'}">${ico(c.ok === true ? 'check' : c.ok === false ? 'cross' : 'dash')} <b>${esc(c.label)}</b> <small>${esc(c.note)}</small></li>`).join('')}</ul>
     <h3>Recent changes</h3>${chg.length ? `<ul class="ch-list">${chg.map((c) => `<li class="chg"><span class="ch-ico">${kindIco(c.kind)}</span><div><p>${esc(c.text)}</p><small>${ago(c.at)} ago${FORECAST_NOTE[c.forecast] ? ` · ${FORECAST_NOTE[c.forecast]}` : ''}</small></div></li>`).join('')}</ul>` : '<p class="muted">None recorded yet.</p>'}
@@ -186,7 +186,7 @@ export function compareView() {
     mode: 'other', accent: '#4fd1ff', title: 'Compare',
     html: `<section class="hero small"><p class="kicker reveal">SIDE BY SIDE · UP TO 4 MATCHES</p><h1>COMPARE</h1>
       <p class="lede reveal">Pin matches with Compare from the research table, the quick view or a match page.</p></section>
-      ${rows.length ? `<div class="panel table-wrap reveal"><table class="cmp"><thead><tr><th></th>${rows.map((x) => `<th><a href="#/match/${esc(x.e.id)}">${sportOf(x.e.sport).icon} ${esc(x.e.home)} v ${esc(x.e.away)}</a><button class="icon-btn" data-pin="${esc(x.e.id)}" title="Unpin">×</button></th>`).join('')}</tr></thead><tbody>
+      ${rows.length ? `<div class="panel table-wrap reveal"><table class="cmp"><thead><tr><th></th>${rows.map((x) => `<th><a href="#/match/${esc(x.e.id)}">${sportOf(x.e.sport).icon} ${esc(x.e.home)} v ${esc(x.e.away)}</a><button class="icon-btn" data-pin="${esc(x.e.id)}" aria-label="Unpin">×</button></th>`).join('')}</tr></thead><tbody>
         ${line('Start (IST)', (x) => esc(ist(x.e.start)))}
         ${line('Main pick', (x) => (x.main ? `<b>${esc(x.main.pick)}</b><small>${esc(x.main.market)}</small>` : '—'))}
         ${line('Odds', (x) => (x.main ? odd(x.main.odds) : '—'))}
@@ -211,10 +211,10 @@ export function alertPanel() {
         : '<button class="btn-ghost" data-notify-on>Turn on notifications</button>';
   return `<div class="panel alerts-panel reveal"><h3 class="ph">Live alerts <small>for matches you watch or have in your slip</small></h3>
     <div class="al-row">${state}</div>${alertChips(alertPrefs.get(), '', 'For every match')}
-    <div class="al-row">${(() => { const ps = pushState(); return ps === 'on' ? '<span class="al-on">Alerts while ATLAS is closed: on</span> <button class="btn-ghost" data-push="off">Turn off</button>'
+    ${pushState() === 'not set up' ? '<p class="note">Alerts come while ATLAS is open in a tab.</p>' : `<div class="al-row">${(() => { const ps = pushState(); return ps === 'on' ? '<span class="al-on">Alerts while ATLAS is closed: on</span> <button class="btn-ghost" data-push="off">Turn off</button>'
       : ps === 'off' ? '<button class="btn-ghost" data-push="on">Alerts while ATLAS is closed</button><small> starters, lineups, absences, price and time changes for your saved matches</small>'
         : ps === 'unsupported' ? '<span class="al-off">This browser can\'t receive alerts while ATLAS is closed</span>'
-          : '<span class="al-off">Alerts while ATLAS is closed need the alerts server (not set up yet); until then alerts come while the site is open</span>'; })()}</div>
+          : ''; })()}</div>`}
     <div class="al-kinds" role="group" aria-label="Quiet hours"><span>Quiet hours</span>${QUIET_CHOICES.map((q) => { const on = JSON.stringify(alertPrefs.get().quiet ?? null) === JSON.stringify(q); return `<button class="chip ${on ? 'on' : ''}" data-quiet="${q ? q.join('-') : 'off'}" aria-pressed="${on}">${q ? `${String(q[0]).padStart(2, '0')}:00–${String(q[1]).padStart(2, '0')}:00` : 'Off'}</button>`; }).join('')}</div></div>`;
 }
 // Which moments to announce, for every match or one ("goals" in soccer, "scores" elsewhere).

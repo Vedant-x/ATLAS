@@ -1,5 +1,6 @@
 import { ico, watchLabel, pinLabel } from './icons.js';
 import { mountPalette } from './palette.js';
+import { bindTips } from './tips.js';
 import { readable } from './color.js';
 import { backClosesPanels } from './back.js';
 import { mountAssistant } from './assistant/ui.js';
@@ -31,7 +32,7 @@ const researchTabs = (name) => `<nav class="research-tabs" aria-label="Research"
 const MORE_INFO = {
   '#/': 'Parlay of the day, Best bets, Value bets, live', '#/live': 'Everything in play now', '#/watchlist': 'Matches you follow, with alerts',
   '#/sports': 'Every sport and competition', '#/props': 'Player lines, hit rates, research',
-  '#/picks': 'Best bets, Value bets, 2x and 3x slips', '#/compare': 'Pinned matches side by side', '#/track': 'Track record of every pick',
+  '#/picks': 'Best bets, Value bets, 2x and 3x slips', '#/compare': 'Pinned matches side by side', '#/track': 'Every pick and how it did',
 };
 const sheet = document.getElementById('more-sheet');
 function fillMore() {
@@ -40,7 +41,8 @@ function fillMore() {
   grid.innerHTML = [...document.querySelectorAll('nav.top a[href^="#/"]')].map((a) => {
     const h = a.getAttribute('href');
     return `<a href="${h}" class="ms-tile">${a.querySelector('svg')?.outerHTML || ''}<b>${esc(a.querySelector('span')?.textContent || a.dataset.m || '')}</b><small>${esc(MORE_INFO[h] || '')}</small></a>`;
-  }).join('') + '<button class="ms-tile" data-more-display><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/></svg><b>Display</b><small>Motion, density, ticker, 3D</small></button>';
+  }).join('') + '<button class="ms-tile" data-more-display><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/></svg><b>Display</b><small>Time zone, colours, motion</small></button>'
+    + '<button class="ms-tile" data-more-ask><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg><b>Ask ATLAS</b><small>The assistant: picks, slips, any match</small></button>';
 }
 function openMore(open) {
   if (!sheet) return;
@@ -54,6 +56,7 @@ function closeMore() { if (sheet?.classList.contains('open')) openMore(false); }
 sheet?.addEventListener('click', (e) => {
   if (e.target === sheet || e.target.closest('[data-more-close]')) { e.preventDefault(); openMore(false); return; }
   if (e.target.closest('[data-more-display]')) { openMore(false); document.querySelector('[data-display-toggle]')?.click(); return; }
+  if (e.target.closest('[data-more-ask]')) { openMore(false); state.ai?.open(); return; }
   if (e.target.closest('a.ms-tile')) openMore(false);
 });
 document.addEventListener('click', (e) => {
@@ -70,8 +73,7 @@ import { loadFields, fieldsData } from './fieldview.js';
 import { liveSession } from './f1.js';
 import { overlayLive } from './merge.js';
 import { enrichMlb } from './mlbstats.js';
-import { todayEvents } from './engine.js';
-import { slipWindow, slipPolicy, bestBets } from './track.js';
+import { slipWindow, slipPolicy } from './track.js';
 import { bankerSlips } from './picks.js';
 import { trackCalibration } from './trackview.js';
 import { prefs, prefEvents } from './prefs.js';
@@ -120,7 +122,7 @@ const scene = (() => {
   if (fxOff) bg.classList.add('no-webgl');
   return api;
 })();
-document.querySelectorAll('[data-fx-toggle]').forEach((b) => { b.setAttribute('aria-pressed', String(!fxOff)); b.querySelector('b').textContent = fxOff ? 'OFF' : 'ON'; });
+document.querySelectorAll('[data-fx-toggle]').forEach((b) => { b.setAttribute('aria-pressed', String(!fxOff)); const v = b.querySelector('b'); if (v) v.textContent = fxOff ? 'OFF' : 'ON'; });
 
 const state = {
   events: [], source: 'loading', demo: false, loading: true, news: [], odds: null, fetchedAt: 0,
@@ -147,6 +149,7 @@ bind(state);
 bindResearch(state);
 mountPalette(state);
 backClosesPanels();
+bindTips();
 state.refresh = () => softRender();
 state.scene = scene;
 loadF1().then((d) => { if (d && ['home', 'sports'].includes(parse().name)) softRender(); });
@@ -415,7 +418,7 @@ function stakeTip() {
   const g = suggestStake(b, s.p, s.odds, { legs: s.n });
   const warn = overExposed(b, slip.stake) ? ` <b class="neg">Your stake is ${pc(slip.stake / b, 0)} of your bankroll: more than ATLAS would ever suggest.</b>` : '';
   if (!g.edge) return `Suggested stake: <b>none</b>. At ${s.odds.toFixed(2)} this slip needs ${pc(1 / s.odds, 1)} to break even and ATLAS has ${pc(s.p, 1)}; it loses on average.${warn}`;
-  return `Suggested stake: <b>${g.amount}</b> (${pc(g.frac, 1)} of bankroll, quarter Kelly${g.capped ? `, capped at ${pc(g.cap, 0)}` : ''}). <button class="link-btn" data-slip-usestake="${g.amount}">Use it</button>${warn}`;
+  return `Suggested stake: <b>${g.amount}</b> (${pc(g.frac, 1)} of bankroll: a quarter of what the estimated edge would justify${g.capped ? `, capped at ${pc(g.cap, 0)}` : ''}). Treat it as a ceiling: ATLAS's picks have not beaten the bookmakers over their record yet. <button class="link-btn" data-slip-usestake="${g.amount}">Use it</button>${warn}`;
 }
 function renderSlip() {
   const s = slip.summary();
@@ -455,15 +458,13 @@ let tickerHtml = '';
 function ticker() {
   const el = document.querySelector('.ticker-track');
   if (!el) return;
-  // Three labelled groups: live scores (a missing score says so), the dashboard's own Best bets (the
-  // same rules and odds floor as the Today list), then what starts next.
+  // Live scores only (a missing score says so). It used to repeat the Best bets list and the next
+  // kick-offs, which the page below already shows; with nothing live the strip is hidden.
   const live = state.events.filter((e) => e.live).map((e) => `<span><i class="live">●</i> ${esc(e.home)} ${e.score ? `<b>${esc(e.score)}</b>` : '<small>score unavailable</small>'} ${esc(e.away)} <small>${esc(e.clock || '')}</small></span>`);
-  const picks = bestBets(prefEvents(todayEvents(state.events)), { cal: trackCalibration(), limit: 10 }).filter((b) => b.odds >= (prefs.get().minOdds || 1)).map((b) => `<span>${sportOf(b.event.sport).icon} ${esc(b.pick)} <b>${odd(b.odds)}</b> <small>${pc(b.p, 0)}</small></span>`);
-  const next = [...state.events].filter((e) => !e.live && e.start > Date.now()).sort((a, b) => a.start - b.start).slice(0, 10).map((e) => `<span>${sportOf(e.sport).icon} ${esc(e.home)} v ${esc(e.away)}</span>`);
-  const head = (t) => `<span class="tk-head">${t}</span>`;
-  const items = [...(live.length ? [head('LIVE'), ...live] : []), ...(picks.length ? [head('BEST BETS'), ...picks] : []), ...(next.length ? [head('NEXT UP'), ...next] : [])];
+  document.documentElement.toggleAttribute('data-ticker-empty', !live.length);
+  const items = live.length ? [`<span class="tk-head">LIVE</span>`, ...live] : [];
   // The strip holds the items twice for the loop; the copy is hidden from screen readers.
-  const html = items.length ? items.join('') + items.map((x) => x.replace(/^<span/, '<span aria-hidden="true"')).join('') : '<span>ATLAS · connecting feeds</span>';
+  const html = items.join('') + items.map((x) => x.replace(/^<span/, '<span aria-hidden="true"')).join('');
   if (html !== tickerHtml) {
     tickerHtml = html; el.innerHTML = html;
     // A steady reading speed (about 30 px a second) however long the strip is: a fixed duration made a
