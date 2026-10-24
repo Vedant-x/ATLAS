@@ -82,7 +82,7 @@ jobs:
       - name: Email data alert
         if: steps.alert.outputs.notify != 'false' && steps.alert.outputs.notify != '' && env.MAIL_USERNAME != ''
         continue-on-error: true
-        uses: dawidd6/action-send-mail@v3
+        uses: dawidd6/action-send-mail@v23
         with:
           server_address: smtp.gmail.com
           server_port: 465
@@ -111,22 +111,22 @@ jobs:
           for f in picks.json audit.json snapshot.json changes.json alert-state.json; do [ -f "$f" ] && git add "$f"; done
           git commit -qm "Track record $(date -u +%FT%TZ)" || exit 0
           git push -q origin HEAD:track-record
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: dist/pages
       # A push cancels a run that may be mid-publish, and GitHub then refuses the next publish for a
       # short while ("deployment in progress"): retry once after a pause instead of failing the run
       # (and emailing about it).
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
         continue-on-error: true
       - name: Wait before retrying the publish
         if: steps.deployment.outcome == 'failure'
         run: sleep 45
       - id: deployment_retry
         if: steps.deployment.outcome == 'failure'
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
       # Self-refreshing: GitHub runs the cron above only every few hours, so each run queues the
       # next one ~8 minutes after it finishes. Meanwhile it publishes live scores every 20 seconds for
       # sources whose sites block browsers (NPB, KBO, esports, eSoccer) to the live-data branch, which the site polls. A newer run (push,

@@ -30,7 +30,7 @@ jobs:
           KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: bash android/build.sh
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with: { name: ATLAS-apk, path: android/ATLAS.apk }
       - name: Publish the release
         if: github.ref == 'refs/heads/main'

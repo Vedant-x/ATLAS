@@ -52,7 +52,6 @@ for (const d of ['vendor', 'icons']) await cp(d, `${out}/${d}`, { recursive: tru
 // minutes must not count as a new version, or open tabs would reload each time (main.js reloads
 // once when a new version takes over).
 await writeFile(`${out}/sw.js`, (await readFile('sw.js', 'utf8')).replace('__BUILD__', (process.env.GITHUB_SHA || String(Date.now())).slice(0, 12)));
-await writeFile(`${out}/.nojekyll`, '');
 // Speed: bundle + minify the JavaScript (three.js and the AI model load as separate lazy chunks, unused
 // code is dropped) and inline the minified CSS so nothing blocks the first paint. If esbuild isn't
 // installed the plain source files are served as before.
