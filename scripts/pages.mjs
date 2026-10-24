@@ -20,22 +20,23 @@ import { fetchAll, LEAGUES, fetchErrors, leagueStatus } from '../js/espn.js';
 import { leagueByPath } from '../js/catalog.js';
 import { CORE, PROVIDER, PROP_STATS, GAMELOG_KEYS, OPPORTUNITY, parseProps, gamelogRows, previousSeason, formFor, propHistory, propChance, withoutTeammate, hasForm, suspectProp } from '../js/props.js';
 import { KHL_API, khlEvent, khlRecords } from '../js/khl.js';
-import { TSDB, TSDB_SPORTS, tsdbEvent, tsdbRecords } from '../js/sportsdb.js';
+import { TSDB, TSDB_SPORTS, TSDB_TTL, tsdbEvent, tsdbRecords, tsdbStart, tsdbState, dueReads, slim, packResult, unpackResult } from '../js/sportsdb.js';
 import { CLUBELO, parseClubElo, eloIndex, isEuropean } from '../js/clubelo.js';
 import { FD_FIXTURES, parseFixtures, applyFixtures } from '../js/footballdata.js';
 import { ELO_WORLD, ELO_TEAMS, eloratingsIndex, applyEloratings, isInternational } from '../js/eloratings.js';
 import { SLEEPER_NFL, injuredByTeam, applyNflInjuries } from '../js/sleeper.js';
 import { TA_ELO, parseEloPage, eloIndex as tennisEloIndex, applyTennisElo } from '../js/tennisabstract.js';
 import { encode as encodeResults, decode as decodeResults, merge as mergeResults, BACKFILL_DAYS } from '../js/results.js';
-import { rate as rateResults, annotate as annotateRatings } from '../js/ratings.js';
+import { rate as rateResults, annotate as annotateRatings, sportTrusted } from '../js/ratings.js';
 import { GEOCODE, FORECAST, OUTDOOR, placeKey, geoFrom, atKickoff } from '../js/weather.js';
 import { DF_GOALIES, nextData, goalieGames, applyGoalies } from '../js/goalies.js';
 import { UNDERSTAT, understatUrl, understatData, teamsFromJson, teamsData, xgTable, applyXg } from '../js/understat.js';
 import { parseGolf, golfForm, golfChances, parseStandings, raceChances, raceResult } from '../js/fields.js';
 import { EUROLEAGUE, LIIGA, SWISS, euroSeason, euroRecords, euroEvent, liigaRecords, liigaEvent, swissRecords, swissEvent } from '../js/europe.js';
-import { ODDS_API, matchOdds, sportOfKey, pairEvents, fixtureFromApi } from '../js/oddsapi.js';
+import { ODDS_API, matchOdds, overlayOdds, MAJOR_KEYS, sportOfKey, pairEvents, fixtureFromApi } from '../js/oddsapi.js';
 import { carryOpen, DRIFT } from '../js/movement.js';
 import { pendingNews } from '../js/newsgate.js';
+import { breaker, carryStatus } from '../js/breaker.js';
 import { valueBets, VALUE } from '../js/track.js';
 import { toDecimal } from '../js/espn.js';
 
@@ -801,89 +802,91 @@ async function khl() {
 }
 
 // ---------- TheSportsDB: darts, snooker, handball, volleyball, table tennis, badminton, boxing … ----------
-// The free public key allows about 30 requests a minute, so requests go one at a time, 2.2 s apart:
-// each sport's fixtures for yesterday to three days ahead (yesterday gives recent results), then the
-// last results of each competition seen, for every competitor's record and form.
-// These sports change slowly and the free key is slow to read, so the fixtures are kept for 30
-// minutes (data/sportsdb.json): most builds reuse the last copy, with finished games dropped and
-// live ones still shown until the next full read.
-// CI sets TSDB_KEEP_MIN high so test builds reuse the site's copy and leave the shared key to the live build.
-const TSDB_KEEP = (Number(process.env.TSDB_KEEP_MIN) || 30) * 6e4;
+// Read a little at a time (sportsdb.js dueReads): every read is cached with its time in
+// data/sportsdb.json and a build makes only the reads that are due, up to TSDB_BUDGET (default 24,
+// about a minute at one request every 2.5 s). A refused read (429: the free key is shared) ends this
+// build's reads at once; the rest wait for the next build. CI sets TSDB_BUDGET=0: test builds only
+// reuse the live site's cache and leave the shared key to the live build.
+const TSDB_BUDGET = Number(process.env.TSDB_BUDGET ?? 24);
+let tsdbFile = null;
 async function sportsdb() {
   let prev = null;
   try {
     const r = await fetch((process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json').replace('index.json', 'sportsdb.json'), { signal: AbortSignal.timeout(15000) });
     prev = r.ok ? await r.json() : null;
-    if (prev?.fetchedAt && Date.now() - prev.fetchedAt < TSDB_KEEP && Array.isArray(prev.events)) {
-      const kept = prev.events.filter((e) => e.live || e.start > Date.now() - 3 * 36e5);
-      tsdbFile = prev;
-      log(`TheSportsDB: reusing ${kept.length} fixtures read ${Math.round((Date.now() - prev.fetchedAt) / 6e4)} min ago`);
-      return kept;
-    }
-  } catch { /* first build, or the site is unreachable: read afresh */ }
-  const kept = Array.isArray(prev?.events) ? prev.events.filter((e) => e.start > Date.now() - 3 * 36e5) : [];
-  const fresh = await sportsdbFetch().catch((e) => { log(`TheSportsDB failed: ${e.message}`); return null; });
-  // A read cut short (rate limits, an outage) never wipes the fixtures already known: the last good
-  // copy stays, with its own read time, until a full read replaces it.
-  if (!fresh || (fresh.partial && fresh.events.length < kept.length)) {
-    if (kept.length) log(`TheSportsDB: keeping ${kept.length} fixtures from the last full read (${Math.round((Date.now() - prev.fetchedAt) / 6e4)} min ago)`);
-    tsdbFile = prev?.events ? prev : { fetchedAt: Date.now(), events: [] };
-    return kept;
-  }
-  tsdbFile = { fetchedAt: Date.now(), events: fresh.events };
-  return fresh.events;
-}
-let tsdbFile = null;
-async function sportsdbFetch() {
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-  let last = 0, calls = 0, errors = 0, backoffs = 0;
-  const getJson = async (path, retry = true) => {
-    const gap = 2200 - (Date.now() - last);
-    if (gap > 0) await wait(gap);
+  } catch { /* first build, or the site is unreachable: start an empty cache */ }
+  const now = Date.now();
+  const iso = (off) => new Date(now + off * 864e5).toISOString().slice(0, 10);
+  const days = [-1, 0, 1, 2, 3];
+  const dayPath = (def, d) => `eventsday.php?d=${d}&s=${encodeURIComponent(def.tsdb)}`;
+  const dayReads = TSDB_SPORTS.flatMap((def) => days.map((off) => ({ path: dayPath(def, iso(off)), ttl: off <= 0 ? TSDB_TTL.recent : TSDB_TTL.ahead, def })));
+  // Keep only what is still wanted: this window's day lists, competitions read in the last 2 weeks.
+  const cache = {};
+  for (const [k, v] of Object.entries(prev?.cache || {})) if (dayReads.some((w) => w.path === k) || (!k.startsWith('eventsday') && v.at > now - 14 * 864e5)) cache[k] = v;
+  let last = 0, calls = 0, failed = 0, limited = false;
+  const read = async (path) => {
+    if (limited) return undefined;
+    const gap = 2500 - (Date.now() - last);
+    if (gap > 0) await new Promise((r) => setTimeout(r, gap));
     last = Date.now(); calls++;
     try { return JSON.parse(await get(`${TSDB}${path}`, { headers: { Accept: 'application/json' } })); } catch (e) {
-      // Rate limited (the key is shared): wait out the minute and try once more, at most 3 times a build.
-      if (retry && /^429\b/.test(e.message) && backoffs < 3) { backoffs++; log(`  TheSportsDB rate limited: waiting 60 s (${backoffs} of 3)`); await wait(60000); return getJson(path, false); }
-      errors++; if (errors <= 4) log(`  TheSportsDB ${path}: ${e.message}`); return null;
+      failed++;
+      if (/^429\b/.test(e.message)) { limited = true; log(`  TheSportsDB: rate limited after ${calls - 1} reads; the rest next build`); } else if (failed <= 3) log(`  TheSportsDB ${path}: ${e.message}`);
+      return undefined;
     }
   };
-  const iso = (off) => new Date(Date.now() + off * 864e5).toISOString().slice(0, 10);
+  let budget = TSDB_BUDGET;
+  for (const w of dueReads(cache, dayReads, now, budget)) {
+    const j = await read(w.path);
+    if (j === undefined) { if (limited) break; continue; }
+    cache[w.path] = { at: Date.now(), events: (j?.events || []).filter((x) => !w.def.only || w.def.only.test(`${x.strLeague || ''} ${x.strEvent || ''}`)).map(slim) };
+    budget--;
+  }
+  // Fixtures from the day lists; the busiest competitions seen there get their season read.
   const raw = new Map(), leagues = new Map(), counts = {};
-  for (const def of TSDB_SPORTS) {
-    let n = 0;
-    for (const off of [-1, 0, 1, 2, 3]) {
-      const j = await getJson(`eventsday.php?d=${iso(off)}&s=${encodeURIComponent(def.tsdb)}`);
-      for (const x of j?.events || []) {
-        if (def.only && !def.only.test(`${x.strLeague || ''} ${x.strEvent || ''}`)) continue;
-        raw.set(x.idEvent, { x, def }); n++;
-        if (x.idLeague && !leagues.has(x.idLeague)) leagues.set(x.idLeague, def);
-      }
-    }
-    counts[def.sport] = n;
+  for (const w of dayReads) for (const x of cache[w.path]?.events || []) {
+    if (!raw.has(x.idEvent)) { raw.set(x.idEvent, { x, def: w.def }); counts[w.def.sport] = (counts[w.def.sport] || 0) + 1; }
+    if (x.idLeague && !leagues.has(x.idLeague)) leagues.set(x.idLeague, w.def);
   }
-  // Each competition's current season (results so far and the fixtures still to come): records and
-  // form, and fixtures the day lists missed. At most 16 competitions, the busiest first.
-  const busy = [...leagues.keys()].map((id) => [id, [...raw.values()].filter((r) => r.x.idLeague === id).length]).sort((a, b) => b[1] - a[1]).slice(0, 16);
+  const busy = [...leagues.keys()].map((id) => [id, [...raw.values()].filter((r) => r.x.idLeague === id).length]).sort((a, b) => b[1] - a[1]).slice(0, 16).map(([id]) => id);
+  const lookups = busy.map((id) => ({ path: `lookupleague.php?id=${id}`, ttl: TSDB_TTL.league }));
+  for (const w of dueReads(cache, lookups, now, budget)) {
+    const j = await read(w.path);
+    if (j === undefined) { if (limited) break; continue; }
+    cache[w.path] = { at: Date.now(), season: j?.leagues?.[0]?.strCurrentSeason || null };
+    budget--;
+  }
+  const seasonPath = (id) => `season:${id}`;
+  const seasons = busy.map((id) => ({ path: seasonPath(id), ttl: TSDB_TTL.season, id }));
+  for (const w of dueReads(cache, seasons, now, budget)) {
+    const season = cache[`lookupleague.php?id=${w.id}`]?.season;
+    let j = season ? await read(`eventsseason.php?id=${w.id}&s=${encodeURIComponent(season)}`) : null;
+    if (!j?.events?.length && !limited) j = await read(`eventspastleague.php?id=${w.id}`);
+    if (j === undefined) { if (limited) break; continue; } // refused or failed: try again next build
+    const list = j?.events || [];
+    const lo = now - 864e5, hi = now + 4 * 864e5;
+    cache[w.path] = { at: Date.now(), past: list.filter((x) => tsdbState(x) === 'final' && tsdbStart(x) > now - 180 * 864e5).map(packResult), events: list.filter((x) => { const t = tsdbStart(x); return t >= lo && t <= hi; }).map(slim) };
+    budget--;
+  }
   const past = [];
-  let seasons = 0;
-  for (const [id] of busy) {
-    const lg = (await getJson(`lookupleague.php?id=${id}`))?.leagues?.[0];
-    const season = lg?.strCurrentSeason;
-    const j = season ? await getJson(`eventsseason.php?id=${id}&s=${encodeURIComponent(season)}`) : null;
-    const list = j?.events?.length ? j.events : (await getJson(`eventspastleague.php?id=${id}`))?.events || [];
-    if (j?.events?.length) seasons++;
-    past.push(...list);
-    const def = leagues.get(id), lo = Date.now() - 864e5, hi = Date.now() + 4 * 864e5;
-    for (const x of list) { const t = Date.parse(`${x.dateEvent || ''}T00:00:00Z`); if (t >= lo && t <= hi && !raw.has(x.idEvent)) raw.set(x.idEvent, { x, def }); }
+  for (const id of busy) {
+    const c = cache[seasonPath(id)];
+    if (!c) continue;
+    past.push(...(c.past || []).map(unpackResult));
+    for (const x of c.events || []) if (!raw.has(x.idEvent)) raw.set(x.idEvent, { x, def: leagues.get(id) });
   }
-  const all = [...raw.values()].map((r) => r.x);
-  const records = tsdbRecords([...past, ...all]);
-  const events = [...raw.values()].map(({ x, def }) => tsdbEvent(x, def, records)).filter((e) => e && !e.final);
-  log(`TheSportsDB: ${events.length} upcoming or live fixtures (${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', ')} listed), ${events.filter((e) => e.live).length} live, ${events.filter((e) => e.stats.homeRecord && e.stats.awayRecord).length} with both records, from ${past.length} season events in ${busy.length} competitions (${seasons} full seasons); ${calls} requests, ${errors} failed`);
-  for (const e of events.slice(0, 6)) log(`  TSDB ${e.sport} ${e.league}: ${e.home} v ${e.away} ${new Date(e.start).toISOString()} rec ${e.stats.homeRecord || '-'} / ${e.stats.awayRecord || '-'}`);
-  if (calls && errors === calls) throw new Error('every request failed');
-  return { events, partial: errors > 0 };
+  const records = tsdbRecords([...past, ...[...raw.values()].map((r) => r.x)]);
+  const events = [...raw.values()].map(({ x, def }) => tsdbEvent(x, def, records)).filter((e) => e && !e.final && (e.live || e.start > now - 3 * 36e5));
+  // The first builds after the switch: fixtures from the old single-read file until the cache fills.
+  if (!prev?.cache && Array.isArray(prev?.events)) for (const e of prev.events) if (e.start > now - 3 * 36e5 && !events.some((x) => x.id === e.id)) events.push(e);
+  const oldest = Math.min(...dayReads.map((w) => cache[w.path]?.at || 0));
+  log(`TheSportsDB: ${events.length} upcoming or live fixtures (${TSDB_SPORTS.map((d) => `${d.sport} ${counts[d.sport] || 0}`).join(', ')}), ${events.filter((e) => e.stats.homeRecord && e.stats.awayRecord).length} with both records, ${past.length} results from ${busy.filter((id) => cache[seasonPath(id)]).length} competitions; ${calls} reads this build (${failed} refused), oldest day list ${oldest ? `${Math.round((now - oldest) / 6e4)} min` : 'never'} old`);
+  tsdbFile = { fetchedAt: now, cache };
+  tsdbStatus = { calls, failed, limited, oldest };
+  if (calls && failed === calls && !Object.keys(cache).length) throw new Error('every request failed');
+  return events;
 }
+let tsdbStatus = null;
 
 // ---------- Golf and motor racing (field events, data/fields.json) ----------
 // Golf: each tour's event this week from ESPN, with form from the tour's previous four events.
@@ -1052,13 +1055,28 @@ await writeFile(`${out}/.nojekyll`, '');
 const PRIORITY = ['basketball/nba', 'football/nfl', 'hockey/nhl', 'baseball/mlb', 'basketball/wnba', 'football/college-football', 'tennis/atp', 'tennis/wta', 'mma/ufc',
   'soccer/eng.1', 'soccer/esp.1', 'soccer/ger.1', 'soccer/ita.1', 'soccer/fra.1', 'soccer/uefa.champions', 'soccer/uefa.europa', 'soccer/uefa.europa.conf', 'soccer/usa.1', 'soccer/mex.1',
   'basketball/mens-college-basketball', 'rugby/267979', 'rugby/270557', 'australian-football/afl', 'rugby-league/3', 'football/cfl'];
-const ordered = [...LEAGUES.filter((l) => PRIORITY.includes(l.path)).sort((a, b) => PRIORITY.indexOf(a.path) - PRIORITY.indexOf(b.path)), ...LEAGUES.filter((l) => !PRIORITY.includes(l.path))];
+// Leagues no feed prices (catalog.js demand) are left to their own pages, which load them live.
+const ordered = [...LEAGUES.filter((l) => PRIORITY.includes(l.path)).sort((a, b) => PRIORITY.indexOf(a.path) - PRIORITY.indexOf(b.path)), ...LEAGUES.filter((l) => !PRIORITY.includes(l.path) && !l.demand)];
 const cricket = async () => {
   const res = await fetch(CRICKET_URL, { signal: AbortSignal.timeout(20000) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const list = parseCricket(await res.json());
   log(`Cricket: ${list.length} matches (${list.filter((e) => e.live).length} live)`);
   return list;
+};
+// The previous build's source report: each source's last success and failure streak. A source that
+// failed 3 builds in a row is paused and retried every 6 hours (breaker.js) instead of failing (and
+// costing time) on every build; the Sources page says it is paused and since when it has failed.
+const prevSources = new Map();
+try { const r = await fetch((process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json').replace('index.json', 'sources.json'), { signal: AbortSignal.timeout(15000) }); if (r.ok) for (const x of (await r.json()).sources || []) prevSources.set(x.name, x); } catch { /* first run */ }
+const pausedNames = new Set();
+const paused = (name, site, what) => {
+  const p = prevSources.get(name), b = breaker(p);
+  if (!b.skip) return false;
+  pausedNames.add(name);
+  sources.push({ name, site, what, ok: false, count: null, note: `paused: failed ${b.streak} builds in a row (last: ${String(p.lastError || p.note || '').slice(0, 80)}); next try ${new Date(b.next).toISOString().slice(11, 16)} UTC`, at: Date.now(), skipped: true });
+  log(`${name}: paused after ${b.streak} failed builds; next try ${new Date(b.next).toISOString()}`);
+  return true;
 };
 // Sources that failed this build: their fixtures are carried over from the last good snapshot below.
 const failedSources = new Set();
@@ -1067,7 +1085,7 @@ const fail = (src, msg) => (e) => { failedSources.add(src); log(`${msg} failed`,
 const finished = [];
 const [espn, npbEvents, kboEvents, cricketEvents, esportsEvents, esoccerEvents, khlEvents, tsdbEvents, euroEvents] = await Promise.all([
   fetchAll(AbortSignal.timeout(720000), ordered, { days: 4, concurrency: 3, finished }).catch((e) => { log('ESPN failed', e.message); problems.push(`ESPN scoreboards failed entirely: ${e.message}`); return []; }),
-  npb().catch(fail('atlas/npb', 'NPB (Japan) schedule')),
+  paused('NPB', 'npb.jp', 'Japanese baseball schedule and starters') ? (failedSources.add('atlas/npb'), []) : npb().catch(fail('atlas/npb', 'NPB (Japan) schedule')),
   kbo().catch(fail('atlas/kbo', 'KBO (Korea) schedule')),
   cricket().catch(fail('atlas/cricket', 'Cricket feed')),
   esports().catch((e) => { log('Esports failed', e.message); problems.push(`Esports feed (bo3.gg) failed: ${e.message}`); return []; }),
@@ -1089,12 +1107,12 @@ const [espn, npbEvents, kboEvents, cricketEvents, esportsEvents, esoccerEvents, 
 {
   const failedLeagues = [...leagueStatus.values()].filter((st) => !st.ok).length;
   noteSource('ESPN', 'espn.com', 'Fixtures, scores, reference odds and match summaries for 150+ competitions', espn.length > 0, espn.length, `${espn.length} events; ${failedLeagues} of ${leagueStatus.size} league feeds failed`);
-  for (const [name, site, what, list, src] of [
+  for (const [name, site, what, list, src, extra] of [
     ['NPB', 'npb.jp', 'Japanese baseball schedule and starters', npbEvents, 'atlas/npb'], ['KBO', 'koreabaseball.com', 'Korean baseball schedule and starters', kboEvents, 'atlas/kbo'],
     ['ESPN cricket', 'espn.com', 'Cricket fixtures and scores', cricketEvents, 'atlas/cricket'], ['bo3.gg', 'bo3.gg', 'Esports (CS2, Valorant, LoL, Dota 2) with team rankings', esportsEvents],
     ['EsportsBattle', 'esportsbattle.com', 'eFootball fixtures and player form', esoccerEvents], ['KHL', 'khl.api.webcaster.pro', 'KHL schedule, live scores and records', khlEvents, 'atlas/khl'],
-    ['TheSportsDB', 'thesportsdb.com', 'Darts, snooker, handball, volleyball, table tennis and more', tsdbEvents], ['League feeds', 'euroleague.net · liiga.fi · nationalleague.ch', 'EuroLeague, EuroCup, Liiga, Swiss hockey', euroEvents],
-  ]) noteSource(name, site, what, src && failedSources.has(src) ? false : true, list.length, src && failedSources.has(src) ? 'failed this build: last good fixtures kept' : `${list.length} events`);
+    ['TheSportsDB', 'thesportsdb.com', 'Darts, snooker, handball, volleyball, table tennis and more', tsdbEvents, null, tsdbStatus && `${tsdbEvents.length} events; ${tsdbStatus.calls} reads this build${tsdbStatus.failed ? `, ${tsdbStatus.failed} refused (rate limit: the rest next build)` : ''}; oldest list ${tsdbStatus.oldest ? `${Math.round((Date.now() - tsdbStatus.oldest) / 6e4)} min` : 'not yet read'} old`], ['League feeds', 'euroleague.net · liiga.fi · nationalleague.ch', 'EuroLeague, EuroCup, Liiga, Swiss hockey', euroEvents],
+  ]) if (!pausedNames.has(name)) noteSource(name, site, what, src && failedSources.has(src) ? false : true, list.length, src && failedSources.has(src) ? 'failed this build: last good fixtures kept' : extra || `${list.length} events`);
 }
 // Known leagues only, and no stale fixtures: a game that started 12+ hours ago and isn't live is over.
 const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents, ...esportsEvents, ...esoccerEvents, ...khlEvents, ...tsdbEvents, ...euroEvents].filter((e) => leagueByPath(e.leaguePath) && (e.live || !(e.start < Date.now() - 12 * 36e5)));
@@ -1116,7 +1134,11 @@ let prevSnapshot = []; // the previous build's events (price movement below read
   // snapshot, marked stale (with the time of their last good update) until fresh data arrives:
   // a feed outage shows as "not updated since", never as fixtures quietly disappearing.
   const have = new Set(events.map((e) => e.id));
-  const down = (e) => [...failedSources].some((src) => e.leaguePath?.startsWith(src)) || leagueStatus.get(e.leaguePath)?.ok === false;
+  // ESPN is most of the board: if it fails outright (or answers with a fraction of its usual 1,500+
+  // games), every ESPN league keeps its last good fixtures rather than the board emptying.
+  const espnDown = espn.length < 150;
+  if (espnDown) log(`Carry-forward: ESPN gave only ${espn.length} events; keeping every ESPN league's last good fixtures`);
+  const down = (e) => [...failedSources].some((src) => e.leaguePath?.startsWith(src)) || leagueStatus.get(e.leaguePath)?.ok === false || (espnDown && !e.leaguePath?.startsWith('atlas/'));
   const keep = prev.filter((e) => !have.has(e.id) && down(e) && leagueByPath(e.leaguePath) && (e.live || e.start > Date.now() - 3 * 36e5));
   for (const e of keep) events.push({ ...e, stale: true, staleSince: e.staleSince || e.fetchedAt || null });
   if (keep.length) log(`Carry-forward: kept ${keep.length} fixture(s) from feeds that failed this build (${[...new Set(keep.map((e) => e.leaguePath))].slice(0, 8).join(', ')})`);
@@ -1155,7 +1177,7 @@ let prevSnapshot = []; // the previous build's events (price movement below read
         const slug = lg.slug || lg.abbreviation;
         const path = `${prefix}/${slug}`;
         const open = (lg.events || []).filter((ev) => (ev.status || ev.fullStatus?.type?.state) !== 'post').length;
-        if (open && leagueByPath(path)) { checked++; if (!have.get(path)) missing.push({ path, open }); }
+        if (open && leagueByPath(path) && !leagueByPath(path).demand) { checked++; if (!have.get(path)) missing.push({ path, open }); }
       }
     } catch (err) { log(`Completeness check: ${sport} header failed (${err.message})`); }
   }
@@ -1172,8 +1194,9 @@ let prevSnapshot = []; // the previous build's events (price movement below read
   if (answered && !listed && soon >= 10) { log('  COMPLETENESS: ESPN headers list no leagues - the header format may have changed'); problems.push('Completeness check: ESPN headers list no leagues (the header format may have changed)'); }
 }
 
-// ClubElo ratings for European club matches (the model uses them where no bookmaker price exists).
-try {
+// ClubElo ratings for European club matches (the model uses them where no bookmaker price exists;
+// ATLAS's own ratings stand in while it is down).
+if (!paused('ClubElo', 'clubelo.com', 'European club ratings for the model')) try {
   // Today's file, else the last two days' (a day's file can lag; ratings move little in a day).
   let csv = null;
   for (const off of [0, 1, 2]) {
@@ -1204,7 +1227,7 @@ try {
 } catch (err) { log('ClubElo failed', err.message); noteSource('ClubElo', 'clubelo.com', 'European club ratings for the model', false, null, err.message); }
 
 // World Football Elo (eloratings.net): national-team ratings for internationals with no price.
-try {
+if (!paused('World Football Elo', 'eloratings.net', 'National-team ratings for the model')) try {
   const [world, teams] = await Promise.all([get(ELO_WORLD), get(ELO_TEAMS)]);
   const idx = eloratingsIndex(world, teams);
   // The first rows as read, so a change in the files' layout shows in the build log.
@@ -1216,8 +1239,9 @@ try {
   noteSource('World Football Elo', 'eloratings.net', 'National-team ratings for the model', idx.size > 0, r.rated, idx.size ? `${r.rated} of ${intl.length} internationals rated` : 'files read but no ratings found');
 } catch (err) { log('World Football Elo failed', err.message); noteSource('World Football Elo', 'eloratings.net', 'National-team ratings for the model', false, null, err.message); }
 
-// Tennis Elo (Tennis Abstract): overall and per-surface ratings for singles matches with no price.
-try {
+// Tennis Elo (Tennis Abstract): overall and per-surface ratings for singles matches with no price
+// (rankings stand in while it is down; it has refused requests from the build servers).
+if (!paused('Tennis Abstract', 'tennisabstract.com', 'Tennis Elo (overall and by surface) for the model')) try {
   // The browser headers first, then a plain request (the site has refused the first from CI).
   const page = async (u, tour) => {
     try { return await get(u); } catch (e) { log(`Tennis Abstract ${tour}: ${e.message}; trying a plain request`); }
@@ -1230,7 +1254,7 @@ try {
   const r = applyTennisElo(events, { atp, wta });
   log(`Tennis Abstract Elo: ${atp.size} ATP and ${wta.size} WTA players; ${r.rated}/${singles.length} unpriced singles matches rated`);
   if (r.unmatched.length) log(`  Tennis Elo unmatched (first 30): ${r.unmatched.slice(0, 30).join(' · ')}`);
-  noteSource('Tennis Abstract', 'tennisabstract.com', 'Tennis Elo (overall and by surface) for the model', atp.size + wta.size > 0, r.rated, atp.size + wta.size ? `${r.rated} of ${singles.length} unpriced singles matches rated` : atpHtml || wtaHtml ? 'pages read but no ratings found' : 'the site refused the request: rankings used instead');
+  noteSource('Tennis Abstract', 'tennisabstract.com', 'Tennis Elo (overall and by surface) for the model', atp.size + wta.size > 0, r.rated, atp.size + wta.size ? `${r.rated} of ${singles.length} unpriced singles matches rated` : atpHtml || wtaHtml ? 'pages read but no ratings found' : 'HTTP 403: the site refused the request; rankings used instead');
 } catch (err) { log('Tennis Abstract failed', err.message); noteSource('Tennis Abstract', 'tennisabstract.com', 'Tennis Elo (overall and by surface) for the model', false, null, err.message); }
 
 // NFL injury report (Sleeper): the injured players only, kept in data/nfl-injuries.json and refreshed
@@ -1277,7 +1301,7 @@ try {
   const bySport = Object.entries(history.reduce((m, g) => ((m[g.sport] = (m[g.sport] || 0) + 1), m), {})).sort((a, b) => b[1] - a[1]);
   log(`ATLAS ratings: ${history.length} results (${finished.length} read this build, history back ${back} days); ${R.r.size} teams/players rated; ${rated} upcoming matches with trusted ratings`);
   log(`  results by sport: ${bySport.map(([k, v]) => `${k} ${v}`).join(' · ')}`);
-  log(`  how well the ratings called results (trusted sides): ${Object.entries(R.quality).map(([k, q]) => `${k} ${q.n} games, ${(q.right * 100).toFixed(0)}% right, Brier ${q.brier.toFixed(3)}`).join(' · ') || 'not enough yet'}`);
+  log(`  how well the ratings called results (trusted sides): ${Object.entries(R.quality).map(([k, q]) => `${k} ${q.n} games, ${(q.right * 100).toFixed(0)}% right, Brier ${q.brier.toFixed(3)}${sportTrusted(q) ? ' (used)' : ' (shown only)'}`).join(' · ') || 'not enough yet'}`);
   noteSource('ATLAS results history', 'built from the feeds above', 'Ratings for every team and player, rest days, last meetings, form', history.length > 0, rated, `${history.length} results over ${back} days; ${rated} upcoming matches rated`);
   await writeFile(`${out}/data/results.json`, JSON.stringify({ meta: { backfilledTo: back, at: Date.now() }, ...encodeResults(history) }));
 } catch (err) { log('Results history failed', err.message); noteSource('ATLAS results history', 'built from the feeds above', 'Ratings for every team and player', false, null, err.message); }
@@ -1285,7 +1309,7 @@ try {
 // NHL starting goalies (Daily Faceoff).
 {
   const nhl = events.filter((e) => e.leaguePath === 'hockey/nhl' && e.start > Date.now() - 36e5 && e.start < Date.now() + 36 * 36e5).length;
-  if (nhl) {
+  if (nhl && !paused('Daily Faceoff', 'dailyfaceoff.com', 'NHL starting goalies (confirmed / likely)')) {
     try {
       // The page lists one US (Eastern) day; each day with NHL games here is fetched by its date.
       const etDay = (t) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(t));
@@ -1300,11 +1324,11 @@ try {
       if (games.length && n < nhl) log(`  NHL matches here: ${events.filter((e) => e.leaguePath === 'hockey/nhl' && e.start > Date.now() - 36e5 && e.start < Date.now() + 36 * 36e5).map((e) => `${e.away} @ ${e.home}`).join(' · ')} | listed: ${games.slice(0, 16).map((g) => `${g.away} @ ${g.home}`).join(' · ')}`);
       noteSource('Daily Faceoff', 'dailyfaceoff.com', 'NHL starting goalies (confirmed / likely)', games.length > 0, n, `${n} of ${nhl} NHL matches in the next 36 hours`);
     } catch (err) { log('Daily Faceoff failed', err.message); noteSource('Daily Faceoff', 'dailyfaceoff.com', 'NHL starting goalies (confirmed / likely)', false, null, err.message); }
-  } else noteSource('Daily Faceoff', 'dailyfaceoff.com', 'NHL starting goalies (confirmed / likely)', true, 0, 'no NHL matches in the next 36 hours');
+  } else if (!nhl) noteSource('Daily Faceoff', 'dailyfaceoff.com', 'NHL starting goalies (confirmed / likely)', true, 0, 'no NHL matches in the next 36 hours');
 }
 
 // Expected goals (Understat) for the five big European leagues.
-try {
+if (!paused('Understat', 'understat.com', 'Expected goals for the big five leagues')) try {
   // The season is named by the year it starts (2026 = 2026/27): from July on, this year.
   const now = new Date(), season = now.getUTCMonth() >= 6 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
   const tables = new Map();
@@ -1324,38 +1348,79 @@ try {
   noteSource('Understat', 'understat.com', 'Expected goals (xG / xGA) for the big five leagues', tables.size > 0, n, `${tables.size} of 5 leagues; ${n} of ${big} upcoming matches`);
 } catch (err) { log('Understat failed', err.message); noteSource('Understat', 'understat.com', 'Expected goals for the big five leagues', false, null, err.message); }
 
-// Match-day weather (Open-Meteo) for outdoor matches in the next 48 hours. Cities are geocoded once
-// and kept in data/geo.json; forecasts are fetched for up to 50 places per request.
+// Match-day weather (Open-Meteo) for outdoor matches in the next 48 hours that have a price (the ones
+// a bet can be placed on). Open-Meteo's free tier counts every place in a request, and asking for
+// ~700 places every 20 minutes ran into its daily limit (HTTP 429): so a match's forecast is reused
+// from the last snapshot while under 3 hours old, new cities are geocoded 40 per build, and a 429 ends
+// this build's requests (the rest keep their last forecast). Cities are kept in data/geo.json.
 try {
   let geo = {};
   try { const r = await fetch((process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json').replace('index.json', 'geo.json'), { signal: AbortSignal.timeout(15000) }); if (r.ok) geo = await r.json(); } catch { /* first run */ }
-  const due = events.filter((e) => OUTDOOR.has(e.sport) && e.place && !e.place.indoor && e.start > Date.now() - 3 * 36e5 && e.start < Date.now() + 48 * 36e5);
-  const places = [...new Map(due.map((e) => [placeKey(e.place), e.place])).entries()];
-  let looked = 0;
+  const due = events.filter((e) => OUTDOOR.has(e.sport) && e.place && !e.place.indoor && e.markets?.length && e.start > Date.now() - 3 * 36e5 && e.start < Date.now() + 48 * 36e5);
+  const before = new Map(prevSnapshot.map((e) => [e.id, e]));
+  let reused = 0;
+  for (const e of due) {
+    const w = before.get(e.id)?.weather;
+    if (w && before.get(e.id).start === e.start && w.at > Date.now() - 3 * 36e5) { e.weather = w; reused++; }
+  }
+  const need = due.filter((e) => !e.weather);
+  const places = [...new Map(need.map((e) => [placeKey(e.place), e.place])).entries()];
+  let looked = 0, limited = false;
   for (const [key, p] of places) {
-    if (key in geo || looked >= 150) continue; // new cities only, 150 per build at most
+    if (key in geo || looked >= 40 || limited) continue;
     looked++;
-    try { geo[key] = geoFrom(JSON.parse(await get(GEOCODE(p.city))), p); } catch { /* try again next build */ }
+    try { geo[key] = geoFrom(JSON.parse(await get(GEOCODE(p.city))), p); } catch (err) { if (/^429\b/.test(err.message)) limited = true; }
   }
   const located = places.filter(([k]) => geo[k]);
   const fc = new Map();
-  for (let i = 0; i < located.length; i += 50) {
+  for (let i = 0; i < located.length && !limited; i += 50) {
     const batch = located.slice(i, i + 50);
     try {
       const j = JSON.parse(await get(FORECAST(batch.map(([k]) => geo[k].lat), batch.map(([k]) => geo[k].lon))));
       (Array.isArray(j) ? j : [j]).forEach((x, n) => fc.set(batch[n][0], x.hourly));
-    } catch (err) { log(`Open-Meteo forecast batch failed: ${err.message}`); }
+    } catch (err) { log(`Open-Meteo forecast batch failed: ${err.message}`); if (/^429\b/.test(err.message)) limited = true; }
   }
-  let withWeather = 0;
-  for (const e of due) {
+  let fresh = 0;
+  for (const e of need) {
     const h = fc.get(placeKey(e.place));
     const w = h && atKickoff(h, e.start);
-    if (w) { e.weather = { ...w, city: e.place.city, at: Date.now(), source: 'Open-Meteo' }; withWeather++; }
+    if (w) { e.weather = { ...w, city: e.place.city, at: Date.now(), source: 'Open-Meteo' }; fresh++; }
   }
-  log(`Weather (Open-Meteo): ${withWeather}/${due.length} outdoor matches in the next 48h; ${located.length}/${places.length} places located (${looked} new lookups)`);
-  noteSource('Open-Meteo', 'open-meteo.com', 'Kick-off weather for outdoor matches', !due.length || withWeather > 0, withWeather, `${withWeather} of ${due.length} outdoor matches in the next 48 hours`);
+  const withWeather = reused + fresh;
+  log(`Weather (Open-Meteo): ${withWeather}/${due.length} priced outdoor matches in the next 48h (${reused} forecasts under 3 h old reused, ${fresh} new from ${located.length} places, ${looked} new city lookups)${limited ? '; rate limited: the rest next build' : ''}`);
+  noteSource('Open-Meteo', 'open-meteo.com', 'Kick-off weather for outdoor matches', !due.length || withWeather > 0 || !need.length, withWeather, `${withWeather} of ${due.length} priced outdoor matches in the next 48 hours${limited ? '; HTTP 429 rate limited this build: the rest next build' : ''}`);
   await writeFile(`${out}/data/geo.json`, JSON.stringify(geo));
 } catch (err) { log('Weather failed', err.message); noteSource('Open-Meteo', 'open-meteo.com', 'Kick-off weather for outdoor matches', false, null, err.message); }
+
+// Probe for the next change: the NBA's official injury report (a PDF on official.nba.com, updated
+// through the day). It logs where the latest report is and how its PDF is built, so a reader for it
+// can be written against the real file. Nothing here changes the board.
+if (events.some((e) => e.leaguePath === 'basketball/nba' && e.start > Date.now() && e.start < Date.now() + 36 * 36e5)) {
+  try {
+    const { inflateSync } = await import('node:zlib');
+    const y = new Date().getUTCMonth() >= 6 ? new Date().getUTCFullYear() : new Date().getUTCFullYear() - 1;
+    let html = '';
+    for (const u of [`https://official.nba.com/nba-injury-report-${y}-${String(y + 1).slice(2)}-season/`, `https://official.nba.com/nba-injury-report-${y - 1}-${String(y).slice(2)}-season/`]) {
+      try { html = await get(u); if (html) { log(`NBA injury report probe: page ${u} (${html.length} chars)`); break; } } catch (e) { log(`NBA injury report probe: ${u}: ${e.message}`); }
+    }
+    const links = [...new Set([...html.matchAll(/https?:\/\/ak-static\.cms\.nba\.com\/referee\/injury\/Injury-Report_[\w-]+\.pdf/g)].map((m) => m[0]))];
+    log(`  ${links.length} report links; latest: ${links.slice(-3).join(' · ') || 'none'}`);
+    if (links.length) {
+      const r = await fetch(links.at(-1), { headers: UA, signal: AbortSignal.timeout(20000) });
+      const buf = Buffer.from(await r.arrayBuffer()), raw = buf.toString('latin1');
+      log(`  PDF HTTP ${r.status}, ${buf.length} bytes, ${raw.slice(0, 8)}; producer ${/\/Producer\s*\(([^)]*)\)/.exec(raw)?.[1] || '?'}; filters ${[...new Set(raw.match(/\/Filter\s*\/\w+/g) || [])].join(' ')}; fonts ${[...new Set(raw.match(/\/BaseFont\s*\/[\w+-]+/g) || [])].slice(0, 4).join(' ')}; encodings ${[...new Set(raw.match(/\/Encoding\s*\/[\w-]+/g) || [])].join(' ')}; ToUnicode ${/ToUnicode/.test(raw)}`);
+      const m = /stream\r?\n/g;
+      let shown = 0, hit;
+      while ((hit = m.exec(raw)) && shown < 2) {
+        const end = raw.indexOf('endstream', hit.index);
+        try {
+          const txt = inflateSync(buf.subarray(hit.index + hit[0].length, end)).toString('latin1');
+          if (/T[jJ]/.test(txt)) { log(`  content sample: ${JSON.stringify(txt.slice(0, 600))}`); shown++; }
+        } catch { /* not a deflated stream */ }
+      }
+    }
+  } catch (e) { log(`NBA injury report probe failed: ${e.message}`); }
+}
 
 // Soccer absences: ESPN's soccer injury feed is empty, FotMob lists who is injured or suspended.
 const soccer = events.filter((e) => e.leaguePath?.startsWith('soccer/') && e.start < Date.now() + 5 * 864e5).sort((a, b) => a.start - b.start).slice(0, 400);
@@ -1419,9 +1484,9 @@ try {
   const fixtures = parseFixtures(await r.text());
   const res = applyFixtures(events, fixtures, { fileAt });
   const age = fileAt ? `${Math.round((Date.now() - fileAt) / 36e5)} h old` : 'age unknown';
-  log(`football-data.co.uk: ${fixtures.length} fixtures with odds (file ${age}); priced ${res.priced} unpriced match(es)`);
+  log(`football-data.co.uk: ${fixtures.length} fixtures with odds (file ${age}); priced ${res.priced} unpriced match(es); Pinnacle as the sharp line on ${res.sharp} priced match(es)`);
   if (res.unmatched.length) log(`  football-data unmatched (first 30): ${res.unmatched.slice(0, 30).join(' · ')}`);
-  noteSource('football-data.co.uk', 'football-data.co.uk', 'Pinnacle / average odds for European leagues', fixtures.length > 0, res.priced, `${res.priced} matches priced from ${fixtures.length} fixtures; file ${age}`);
+  noteSource('football-data.co.uk', 'football-data.co.uk', 'Pinnacle odds for European leagues: a price where none, the sharp line where ESPN prices', fixtures.length > 0, res.priced + res.sharp, `${res.priced} matches priced, ${res.sharp} given the sharp line, from ${fixtures.length} fixtures; file ${age}`);
 } catch (e) { log(`football-data.co.uk failed: ${e.message}`); noteSource('football-data.co.uk', 'football-data.co.uk', 'Pinnacle / average odds for European leagues', false, null, e.message); }
 // Bookmaker odds from The Odds API (ODDS_API_KEY repository secret), used sparingly: the free plan has
 // 500 credits a month, so paid odds are only fetched for matches no other source prices.
@@ -1429,11 +1494,14 @@ try {
 //     (kept in data/odds-extra.json, each refreshed every 6 hours) tie every key to the matches here it
 //     covers, and add the matches in the next 3 days the bookmakers list that no feed here does
 //     (catalog: "Other competitions"), so nothing they offer is missing from the board.
-//  2. A key is due for odds only if it has matches in the next 3 days with no price from ESPN,
-//     football-data.co.uk or the other feeds, and its last odds are older than ODDS_HOURS (default
-//     12). The most such matches first; credits spent at an even pace to the end of the month.
-//  3. Odds already held merge (free) onto every match of their key: the best price across bookmakers
-//     and the consensus fair chance (oddsapi.js).
+//  2. A key is due for odds when (a) it is one of the most-bet leagues (MAJOR_KEYS) with a match in
+//     the next 36 hours and its odds are 8+ hours old: the sharp market (Pinnacle) and the typical
+//     price across books on top of ESPN's one-book price; or (b) it has matches in the next 3 days no
+//     other source prices and its odds are older than ODDS_HOURS (default 12). Majors first, then the
+//     most unpriced matches; credits spent at an even pace to the end of the month.
+//  3. Odds already held merge (free): a match no other source prices takes the best price across
+//     bookmakers and the consensus fair chance; a priced one keeps its price and gains the sharp
+//     fair chance, the typical price and the best one (oddsapi.js overlayOdds).
 if (process.env.ODDS_API_KEY) {
   try {
     const key = process.env.ODDS_API_KEY;
@@ -1488,8 +1556,12 @@ if (process.env.ODDS_API_KEY) {
     const cap = capEnv != null && capEnv !== '' && Number.isFinite(Number(capEnv)) ? Number(capEnv) : Infinity;
     const gap = per * (monthEnd - Date.now()) / Math.max(1, remaining);
     const allowance = Math.min(cap, !Number.isFinite(remaining) ? 1 : remaining < per ? 0 : Math.min(6, Math.floor((Date.now() - (cache.spentAt || 0)) / gap)));
+    // Majors: matches in the next 36 hours with a price from another feed and no fresh sharp line.
+    const soon = (k) => (byKey[k] || []).filter((e) => e.start < Date.now() + 36 * 36e5 && e.markets?.length && e.oddsSource !== 'the-odds-api');
+    const majors = active.filter((k) => MAJOR_KEYS.includes(k)).map((k) => ({ k, n: soon(k).length, major: true, first: Math.min(...soon(k).map((e) => e.start)), at: cache.at?.[k] || 0 }))
+      .filter((x) => x.n > 0 && !(x.at > Date.now() - 8 * 36e5)).sort((x, y) => x.first - y.first);
     const wanted = active.map((k) => ({ k, n: need(k), at: cache.at?.[k] || 0 })).filter((x) => x.n > 0);
-    const due = wanted.filter((x) => !(x.at > Date.now() - maxAgeH * 36e5)).sort((x, y) => y.n - x.n || x.at - y.at).slice(0, allowance);
+    const due = [...majors, ...wanted.filter((x) => !majors.some((m) => m.k === x.k) && !(x.at > Date.now() - maxAgeH * 36e5)).sort((x, y) => y.n - x.n || x.at - y.at)].slice(0, allowance);
     const sports = { ...(cache.sports || {}) }, at = { ...(cache.at || {}) };
     let credits = cache.credits ?? null, used = 0;
     for (const { k } of due) {
@@ -1502,18 +1574,22 @@ if (process.env.ODDS_API_KEY) {
     // Drop keys no longer in season or older than two days.
     for (const k of Object.keys(sports)) if ((active.length && !active.includes(k)) || !(at[k] > Date.now() - 48 * 36e5)) { delete sports[k]; delete at[k]; }
     cache = { fetchedAt: Date.now(), markets, regions, sports, at, credits, spentAt: due.length ? Date.now() : cache.spentAt || 0, lists, listAt };
-    let priced = 0;
-    for (const [k, list] of Object.entries(sports)) priced += matchOdds(byKey[k] || [], list, { force: true, fetchedAt: at[k] });
+    let priced = 0, sharp = 0;
+    for (const [k, list] of Object.entries(sports)) {
+      priced += matchOdds(byKey[k] || [], list, { fetchedAt: at[k] });
+      sharp += overlayOdds(byKey[k] || [], list, { fetchedAt: at[k] });
+    }
     const bySport = {};
     for (const e of events) if (e.oddsSource === 'the-odds-api') bySport[e.sport] = (bySport[e.sport] || 0) + 1;
     const added = Object.values(addedBy).reduce((x, y) => x + y, 0);
     log(`Odds API: ${active.length} sports in season; ${listed} fixture lists read (free), ${Object.keys(lists).length} held; ${added} matches added that no feed here lists`);
     if (added) log(`  added: ${Object.entries(addedBy).sort((x, y) => y[1] - x[1]).map(([t, n]) => `${t} ${n}`).join(' · ')}`);
+    log(`  majors due for the sharp line (next 36h): ${majors.map((x) => `${x.k} ${x.n}`).join(' · ') || 'none'}`);
     log(`  need odds (no other price, next 3 days): ${wanted.sort((x, y) => y.n - x.n).map((x) => `${x.k} ${x.n}`).join(' · ') || 'none'}`);
     log(`  fetched ${due.map((x) => x.k).join(', ') || 'nothing'} (allowance ${allowance}, one fetch per ${Number.isFinite(gap) ? Math.round(gap / 6e4) : '?'} min, ${per} credit(s) each) [${markets} @ ${regions}]; credits used ${used}, remaining ${credits ?? '?'}; ${Object.keys(sports).length} sports held`);
-    log(`  priced ${priced} matches: ${Object.entries(bySport).map(([k, v]) => `${k} ${v}`).join(' · ') || 'none'}`);
+    log(`  priced ${priced} matches: ${Object.entries(bySport).map(([k, v]) => `${k} ${v}`).join(' · ') || 'none'}; sharp line added to ${sharp} matches priced by another feed`);
     await writeFile(`${out}/data/odds-extra.json`, JSON.stringify(cache));
-    noteSource('The Odds API', 'the-odds-api.com', 'Fixtures the bookmakers list; best price and consensus fair chance where nothing else prices a match', true, priced, `${priced} matches priced, ${added} added from the bookmakers' lists; ${credits ?? '?'} credits left this month`);
+    noteSource('The Odds API', 'the-odds-api.com', 'Many bookmakers\' prices: the sharp fair chance and typical price on the main leagues, and a price where nothing else has one', true, priced + sharp, `${sharp} matches with the sharp line, ${priced} priced, ${added} added from the bookmakers' lists; ${credits ?? '?'} credits left this month`);
   } catch (e) { log(`Odds API failed: ${e.message}`); noteSource('The Odds API', 'the-odds-api.com', 'Fixtures the bookmakers list; best price and consensus fair chance where nothing else prices a match', false, null, e.message); }
 } else noteSource('The Odds API', 'the-odds-api.com', 'Fixtures the bookmakers list; best price and consensus fair chance where nothing else prices a match', null, null, 'not switched on: add an ODDS_API_KEY repository secret');
 // Price movement: every price remembers the first one seen (movement.js), once all prices are in.
@@ -1535,21 +1611,15 @@ if (process.env.ODDS_API_KEY) {
 const byLeague = {};
 for (const e of events) byLeague[e.leaguePath] = (byLeague[e.leaguePath] || 0) + 1;
 if (tsdbFile) await writeFile(`${out}/data/sportsdb.json`, JSON.stringify(tsdbFile));
-// Per-provider status across builds: when it was last tried, when it last worked (carried from the
-// previous published report), and what kind of failure it was. A source that worked but found
-// nothing (ok true, count 0) is an empty result, not a failure.
+// Per-provider status across builds (breaker.js carryStatus): when it was last tried, when it last
+// worked, how many builds in a row it has failed, and what kind of failure it was. A source that worked
+// but found nothing (ok true, count 0) is an empty result, not a failure.
 {
-  let prev = [];
-  try { const r = await fetch((process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json').replace('index.json', 'sources.json'), { signal: AbortSignal.timeout(15000) }); if (r.ok) prev = (await r.json()).sources || []; } catch { /* first run */ }
-  const before = new Map(prev.map((x) => [x.name, x]));
-  const category = (note) => (/\b40[13]\b|forbidden|unauthori/i.test(note) ? 'blocked' : /\b429\b|rate/i.test(note) ? 'rate limited' : /\b5\d\d\b/.test(note) ? 'provider error'
+  const category = (note) => (/\b40[13]\b|forbidden|unauthori|refused the request/i.test(note) ? 'blocked' : /\b429\b|rate/i.test(note) ? 'rate limited' : /\b5\d\d\b/.test(note) ? 'provider error'
     : /timeout|abort/i.test(note) ? 'timeout' : /fetch failed|ENOTFOUND|ECONN|network/i.test(note) ? 'network' : /\b404\b/.test(note) ? 'not found' : 'unreadable response');
   for (const x of sources) {
-    const p = before.get(x.name);
-    x.lastAttemptAt = x.at;
-    x.lastSuccessAt = x.ok === true ? x.at : p?.lastSuccessAt ?? (p?.ok === true ? p.at : null);
-    x.status = x.ok === true ? (x.count === 0 ? 'empty' : 'ok') : x.ok === false ? 'failed' : 'off';
-    x.errorCategory = x.ok === false ? category(String(x.note || '')) : null;
+    carryStatus(x, prevSources.get(x.name));
+    x.errorCategory = x.ok === false ? category(String(x.lastError || x.note || '')) : null;
   }
 }
 await writeFile(`${out}/data/sources.json`, JSON.stringify({ at: Date.now(), sources }));
@@ -1564,8 +1634,15 @@ log(`ESPN: ${espn.length} events`);
   if (failedLeagues.length > LEAGUES.length * 0.15) problems.push(`${failedLeagues.length} of ${LEAGUES.length} leagues failed to load: ${failedLeagues.slice(0, 12).join(', ')}${failedLeagues.length > 12 ? ' …' : ''}`);
   const soccerSoon = events.filter((e) => e.leaguePath?.startsWith('soccer/') && e.start < Date.now() + 2 * 864e5).length;
   if (soccerSoon > 30 && !events.some((e) => e.absences)) problems.push(`FotMob linked no soccer matches (${soccerSoon} soccer games in the next 2 days): injuries and lineups missing`);
-  await writeFile(`${out}/data/health.json`, JSON.stringify({ checkedAt: Date.now(), ok: !problems.length, problems, espnGames: espn.length, failedLeagues }));
-  log(problems.length ? `DATA HEALTH: ${problems.length} problem(s)\n  - ${problems.join('\n  - ')}` : 'DATA HEALTH: ok');
+  // Not only the core feeds: every source that failed or is paused is named, with how long it has
+  // been down. One down for a day or more becomes an alert of its own (scripts/alert.cjs), once.
+  const down = sources.filter((x) => x.ok === false);
+  const since = (x) => Date.now() - (x.downSince ?? Date.now());
+  const age = (ms) => (ms < 36e5 ? 'down under an hour' : ms < 2 * 864e5 ? `down ${Math.round(ms / 36e5)} h` : `down ${Math.round(ms / 864e5)} days`);
+  const degraded = down.map((x) => `${x.name} (${x.status === 'paused' ? 'paused, ' : ''}${age(since(x))}: ${String(x.lastError || x.note || '').slice(0, 80)})`);
+  const longDown = down.filter((x) => since(x) >= 864e5).map((x) => `${x.name} down for a day or more: ${String(x.lastError || x.note || '').slice(0, 120)}`);
+  await writeFile(`${out}/data/health.json`, JSON.stringify({ checkedAt: Date.now(), ok: !problems.length, level: problems.length ? 'problem' : down.length ? 'degraded' : 'ok', problems, degraded, alerts: [...problems, ...longDown], espnGames: espn.length, failedLeagues }));
+  log(`DATA HEALTH: ${problems.length ? `${problems.length} problem(s)` : 'core feeds ok'}${down.length ? `; ${down.length} source(s) down` : ''}${[...problems.map((p) => `\n  - ${p}`), ...degraded.map((d) => `\n  - DOWN ${d}`)].join('')}`);
 }
 log(`Pages build: ${events.length} events across ${Object.keys(byLeague).length} leagues`);
 log(Object.entries(byLeague).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}:${v}`).join(' '));

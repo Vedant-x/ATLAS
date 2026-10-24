@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { rate, annotate, ratingWin, keyOf, TRUST_GAMES } from '../js/ratings.js';
 import { encode, decode, merge } from '../js/results.js';
-import { winProbs } from '../js/models.js';
+import { winProbs, analyse } from '../js/models.js';
 
 const D = 864e5, t0 = Date.parse('2026-08-01T12:00:00Z');
 // A league where Strong beats everyone and Weak loses to everyone.
@@ -30,11 +30,25 @@ test('ratings onto upcoming matches: ratings, rest days, last meetings, form; an
   const R = rate(hist);
   const last = hist.at(-1).t;
   const e = { id: 'u', sport: 'rugby', leaguePath: 'rugby/premiership', home: 'Strong', away: 'Weak', teamIds: { home: '1', away: '4' }, start: last + 3 * D, stats: {} };
+  // A sport whose ratings have called too few games (or called them badly) is shown, not used.
+  const early = { ...e, id: 'early', stats: {} };
+  assert.equal(annotate([early], R), 0);
+  assert.equal(early.atlas.trusted, false);
+  assert.doesNotMatch(analyse(early).basis, /ATLAS rating/);
+  // Proven over 400 games with a Brier of 0.20: used.
+  R.quality.rugby = { n: 400, brier: 0.2, right: 0.7 };
   assert.equal(annotate([e], R), 1);
+  assert.equal(e.atlas.trusted, true);
+  // Baseball as of October 2026 (56% right, Brier 0.246): never trusted however many games.
+  R.quality.rugby = { n: 1182, brier: 0.246, right: 0.56 };
+  const weak = { ...e, id: 'weak', stats: {} };
+  assert.equal(annotate([weak], R), 0);
+  R.quality.rugby = { n: 400, brier: 0.2, right: 0.7 };
   assert.ok(e.atlas.home.r > e.atlas.away.r);
   assert.ok(e.stats.homeRest >= 2 && e.stats.homeRest <= 4);
   assert.equal(e.h2hRecent.length, 5);
   assert.deepEqual(e.stats.homeForm, ['W', 'W', 'W', 'W', 'W']);
+  assert.match(analyse(e).basis, /ATLAS rating/);
   const w = winProbs(e);
   assert.equal(w.confidence, 'medium');
   assert.ok(w.home > 0.8, `rated favourite (${w.home.toFixed(2)})`);

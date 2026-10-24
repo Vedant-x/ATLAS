@@ -3,7 +3,8 @@
 // the NBA's and WNBA's; FotMob for soccer; OpenDota for Dota 2. A result is only used when the game is clearly the same
 // one (start within 3 hours, both teams matching, one orientation only) and the source calls it final;
 // anything else counts as "not found" and the confirming read falls back to ESPN. A second source never
-// postpones or voids a pick on its own, and player props (which need a box score) stay with ESPN.
+// postpones or voids a pick on its own. NBA player props are confirmed from the NBA's own box score
+// (below); other props stay with ESPN.
 import { sameSide } from './oddsapi.js';
 import { sameTeam } from './fotmob.js';
 
@@ -118,4 +119,42 @@ export function secondReader(getJson) {
   };
   reader.errors = {}; // the last failure per source, for the build log
   return reader;
+}
+
+// ---------- NBA player props: the NBA's own box score ----------
+// Props were confirmed only by a second read of ESPN. The NBA publishes every game's box score
+// (cdn.nba.com), found through its schedule (the game whose teams and start match the pick). Players
+// are matched by name, as the NBA numbers them differently from ESPN; a name that matches no one, or
+// two people, is "not found" and the confirming read falls back to ESPN.
+export const NBA_SCHEDULE = 'https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json';
+export const nbaBoxUrl = (gameId) => `https://cdn.nba.com/static/json/liveData/boxscore/boxscore_${gameId}.json`;
+const NBA_STAT = {
+  Points: ['points'], Rebounds: ['reboundsTotal'], Assists: ['assists'], '3-Point Field Goals': ['threePointersMade'], Steals: ['steals'], Blocks: ['blocks'],
+  'Points + Assists + Rebounds': ['points', 'assists', 'reboundsTotal'], 'Points + Assists': ['points', 'assists'], 'Points + Rebounds': ['points', 'reboundsTotal'], 'Rebounds + Assists': ['reboundsTotal', 'assists'],
+};
+// The NBA's game id for a pick's match, from the season schedule.
+export function nbaGameId(p, schedule) {
+  const games = (schedule?.leagueSchedule?.gameDates || []).flatMap((d) => d.games || []);
+  const hits = games.filter((g) => Math.abs(Date.parse(g.gameDateTimeUTC || '') - p.start) <= WINDOW
+    && [`${g.homeTeam?.teamCity ?? ''} ${g.homeTeam?.teamName ?? ''}`.trim(), g.homeTeam?.teamName].some((n) => n && sameSide(p.home, n))
+    && [`${g.awayTeam?.teamCity ?? ''} ${g.awayTeam?.teamName ?? ''}`.trim(), g.awayTeam?.teamName].some((n) => n && sameSide(p.away, n)));
+  return hits.length === 1 ? hits[0].gameId : null;
+}
+// The player a prop record is about: saved on newer records, read from the label on older ones
+// ("Jalen Brunson over 5.5 rebounds", "Jalen Brunson 6+ rebounds").
+export const propPlayer = (p) => p.prop?.name || /^(.*?) (?:over \d|\d+\+ )/.exec(p.pick || '')?.[1] || null;
+const pname = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\b(jr|sr|ii|iii|iv)\b\.?/g, '').replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
+// A prop's result from an NBA box score: 'won', 'lost', 'dnp', or null when it cannot say.
+export function nbaPropResult(p, box) {
+  const g = box?.game;
+  const keys = NBA_STAT[p.prop?.type];
+  const who = pname(propPlayer(p));
+  if (!g || !keys || !who || g.gameStatus !== 3) return null;
+  const players = [...(g.homeTeam?.players || []), ...(g.awayTeam?.players || [])].filter((x) => pname(x.name || `${x.firstName} ${x.familyName}`) === who);
+  if (players.length !== 1) return null;
+  const x = players[0];
+  if (x.played !== '1' && x.played !== 1) return x.status === 'INACTIVE' || x.notPlayingReason ? 'dnp' : null;
+  const s = x.statistics || {};
+  if (!keys.every((k) => Number.isFinite(Number(s[k])))) return null;
+  return keys.reduce((a, k) => a + Number(s[k]), 0) >= p.prop.target ? 'won' : 'lost';
 }

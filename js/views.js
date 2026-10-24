@@ -573,10 +573,13 @@ export function valuePick(b) {
   const s = sportOf(b.event.sport);
   const rec = recommendationFor(b, trackCalibration());
   const leg = { key: `${b.event.id}|${b.market}|${b.pick}`, eventId: b.event.id, sport: b.event.sport, match: `${b.event.home} vs ${b.event.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p, recommendationId: rec.recommendationId };
-  const tip = [`Fair odds ${odd(1 / b.fair)} (${b.consensusFrom || 'the books\' median'}, margin removed): a ${pc(b.fair, 0)} chance`, b.book && `Best price ${odd(b.odds)} at ${b.book}`,
+  const tip = [`Fair odds ${odd(1 / b.fair)} (${b.consensusFrom || 'the books\' median'}, margin removed): a ${pc(b.fair, 0)} chance`, b.book && `Price ${odd(b.odds)} at ${b.book}`,
+    b.best > b.odds && `Better price ${odd(b.best)} at ${b.bestBook}`,
+    b.med > 1 && `Typical price across bookmakers ${odd(b.med)}: ${b.wide ? 'the value holds at most of them' : 'below the line worth taking, so check your bookmaker\'s price first'}`,
     `Worth taking at ${odd(b.takeAt)} or more at any bookmaker`, b.open > 1 && b.open !== b.odds ? `First seen at ${odd(b.open)}` : ''].filter(Boolean).join('\n');
+  const where = b.wide ? 'most bookmakers' : b.book;
   return `<div class="mini reveal" data-rec="${esc(rec.recommendationId)}" title="${esc(tip)}"><span class="mini-ico">${s.icon}</span>
-    <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.event.home)} v ${esc(b.event.away)} · ${esc(fmtTime(b.event.start, tzZone(), 'short'))}${b.book ? ` · ${esc(b.book)}` : ''}</small></a>
+    <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.event.home)} v ${esc(b.event.away)} · ${esc(fmtTime(b.event.start, tzZone(), 'short'))}${where ? ` · ${esc(where)}` : ''}</small></a>
     <div class="mini-nums"><b class="pos" title="Expected return at the best price">+${(b.edge * 100).toFixed(1)}%</b><small title="The lowest price still worth taking">take ${odd(b.takeAt)}+</small></div>
     ${legButton(leg, odd(b.odds))}</div>`;
 }
@@ -589,7 +592,7 @@ export function miniPick(b) {
   const rec = recommendationFor(b, trackCalibration());
   const leg = { key: `${b.event.id}|${b.market}|${b.pick}`, eventId: b.event.id, sport: b.event.sport, match: `${b.event.home} vs ${b.event.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p, recommendationId: rec.recommendationId, ...(b.prop ? { prop: b.prop } : {}) };
   const edge = `${b.ev >= 0 ? '+' : ''}${(b.ev * 100).toFixed(1)}%`;
-  const tip = [`${b.market} · ${b.event.league}`, whyLine(b) && `Why: ${whyLine(b)}`, b.fair != null && `Market (no margin): ${pc(b.fair, 0)}`, b.book && `Best price: ${b.book}`, `Chance range ${pc(rec.uncertaintyRange[0], 0)}–${pc(rec.uncertaintyRange[1], 0)}`, rec.settlementRules].filter(Boolean).join('\n');
+  const tip = [`${b.market} · ${b.event.league}`, whyLine(b) && `Why: ${whyLine(b)}`, b.fair != null && `Market (no margin): ${pc(b.fair, 0)}`, b.book && `Price at ${b.book}`, b.best > b.odds && `Better price ${odd(b.best)} at ${b.bestBook}`, `Chance range ${pc(rec.uncertaintyRange[0], 0)}–${pc(rec.uncertaintyRange[1], 0)}`, rec.settlementRules].filter(Boolean).join('\n');
   return `<div class="mini reveal" data-rec="${esc(rec.recommendationId)}" title="${esc(tip)}"><span class="mini-ico">${s.icon}</span>
     <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.event.home)} v ${esc(b.event.away)} · ${b.event.live ? '<span class="live">LIVE</span>' : esc(fmtTime(b.event.start, tzZone(), 'short'))}</small></a>
     <div class="mini-nums"><b title="ATLAS chance">${pc(b.p, 0)}</b><small><span class="mm-need" title="The chance this price needs to break even">needs ${pc(1 / b.odds, 0)} · </span><span class="${b.ev >= 0 ? 'pos' : 'neg'}" title="Estimated return per unit staked${b.ev < 0 ? ': below break-even at this price' : ''}">${edge}</span></small></div>

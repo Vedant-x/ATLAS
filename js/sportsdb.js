@@ -96,3 +96,24 @@ export function tsdbEvent(x, def, records = {}, now = Date.now()) {
     tsdbLeague: x.idLeague || null,
   };
 }
+
+// ---------- reading a little at a time ----------
+// The free key is shared by everyone and allows about 30 requests a minute; reading every sport's
+// five days and every busy competition's season (100+ requests) in one build meant minutes of
+// rate-limit waits and half the requests refused. Instead each read is cached with its time
+// (data/sportsdb.json) and a build makes only the reads that are due, stalest first, up to a budget:
+// today's and yesterday's lists (scores) every 45 minutes, later days every 3 hours, a competition's
+// season every 12 hours, its current season name every week. A refused read ends that build's reads.
+export const TSDB_TTL = { recent: 45 * 6e4, ahead: 3 * 36e5, season: 12 * 36e5, league: 7 * 864e5 };
+
+// The fields the parsers read: all a cached event keeps.
+const KEEP = ['idEvent', 'idLeague', 'strLeague', 'strEvent', 'strHomeTeam', 'strAwayTeam', 'intHomeScore', 'intAwayScore', 'strStatus', 'strProgress', 'dateEvent', 'strTime', 'strTimestamp', 'intRound', 'strVenue', 'strHomeTeamBadge', 'strAwayTeamBadge'];
+export const slim = (x) => Object.fromEntries(KEEP.filter((k) => x?.[k] != null && x[k] !== '').map((k) => [k, x[k]]));
+// A season's finished games as compact rows (records and form need only these), and back.
+export const packResult = (x) => [x.idEvent, x.strHomeTeam, x.strAwayTeam, num(x.intHomeScore), num(x.intAwayScore), tsdbStart(x)];
+export const unpackResult = ([idEvent, strHomeTeam, strAwayTeam, h, a, t]) => ({ idEvent, strHomeTeam, strAwayTeam, intHomeScore: h, intAwayScore: a, strStatus: 'FT', strTimestamp: new Date(t).toISOString() });
+
+// The reads due now, stalest first (never read first), at most `budget`. wanted: [{ path, ttl }].
+export function dueReads(cache, wanted, now = Date.now(), budget = 24) {
+  return wanted.filter((w) => !(cache[w.path]?.at > now - w.ttl)).sort((a, b) => (cache[a.path]?.at || 0) - (cache[b.path]?.at || 0)).slice(0, Math.max(0, budget));
+}

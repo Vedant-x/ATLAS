@@ -82,8 +82,10 @@ function shopped(name, lists, names) {
   const sharp = lists.map((l) => l.find((x) => SHARP.test(x.key) || SHARP.test(x.book)));
   const ref = sharp.every(Boolean) ? sharp.map((x) => x.p) : lists.map((l) => median(l.map((x) => x.p)));
   const inv = ref.map((p) => 1 / p), book = inv.reduce((a, b) => a + b, 0);
+  // med: the typical price (the median across books): what most bookmakers, Stake among them, are
+  // likely to offer. A value bet that holds at the typical price does not depend on one book.
   return { name, consensusFrom: sharp.every(Boolean) ? 'Pinnacle' : `median of ${Math.min(...lists.map((l) => l.length))}+ books`,
-    outcomes: names.map((n, i) => ({ name: n, odds: +best[i].p.toFixed(2), book: best[i].book, cons: +(inv[i] / book).toFixed(4) })) };
+    outcomes: names.map((n, i) => ({ name: n, odds: +best[i].p.toFixed(2), book: best[i].book, cons: +(inv[i] / book).toFixed(4), med: +median(lists[i].map((x) => x.p)).toFixed(2), books: lists[i].length })) };
 }
 
 // Markets in the site's own shape (espn.js marketsFrom), from one matched Odds API event.
@@ -155,6 +157,51 @@ export function matchOdds(events, oddsEvents, { now = Date.now(), window = 6 * 3
   }
   return priced;
 }
+
+// The sharp market on top of a price the match already has (ESPN's DraftKings line): the price shown
+// stays the feed's own (one real bookmaker's), and each outcome gains the consensus fair chance
+// (cons, Pinnacle where it quotes), the typical price across books (med) and the best one on offer
+// (best, bestBook). Value bets and the fair chance then rest on many books, not one US book.
+// Only markets that are the same bet on both sides are touched: the winner (two- or three-way, as the
+// feed has it) and a total or spread at the same line. Returns how many events gained a sharp price.
+const WINNERS = ['Winner', 'Match Result', 'Moneyline'];
+export function overlayOdds(events, oddsEvents, { now = Date.now(), window = 6 * 36e5, fetchedAt = null, maxAge = 12 * 36e5 } = {}) {
+  const parsed = oddsEvents.map((o) => ({ o, h: normName(o.home_team), a: normName(o.away_team), t: Date.parse(o.commence_time) })).filter((x) => Number.isFinite(x.t));
+  let n = 0;
+  for (const e of events) {
+    if (e.live || !(e.start > now) || !e.markets?.length || e.oddsSource === 'the-odds-api') continue;
+    const eh = normName(e.home), ea = normName(e.away);
+    const hit = (e.oddsId && parsed.find((x) => x.o.id === e.oddsId)) || parsed.find((x) => Math.abs(x.t - e.start) <= window && ((x.h === eh && x.a === ea) || (x.h === ea && x.a === eh)));
+    if (!hit) continue;
+    const swapped = hit.h === eh && hit.a === ea ? false : hit.h === ea && hit.a === eh ? true : lineUp(hit.o, e, { window: Infinity })?.orient === 'swapped';
+    const api = swapped ? { home: hit.o.away_team, away: hit.o.home_team } : { home: hit.o.home_team, away: hit.o.away_team };
+    const { markets: got, quotedAt } = marketsFromOdds(hit.o, { home: e.home, away: e.away, api });
+    const at = quotedAt ?? fetchedAt;
+    if (at != null && now - at > maxAge) continue;
+    let touched = false;
+    for (const m of e.markets) {
+      const src = WINNERS.includes(m.name) ? got.find((x) => WINNERS.includes(x.name) && x.outcomes.length === m.outcomes.length)
+        : m.name === 'Spread' ? got.find((x) => x.name === 'Spread' && x.line === m.line) : got.find((x) => x.name === m.name);
+      if (!src) continue;
+      const pairs = m.outcomes.map((o) => [o, src.outcomes.find((x) => x.name === o.name)]);
+      if (!pairs.every(([, x]) => x)) continue;
+      for (const [o, x] of pairs) {
+        o.cons = x.cons; o.med = x.med; o.books = x.books;
+        if (x.odds > o.odds) { o.best = x.odds; o.bestBook = x.book; } else { delete o.best; delete o.bestBook; }
+        o.book ||= e.bookmaker || null;
+      }
+      m.consensusFrom = src.consensusFrom;
+      touched = true;
+    }
+    if (touched) { e.sharpAt = at; e.sharpFrom = 'the-odds-api'; n++; }
+  }
+  return n;
+}
+
+// The leagues most people bet on: their odds are fetched for the sharp market on top of the feed's
+// own price (overlayOdds), refreshed when 8 hours old while they have a match in the next 36 hours.
+export const MAJOR_KEYS = ['basketball_nba', 'soccer_epl', 'soccer_uefa_champs_league', 'soccer_spain_la_liga', 'soccer_italy_serie_a', 'soccer_germany_bundesliga',
+  'soccer_france_ligue_one', 'americanfootball_nfl', 'icehockey_nhl', 'soccer_uefa_europa_league', 'basketball_euroleague', 'americanfootball_ncaaf', 'baseball_mlb', 'mma_mixed_martial_arts'];
 
 // ---------- Fixtures from the bookmakers' own lists ----------
 // The API's event list for a sport key (GET /sports/{key}/events) costs no credits and has no odds:

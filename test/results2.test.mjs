@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parse, findResult, secondReader, secondSourceFor, easternDate } from '../js/results2.js';
+import { parse, findResult, secondReader, secondSourceFor, easternDate, nbaGameId, nbaPropResult, propPlayer } from '../js/results2.js';
 import { applyRead, independentlyConfirmed } from '../js/settle.js';
 
 const T = Date.parse('2026-10-17T23:00:00Z');
@@ -94,4 +94,24 @@ test('second source: OpenDota games grouped into a best-of-3 series', () => {
   const p = { home: 'Yellow Submarine', away: 'CyberHero', start: T, market: 'Winner', pick: 'Yellow Submarine' };
   assert.deepEqual(findResult(p, parse.opendota({ rows })), { done: true, homeScore: 2, awayScore: 1, winner: 'home' });
   assert.equal(findResult(p, parse.opendota({ rows: rows.slice(0, 2) })), null, 'series not over after 1-1');
+});
+
+test('NBA props are confirmed from the NBA\'s own box score: game from the schedule, player by name', () => {
+  const start = Date.parse('2026-10-22T23:30:00Z');
+  const schedule = { leagueSchedule: { gameDates: [{ games: [
+    { gameId: '0022600011', gameDateTimeUTC: '2026-10-22T23:30:00Z', homeTeam: { teamCity: 'Boston', teamName: 'Celtics' }, awayTeam: { teamCity: 'New York', teamName: 'Knicks' } },
+    { gameId: '0022600012', gameDateTimeUTC: '2026-10-22T23:30:00Z', homeTeam: { teamCity: 'Miami', teamName: 'Heat' }, awayTeam: { teamCity: 'Chicago', teamName: 'Bulls' } },
+  ] }] } };
+  const p = { leaguePath: 'basketball/nba', home: 'Boston Celtics', away: 'New York Knicks', start, pick: 'Josh Hart over 6.5 rebounds', prop: { id: '3062679', type: 'Rebounds', target: 7 } };
+  assert.equal(nbaGameId(p, schedule), '0022600011');
+  assert.equal(propPlayer(p), 'Josh Hart');
+  assert.equal(propPlayer({ pick: 'Josh Hart 7+ rebounds' }), 'Josh Hart'); // older labels
+  const box = (players) => ({ game: { gameStatus: 3, homeTeam: { players: [] }, awayTeam: { players } } });
+  const hart = (reb, extra = {}) => ({ name: 'Josh Hart', played: '1', status: 'ACTIVE', statistics: { reboundsTotal: reb, points: 10, assists: 4 }, ...extra });
+  assert.equal(nbaPropResult(p, box([hart(9)])), 'won');
+  assert.equal(nbaPropResult(p, box([hart(6)])), 'lost');
+  assert.equal(nbaPropResult(p, box([hart(0, { played: '0', status: 'INACTIVE', notPlayingReason: 'INACTIVE_INJURY' })])), 'dnp');
+  assert.equal(nbaPropResult(p, box([hart(9), { ...hart(2), name: 'Josh Hart' }])), null, 'two players by that name: not clear');
+  assert.equal(nbaPropResult(p, { game: { gameStatus: 2, homeTeam: { players: [] }, awayTeam: { players: [hart(9)] } } }), null, 'not final yet');
+  assert.equal(nbaPropResult({ ...p, pick: 'Tim Hardaway Jr. over 6.5 rebounds' }, box([{ ...hart(8), name: 'Tim Hardaway Jr.' }])), 'won');
 });

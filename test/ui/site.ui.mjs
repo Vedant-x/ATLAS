@@ -349,7 +349,7 @@ test('value bets: prices above the sharp fair odds, with the edge and the lowest
   const rows = await page.$$eval('.dash-value .mini', (rs) => rs.map((r) => [r.querySelector('.mini-main b').textContent, r.querySelector('.mini-nums').textContent.replace(/\s+/g, ' ').trim(), r.title]));
   assert.deepEqual(rows.map((r) => r[0]), ['Liverpool'], 'Man City drifted from 1.42 to 1.55: left out');
   assert.match(rows[0][1], /\+4\.4%\s*take 1\.76\+/);
-  assert.match(rows[0][2], /Fair odds 1\.72 \(Pinnacle[\s\S]*Best price 1\.80 at Unibet[\s\S]*First seen at 1\.78/);
+  assert.match(rows[0][2], /Fair odds 1\.72 \(Pinnacle[\s\S]*Price 1\.80 at Unibet[\s\S]*First seen at 1\.78/);
   await page.locator('.dash-value').scrollIntoViewIfNeeded();
   await shot(page, 'value-bets');
   assert.deepEqual(errors, []);

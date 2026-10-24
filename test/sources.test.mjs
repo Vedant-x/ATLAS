@@ -165,3 +165,23 @@ test('Understat: xG table from the hex-escaped page data, onto big-five matches'
   assert.equal(e.xg.away.xga, 1.9);
   assert.equal(teamsData('<html>no data</html>'), null);
 });
+
+test('football-data.co.uk: on a match another feed prices, Pinnacle\'s chances become the sharp reference and the price stays', () => {
+  const now = Date.parse('2026-10-20T00:00:00Z');
+  const e = { id: 'f', leaguePath: 'soccer/eng.1', sport: 'football', home: 'Nottingham Forest', away: 'Manchester United', start: Date.parse('2026-10-25T16:30:00Z'), bookmaker: 'DraftKings',
+    markets: [{ name: 'Match Result', outcomes: [{ name: 'Nottingham Forest', odds: 3.25 }, { name: 'Draw', odds: 3.4 }, { name: 'Manchester United', odds: 2.2 }] },
+      { name: 'Total 2.5', outcomes: [{ name: 'Over 2.5', odds: 1.75 }, { name: 'Under 2.5', odds: 2.05 }] }] };
+  const r = applyFixtures([e], parseFixtures(CSV), { now, fileAt: now - 6 * 36e5 });
+  assert.equal(r.sharp, 1);
+  assert.equal(r.priced, 0);
+  const [h, d, a] = e.markets[0].outcomes;
+  assert.equal(h.odds, 3.25, 'DraftKings price kept');
+  const t = 1 / 3.15 + 1 / 3.5 + 1 / 2.32;
+  assert.ok(Math.abs(h.cons - (1 / 3.15) / t) < 1e-3 && Math.abs(a.cons - (1 / 2.32) / t) < 1e-3 && d.cons > 0);
+  assert.equal(e.markets[0].consensusFrom, 'Pinnacle (football-data.co.uk)');
+  assert.equal(h.book, 'DraftKings');
+  assert.ok(e.markets[1].outcomes[0].cons > 0.5, 'Pinnacle over/under 2.5 too');
+  // A file older than 12 hours is no sharp reference.
+  const late = { ...e, sharpFrom: undefined, markets: [{ name: 'Match Result', outcomes: [{ name: 'Nottingham Forest', odds: 3.25 }, { name: 'Draw', odds: 3.4 }, { name: 'Manchester United', odds: 2.2 }] }] };
+  assert.equal(applyFixtures([late], parseFixtures(CSV), { now, fileAt: now - 13 * 36e5 }).sharp, 0);
+});

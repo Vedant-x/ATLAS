@@ -2,6 +2,9 @@
 // `path` is the ESPN API path (sport/league). NPB and KBO come from the official league sites
 // (built by scripts/pages.mjs), so their path starts with "atlas/". So do cricket, F1 and esports.
 
+// demand: a league no bookmaker feed here prices (college volleyball, soccer, hockey, field hockey).
+// The build leaves it out (it was a third of the board and none of it could be bet or checked); its
+// page still loads it straight from ESPN when opened.
 const L = (path, name, short, extra = {}) => ({ path, name, short: short || name, ...extra });
 
 export const CATALOG = [
@@ -22,7 +25,7 @@ export const CATALOG = [
       { name: 'Africa', leagues: [L('soccer/rsa.1', 'South African Premiership'), L('soccer/caf.champions', 'CAF Champions League'), L('soccer/caf.confed', 'CAF Confederation Cup')] },
       { name: 'International', leagues: [L('soccer/fifa.world', 'FIFA World Cup'), L('soccer/fifa.worldq.uefa', 'WC Qualifying · UEFA'), L('soccer/fifa.worldq.conmebol', 'WC Qualifying · CONMEBOL'), L('soccer/fifa.worldq.concacaf', 'WC Qualifying · Concacaf'), L('soccer/fifa.worldq.afc', 'WC Qualifying · AFC'), L('soccer/fifa.worldq.caf', 'WC Qualifying · CAF'), L('soccer/fifa.friendly', 'International Friendlies'), L('soccer/uefa.euro', 'EURO'), L('soccer/uefa.euroq', 'EURO Qualifying'), L('soccer/conmebol.america', 'Copa América'), L('soccer/concacaf.gold', 'Gold Cup'), L('soccer/caf.nations', 'Africa Cup of Nations'), L('soccer/afc.asian.cup', 'AFC Asian Cup'), L('soccer/fifa.cwc', 'Club World Cup')] },
       { name: 'Women', leagues: [L('soccer/eng.w.1', "Women's Super League"), L('soccer/usa.nwsl', 'NWSL'), L('soccer/esp.w.1', 'Liga F'), L('soccer/fra.w.1', 'Première Ligue'), L('soccer/uefa.wchampions', "Women's Champions League"), L('soccer/aus.w.1', 'A-League Women'), L('soccer/fifa.wwc', "Women's World Cup")] },
-      { name: 'College', leagues: [L('soccer/usa.ncaa.m.1', "NCAA Men's Soccer"), L('soccer/usa.ncaa.w.1', "NCAA Women's Soccer")] },
+      { name: 'College', leagues: [L('soccer/usa.ncaa.m.1', "NCAA Men's Soccer", '', { demand: true }), L('soccer/usa.ncaa.w.1', "NCAA Women's Soccer", '', { demand: true })] },
     ],
   },
   {
@@ -47,7 +50,7 @@ export const CATALOG = [
     groups: [
       { name: 'Pro', leagues: [L('hockey/nhl', 'NHL'), L('atlas/khl', 'KHL (Russia)', 'KHL')] },
       { name: 'Europe', leagues: [L('atlas/liiga', 'Liiga (Finland)', 'Liiga'), L('atlas/swissnl', 'Swiss hockey (National League & Swiss League)', 'Swiss hockey')] },
-      { name: 'College', leagues: [L('hockey/mens-college-hockey', "NCAA Men's Hockey"), L('hockey/womens-college-hockey', "NCAA Women's Hockey")] },
+      { name: 'College', leagues: [L('hockey/mens-college-hockey', "NCAA Men's Hockey", '', { demand: true }), L('hockey/womens-college-hockey', "NCAA Women's Hockey", '', { demand: true })] },
     ],
   },
   {
@@ -106,7 +109,7 @@ export const CATALOG = [
   },
   {
     id: 'fieldhockey', name: 'Field Hockey', icon: '🏑', color: '#5cffb0', model: 'binary',
-    groups: [{ name: 'College', leagues: [L('field-hockey/womens-college-field-hockey', "NCAA Women's")] }],
+    groups: [{ name: 'College', leagues: [L('field-hockey/womens-college-field-hockey', "NCAA Women's", '', { demand: true })] }],
   },
   {
     id: 'waterpolo', name: 'Water Polo', icon: '🤽', color: '#4da6ff', model: 'binary',
@@ -116,7 +119,7 @@ export const CATALOG = [
     id: 'volleyball', name: 'Volleyball', icon: '🏐', color: '#ffe36e', model: 'binary',
     groups: [
       { name: 'Pro & international', leagues: [L('atlas/volleyball', 'Pro leagues & internationals', 'Pro volleyball')] },
-      { name: 'College', leagues: [L('volleyball/mens-college-volleyball', "NCAA Men's"), L('volleyball/womens-college-volleyball', "NCAA Women's")] },
+      { name: 'College', leagues: [L('volleyball/mens-college-volleyball', "NCAA Men's", '', { demand: true }), L('volleyball/womens-college-volleyball', "NCAA Women's", '', { demand: true })] },
     ],
   },
   // From TheSportsDB (js/sportsdb.js): fixtures, scores and each side's recent results, no prices.

@@ -45,7 +45,7 @@ export function parseFixtures(csv) {
     const res = x12 || avg || b365;
     if (!res) continue;
     const ou = pair(r, 'P>2.5', 'P<2.5') || pair(r, 'Avg>2.5', 'Avg<2.5') || pair(r, 'B365>2.5', 'B365<2.5');
-    out.push({ div: r.Div, leaguePath, start, home: r.HomeTeam, away: r.AwayTeam, res, ou, book: x12 ? 'Pinnacle' : avg ? 'bookmaker average' : 'Bet365' });
+    out.push({ div: r.Div, leaguePath, start, home: r.HomeTeam, away: r.AwayTeam, res, ou, book: x12 ? 'Pinnacle' : avg ? 'bookmaker average' : 'Bet365', ouSharp: Boolean(pair(r, 'P>2.5', 'P<2.5')) });
   }
   return out;
 }
@@ -86,17 +86,45 @@ export function fixtureIndex(fixtures) {
   };
 }
 
-// Prices onto unpriced, not-live, upcoming matches. fileAt: the file's Last-Modified time; prices
-// older than maxAge are not applied. Returns { priced, unmatched: [ATLAS names with no fixture] }.
-export function applyFixtures(events, fixtures, { now = Date.now(), fileAt = null, maxAge = 7 * 864e5 } = {}) {
-  const out = { priced: 0, unmatched: [] };
+// Pinnacle's margin-free chances onto a priced match's own market (the feed's price stays): the
+// sharp reference for Value bets and the fair chance. Only within sharpAge of the file's date, as an
+// old line is no reference. Returns whether any market gained it.
+const devig = (prices) => { const inv = prices.map((x) => 1 / x), t = inv.reduce((a, b) => a + b, 0); return inv.map((x) => +(x / t).toFixed(4)); };
+function sharpen(e, f) {
+  let done = false;
+  const res = e.markets.find((m) => ['Match Result', 'Winner', 'Moneyline'].includes(m.name) && m.outcomes?.length === 3);
+  const byName = res && [e.home, 'Draw', e.away].map((n) => res.outcomes.find((o) => o.name === n));
+  if (byName?.every(Boolean)) {
+    devig(f.res).forEach((c, i) => { byName[i].cons = c; byName[i].book ||= e.bookmaker || null; });
+    res.consensusFrom = 'Pinnacle (football-data.co.uk)'; done = true;
+  }
+  const tot = f.ou && f.ouSharp && e.markets.find((m) => m.name === 'Total 2.5');
+  const ou = tot && ['Over 2.5', 'Under 2.5'].map((n) => tot.outcomes.find((o) => o.name === n));
+  if (ou?.every(Boolean)) {
+    devig(f.ou).forEach((c, i) => { ou[i].cons = c; ou[i].book ||= e.bookmaker || null; });
+    tot.consensusFrom = 'Pinnacle (football-data.co.uk)'; done = true;
+  }
+  return done;
+}
+
+// Prices onto unpriced, not-live, upcoming matches; for matches another feed already prices,
+// Pinnacle's chances as the sharp reference (sharpen). fileAt: the file's Last-Modified time; prices
+// older than maxAge are not applied. Returns { priced, sharp, unmatched: [ATLAS names with no fixture] }.
+export function applyFixtures(events, fixtures, { now = Date.now(), fileAt = null, maxAge = 7 * 864e5, sharpAge = 12 * 36e5 } = {}) {
+  const out = { priced: 0, sharp: 0, unmatched: [] };
   if (fileAt != null && now - fileAt > maxAge) return out;
   const idx = fixtureIndex(fixtures);
   const leagues = new Set(Object.values(FD_LEAGUES));
   // The file covers a few days; a match outside them is not a name that failed to match.
   const from = Math.min(...fixtures.map((f) => f.start)) - 864e5, to = Math.max(...fixtures.map((f) => f.start)) + 864e5;
+  const sharpOk = fileAt == null || now - fileAt <= sharpAge;
   for (const e of events) {
-    if (!leagues.has(e.leaguePath) || e.live || !(e.start > now) || e.markets?.length || !countryOf(e.leaguePath)) continue;
+    if (!leagues.has(e.leaguePath) || e.live || !(e.start > now) || !countryOf(e.leaguePath)) continue;
+    if (e.markets?.length) {
+      const f = sharpOk && !e.sharpFrom && e.oddsSource !== 'football-data' ? idx.find(e) : null;
+      if (f?.book === 'Pinnacle' && sharpen(e, f)) { e.sharpFrom = 'football-data'; e.sharpAt = fileAt ?? now; out.sharp++; }
+      continue;
+    }
     const f = idx.find(e);
     if (!f) { if (e.start >= from && e.start <= to) out.unmatched.push(`${e.home} v ${e.away} [${e.leaguePath.split('/')[1]}]`); continue; }
     e.markets = [{ name: 'Match Result', outcomes: [{ name: e.home, odds: f.res[0] }, { name: 'Draw', odds: f.res[1] }, { name: e.away, odds: f.res[2] }] }];
