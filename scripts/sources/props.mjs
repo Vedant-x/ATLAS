@@ -19,14 +19,7 @@ export async function officialNbaReport() {
   if (!url) throw new Error('no report linked from official.nba.com');
   const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(20000) });
   if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
-  const raw = pdfPages(Buffer.from(await r.arrayBuffer()), inflateSync);
-  // TEMPORARY layout dump (removed before merge): how the real file draws its cells.
-  if (process.env.NBA_REPORT_DUMP) {
-    const c = raw[0] || '', at = Math.max(0, c.indexOf('(Game)') - 1500);
-    log(`  NBA DUMP content[${at}..]: ${JSON.stringify(c.slice(at, at + 5000))}`);
-    raw.slice(0, 2).forEach((p, n) => textRows(textItems(p)).slice(0, n ? 12 : 45).forEach((row) => log(`  NBA DUMP p${n + 1} y=${row.y}: ${row.words.map((w) => `${w.x}:${w.s}`).join(' | ')}`)));
-  }
-  const pages = raw.map((c) => textRows(textItems(c))).filter((rows) => rows.length);
+  const pages = pdfPages(Buffer.from(await r.arrayBuffer()), inflateSync).map((c) => textRows(textItems(c))).filter((rows) => rows.length);
   return { url, at: reportTime(url), entries: parseReport(pages), pages: pages.length, rows: (pages[0] || []).slice(0, 14).map((row) => row.words.map((w) => w.s).join(' ')) };
 }
 

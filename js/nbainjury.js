@@ -3,10 +3,10 @@
 // game, and update it as statuses change. Read as text (no PDF library): each page, in the page
 // tree's order, is a deflated content stream whose text is drawn word by word (GemBox, WinAnsi
 // literal strings). Words are placed on the page through the drawing transforms and grouped into rows
-// by height; each row is read by what its cells hold (date, time, a matchup like NYK@BOS, one of that
-// game's two teams, "Last, First", status, reason), so it does not depend on where the columns sit.
-// The Date, Matchup and Team cells are filled only on a block's first row, so each row carries the
-// last ones seen forward, across page breaks too. Pure, for tests: the build fetches.
+// by height; each row is read by what its cells hold (date, time, a matchup like NYK@BOS, a team,
+// "Last, First", status, reason). The Date, Time, Matchup and Team cells are filled only on a block's
+// first row, so each row carries the last ones seen forward, across page breaks too. Pure, for
+// tests: the build fetches. The layout was read from the league's own file (04:00 AM, 24 Oct 2026).
 
 export const REPORT_PAGE = (y) => `https://official.nba.com/nba-injury-report-${y}-${String(y + 1).slice(2)}-season/`;
 export const reportLinks = (html) => [...new Set([...String(html).matchAll(/https?:\/\/ak-static\.cms\.nba\.com\/referee\/injury\/Injury-Report_[\w-]+\.pdf/g)].map((m) => m[0]))];
@@ -140,76 +140,71 @@ export const TEAMS = {
 };
 const ALSO = { LAC: ['Los Angeles Clippers'] };
 
-// The team a row's words start with, among the game's two (all 30 before a matchup is seen): its
-// whole name, or its first words when the name wraps onto the next line (a player's "Last," word
-// never matches: no team word ends with a comma). → { name, n (words used) } or null when none or
-// more than one fits.
-function teamAt(words, game) {
-  let best = null, tie = false;
-  for (const ab of game || Object.keys(TEAMS)) {
+// The team whose whole name a row's words start with. → { name, n (words used) } or null.
+function teamAt(words) {
+  for (const ab of Object.keys(TEAMS)) {
     for (const name of [TEAMS[ab], ...(ALSO[ab] || [])]) {
       const nw = name.split(' ');
-      let k = 0;
-      while (k < nw.length && words[k] === nw[k]) k++;
-      if (k === nw.length) return { name: TEAMS[ab], n: k };
-      if (!k || (best && k < best.n)) continue;
-      if (best && k === best.n) { if (best.name !== TEAMS[ab]) tie = true; } else { best = { name: TEAMS[ab], n: k }; tie = false; }
+      if (nw.every((w, j) => words[j] === w)) return { name: TEAMS[ab], n: nw.length };
     }
   }
-  return best && !tie ? best : null;
+  return null;
 }
-const flip = (name) => { const [last, first] = name.replace(/,\s*$/, '').split(/,\s*/); return first ? `${first} ${last}`.trim() : last; };
-const said = (ws) => ws.map((w) => w.s).join(' ');
+// "Brunson, Jalen" → "Jalen Brunson"; "Udeh, Jr., Ernest" → "Ernest Udeh Jr.".
+const flip = (name) => { const parts = name.split(/,\s*/).filter(Boolean); const first = parts.length > 1 ? parts.pop() : ''; return `${first} ${parts.join(' ')}`.trim(); };
+// Words as text; a hyphenated word drawn in two ("Two-", "Way"; "Gilgeous-", "Alexander,") joined.
+const said = (ws) => ws.map((w) => w.s).join(' ').replace(/(\S)- (?=\S)/g, '$1-');
 
 // The report's entries: [{ date, time, matchup, team, player ("First Last"), status, reason }].
+// As the league draws it: the header only on the first page; the matchup and team on the first row
+// of their block; when a reason runs to two or more lines, the row's other cells are centred on it,
+// so its lines sit above and below the row (7 points either side, rows 23 apart).
 export function parseReport(rowsByPage) {
   const out = [];
-  let carry = {}, game = null, statusX = null;
+  let carry = {}, statusX = null;
   for (const rows of rowsByPage) {
-    // The header row, where it repeats: what sits above it is the page's title. Where the status
-    // column starts tells a name (left of it) from a reason (right of it).
+    // The header row: what sits above it is the page's title. Where the status column starts tells
+    // a name (left of it) from a reason (right of it), on every page.
     const head = rows.find((r) => { const t = said(r.words); return /Player Name/.test(t) && /Current Status/.test(t); });
     statusX = head?.words.find((w, i) => w.s === 'Current' && head.words[i + 1]?.s === 'Status')?.x ?? statusX;
-    let pending = null; // a player's name whose status sits a line lower: { name, reason }
+    const anchors = []; // rows holding a player or a team: { y, entry?, parts }
+    const loose = []; // lines holding only some of a reason: { y, s }
     for (const r of rows) {
       if (head && r.y >= head.y - 1) continue;
       const ws = r.words.flatMap((w) => w.s.split(' ').map((s) => ({ x: w.x, s })));
       const line = said(ws);
       if (!line || /^Page \d+ of \d+$/i.test(line) || /^Injury Report:/i.test(line)) continue;
-      let i = 0, fresh = false, m;
+      let i = 0, fresh = false;
       if (/^\d{2}\/\d{2}\/\d{4}$/.test(ws[i]?.s)) { carry = { ...carry, date: ws[i].s }; i++; fresh = true; }
       if (/^\d{1,2}:\d{2}$/.test(ws[i]?.s) && ws[i + 1]?.s === '(ET)') { carry = { ...carry, time: `${ws[i].s} (ET)` }; i += 2; fresh = true; }
-      if ((m = /^([A-Z]{2,4})@([A-Z]{2,4})$/.exec(ws[i]?.s || ''))) {
-        carry = { ...carry, matchup: m[0], team: null };
-        game = TEAMS[m[1]] && TEAMS[m[2]] ? [m[1], m[2]] : null;
-        i++;
-        fresh = true;
-      }
-      const team = teamAt(ws.slice(i).map((w) => w.s), game);
+      if (/^[A-Z]{2,4}@[A-Z]{2,4}$/.test(ws[i]?.s || '')) { carry = { ...carry, matchup: ws[i].s, team: null }; i++; fresh = true; }
+      const team = teamAt(ws.slice(i).map((w) => w.s));
       if (team) { carry = { ...carry, team: team.name }; i += team.n; fresh = true; }
       const rest = ws.slice(i);
-      // The status: the first status word with a name before it (or one waiting from the line above),
-      // that name left of the status column, so a reason's words are never read as a player.
+      // The status: the first status word with a name before it, that name left of the status
+      // column (so a reason's words are never read as a player).
       const k = rest.findIndex((w) => STATUSES.test(w.s));
-      if (k >= 0 && (k > 0 || pending) && rest.slice(0, k).every((w) => statusX == null || w.x <= statusX)) {
-        const name = k > 0 ? said(rest.slice(0, k)) : pending.name;
-        const reason = [k > 0 ? '' : pending.reason, said(rest.slice(k + 1))].filter(Boolean).join(' ');
+      if (k > 0 && rest.slice(0, k).every((w) => statusX == null || w.x <= statusX)) {
+        const a = { y: r.y, parts: [{ y: r.y, s: said(rest.slice(k + 1)) }] };
         // Players of a team the reader did not recognise are left out rather than given to the last one.
-        if (carry.team) out.push({ ...carry, player: flip(name), status: rest[k].s[0].toUpperCase() + rest[k].s.slice(1).toLowerCase(), reason });
-        pending = null;
-        continue;
-      }
-      // No status on this line: a name whose status sits a line lower (left of the status column),
-      // the rest of a reason that wrapped (right of it), "NOT YET SUBMITTED", or the rest of a team
-      // name that wrapped (passed over).
-      const left = said(rest.filter((w) => statusX != null && w.x <= statusX));
-      const right = said(rest.filter((w) => statusX == null || w.x > statusX));
-      if (left.includes(',')) pending = { name: left, reason: right };
+        if (carry.team) { a.entry = { ...carry, player: flip(said(rest.slice(0, k))), status: rest[k].s[0].toUpperCase() + rest[k].s.slice(1).toLowerCase(), reason: '' }; out.push(a.entry); }
+        anchors.push(a);
+      } else if (fresh) anchors.push({ y: r.y, parts: [] }); // a team "NOT YET SUBMITTED"
       else {
-        pending = null;
-        if (right && !fresh && out.length) out.at(-1).reason = `${out.at(-1).reason} ${right}`.trim();
+        const s = said(rest.filter((w) => statusX == null || w.x > statusX));
+        if (s) loose.push({ y: r.y, s });
       }
     }
+    // Each loose line to the nearest row (the upper one on a tie), when it is close.
+    for (const l of loose) {
+      let best = null;
+      for (const a of anchors) {
+        const d = Math.abs(a.y - l.y);
+        if (!best || d < best.d - 0.01 || (d <= best.d + 0.01 && a.y > best.a.y)) best = { a, d };
+      }
+      if (best && best.d <= 20) best.a.parts.push(l);
+    }
+    for (const a of anchors) if (a.entry) a.entry.reason = a.parts.filter((p) => p.s).sort((p, q) => q.y - p.y).map((p) => p.s).join(' ');
   }
   return out;
 }
