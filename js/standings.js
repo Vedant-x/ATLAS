@@ -51,6 +51,6 @@ export function standingsTable(entries, { goals = false } = {}) {
   const rows = ranked(entries), cols = usedColumns(rows);
   const txt = (x) => (typeof x === 'function' ? x(goals) : x);
   const cell = (c, v) => `<td class="num${c.key === 'PTS' ? ' pts' : ''}">${esc(v ?? '')}</td>`;
-  return `<div class="table-wrap"><table class="tbl tight standings"><thead><tr><th class="num">#</th><th>Team</th>${cols.map((c) => `<th class="num"><abbr title="${esc(txt(c.title))}">${esc(txt(c.label))}</abbr></th>`).join('')}</tr></thead>
+  return `<div class="table-wrap"><table class="tbl tight standings"><thead><tr><th class="num">#</th><th>Team</th>${cols.map((c) => `<th class="num"><abbr data-tip="${esc(txt(c.title))}">${esc(txt(c.label))}</abbr></th>`).join('')}</tr></thead>
     <tbody>${rows.map((e, i) => `<tr class="${e.ours ? 'ours' : ''}"><td class="num">${esc(e.stats?.RANK ?? i + 1)}</td><td><b>${esc(e.team)}</b></td>${cols.map((c) => cell(c, e.stats?.[c.key])).join('')}</tr>`).join('')}</tbody></table></div>`;
 }

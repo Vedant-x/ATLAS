@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://vedant-x.github.io/ATLAS/sitemap.xml

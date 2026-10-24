@@ -45,5 +45,5 @@ export function setTheme(patch) {
 applyTheme();
 
 // The Display panel rows: accent swatches and background chips.
-export const themeRows = () => `<div class="dp-row"><span>Colour</span><div class="swatches">${Object.entries(ACCENTS).map(([k, a]) => `<button class="swatch ${cur.accent === k ? 'on' : ''}" data-theme-accent="${k}" aria-pressed="${cur.accent === k}" title="${a.label}" aria-label="${a.label}" style="--sw:${a.hex || 'conic-gradient(#d2ff00, #00e5ff, #b08cff, #ff4fd8, #ff9f43, #d2ff00)'}"></button>`).join('')}</div></div>
+export const themeRows = () => `<div class="dp-row"><span>Colour</span><div class="swatches">${Object.entries(ACCENTS).map(([k, a]) => `<button class="swatch ${cur.accent === k ? 'on' : ''}" data-theme-accent="${k}" aria-pressed="${cur.accent === k}" aria-label="${a.label}" aria-label="${a.label}" style="--sw:${a.hex || 'conic-gradient(#d2ff00, #00e5ff, #b08cff, #ff4fd8, #ff9f43, #d2ff00)'}"></button>`).join('')}</div></div>
     <div class="dp-row"><span>Background</span>${Object.entries(SURFACES).map(([k, s]) => `<button class="chip ${cur.surface === k ? 'on' : ''}" data-theme-surface="${k}" aria-pressed="${cur.surface === k}"><i class="sf-dot" style="background:rgb(${s.panel})"></i>${s.label}</button>`).join('')}</div>`;

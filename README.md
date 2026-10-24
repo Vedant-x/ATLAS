@@ -47,7 +47,7 @@ Every build publishes `data/sources.json`, shown on the Sources page (`#/sources
 
 ## How it runs
 
-- `.github/workflows/pages.yml` builds the site and `data/index.json` and redeploys about every 10 minutes
+- `.github/workflows/pages.yml` builds the site and `data/index.json` and redeploys about every 20 minutes
   (each run queues the next). It also records shortlist picks and their results on the `track-record`
   branch and publishes live NPB/KBO/esports scores on the `live-data` branch.
 - In the browser, live scores refresh straight from ESPN every few seconds while games are on.

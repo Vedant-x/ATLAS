@@ -63,7 +63,7 @@ export function propReadiness(e, x, { now = Date.now(), priceAt = null, logsAt =
 const pc = (p, d = 0) => (Number.isFinite(p) ? `${(p * 100).toFixed(d)}%` : '–');
 const sign = (x, d = 0) => `${x >= 0 ? '+' : '−'}${Math.abs(x * 100).toFixed(d)}`;
 const escAttr = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-export const readinessBadge = (r) => `<span class="ready ready-${r.state}" title="${escAttr(r.checks.map((c) => `${c.ok === true ? '✓' : c.ok === false ? '✗' : '–'} ${c.label}: ${c.note}`).join('\n'))}">${escAttr(r.label)}</span>`;
+export const readinessBadge = (r) => `<span class="ready ready-${r.state}" data-tip="${escAttr(r.checks.map((c) => `${c.ok === true ? '✓' : c.ok === false ? '✗' : '–'} ${c.label}: ${c.note}`).join('\n'))}">${escAttr(r.label)}</span>`;
 
 // a: { hits, n, avg, forecast, range, nEff, priced, odds, marketEst, why, readiness, priceAge, logsAge, filtersNote }
 export function analysisPanel(a) {
@@ -77,7 +77,7 @@ export function analysisPanel(a) {
     <div class="pl-nums">
       <div><small>Hit rate · ${a.n} game${a.n === 1 ? '' : 's'} selected</small><b>${a.n ? pc(a.hits / a.n) : '–'}</b><em>${a.hits}/${a.n}${a.avg != null ? ` · avg ${a.avg.toFixed(1)}` : ''}${a.filtersNote ? ` · ${a.filtersNote}` : ''}</em></div>
       <div class="pl-fc"><small>ATLAS forecast · next game</small><b>${pc(a.forecast)}</b><em>${a.priced ? '' : 'model only, no price at this line'}${a.why ? `${a.priced ? '' : ' · '}${escAttr(a.why)}` : ''}</em></div>
-      <div title="The price's implied chance less an assumed 5% margin: one price is offered, so the true margin cannot be calculated"><small>Market estimate · assumed 5% margin</small><b>${a.priced ? pc(a.marketEst) : '–'}</b><em>${gap != null ? `forecast ${sign(gap)} pts vs it${gap > 0 && ret < 0 ? ', still below break-even' : ''}` : '–'}</em></div>
+      <div data-tip="The chance the price gives, less an assumed 5% bookmaker cut: one price is offered, so the true margin cannot be calculated"><small>Market estimate · assumed 5% margin</small><b>${a.priced ? pc(a.marketEst) : '–'}</b><em>${gap != null ? `forecast ${sign(gap)} pts vs it${gap > 0 && ret < 0 ? ', still below break-even' : ''}` : '–'}</em></div>
       <div><small>Break-even · return at this price</small><b>${a.priced ? pc(be) : '–'}</b><em>${ret != null ? `estimated return <span class="${ret >= 0 ? 'pos' : 'neg'}">${sign(ret, 1)}%</span>` : '–'}</em></div>
     </div>
     <dl class="an-strip">

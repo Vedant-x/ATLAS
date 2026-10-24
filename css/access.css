@@ -1,0 +1,74 @@
+/* ATLAS styles 6/6: reach and readability, loaded last so it wins. Every control is at least 44 px
+   on touch screens (32 px with a mouse), no text is under 12 px (the other parts were raised to
+   it), and the detail behind a card opens in a tip on tap (js/tips.js), never only on hover. */
+
+/* ---------- tips ---------- */
+.tip { position: fixed; z-index: 400; max-width: min(340px, calc(100vw - 16px)); padding: 10px 13px; border-radius: 12px;
+  background: rgb(var(--panel-rgb)); border: 1px solid var(--line2); box-shadow: 0 14px 40px rgba(0, 0, 0, .55);
+  color: var(--fg); font: 500 13px/1.5 var(--sans); white-space: pre-line; pointer-events: none; }
+[data-tip] { cursor: help; }
+.mini[data-tip], .leg[data-tip] { cursor: pointer; }
+@media (hover: none) { [data-tip] { -webkit-tap-highlight-color: transparent; } }
+
+/* ---------- targets ---------- */
+:where(button, .chip, .pchip, .tabs a, .research-tabs a, .builder-nav a, summary, select) { min-height: 32px; }
+:where(.foot-links a, .foot-links button) { display: inline-flex; align-items: center; min-height: 32px; padding: 0 6px; }
+@media (pointer: coarse), (max-width: 600px) {
+  :where(button, .chip, .pchip, .tabs a, .research-tabs a, .builder-nav a, summary, select, [role='button']) { min-height: 44px; }
+  :where(button, .chip, .pchip, .leg) { min-width: 44px; }
+  .tbl .leg, button.leg { min-height: 44px; }
+  :where(.research-tabs a, .builder-nav a) { display: inline-flex; align-items: center; }
+  :where(.foot-links a, .foot-links button, .zone-link, .more-sheet a, .rg-links a, .sources-tbl a) { display: inline-flex; align-items: center; min-height: 44px; }
+  .foot-links { row-gap: 0; }
+  .slip-btn, button.chip, a.chip, .pchip, .subnav a, .mini .leg, button.leg { min-height: 44px !important; }
+  .subnav a { display: inline-flex; align-items: center; }
+  .mini .mini-main { min-height: 44px; display: flex; flex-direction: column; justify-content: center; }
+  .foot-links a, .rg-links a { min-width: 44px; justify-content: center; padding: 0 8px; }
+  .tr-lists td:first-child a { white-space: nowrap; display: inline-flex; align-items: center; min-height: 44px; }
+}
+/* With a mouse: the breadcrumbs, the dock, the section menu and the record's list links at 32 px. */
+:where(.kicker a, .dock-btn, .tr-lists td a, .dock-trail a, .subnav a) { display: inline-flex; align-items: center; min-height: 32px; }
+.kicker a { min-width: 32px; justify-content: center; }
+.rec-line a { display: inline-flex; align-items: center; min-height: 32px; padding: 0 4px; }
+.kicker a, .dock-trail a { padding: 0 5px; min-width: 32px; justify-content: center; }
+.rg-links a { display: inline-flex; align-items: center; min-height: 32px; }
+@media (pointer: coarse), (max-width: 600px) {
+  .kicker a, .dock-btn, .rec-line a, .rg-links a, .dash-list a { min-height: 44px !important; }
+  .dash-list a { display: inline-flex; align-items: center; }
+  .dock-btn { min-width: 44px; }
+}
+
+/* ---------- live ---------- */
+/* The word stays still and readable; only a dot beside it pulses (blinking text failed contrast half
+   the time and never stopped). */
+.live { animation: none !important; opacity: 1 !important; color: #ff6b8a; }
+.live:not(i)::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: currentColor; vertical-align: 1px; animation: blink 1.4s infinite; }
+:root[data-motion="reduced"] .live:not(i)::before { animation: none; }
+
+/* ---------- age check ---------- */
+.age-year { display: grid; gap: 6px; justify-items: center; font: 700 12px var(--mono); letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
+.age-year input { width: 140px; min-height: 48px; text-align: center; font: 700 22px var(--mono); letter-spacing: 4px; border-radius: 12px; border: 1px solid var(--line2); background: rgba(255, 255, 255, .04); color: var(--fg); }
+.age-year input:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+.age-confirm { display: flex; gap: 10px; align-items: center; justify-content: center; text-align: left; font-size: 14px; color: #c9c9d0; min-height: 44px; cursor: pointer; }
+.age-confirm input { width: 22px; height: 22px; accent-color: var(--accent); flex: none; }
+.age-err { color: var(--neg) !important; font-weight: 600; }
+.rg-links li { margin: 4px 0; }
+
+/* ---------- the assistant on phones ---------- */
+/* No floating character over the odds buttons: on a phone the assistant opens from More (Ask ATLAS). */
+@media (max-width: 820px) { .ai-root:not(.open) .ai-launch { display: none; } }
+
+/* ---------- match page on a phone ---------- */
+/* The win chances side by side, small, instead of three full-width dials one above another (the
+   overview panel alone was a full phone screen). The fair and bookmaker odds stay under each. */
+@media (max-width: 600px) {
+  .sides.three, .sides.two { grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: 8px; }
+  .sides.two { --cols: 2; }
+  .side { flex-direction: column; align-items: stretch; gap: 8px; padding: 10px 8px; }
+  .side .gauge { width: 78px; flex-basis: 78px; margin: 0 auto; }
+  .side .gauge b { font-size: 22px; }
+  .side .gauge small { max-width: 64px; }
+  .side dl { grid-template-columns: 1fr; gap: 0; text-align: center; font-size: 12px; }
+  .side dt { margin-top: 4px; }
+  .side dd { text-align: center; }
+}

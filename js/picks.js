@@ -67,7 +67,7 @@ export function coherentBets(e, a, { cal = null, max = 3, preferBook = false } =
   const out = [];
   // 1. Result pick for the lean side (the strongest by estimated chance; bookmaker prices first on ties).
   const result = cands.filter((c) => playable(c) && isResult(c.market) && sideOf(e, c.market, c.pick)).sort((x, y) => (preferBook ? y.book - x.book : 0) || y.q - x.q || y.book - x.book)[0];
-  if (result) out.push({ label: 'Main pick', ...result, why: result.book ? 'bookmaker price, margin removed' : 'ATLAS model' });
+  if (result) out.push({ label: 'Main pick', ...result, why: result.book ? 'bookmaker price, with its cut taken out' : 'ATLAS model' });
   // 2. One goals/points pick in a single direction (never an over next to an under).
   const goals = cands.filter((c) => playable(c) && directionOf(c.market, c.pick) && !sideOf(e, c.market, c.pick) && c.q >= 0.58).sort((x, y) => y.q - x.q || y.book - x.book)[0];
   if (goals) out.push({ label: e.sport === 'tennis' || e.sport === 'esports' ? 'Sets / maps' : 'Goals / points', ...goals, why: 'from the expected score model' });

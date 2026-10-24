@@ -22,7 +22,7 @@ const SPORT_NAME = { basketball: 'Basketball', baseball: 'Baseball', hockey: 'Ho
 // 'edge' sorts by the estimated return at the offered price (forecast x odds - 1), not by the gap to
 // the market estimate: a forecast a point above the market estimate can still lose money at the price.
 const SORTS = [['edge', 'Best return'], ['chance', 'Likeliest'], ['l10', 'Best last 10'], ['time', 'Soonest']];
-export const MARGIN_NOTE = 'Market estimate: the price\'s implied chance less an assumed 5% margin (one price is offered, so the true margin cannot be calculated)';
+export const MARGIN_NOTE = 'Market estimate: the chance the price gives, less an assumed 5% bookmaker cut (one price is offered, so the true margin cannot be calculated)';
 const MINS = [[0, 'Any chance'], [0.6, '60%+'], [0.7, '70%+']];
 const frac = (r) => (r && r[1] ? `${r[0]}/${r[1]}` : '–');
 const ratio = (r) => (r && r[1] ? r[0] / r[1] : null);
@@ -30,7 +30,7 @@ const ratio = (r) => (r && r[1] ? r[0] / r[1] : null);
 const hr = (label, r, title = '') => {
   const x = ratio(r);
   const cls = x == null ? '' : x >= 0.7 ? 'hi' : x >= 0.5 ? 'mid' : 'lo';
-  return `<span class="hr ${cls}"${title ? ` title="${esc(title)}"` : ''}><i>${esc(label)}</i>${frac(r)}</span>`;
+  return `<span class="hr ${cls}"${title ? ` data-tip="${esc(title)}"` : ''}><i>${esc(label)}</i>${frac(r)}</span>`;
 };
 
 // Last 10 games as bars against the line (oldest left): over in green, under in grey.
@@ -106,7 +106,7 @@ export function propRow(e, x, { withMatch = false, sel = '' } = {}) {
   const rd = propReadiness(e, x, { logsAt: playersMeta().updatedAt });
   return `<div class="pp2${sel && sel === pkey ? ' sel' : ''}">
     <div class="pp2-head"><div><b>${esc(propLabel(x))}</b><small>${x.hist ? `<a class="pp2-who" href="#/props/${esc(`${league}~${x.id}~${encodeURIComponent(x.type)}~${x.target}`)}">Research ›</a> ` : ''}${esc(team)} · ${esc(where)}${withMatch ? ` · <a href="#/match/${encodeURIComponent(e.id)}">${esc(ist(e.start))}</a>` : ''}</small></div>${legButton(leg, odd(x.odds))}</div>
-    <div class="pp2-num">${['stale', 'conflict'].includes(rd.state) ? readinessBadge(rd) : ''}<span class="pp2-p" title="ATLAS forecast for this game"><i>ATLAS</i> ${pc(x.p, 0)}</span><span class="muted" title="Break-even: the chance this price needs to pay off">needs ${pc(1 / x.odds, 0)}</span><span class="${ret >= 0 ? 'pos' : 'neg'}" title="Estimated return at this price: forecast x odds - 1. ${esc(edgeWords(gap, ret))}. ${MARGIN_NOTE}">return ${ret >= 0 ? '+' : '−'}${Math.abs(ret * 100).toFixed(0)}%</span>${h ? `<span class="muted">avg ${h.avg}</span>` : ''}${x.why ? `<span class="pp2-why" title="ATLAS before this: ${pc(x.pBase, 0)}">${esc(x.why)}</span>` : ''}</div>
+    <div class="pp2-num">${['stale', 'conflict'].includes(rd.state) ? readinessBadge(rd) : ''}<span class="pp2-p" data-tip="ATLAS forecast for this game"><i>ATLAS</i> ${pc(x.p, 0)}</span><span class="muted" data-tip="Break-even: the chance this price needs to pay off">needs ${pc(1 / x.odds, 0)}</span><span class="${ret >= 0 ? 'pos' : 'neg'}" data-tip="Estimated return at this price: forecast x odds - 1. ${esc(edgeWords(gap, ret))}. ${MARGIN_NOTE}">return ${ret >= 0 ? '+' : '−'}${Math.abs(ret * 100).toFixed(0)}%</span>${h ? `<span class="muted">avg ${h.avg}</span>` : ''}${x.why ? `<span class="pp2-why" data-tip="ATLAS before this: ${pc(x.pBase, 0)}">${esc(x.why)}</span>` : ''}</div>
     ${h ? `<div class="pp2-hist"><div class="pp2-rates">${rates}</div>${propBars(h, x.target)}</div>` : ''}
     ${otherLines(e, x)}
   </div>`;

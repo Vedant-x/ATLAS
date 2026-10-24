@@ -10,7 +10,7 @@
 :root:not([data-motion="cinematic"]) .tilt { transform: none !important; }
 /* Ticker controls. */
 :root[data-ticker="paused"] .ticker-track { animation-play-state: paused; }
-:root[data-ticker="hidden"] .ticker { display: none; }
+:root[data-ticker="hidden"] .ticker, :root[data-ticker-empty] .ticker { display: none; }
 /* Density. */
 :root[data-density="compact"] .sec-block { margin-block: 22px; }
 :root[data-density="compact"] .row { padding-block: 8px; }
@@ -24,7 +24,7 @@
 .cmp, .tr-table, .tbl, .mini em, .odds .stat { font-variant-numeric: tabular-nums; }
 
 /* Readiness badge: a status, deliberately not a percentage. */
-.ready { display: inline-block; padding: 3px 8px; border-radius: 999px; font: 600 11px var(--sans); letter-spacing: .2px; white-space: nowrap; border: 1px solid var(--line2); color: #c8c8cc; cursor: help; }
+.ready { display: inline-block; padding: 3px 8px; border-radius: 999px; font: 600 12px var(--sans); letter-spacing: .2px; white-space: nowrap; border: 1px solid var(--line2); color: #c8c8cc; cursor: help; }
 .ready-ready { border-color: #3dff9a66; color: #3dff9a; }
 .ready-waiting { border-color: #ffb54766; color: #ffb547; }
 .ready-stale, .ready-conflict { border-color: #ff6b6b66; color: #ff8a8a; }
@@ -44,13 +44,13 @@
 .chg.watched { box-shadow: inset 3px 0 0 #ffb547; }
 .ch-ico { flex: none; width: 22px; text-align: center; }
 .chg p { margin: 2px 0; font-size: 13px; }
-.chg small { color: var(--muted, #9aa3ad); font-size: 11px; }
+.chg small { color: var(--muted, #9aa3ad); font-size: 12px; }
 .fc-updated { color: #3dff9a; font-style: normal; }
 .fc-not-modelled { color: #ffb547; font-style: normal; }
 .timeline { list-style: none; margin: 0; padding: 0 0 0 16px; border-left: 2px solid var(--line2); display: grid; gap: 14px; }
 .timeline li { position: relative; display: grid; gap: 2px; }
 .timeline li::before { content: ''; position: absolute; left: -22px; top: 5px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
-.timeline time { font: 500 11px var(--mono); color: var(--muted, #9aa3ad); }
+.timeline time { font: 500 12px var(--mono); color: var(--muted, #9aa3ad); }
 .timeline small { color: var(--muted, #9aa3ad); }
 
 /* The case for a pick. */
@@ -73,10 +73,10 @@
 #qv h3 { font: 700 12px var(--sans); text-transform: uppercase; letter-spacing: 1px; color: var(--muted, #9aa3ad); margin: 18px 0 8px; display: flex; gap: 8px; align-items: center; }
 .qv-probs { display: flex; gap: 10px; margin-top: 12px; }
 .qv-probs div { flex: 1; border: 1px solid var(--line2); border-radius: 10px; padding: 8px 10px; }
-.qv-probs small { display: block; font-size: 11px; color: var(--muted, #9aa3ad); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qv-probs small { display: block; font-size: 12px; color: var(--muted, #9aa3ad); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .qv-probs b { font: 700 20px var(--sans); font-variant-numeric: tabular-nums; }
 .qv-picks, .qv-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
-.qv-picks small, .qv-checks small { display: block; color: var(--muted, #9aa3ad); font-size: 11.5px; }
+.qv-picks small, .qv-checks small { display: block; color: var(--muted, #9aa3ad); font-size: 12px; }
 .qv-checks .ok { color: #3dff9a; } .qv-checks .no { color: #ffb547; } .qv-checks .na { color: #9aa3ad; }
 .qv-checks b { color: #e8e8ec; font-weight: 600; }
 .qv-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
@@ -125,12 +125,11 @@
    (the 3D switch is in Display settings). */
 @media (min-width: 821px) and (max-width: 1279px) {
   .bar { gap: 14px; }
-  nav.top { flex: 0 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; font-size: 11.5px; letter-spacing: .8px; padding-bottom: 4px; }
+  nav.top { flex: 0 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; font-size: 12px; letter-spacing: .8px; padding-bottom: 4px; }
   nav.top::-webkit-scrollbar { display: none; }
   @media (max-width: 999px) { nav.top { mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); } }
   nav.top a { flex: none; white-space: nowrap; }
   .bar > button { flex: none; }
-  .bar .fx-btn { display: none; }
   .bar .set-btn span, .bar .search-btn kbd { display: none; }
   .bar .set-btn { width: 38px; height: 38px; padding: 0; }
 }
@@ -161,7 +160,7 @@
 @media (max-width: 700px) {
   .hero.compact.today h1 { font-size: 22px; letter-spacing: .08em; }
   .hero.compact.today .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-  .hero.compact.today .stats span { display: block; font-size: 9px; letter-spacing: 1px; line-height: 1.3; }
+  .hero.compact.today .stats span { display: block; font-size: 12px; letter-spacing: 1px; line-height: 1.3; }
 
 }
 
@@ -175,7 +174,6 @@ main, .foot { overflow-x: clip; }
 @media (max-width: 600px) {
   /* Header: logo · display · slip, all inside the screen; the 3D switch moves into Display. */
   .bar { gap: 8px; padding-inline: 12px; }
-  .bar .fx-btn { display: none; }
   .set-btn { margin-left: auto; width: 40px; height: 40px; padding: 0; display: grid; place-items: center; font-size: 16px; }
   .slip-btn { padding: 6px 6px 6px 12px; letter-spacing: .5px; min-height: 40px; }
   .logo { font-size: 22px; }
@@ -207,7 +205,7 @@ main, .foot { overflow-x: clip; }
 
 /* ======================= Shortlist rows + research cards (desktop and phone) ======================= */
 .win-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 12px; }
-.win-chips > span { font: 600 11px var(--sans); color: var(--muted, #9aa3ad); margin-right: 4px; }
+.win-chips > span { font: 600 12px var(--sans); color: var(--muted, #9aa3ad); margin-right: 4px; }
 .win-chips .chip { padding: 6px 12px; min-height: 32px; cursor: pointer; color: #e8e8ec; }
 
 /* Pick rows: name and match get the full width, the numbers sit in their own labelled row. */
@@ -218,7 +216,7 @@ main, .foot { overflow-x: clip; }
 .mini .mini-main small { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.35; }
 .mini .mini-nums { grid-area: nums; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; text-align: right; }
 .mini .mini-nums b { font: 700 18px var(--mono); font-variant-numeric: tabular-nums; line-height: 1.1; }
-.mini .mini-nums small { font: 500 11px var(--mono); color: var(--muted); white-space: nowrap; }
+.mini .mini-nums small { font: 500 12px var(--mono); color: var(--muted); white-space: nowrap; }
 .mini > .leg, .mini > button { grid-area: odds; align-self: center; min-width: 64px; min-height: 44px; font-size: 15px; }
 
 /* Research: table on wide screens, cards on phones. */
@@ -232,14 +230,12 @@ main, .foot { overflow-x: clip; }
 
 @media (max-width: 420px) {
   .win-chips { flex-wrap: nowrap; gap: 4px; }
-  .win-chips > span { font-size: 10.5px; margin-right: 2px; white-space: nowrap; }
-  .win-chips .chip { padding: 6px 9px; font-size: 11.5px; }
+  .win-chips > span { font-size: 12px; margin-right: 2px; white-space: nowrap; }
+  .win-chips .chip { padding: 6px 9px; font-size: 12px; }
 }
 /* Time zone (header): one choice for every time shown; on phones it lives in Display settings. */
-.tz-pick { flex: none; display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line2); border-radius: 999px; padding: 0 4px 0 9px; height: 32px; color: #c8c8cc; }
-.tz-pick .ico { width: 15px; height: 15px; }
-.tz-pick select, .dp-row select { background: transparent; color: inherit; border: 0; font: 600 12px var(--sans); max-width: 150px; cursor: pointer; padding: 4px 2px; }
-.tz-pick select option, .dp-row select option { background: #111; color: #eee; }
+.dp-row select { background: transparent; color: inherit; border: 0; font: 600 12px var(--sans); max-width: 150px; cursor: pointer; padding: 4px 2px; }
+.dp-row select option { background: #111; color: #eee; }
 .dp-row select { border: 1px solid var(--line2); border-radius: 999px; padding: 6px 10px; max-width: none; }
 @media (max-width: 999px) { .tz-pick select { max-width: 92px; } }
 @media (max-width: 600px) { .tz-pick { display: none; } }

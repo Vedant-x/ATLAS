@@ -2,7 +2,7 @@
   "id": "./",
   "name": "ATLAS Sports Intelligence",
   "short_name": "ATLAS",
-  "description": "Live fixtures, win chances, player props, slips and live alerts for every sport.",
+  "description": "Sports betting research: prices from many bookmakers, win chances, player props, and every pick's result kept in public.",
   "lang": "en",
   "start_url": "./#/",
   "scope": "./",

@@ -56,9 +56,9 @@ export function mountAssistant(S) {
       <header class="ai-head">
         <span class="ai-mini"></span>
         <div class="ai-title"><b class="ai-name"></b><small class="ai-mode"></small></div>
-        <button class="ai-icon" data-ai="looks" title="Change character" aria-label="Change character">${ico('person')}</button>
-        <button class="ai-icon" data-ai="clear" title="Clear chat" aria-label="Clear chat">${ico('refresh')}</button>
-        <button class="ai-icon" data-ai="close" title="Close" aria-label="Close">${ico('close')}</button>
+        <button class="ai-icon" data-ai="looks" aria-label="Change character" aria-label="Change character">${ico('person')}</button>
+        <button class="ai-icon" data-ai="clear" aria-label="Clear chat" aria-label="Clear chat">${ico('refresh')}</button>
+        <button class="ai-icon" data-ai="close" aria-label="Close" aria-label="Close">${ico('close')}</button>
       </header>
       <div class="ai-looks" hidden></div>
       <div class="ai-log" aria-live="polite"></div>

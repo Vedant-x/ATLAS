@@ -60,10 +60,10 @@ test('home: 30-day record strip and a reason behind each pick', async () => {
   const strip = await page.textContent('.track-strip');
   assert.match(strip, /Last 30 days/);
   assert.match(strip, /9–3/);
-  assert.match(await page.getAttribute('.track-strip', 'title'), /beat the close/);
+  assert.match(await page.getAttribute('.track-strip', 'aria-label'), /beat the close/);
   await page.waitForSelector('.dash-short .mini');
-  // Minimal cards: the reason is in the card's tip (hover / long-press), not printed on it.
-  const tips = await page.$$eval('.dash-short .mini', (rows) => rows.map((r) => r.title).join('\n'));
+  // Minimal cards: the reason is in the card's tip (a tap on the card, or hover), not printed on it.
+  const tips = await page.$$eval('.dash-short .mini', (rows) => rows.map((r) => r.dataset.tip).join('\n'));
   assert.match(tips, /Why: Arsenal unbeaten in 5/);
   assert.deepEqual(errors, []);
   await ctx.close();
@@ -212,6 +212,10 @@ test('Sources: every feed with its last result, failures first', async () => {
 
 test('match page: the results history (ratings, rest, last meetings)', async () => {
   const { page, ctx, errors } = await open('#/match/fx-ars-lee');
+  // Folded until tapped, like every detail section on the match page.
+  await page.waitForSelector('#sec-atlas-history summary');
+  assert.equal(await page.$eval('#sec-atlas-history', (d) => d.open), false);
+  await page.click('#sec-atlas-history summary');
   await page.waitForSelector('.hist-nums');
   const txt = await page.textContent('.hist-nums');
   assert.match(txt, /1712/);
@@ -226,17 +230,20 @@ test('time zone: one setting for every time; the parlay of the day follows it', 
   const { page, ctx, errors } = await open('#/');
   await page.waitForSelector('.dash-potd');
   assert.match(await page.textContent('.dash-potd'), /12:00 to 12:00 IST/);
-  // As a visitor does it: the menu has focus while the choice is made (and keeps it after).
-  await page.focus('.bar [data-tz-select]');
-  await page.selectOption('.bar [data-tz-select]', 'GMT');
+  // As a visitor does it, from the Display panel: the menu has focus while the choice is made.
+  assert.equal(await page.locator('.bar [data-tz-select], .bar [data-fx-toggle]').count(), 0, 'the header is search, Display and the slip');
+  await page.click('.bar [data-display-toggle]');
+  await page.focus('#display-panel [data-tz-select]');
+  await page.selectOption('#display-panel [data-tz-select]', 'GMT');
   await page.waitForFunction(() => /12:00 to 12:00 GMT/.test(document.querySelector('.dash-potd')?.textContent || ''));
   // A zone with no recorded day follows the IST day, shown in the visitor's own time too.
-  await page.selectOption('.bar [data-tz-select]', 'ET');
+  await page.selectOption('#display-panel [data-tz-select]', 'ET');
   await page.waitForFunction(() => /12:00 to 12:00 IST · .*your time/.test(document.querySelector('.dash-potd')?.textContent || ''));
   assert.match(await page.textContent('.dash-short'), /\d\d:\d\d (EDT|EST)/, 'kick-off times in US Eastern time');
   await page.reload();
   await page.waitForSelector('.dash-potd');
-  assert.equal(await page.$eval('.bar [data-tz-select]', (s) => s.value), 'ET', 'kept after a reload');
+  await page.click('.bar [data-display-toggle]');
+  assert.equal(await page.$eval('#display-panel [data-tz-select]', (s) => s.value), 'ET', 'kept after a reload');
   await shot(page, 'home-potd');
   assert.deepEqual(errors, []);
   await ctx.close();
@@ -296,10 +303,11 @@ test('home: panels can be hidden and reordered, and the layout is kept', async (
   await ctx.close();
 });
 
-test('watchlist: quiet hours are kept, and alerts while closed say when the server is not set up', async () => {
+test('watchlist: quiet hours are kept, and alerts while closed are not offered when there is no server for them', async () => {
   const { page, ctx, errors } = await open('#/watchlist');
   await page.waitForSelector('.alerts-panel');
-  assert.match(await page.textContent('.alerts-panel'), /need the alerts server/);
+  assert.match(await page.textContent('.alerts-panel'), /Alerts come while ATLAS is open/);
+  assert.equal(await page.locator('[data-push]').count(), 0);
   await page.click('[data-quiet="22-7"]');
   await page.waitForSelector('[data-quiet="22-7"][aria-pressed="true"]');
   await page.reload();
@@ -346,7 +354,7 @@ test('theme: a colour and a background of the visitor\'s own, kept after a reloa
 test('value bets: prices above the sharp fair odds, with the edge and the lowest price worth taking; a drifting price is left out', async () => {
   const { page, ctx, errors } = await open('#/');
   await page.waitForSelector('.dash-value .mini');
-  const rows = await page.$$eval('.dash-value .mini', (rs) => rs.map((r) => [r.querySelector('.mini-main b').textContent, r.querySelector('.mini-nums').textContent.replace(/\s+/g, ' ').trim(), r.title]));
+  const rows = await page.$$eval('.dash-value .mini', (rs) => rs.map((r) => [r.querySelector('.mini-main b').textContent, r.querySelector('.mini-nums').textContent.replace(/\s+/g, ' ').trim(), r.dataset.tip]));
   assert.deepEqual(rows.map((r) => r[0]), ['Liverpool'], 'Man City drifted from 1.42 to 1.55: left out');
   assert.match(rows[0][1], /\+4\.4%\s*take 1\.76\+/);
   assert.match(rows[0][2], /Fair odds 1\.72 \(Pinnacle[\s\S]*Price 1\.80 at Unibet[\s\S]*First seen at 1\.78/);
@@ -367,4 +375,88 @@ test('best bets: the minimum odds chosen in Filters apply to the list', async ()
   assert.equal(await page.$('.dash-short .pill-status'), null, 'no status tags on cards');
   assert.deepEqual(errors, []);
   await ctx.close();
+});
+
+// Readability checks run in the page: every visible text at 12 px or more, small text at 4.5:1 against
+// what is really behind it (backgrounds blended down the tree), no hover-only title tips, and every
+// control at least 44 px on a phone (links inside a sentence excepted, as WCAG allows).
+const READABILITY = () => {
+  const vis = (el) => { const r = el.getBoundingClientRect(), s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
+  const parse = (c) => { c = String(c); const srgb = /^color\(srgb/.test(c); const m = c.match(/[\d.]+/g); if (!m) return null; return [...m.slice(0, 3).map(Number).map((x) => (srgb ? x * 255 : x)), m[3] == null ? 1 : Number(m[3])]; };
+  const over = (t, b) => [0, 1, 2].map((i) => t[i] * t[3] + b[i] * (1 - t[3])).concat(1);
+  const bgOf = (el) => { const l = []; while (el) { const c = parse(getComputedStyle(el).backgroundColor); if (c && c[3] > 0) l.push(c); if (c && c[3] >= 1) break; el = el.parentElement; } let b = [4, 4, 6, 1]; for (const x of l.reverse()) b = over(x, b); return b; };
+  const opac = (el) => { let o = 1; while (el) { o *= Number(getComputedStyle(el).opacity); el = el.parentElement; } return o; };
+  const lum = (c) => { const [r, g, b] = c.slice(0, 3).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  const app = document.querySelector('#app');
+  const texts = [...app.querySelectorAll('*')].filter((el) => [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim().length > 1) && vis(el));
+  const tiny = [], low = [];
+  for (const el of texts) {
+    const s = getComputedStyle(el), fs = parseFloat(s.fontSize), label = `${el.tagName.toLowerCase()}.${String(el.className).split(' ')[0]} "${el.textContent.trim().slice(0, 20)}"`;
+    if (fs < 12) tiny.push(`${label} ${fs}px`);
+    const bg = bgOf(el), c = parse(s.color);
+    if (!c) continue;
+    const fg = over([...c.slice(0, 3), c[3] * opac(el)], bg);
+    const L1 = lum(fg), L2 = lum(bg), cr = (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);
+    if (cr < (fs >= 18.66 || (fs >= 14 && Number(s.fontWeight) >= 700) ? 3 : 4.5)) low.push(`${label} ${cr.toFixed(1)}:1`);
+  }
+  const inSentence = (a) => a.tagName === 'A' && getComputedStyle(a).display === 'inline' && /^(P|LI|SMALL|SPAN|TD|DD)$/.test(a.parentElement.tagName) && a.parentElement.textContent.trim().length > a.textContent.trim().length + 8;
+  const small = innerWidth < 600 ? 44 : 32;
+  const targets = [...document.querySelectorAll('button, a[href], select, summary, [role=button]')].filter((b) => vis(b) && !inSentence(b) && !b.closest('[aria-hidden="true"]'))
+    .filter((b) => { const r = b.getBoundingClientRect(); return r.width < small - 0.5 || r.height < small - 0.5; })
+    .map((b) => `${b.tagName.toLowerCase()}.${String(b.className).split(' ')[0]} "${(b.textContent.trim() || b.getAttribute('aria-label') || '').slice(0, 16)}" ${Math.round(b.getBoundingClientRect().width)}x${Math.round(b.getBoundingClientRect().height)}`);
+  const titles = [...app.querySelectorAll('[title]')].filter(vis).map((el) => el.getAttribute('title').slice(0, 30));
+  return { tiny, low, targets, titles };
+};
+
+for (const viewport of [PHONE, DESK]) {
+  test(`readable and reachable (${viewport === PHONE ? 'phone' : 'desktop'}): 12 px text, 4.5:1 contrast, no hover-only tips, ${viewport === PHONE ? 44 : 32} px controls`, async () => {
+    for (const r of ['#/', '#/picks', '#/value', '#/x/2', '#/match/fx-ars-lee', '#/track', '#/sources', '#/watchlist', '#/sport/basketball']) {
+      const { page, ctx } = await open(r, { viewport });
+      await page.waitForSelector('#app .panel, #app .hero');
+      await page.waitForTimeout(1200);
+      const a = await page.evaluate(READABILITY);
+      assert.deepEqual(a.tiny, [], `${r}: text under 12 px`);
+      assert.deepEqual(a.low, [], `${r}: low contrast`);
+      assert.deepEqual(a.titles, [], `${r}: hover-only title tips`);
+      assert.deepEqual(a.targets, [], `${r}: controls too small`);
+      await ctx.close();
+    }
+  });
+}
+
+test('phone: tapping a pick card shows its reasons; a tap elsewhere hides them; a tap on its odds adds it to the slip instead', async () => {
+  const { page, ctx, errors } = await open('#/', { viewport: PHONE });
+  await page.waitForSelector('.dash-short .mini');
+  const card = page.locator('.dash-short .mini').first();
+  await card.locator('.mini-ico').click();
+  await page.waitForSelector('#tip:not([hidden])');
+  assert.match(await page.textContent('#tip'), /Why:|Chance range/);
+  await shot(page, 'tip-phone');
+  await page.click('.dash-short .ph');
+  await page.waitForSelector('#tip', { state: 'hidden' });
+  await card.locator('button.leg').click();
+  assert.equal(await page.isVisible('#tip'), false, 'the odds button adds to the slip, it does not open the tip');
+  assert.match(await page.textContent('[data-slip-count]'), /1/);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('first visit: the age check asks for a year of birth; under 18 is turned away and stays turned away', async () => {
+  const { page, ctx } = await open('#/', { adult: false });
+  await page.waitForSelector('.age-gate input[name="year"]');
+  await page.fill('.age-gate input[name="year"]', String(new Date().getFullYear() - 15));
+  await page.click('.age-gate button[type="submit"]');
+  await page.waitForSelector('.age-gate:has-text("adults only")');
+  await page.reload();
+  await page.waitForSelector('.age-gate:has-text("adults only")');
+  await ctx.close();
+  const adult = await open('#/', { adult: false });
+  await adult.page.waitForSelector('.age-gate input[name="year"]');
+  await adult.page.fill('.age-gate input[name="year"]', '1994');
+  await adult.page.click('.age-gate button[type="submit"]');
+  await adult.page.waitForSelector('.age-err:not([hidden])'); // the box must be ticked too
+  await adult.page.check('.age-gate input[name="confirm"]');
+  await adult.page.click('.age-gate button[type="submit"]');
+  await adult.page.waitForSelector('.age-gate', { state: 'detached' });
+  await adult.ctx.close();
 });
