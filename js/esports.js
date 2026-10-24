@@ -69,11 +69,28 @@ export function parseBo3(results = [], now = Date.now()) {
       score: live ? `${m.team1_score ?? 0} – ${m.team2_score ?? 0}` : null, clock: live ? bo3Clock(m, maps) : '', period: null,
       bestOf: m.bo_type || null, markets, bookmaker: markets.length ? 'Bookmaker price via bo3.gg' : null,
       stats: { homeRank: m.team1?.rank || null, awayRank: m.team2?.rank || null },
-      esports: { game: g.game, tier: tier.toUpperCase() || null, maps, tournament: m.tournament?.name || null },
+      esports: { game: g.game, tier: tier.toUpperCase() || null, maps, tournament: m.tournament?.name || null, teams: { home: m.team1?.slug || null, away: m.team2?.slug || null } },
       probables: [], lineups: null, source: 'bo3.gg', sourceUrl: `https://bo3.gg/${g.slug}/matches/${m.slug}`, fetchedAt: now,
     });
   }
   return out;
+}
+
+// A team's players from bo3.gg's team page (with=players): coaches and benched players left out,
+// each with bo3.gg's six-month rating, best first. [{ nick, name, rating, country }].
+export const TEAM_URL = (slug) => `${BO3}/teams/${encodeURIComponent(slug)}?with=players`;
+export function rosterOf(team) {
+  return (team?.players || []).filter((p) => !p.is_coach && (p.status == null || Number(p.status) === 1) && p.nickname)
+    .map((p) => ({ nick: p.nickname, name: [p.first_name, p.last_name].filter(Boolean).join(' ') || null, rating: Number.isFinite(p.six_month_avg_rating) ? +p.six_month_avg_rating.toFixed(2) : null, country: p.country?.code || null }))
+    .sort((a, b) => (b.rating ?? -1) - (a.rating ?? -1)).slice(0, 7);
+}
+// The two rosters onto a series: e.rosters = { home, away, avg: { home, away } } (the average of
+// the five best ratings: the side that usually plays).
+export function applyRosters(e, home, away) {
+  const avg = (r) => { const xs = r.slice(0, 5).map((p) => p.rating).filter((x) => x != null); return xs.length >= 3 ? +(xs.reduce((a, b) => a + b, 0) / xs.length).toFixed(2) : null; };
+  if (!home?.length && !away?.length) return false;
+  e.rosters = { home: home || [], away: away || [], avg: { home: avg(home || []), away: avg(away || []) } };
+  return true;
 }
 
 // Live lane entry for a bo3.gg match (current or just finished).
