@@ -13,9 +13,9 @@ const fixture = (extra = {}, odds = {}) => ({
 
 test('OddsPapi: a fixture\'s sides and start under whichever names it uses; a book\'s live prices in outcome order', () => {
   const t = Date.now() + 5 * H;
-  assert.deepEqual(fixtureSides(fixture({ startTime: new Date(t).toISOString() })), { home: 'Arsenal', away: 'Chelsea', start: t });
-  assert.deepEqual(fixtureSides({ participants: [{ name: 'A' }, { name: 'B' }], startTimestamp: Math.round(t / 1000) }), { home: 'A', away: 'B', start: Math.round(t / 1000) * 1000 });
-  assert.deepEqual(fixtureSides({}), { home: null, away: null, start: null });
+  assert.deepEqual(fixtureSides(fixture({ startTime: new Date(t).toISOString() })), { home: 'Arsenal', away: 'Chelsea', start: t, slug: null });
+  assert.deepEqual(fixtureSides({ participants: [{ name: 'A' }, { name: 'B' }], startTimestamp: Math.round(t / 1000) }), { home: 'A', away: 'B', start: Math.round(t / 1000) * 1000, slug: null });
+  assert.deepEqual(fixtureSides({}), { home: null, away: null, start: null, slug: null });
   assert.deepEqual(bookPrices(fixture(), 'stake', 101), [{ id: 101, price: 2.1, active: true }, { id: 102, price: 3.5, active: true }, { id: 103, price: 3.6, active: true }]);
   const off = fixture({}, { stake: { markets: { 101: { outcomes: { 101: { players: { 0: { price: 2.1, active: false } } }, 103: { players: { 0: { price: 3.6 } } } } } } } });
   assert.equal(bookPrices(off, 'stake', 101), null, 'a suspended price leaves one: no market');
@@ -80,4 +80,31 @@ test('value at Stake: Stake\'s price over the fair odds is the price taken and r
   assert.equal(+v[0].edge.toFixed(3), 0.056);
   const rec = selectPicks([evs[0]], Date.now(), 12, []).find((p) => p.type === 'edge');
   assert.deepEqual([rec.odds, rec.bestBook, rec.atStake], [2.2, 'Stake', true], 'recorded at Stake\'s price');
+});
+
+test('OddsPapi as it really answers: teams by id only; names from the participants list, else from Stake\'s link and the kick-off', async () => {
+  const { participantNames, slugMatch } = await import('../js/oddspapi.js');
+  const t = Date.parse('2026-10-25T11:30:00.000Z');
+  // A fixture as the live API returned it (24 Oct 2026), trimmed to what is read.
+  const live = (market, prices, extra = {}) => ({ fixtureId: 'id1000002371945334', participant1Id: 2697, participant2Id: 2693, sportId: 10, tournamentId: 23, startTime: '2026-10-25T11:30:00.000Z',
+    bookmakerOdds: { stake: { bookmakerIsActive: true, fixturePath: 'https://stake.com/sports/e/e/e-e/46930044-inter-fiorentina', markets: { [market]: { outcomes: Object.fromEntries(prices.map((p, i) => [String(market + i), { players: { 0: { price: p, active: true } } }])) } } } }, ...extra });
+  assert.deepEqual(fixtureSides(live(101, [1.5, 4.2, 6])), { home: null, away: null, start: t, slug: 'inter-fiorentina' });
+  assert.deepEqual(participantNames({ 2697: 'Inter', 2693: { name: 'Fiorentina' } }), { 2697: 'Inter', 2693: 'Fiorentina' });
+  assert.deepEqual(participantNames([{ participantId: 2697, participantName: 'Inter' }, { id: 2693, name: 'Fiorentina' }]), { 2697: 'Inter', 2693: 'Fiorentina' });
+  assert.equal(fixtureSides(live(101, [1.5, 4.2, 6]), { 2697: 'Inter', 2693: 'Fiorentina' }).home, 'Inter');
+  // Unnamed: matched by Stake's link within the league and the kick-off, either way round.
+  const [s] = stakeEvents([live(101, [1.5, 4.2, 6])]);
+  assert.deepEqual([s.slug, s.path, s.stake], ['inter-fiorentina', 'soccer/ita.1', [1.5, 4.2, 6]]);
+  const ours = { id: 'e', sport: 'football', leaguePath: 'soccer/ita.1', home: 'Internazionale', away: 'Fiorentina', start: t, markets: [{ name: 'Match Result', outcomes: [{ name: 'Internazionale', odds: 1.48 }, { name: 'Draw', odds: 4.3 }, { name: 'Fiorentina', odds: 6.2 }] }] };
+  const swapped = { ...ours, id: 'f', home: 'Fiorentina', away: 'Internazionale', markets: [{ name: 'Match Result', outcomes: [{ name: 'Fiorentina', odds: 6.2 }, { name: 'Draw', odds: 4.3 }, { name: 'Internazionale', odds: 1.48 }] }] };
+  assert.equal(slugMatch(s, { ...ours, leaguePath: 'soccer/ita.2' }), null, 'another league');
+  assert.equal(slugMatch(s, { ...ours, start: t + 3 * 36e5 }), null, 'another kick-off');
+  assert.equal(slugMatch(s, { ...ours, away: 'Napoli' }), null, 'both teams must be in the link');
+  assert.deepEqual(overlayStake([ours, swapped], [s], { now: t - 36e5 }), { stake: 2, sharp: 0 });
+  assert.deepEqual(ours.markets[0].outcomes.map((o) => o.stake), [1.5, 4.2, 6]);
+  assert.deepEqual(swapped.markets[0].outcomes.map((o) => o.stake), [6, 4.2, 1.5]);
+  // The NBA's moneyline is market 111 (two outcomes).
+  const [nba] = stakeEvents([live(111, [1.62, 2.35], { tournamentId: 132, sportId: 11, bookmakerOdds: { stake: { fixturePath: 'https://stake.com/sports/b/b/b-b/1-boston-celtics-new-york-knicks', markets: { 111: { outcomes: { 111: { players: { 0: { price: 1.62 } } }, 112: { players: { 0: { price: 2.35 } } } } } } } } })]);
+  assert.deepEqual([nba.league, nba.stake, nba.slug], ['NBA', [1.62, 2.35], 'boston-celtics-new-york-knicks']);
+  assert.deepEqual(slugMatch(nba, { leaguePath: 'basketball/nba', home: 'Boston Celtics', away: 'New York Knicks', start: t }), { orient: 'same', score: 2, dt: 0 });
 });
