@@ -8,7 +8,7 @@
 // ODDSPAPI_BUDGET=0: test builds only reuse the live site's prices.
 import { out, log, noteSource } from '../lib.mjs';
 import { writeFile } from 'node:fs/promises';
-import { ODDSPAPI, BOOKS, STAKE_LEAGUES, stakeEvents, overlayStake, describe, allowance } from '../../js/oddspapi.js';
+import { ODDSPAPI, STAKE_LEAGUES, stakeEvents, overlayStake, describe, allowance } from '../../js/oddspapi.js';
 
 const NAME = 'Stake (OddsPapi)', SITE = 'oddspapi.io', WHAT = "Stake's own prices on the main football leagues, and Pinnacle's fair chance";
 const MAX_AGE = 12 * 36e5; // older prices are not shown
@@ -22,15 +22,18 @@ export async function stakePrices(events) {
     if (r.ok) cache = { ...cache, ...(await r.json()) };
   } catch { /* first run */ }
   const monthly = Number(process.env.ODDSPAPI_MONTHLY || 240);
-  const spend = process.env.ODDSPAPI_BUDGET !== '0';
+  // ODDSPAPI_BUDGET: '0' spends nothing (CI); 'force' reads once now, whatever the pace (to check a
+  // change against the live API); unset: the even pace below.
+  const force = process.env.ODDSPAPI_BUDGET === 'force', spend = process.env.ODDSPAPI_BUDGET !== '0';
   const now = Date.now();
   const soon = STAKE_LEAGUES.filter((l) => events.some((e) => e.leaguePath === l.path && !e.live && e.start > now && e.start < now + 36 * 36e5));
   const pace = allowance(cache, { monthly, now });
-  const due = spend && soon.length && pace.ok && !(cache.at > now - 3 * 36e5);
+  const due = force || (spend && soon.length && pace.ok && !(cache.at > now - 3 * 36e5));
   let fetched = null, note = '';
   if (due) {
-    // The key goes only in the request, never in the log.
-    const path = `/odds-by-tournaments?tournamentIds=${STAKE_LEAGUES.map((l) => l.id).join(',')}&bookmakers=${BOOKS.join(',')}&bookmaker=stake&oddsFormat=decimal`;
+    // One bookmaker per request (the API refuses more): Stake. Pinnacle's line on these leagues comes
+    // from The Odds API. The key goes only in the request, never in the log.
+    const path = `/odds-by-tournaments?tournamentIds=${STAKE_LEAGUES.map((l) => l.id).join(',')}&bookmaker=stake&oddsFormat=decimal`;
     try {
       const r = await fetch(`${ODDSPAPI}${path}&apiKey=${encodeURIComponent(key)}`, { signal: AbortSignal.timeout(30000) });
       cache = { ...cache, month: pace.month, used: pace.used + 1, spentAt: now };
@@ -46,6 +49,7 @@ export async function stakePrices(events) {
         log(`Stake (OddsPapi): ${list.length} fixtures read; by league: ${Object.entries(cache.seen).map(([t, x]) => `${STAKE_LEAGUES.find((l) => l.id === Number(t))?.name || t} ${x.fixtures} (${x.named} named, ${x.stake} with Stake; markets ${Object.entries(x.markets).map(([m, n]) => `${m}:${n}`).join(' ') || 'none'})`).join(' · ') || 'none'}`);
         // The first fixture's keys, while the reader is new: what the response holds when names are missing.
         if (list.length && !evs.length) log(`  no fixture read; first fixture's keys: ${Object.keys(list[0]).join(', ')}; ${JSON.stringify(list[0]).slice(0, 600)}`);
+        else log(`  e.g. ${evs.slice(0, 4).map((x) => `${x.home} v ${x.away} (${x.league}): Stake ${x.stake.join(' / ')}`).join(' · ')}`);
       }
     } catch (e) { note = e.message; log(`Stake (OddsPapi) failed: ${e.message}`); }
   }

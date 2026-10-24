@@ -10,6 +10,7 @@
 import { normName, lineUp } from './oddsapi.js';
 
 export const ODDSPAPI = 'https://api.oddspapi.io/v4';
+// The books read: Stake (the API takes one bookmaker per request); Pinnacle where a response has it.
 export const BOOKS = ['stake', 'pinnacle'];
 
 // The leagues fetched, by tournament id, with the market that settles the match winner there.
