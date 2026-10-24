@@ -22,7 +22,6 @@ import { finalView } from './finalview.js';
 import { trackCard, trackStrip, trackStats, trackCalibration, recordLine, ensureTrack, officialParlay } from './trackview.js';
 import { zone as tzZone, tzOf, abbr as tzAbbr, fmt as fmtTime, fmtDate } from './tz.js';
 import { bestBets, BEST, POTD_ZONES, potdDay, parlayOfDay, recommendationFor, valueBets } from './track.js';
-import { propLabel, propMarket } from './props.js';
 import { propRow, allProps } from './propsview.js';
 import { coherentBets } from './picks.js';
 import { mergeEvent } from './merge.js';
@@ -32,10 +31,11 @@ import { whyLine } from './why.js';
 import { canonStats, standingsTable } from './standings.js';
 // Picks pages (Best bets, Value bets, 2x / 3x slips): picksview.js, which also uses the helpers here.
 import { picksViews, bindPicks } from './picksview.js';
+import { esc } from './esc.js';
 // Golf and motor racing: a field of players or drivers, drawn by fieldview.js.
 const FIELD_SPORTS = new Set(['golf', 'motorsport']);
 
-export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+export { esc };
 const safeHref = (u) => (/^https?:\/\//i.test(String(u || '')) ? esc(u) : '#');
 // Team colours are shown as text on the dark page: never one too dark to read (color.js).
 const safeColor = (c, fallback) => readable(c, fallback);

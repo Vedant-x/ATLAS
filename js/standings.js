@@ -2,7 +2,7 @@
 // won, drawn, lost, then goals for and against, goal difference and points (soccer), or the US
 // columns (overtime losses, win %, games behind, streak) where a sport has them. ESPN's own rank and
 // "Total" record columns are left out: the # column is the rank and W-D-L is the record.
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+import { esc } from './esc.js';
 
 // Each column with the names ESPN uses for it (abbreviation, short name or full name).
 const COLS = [

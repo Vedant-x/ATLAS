@@ -6,7 +6,7 @@ import { applyModel, bankers } from './intel.js';
 import { boxStats, gradeProp } from './props.js';
 import { bankerSlips, legPool } from './picks.js';
 import { localDay } from './engine.js';
-import { selectionId, dueForRead, FINAL, gradable } from './settle.js';
+import { selectionId, dueForRead, gradable } from './settle.js';
 import { recommendation } from './recommendation.js';
 import { drifting } from './movement.js';
 

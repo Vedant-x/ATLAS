@@ -4,8 +4,8 @@
 import { fetchSummary } from './espn.js';
 import { teamStats, leaders } from './detail.js';
 import { watch } from './alerts.js';
+import { esc } from './esc.js';
 
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const cache = new Map(); // id -> { d } once read, or { pending }
 
 // The summary, boiled down to what a finished match page shows.

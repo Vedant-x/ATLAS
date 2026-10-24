@@ -135,7 +135,8 @@ export const onProgress = (f) => { progressSubs.add(f); return () => progressSub
 export function loadEngine() {
   if (!engineP) {
     engineP = (async () => {
-      const webllm = await import('../../vendor/web-llm.mjs');
+      // Loaded by address, not bundled: the same file the worker uses, downloaded once and only here.
+      const webllm = await import(new URL('vendor/web-llm.mjs', document.baseURI).href);
       const report = (r) => progressSubs.forEach((f) => f(r.progress ?? 0, r.text || ''));
       try {
         const worker = new Worker(new URL('js/assistant/llm-worker.js', document.baseURI), { type: 'module' }) /* page-relative: works bundled or not */;

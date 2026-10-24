@@ -5,7 +5,7 @@ changes from the implementation brief.
 
 - `picks-2026-10-18.json.gz`: `picks.json` from the `track-record` branch at commit
   `d0ea77f99c36ff7ae668bed8c83e59099e9740aa` (1,638 records), gzip-compressed and unchanged.
-- Restore: `gunzip -c baseline/picks-2026-10-18.json.gz > picks.json` and commit it to the
+- Restore: `gunzip -c test/fixtures/baseline/picks-2026-10-18.json.gz > picks.json` and commit it to the
   `track-record` branch.
 
 Totals from `summarize()` in `js/track.js` on this file (they reproduce the 18 October screenshot):

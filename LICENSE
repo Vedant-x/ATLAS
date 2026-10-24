@@ -1,0 +1,8 @@
+Copyright (c) 2026 Vedant-x (https://github.com/Vedant-x). All rights reserved.
+
+The source code in this repository is published for reading and review. No licence is granted to
+copy, modify, distribute or use it, in whole or in part, except with the written permission of the
+copyright holder.
+
+Third-party code keeps its own licence: three.js (MIT), GSAP (GreenSock standard licence) and
+WebLLM (Apache-2.0) are installed from npm (package.json) and are not part of this repository.

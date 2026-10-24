@@ -155,7 +155,7 @@ test('Understat: xG table from the hex-escaped page data, onto big-five matches'
   const { teamsData, xgTable, applyXg } = await import('../js/understat.js');
   const data = { 83: { id: '83', title: 'Arsenal', history: [{ xG: '2.1', xGA: '0.6', scored: '3', missed: '0' }, { xG: '1.5', xGA: '1.0', scored: '1', missed: '1' }] },
     71: { id: '71', title: 'Leeds', history: [{ xG: '0.8', xGA: '1.9', scored: '0', missed: '2' }] } };
-  const hex = JSON.stringify(data).replace(/[{}"\[\]:,]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`);
+  const hex = JSON.stringify(data).replace(/[{}"[\]:,]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`);
   const page = `<script>var teamsData = JSON.parse('${hex}');</script>`;
   const t = xgTable(teamsData(page));
   assert.equal(t.get('arsenal').xgf.toFixed(2), '1.80');

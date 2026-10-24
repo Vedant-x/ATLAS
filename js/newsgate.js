@@ -3,7 +3,7 @@
 // injury and rest news moved the price after the pick. Picks still come early (visitors in Asia
 // bet the evening before, 6+ hours ahead; teams file the injury report by 5 pm the day before), but
 // no NBA pick (game line, prop or slip leg) is made while a key player's status is unresolved
-// (newsPending, set by the build from ESPN's injury report). The drift guard (movement.js) drops a
+// (newsPending, set by the build from the league's official injury report and ESPN's). The drift guard (movement.js) drops a
 // pick whose price moves against it before the bet.
 export const newsHold = (e) => e?.leaguePath === 'basketball/nba' && !e.live && (e.newsPending?.length || 0) > 0;
 

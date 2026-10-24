@@ -1,0 +1,18 @@
+name: Something is wrong on the site
+description: A page that breaks, shows the wrong thing, or is hard to use.
+labels: [bug]
+body:
+  - type: input
+    id: page
+    attributes: { label: Page, description: "The address after # (for example #/match/... or #/picks)", placeholder: "#/picks" }
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes: { label: What happened, description: What you saw, and what you expected instead. }
+    validations: { required: true }
+  - type: dropdown
+    id: device
+    attributes: { label: Device, options: [Phone, Tablet, Computer] }
+  - type: textarea
+    id: shot
+    attributes: { label: Screenshot, description: Paste one if you can. }

@@ -9,7 +9,7 @@ import { normClub } from './clubelo.js';
 
 export const TA_ELO = { atp: 'https://www.tennisabstract.com/reports/atp_elo_ratings.html', wta: 'https://www.tennisabstract.com/reports/wta_elo_ratings.html' };
 
-const text = (s) => String(s).replace(/<[^>]*>/g, ' ').replace(/&nbsp;| /g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
+const text = (s) => String(s).replace(/<[^>]*>/g, ' ').replace(/&nbsp;|\u00A0/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
 
 export function parseEloPage(html) {
   const out = new Map();

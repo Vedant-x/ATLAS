@@ -47,8 +47,8 @@ export function createBrain(K) {
   function targetEvent(q) {
     const found = K.eventsIn(q);
     if (found.length) return found[0];
-    if (/\b(this|here|current)\b|\bthis (match|game)\b/.test(q) || true) return K.currentEvent();
-    return null;
+    // Nothing named: the match on screen, if there is one.
+    return K.currentEvent();
   }
 
   // Absences across a league or sport (from the snapshot's FotMob/ESPN lists), when no single match is named.

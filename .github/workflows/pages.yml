@@ -30,13 +30,14 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 22, cache: npm }
+      # Pinned dependencies (package-lock.json): esbuild bundles the site; postinstall builds vendor/.
+      - run: npm ci
       - run: npm test
-      - run: npm install --no-save esbuild@0.24.2 || true # bundler for the speed step; the build works without it
       - run: node scripts/pages.mjs
+        timeout-minutes: 14
         env:
           # Bookmaker odds (The Odds API): the ODDS_API_KEY repository secret turns them on; ODDS_*
           # repository variables tune them (default: every in-season sport, the month's credits spent at
@@ -47,6 +48,12 @@ jobs:
           ODDS_MARKETS: ${{ vars.ODDS_MARKETS }}
           ODDS_REGIONS: ${{ vars.ODDS_REGIONS }}
           ODDS_MAX_SPORTS: ${{ vars.ODDS_MAX_SPORTS }}
+      # The data contract (js/contract.js) on what is about to be published: reported in the log and
+      # as a warning, never blocking (the last good site stays up either way).
+      - name: Data contract
+        continue-on-error: true
+        run: |
+          node scripts/check-data.mjs dist/pages/data --min-events 300 || { echo "::warning::The data contract check failed (details in this step's log)"; exit 1; }
       # Track record: history lives on the track-record branch (created on the first run). If the
       # branch exists, its history must load: record.mjs stops the build otherwise, so a failed
       # checkout can never restart the record from empty.
@@ -54,7 +61,7 @@ jobs:
         id: trackbranch
         run: echo "exists=$(git ls-remote --heads origin track-record | grep -q track-record && echo 1 || echo 0)" >> "$GITHUB_OUTPUT"
       - name: Load track record
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with: { ref: track-record, path: track }
         continue-on-error: true
       - name: Update track record
@@ -68,7 +75,7 @@ jobs:
       # builds in a row, closed when data recovers. One-off feed timeouts never email.
       - name: Data alert
         id: alert
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: return require('./scripts/alert.cjs')({ github, context, core })
       # Optional direct email: set secrets ALERT_EMAIL, MAIL_USERNAME and MAIL_PASSWORD (a Gmail app password).

@@ -12,7 +12,7 @@ export const ELO_WORLD = 'https://www.eloratings.net/World.tsv';
 export const ELO_TEAMS = 'https://www.eloratings.net/en.teams.tsv';
 
 const CODE = /^[A-Z]{2,4}$/;
-const rows = (tsv) => String(tsv || '').replace(/^﻿/, '').split(/\r?\n/).map((l) => l.split('\t').map((c) => c.trim())).filter((r) => r.length > 1);
+const rows = (tsv) => String(tsv || '').replace(/^\uFEFF/, '').split(/\r?\n/).map((l) => l.split('\t').map((c) => c.trim())).filter((r) => r.length > 1);
 
 export function parseTeams(tsv) {
   const names = new Map();

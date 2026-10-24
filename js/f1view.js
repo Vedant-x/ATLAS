@@ -6,8 +6,8 @@ import { readable } from './color.js';
 import { fmt, zone } from './tz.js';
 import { ESPN_F1, OPENF1, liveSession } from './f1.js';
 import { split } from './ui.js';
+import { esc } from './esc.js';
 
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const pc = (p, d = 0) => `${(p * 100).toFixed(d)}%`;
 const odd = (p) => (p > 0 ? (1 / p).toFixed(p > 0.5 ? 2 : 1) : '—');
 const when = (t) => fmt(t, zone(), 'short');

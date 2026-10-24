@@ -110,7 +110,7 @@ test('player form: the last 10 games (no preseason) move a prop away from its pr
 });
 
 test('prop history: hit rates over 5/10/20 games, season, opponent and venue; last 10 for the chart', async () => {
-  const { gamelogRows, propHistory, propChance, blendForm, formFor } = await import('../js/props.js');
+  const { gamelogRows, propHistory, propChance } = await import('../js/props.js');
   const names = ['points'];
   // 20 games, newest first: 30, 10, 30, 10, … ; odd games at home vs team 7.
   const games = Array.from({ length: 20 }, (_, i) => ({ eventId: `g${i}`, stats: [String(i % 2 ? 10 : 30)] }));

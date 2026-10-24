@@ -258,7 +258,8 @@ export function createScene(canvas) {
 
   const clock = new THREE.Clock();
   function frame() {
-    const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime * (reduced ? 0.3 : 1);
+    clock.getDelta(); // advances elapsedTime
+    const t = clock.elapsedTime * (reduced ? 0.3 : 1);
     mouse.x += (mouse.tx - mouse.x) * 0.04; mouse.y += (mouse.ty - mouse.y) * 0.04;
     scrollV += ((scrollY - lastY) - scrollV) * 0.1; lastY = scrollY;
     const sp = scrollY / Math.max(1, document.documentElement.scrollHeight - innerHeight);

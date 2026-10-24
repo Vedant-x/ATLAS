@@ -1,5 +1,5 @@
 // Small SVG/HTML chart builders. All return markup strings; animation comes from CSS (.grow, .draw).
-const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+import { esc } from './esc.js';
 export const pc = (p, d = 1) => `${(p * 100).toFixed(p > 0 && p < 0.01 ? 2 : d)}%`;
 export const odd = (o) => (Number.isFinite(o) ? (o >= 100 ? o.toFixed(0) : o.toFixed(2)) : '—');
 

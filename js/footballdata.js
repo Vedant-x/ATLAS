@@ -29,7 +29,7 @@ const trio = (r, a, b, c) => (num(r[a]) && num(r[b]) && num(r[c]) ? [num(r[a]), 
 const pair = (r, a, b) => (num(r[a]) && num(r[b]) ? [num(r[a]), num(r[b])] : null);
 
 export function parseFixtures(csv) {
-  const lines = String(csv || '').replace(/^﻿/, '').split(/\r?\n/).filter((l) => l.trim());
+  const lines = String(csv || '').replace(/^\uFEFF/, '').split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) return [];
   const head = lines[0].split(',').map((h) => h.trim());
   const out = [];
