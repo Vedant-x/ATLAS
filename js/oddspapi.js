@@ -3,8 +3,11 @@
 // ODDS_PAPI_API_KEY repository secret (a free account: about 250 requests a month). Prices sit by
 // bookmaker, then market id, then outcome id, then a player key ("0" for a match market):
 //   fixture.bookmakerOdds.stake.markets["101"].outcomes["101"].players["0"].price
-// Market 101 is football's full-time result (outcomes 101 home, 102 draw, 103 away). Tournament ids
-// are the usual ones (17 Premier League, 8 LaLiga ...). Pure functions here; the build
+// Market 101 is football's full-time result (outcomes 101 home, 102 draw, 103 away), market 111 the
+// NBA's moneyline (111 home, 112 away), as the live API returns them. Tournament ids are the usual ones
+// (17 Premier League, 8 LaLiga ...); at most 5 per request, one bookmaker per request. Fixtures name
+// their teams by id only (participant1Id = home): the names come from the API's participants list,
+// and until then from Stake's own match link (".../46930044-inter-fiorentina") and the kick-off. Pure functions here; the build
 // (scripts/sources/stake.mjs) fetches, budgets and caches.
 
 import { normName, lineUp } from './oddsapi.js';
@@ -25,17 +28,29 @@ export const STAKE_LEAGUES = [
   { id: 34, name: 'Ligue 1', sport: 'football', market: 101, path: 'soccer/fra.1' },
   { id: 7, name: 'UEFA Champions League', sport: 'football', market: 101, path: 'soccer/uefa.champions' },
   { id: 679, name: 'UEFA Europa League', sport: 'football', market: 101, path: 'soccer/uefa.europa' },
-  { id: 132, name: 'NBA', sport: 'basketball', market: null, path: 'basketball/nba' },
+  { id: 132, name: 'NBA', sport: 'basketball', market: 111, path: 'basketball/nba' },
 ];
 
-// A fixture's two sides and start, under whichever names the response uses.
-export function fixtureSides(f) {
+// A fixture's two sides and start: names from the response, else from names (the participants list,
+// id → name); slug: the teams in Stake's own match link ("inter-fiorentina"), home first.
+export function fixtureSides(f, names = {}) {
   const pick = (...xs) => xs.find((x) => typeof x === 'string' && x.trim()) || null;
-  const home = pick(f.participant1Name, f.homeName, f.home, f.participants?.[0]?.name, f.participant1?.name);
-  const away = pick(f.participant2Name, f.awayName, f.away, f.participants?.[1]?.name, f.participant2?.name);
+  const home = pick(f.participant1Name, f.homeName, f.home, f.participants?.[0]?.name, f.participant1?.name, names[f.participant1Id]);
+  const away = pick(f.participant2Name, f.awayName, f.away, f.participants?.[1]?.name, f.participant2?.name, names[f.participant2Id]);
   const t = f.startTime ?? f.startTimestamp ?? f.start ?? f.commenceTime;
   const start = typeof t === 'number' ? (t < 1e12 ? t * 1000 : t) : Date.parse(t);
-  return { home, away, start: Number.isFinite(start) ? start : null };
+  const link = String(f.bookmakerOdds?.stake?.fixturePath || f.bookmakerOdds?.stake?.bookmakerFixtureId || '');
+  const slug = /(?:^|\/)\d+-([a-z0-9-]+)\/?$/.exec(link)?.[1] || null;
+  return { home, away, start: Number.isFinite(start) ? start : null, slug };
+}
+
+// The participants list (id → name), whichever shape it comes in: an object of ids, or a list.
+export function participantNames(j) {
+  const out = {};
+  const list = Array.isArray(j) ? j : Array.isArray(j?.data) ? j.data : null;
+  if (list) for (const p of list) { const id = p?.participantId ?? p?.id; const n = p?.participantName ?? p?.name ?? p?.shortName; if (id != null && n) out[id] = String(n); }
+  else if (j && typeof j === 'object') for (const [id, v] of Object.entries(j)) { const n = typeof v === 'string' ? v : v?.participantName ?? v?.name; if (n) out[id] = String(n); }
+  return out;
 }
 
 // One bookmaker's live prices for one market, outcomes in id order: [{ id, price }], or null.
@@ -67,17 +82,36 @@ export function describe(fixtures) {
 
 // The fixtures, as matchable events: { home, away, start, stake: [prices], pinnacle: [prices] } for
 // each league's winner market (outcomes in order: home, draw, away; or home, away).
-export function stakeEvents(fixtures, leagues = STAKE_LEAGUES) {
+export function stakeEvents(fixtures, leagues = STAKE_LEAGUES, names = {}) {
   const out = [];
   for (const f of fixtures) {
     const lg = leagues.find((l) => l.id === Number(f.tournamentId));
     if (!lg?.market) continue;
-    const { home, away, start } = fixtureSides(f);
+    const { home, away, start, slug } = fixtureSides(f, names);
     const stake = bookPrices(f, 'stake', lg.market);
-    if (!home || !away || !start || !stake) continue;
-    out.push({ id: f.fixtureId, league: lg.name, sport: lg.sport, home, away, start, stake: stake.map((x) => x.price), pinnacle: bookPrices(f, 'pinnacle', lg.market)?.map((x) => x.price) || null });
+    if (!start || !stake || !((home && away) || slug)) continue;
+    out.push({ id: f.fixtureId, league: lg.name, path: lg.path, sport: lg.sport, home, away, slug, start, stake: stake.map((x) => x.price), pinnacle: bookPrices(f, 'pinnacle', lg.market)?.map((x) => x.price) || null });
   }
   return out;
+}
+
+// A fixture known only by Stake's link: the board's match in the same league kicking off within 15
+// minutes, both of whose teams appear in the link ("inter-fiorentina": Internazionale, Fiorentina);
+// home first in the link, else swapped. → { orient, score, dt } or null.
+const words = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3 && !['the', 'club', 'cf', 'fc', 'sc', 'ac'].includes(w));
+export function slugMatch(s, e) {
+  if (!s.slug || (s.path && e.leaguePath && s.path !== e.leaguePath) || !(Math.abs(s.start - e.start) <= 15 * 6e4)) return null;
+  const sl = s.slug.split('-');
+  const at = (name) => {
+    for (const w of words(name)) {
+      const i = sl.findIndex((x) => x === w || (x.length >= 4 && w.length >= 4 && (x.startsWith(w) || w.startsWith(x))));
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
+  const h = at(e.home), a = at(e.away);
+  if (h < 0 || a < 0 || h === a) return null;
+  return { orient: h < a ? 'same' : 'swapped', score: 2, dt: Math.abs(s.start - e.start) };
 }
 
 const WINNERS = ['Winner', 'Match Result', 'Moneyline'];
@@ -92,7 +126,7 @@ export function overlayStake(events, stakeEvs, { at = Date.now(), now = Date.now
     let best = null;
     for (const s of stakeEvs) {
       if (s.sport !== e.sport) continue;
-      const m = lineUp({ commence_time: new Date(s.start).toISOString(), home_team: s.home, away_team: s.away }, e, { window });
+      const m = s.home && s.away ? lineUp({ commence_time: new Date(s.start).toISOString(), home_team: s.home, away_team: s.away }, e, { window }) : slugMatch(s, e);
       if (m && (!best || m.score > best.m.score || (m.score === best.m.score && m.dt < best.m.dt))) best = { s, m };
     }
     if (!best) continue;
