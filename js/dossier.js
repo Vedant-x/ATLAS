@@ -3,6 +3,7 @@ import { standingsTable } from './standings.js';
 import { fmtDate, fmt as fmtTime, zone as tzZone } from './tz.js';
 import { weatherLine, weatherFlag } from './weather.js';
 import { esc } from './esc.js';
+import { refereeLine } from './referees.js';
 const safeHref = (u) => (/^https?:\/\//i.test(String(u || '')) ? esc(u) : '#');
 // A date from a feed: an ISO string or a timestamp (the results history stores milliseconds).
 // Dates and times in the zone chosen in Display (tz.js), never the device's own.
@@ -133,6 +134,9 @@ export function dossierSections(e, d, hc, ac) {
   } else if (e.sport === 'baseball') {
     S.push({ id: 'starters', label: 'Starting pitchers', html: '<p class="muted">Starters not announced yet. Leagues usually confirm them the day before.</p>' });
   }
+
+  // The referee (FotMob) and what that referee gives (football-data.co.uk results, referees.js).
+  if (e.referee?.name) S.push({ id: 'referee', label: 'Referee', html: `<div class="panel reveal facts"><div><small>Referee</small><b>${esc(e.referee.name)}</b><span>${esc(refereeLine(e.referee) || 'No record in this league\'s results files this season or last.')}</span></div></div>` });
 
   if (!d && !native) {
     S.push({ id: 'intel', label: 'Match intel', html: '<div class="panel"><p class="muted loading-dots">Loading injuries, team stats, form, head-to-head and standings</p></div>' });

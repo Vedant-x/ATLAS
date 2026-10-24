@@ -16,9 +16,11 @@ import { enrichMlb, formOf } from '../js/mlbstats.js';
 import { validateReport } from '../js/validate.js';
 import { mkdir, copyFile, cp, writeFile, rm, readFile } from 'node:fs/promises';
 import { fetchAll, LEAGUES, fetchErrors, leagueStatus } from '../js/espn.js';
-import { leagueByPath } from '../js/catalog.js';
+import { leagueByPath, CATALOG } from '../js/catalog.js';
+import { leaguePage, sportPage, sitemap } from '../js/staticpages.js';
 import { CLUBELO, parseClubElo, eloIndex, isEuropean } from '../js/clubelo.js';
-import { FD_FIXTURES, parseFixtures, applyFixtures } from '../js/footballdata.js';
+import { FD_FIXTURES, FD_LEAGUES, parseFixtures, applyFixtures } from '../js/footballdata.js';
+import { FD_RESULTS, seasonCodes, parseResults, refereeTable, refereeFor } from '../js/referees.js';
 import { ELO_WORLD, ELO_TEAMS, eloratingsIndex, applyEloratings, isInternational } from '../js/eloratings.js';
 import { SLEEPER_NFL, injuredByTeam, applyNflInjuries } from '../js/sleeper.js';
 import { TA_ELO, parseEloPage, eloIndex as tennisEloIndex, applyTennisElo } from '../js/tennisabstract.js';
@@ -46,7 +48,7 @@ import { stakePrices } from './sources/stake.mjs';
 
 await rm(out, { recursive: true, force: true });
 await mkdir(`${out}/data`, { recursive: true });
-for (const f of ['index.html', 'favicon.svg', 'manifest.webmanifest', 'robots.txt', 'sitemap.xml']) await copyFile(f, `${out}/${f}`);
+for (const f of ['index.html', 'favicon.svg', 'manifest.webmanifest', 'robots.txt']) await copyFile(f, `${out}/${f}`);
 for (const d of ['vendor', 'icons']) await cp(d, `${out}/${d}`, { recursive: true });
 // Service worker, stamped with this build so visitors pick up new code on the next visit.
 // The worker's version is the code version (commit), not the build time: data refreshes every few
@@ -444,6 +446,34 @@ await writeFile(`${out}/data/injury-names.json`, JSON.stringify(injNames));
 noteSource('FotMob', 'fotmob.com', 'Soccer injuries, suspensions and lineups', absMatched > 0 || !soccer.length, absMatched, `${absMatched} of ${soccer.length} soccer matches linked`);
 log(`FotMob: ${absMatched}/${soccer.length} soccer matches linked, ${absFound} absences, ${soccer.filter((e) => e.absences?.lineup).length} lineups (${soccer.filter((e) => e.absences?.lineup && !['lastStarting11', 'predicted'].includes(e.absences.lineup.type)).length} confirmed), ${Object.keys(injNames).length} injury names`);
 
+// Referees' habits (js/referees.js): who referees each coming match (FotMob, above), with that
+// referee's cards and fouls per game over this season and last (football-data.co.uk's results files,
+// for the leagues whose files name the referee), kept 12 hours in data/referees.json.
+try {
+  let cache = { at: 0, tables: {} };
+  try { const r = await fetch((process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json').replace('index.json', 'referees.json'), { signal: AbortSignal.timeout(15000) }); if (r.ok) cache = { at: 0, tables: {}, ...(await r.json()) }; } catch { /* first run */ }
+  const named = soccer.filter((e) => e.absences?.referee);
+  const want = new Set(named.map((e) => e.leaguePath));
+  let read = 0;
+  if (!(cache.at > Date.now() - 12 * 36e5) && named.length) {
+    const tables = {}, [cur, prev] = seasonCodes();
+    for (const [div, path] of Object.entries(FD_LEAGUES).filter(([, p]) => want.has(p))) {
+      const rows = [];
+      for (const season of [cur, prev]) { try { rows.push(...parseResults(await get(FD_RESULTS(season, div)))); read++; } catch { /* no file yet */ } }
+      const t = refereeTable(rows);
+      if (t) tables[path] = t;
+    }
+    cache = { at: Date.now(), tables };
+  }
+  let known = 0;
+  for (const e of named) { e.referee = refereeFor(e.absences.referee, cache.tables[e.leaguePath]); if (e.referee?.games) known++; }
+  await writeFile(`${out}/data/referees.json`, JSON.stringify(cache));
+  const withRecords = Object.entries(cache.tables).map(([p, t]) => `${p.split('/')[1]} (${Object.keys(t.refs).length} referees, ${t.league.games} games)`);
+  log(`Referees: ${named.length} of ${soccer.length} coming soccer matches with the referee named (FotMob), ${known} with that referee's record; records ${read ? `read this build (${read} files)` : 'held'}: ${withRecords.join(', ') || 'none (no file names its referees)'}`);
+  if (named.length && !known) log(`  e.g. ${named.slice(0, 5).map((e) => `${e.absences.referee} (${e.leaguePath})`).join(' · ')}`);
+  noteSource('Referees', 'football-data.co.uk, fotmob.com', "Who referees each soccer match, with that referee's cards and fouls per game against the league's", named.length ? true : null, known, `${named.length} matches with the referee named, ${known} with a record`);
+} catch (err) { log(`Referees failed: ${err.message}`); noteSource('Referees', 'football-data.co.uk, fotmob.com', "Who referees each soccer match, with that referee's cards and fouls", false, null, err.message); }
+
 // MLB starters: full reports from the official MLB Stats API.
 const mlbN = await enrichMlb(events, { signal: AbortSignal.timeout(90000), addMissing: true }).catch((e) => { log('MLB Stats API failed', e.message); return 0; });
 log(`MLB Stats API: ${mlbN} starter reports`);
@@ -632,6 +662,28 @@ if (tsdbFile) await writeFile(`${out}/data/sportsdb.json`, JSON.stringify(tsdbFi
 }
 await writeFile(`${out}/data/sources.json`, JSON.stringify({ at: Date.now(), sources }));
 await writeFile(`${out}/data/index.json`, JSON.stringify({ source: 'ATLAS snapshot', fetchedAt: Date.now(), leagueStatus: Object.fromEntries(leagueStatus), events }));
+// Pages search engines can read (js/staticpages.js): one per league and per sport with fixtures in the
+// next 7 days, at real addresses, and the sitemap listing them.
+{
+  const now = Date.now(), leagues = new Map(), bySport = {}, written = [];
+  for (const e of events) if (e.leaguePath && !e.final && e.start > now - 3 * 36e5 && e.start < now + 7 * 864e5 && !leagues.has(e.leaguePath)) leagues.set(e.leaguePath, { path: e.leaguePath, name: e.league || e.leaguePath, sport: e.sport });
+  for (const l of leagues.values()) {
+    const sp = CATALOG.find((x) => x.id === l.sport);
+    const pg = leaguePage({ ...l, sportName: sp?.name }, events, { now });
+    await mkdir(`${out}/${pg.path}`, { recursive: true });
+    await writeFile(`${out}/${pg.path}index.html`, pg.html);
+    written.push(pg.path);
+    (bySport[l.sport] ||= []).push({ ...l, count: pg.count });
+  }
+  for (const [id, list] of Object.entries(bySport)) {
+    const pg = sportPage(CATALOG.find((x) => x.id === id) || { id, name: id }, list);
+    await mkdir(`${out}/${pg.path}`, { recursive: true });
+    await writeFile(`${out}/${pg.path}index.html`, pg.html);
+    written.push(pg.path);
+  }
+  await writeFile(`${out}/sitemap.xml`, sitemap(written.sort(), { at: now }));
+  log(`Search pages: ${leagues.size} leagues and ${Object.keys(bySport).length} sports at real addresses, all in sitemap.xml`);
+}
 if (fetchErrors.length) log('ESPN errors (first 20):', fetchErrors.join(' | '));
 log(`ESPN: ${espn.length} events`);
 {

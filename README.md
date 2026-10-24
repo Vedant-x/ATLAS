@@ -25,6 +25,7 @@ in public.
 | `#/track` | Results: every pick, locked before the start, graded from the final score; retired lists with their final records |
 | `#/sources` | Every data source, how it did on the last build, and what ATLAS does not cover |
 | `#/slip/<code>` | A shared slip |
+| `sports/<id>/`, `leagues/<key>/` | Plain pages for search engines (and shared links): the week's fixtures, chances and prices; each links into the app |
 
 Old addresses (`#/bankers`, `#/edge`, `#/every`, `#/mega`, `#/x/10` …) lead to the list that replaced them.
 
@@ -47,9 +48,9 @@ Old addresses (`#/bankers`, `#/edge`, `#/every`, `#/mega`, `#/x/10` …) lead to
 | ESPN public APIs | Fixtures, scores, one bookmaker's prices (DraftKings) and match summaries for 150+ competitions; player props; injury lists |
 | The Odds API (own key) | Pinnacle's fair line and the typical price across a dozen books on the main leagues; prices where nothing else has one |
 | OddsPapi (own key) | Stake's own prices on the main football leagues, beside each price; value bets taken at Stake's price where it clears the fair odds |
-| football-data.co.uk | Pinnacle odds for European leagues: a price where none, the sharp line where ESPN prices |
+| football-data.co.uk | Pinnacle odds for European leagues: a price where none, the sharp line where ESPN prices; each referee's cards and fouls per game |
 | NBA (official.nba.com, cdn.nba.com) | The league's injury report; box scores to confirm NBA prop results |
-| MLB Stats API, NHL API, FotMob, OpenDota | Starters and pitcher reports; second results sources; soccer team news and line-ups |
+| MLB Stats API, NHL API, FotMob, OpenDota | Starters and pitcher reports; second results sources; soccer team news, line-ups and referees |
 | npb.jp, koreabaseball.com, KHL, EuroLeague, Liiga, Swiss hockey | Their leagues' schedules, starters and live scores |
 | bo3.gg, EsportsBattle | Esports and eFootball |
 | TheSportsDB | Darts, snooker, handball, volleyball and other sports ESPN leaves out |
