@@ -21,3 +21,22 @@ test('every GitHub workflow and issue form parses; each job has a runner and ste
     }
   }
 });
+
+// Every action on a release that runs on Node 24 (GitHub retires Node 20): the first such major of
+// each, read from the action's own action.yml (runs.using: node24) when it was raised.
+const NODE24 = {
+  'actions/checkout': 5, 'actions/setup-node': 5, 'actions/setup-java': 5, 'actions/github-script': 8, 'actions/upload-artifact': 6,
+  'actions/configure-pages': 6, 'actions/upload-pages-artifact': 5, 'actions/deploy-pages': 5, 'dawidd6/action-send-mail': 23,
+};
+test('every action the workflows use runs on Node 24', async () => {
+  for (const f of (await readdir('.github/workflows')).filter((x) => /\.ya?ml$/.test(x))) {
+    const doc = parse(await readFile(`.github/workflows/${f}`, 'utf8'));
+    for (const job of Object.values(doc.jobs || {})) {
+      for (const s of job.steps.filter((x) => x.uses)) {
+        const [name, ref] = s.uses.split('@');
+        assert.ok(name in NODE24, `${f}: ${s.uses} is not in the Node 24 list (check its action.yml, then add it)`);
+        assert.ok(Number(/^v(\d+)/.exec(ref)?.[1]) >= NODE24[name], `${f}: ${s.uses} runs on Node 20; use @v${NODE24[name]} or later`);
+      }
+    }
+  }
+});

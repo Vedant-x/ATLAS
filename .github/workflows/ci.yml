@@ -61,5 +61,5 @@ jobs:
           npm run test:ui
       - name: Keep the browser-test screenshots
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with: { name: ui-screenshots, path: test-results/, if-no-files-found: ignore }

@@ -21,6 +21,9 @@ what changed, week by week. Reasons and reversals are in [docs/DECISIONS.md](doc
 - **Fix (24 October):** the NBA injury report reader decoded only the first stream of the league's
   PDF, so the first live build read no rows from it. It now reads every page in the page tree's
   order and each row by what its cells hold, and the build log checks its players against ESPN's lists.
+- **Node 24 (24 October):** every action now runs on Node 24, the Pages deploy included
+  (configure-pages v6, upload-pages-artifact v5, deploy-pages v5, upload-artifact v6); a test fails
+  if a workflow goes back to a Node 20 release.
 - Earlier this week: one site-wide time zone, colour themes, value bets and the drift guard, finished
   matches kept on the watchlist, props on the real over/under lines.
 
