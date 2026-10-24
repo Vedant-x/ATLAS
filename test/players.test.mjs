@@ -98,3 +98,24 @@ test('cricket players: the XIs from ESPN\'s rosters once named, else the squads;
   assert.deepEqual([pre.xi, pre.home[0].name, pre.away.length], [false, 'Beau Webster', 0]);
   assert.equal(squadsOf({ rosters: [], squads: [{ team: { displayName: 'Gambia' }, athletes: [] }] }, { home: 'Gambia', away: 'Zambia' }), null);
 });
+
+test('ATP serve and return: a player\'s figures from the season\'s match file (TML-Database columns), the tour\'s averages', async () => {
+  const { atpTable, matchModel, TML } = await import('../js/tennisstats.js');
+  assert.equal(TML('2025.csv'), 'https://raw.githubusercontent.com/Tennismylife/TML-Database/master/2025.csv');
+  const head = 'tourney_id,tourney_name,surface,draw_size,tourney_level,indoor,tourney_date,match_num,winner_id,winner_seed,winner_entry,winner_name,winner_hand,winner_ht,winner_ioc,winner_age,winner_rank,winner_rank_points,loser_id,loser_seed,loser_entry,loser_name,loser_hand,loser_ht,loser_ioc,loser_age,loser_rank,loser_rank_points,score,best_of,round,minutes,w_ace,w_df,w_svpt,w_1stIn,w_1stWon,w_2ndWon,w_SvGms,w_bpSaved,w_bpFaced,l_ace,l_df,l_svpt,l_1stIn,l_1stWon,l_2ndWon,l_SvGms,l_bpSaved,l_bpFaced';
+  const row = (w, l, ws, ls) => `2025-1,Event,Hard,32,A,O,20250101,1,W,,,${w},R,,,,,,L,,,${l},R,,,,,,6-4 6-4,3,R32,90,${ws},${ls}`;
+  // Sinner: 6 matches, each 10 aces, 2 DFs, 80 serve points (50 first in, 40 won; 18 of 30 second won), 12 games, broken once in 3.
+  const S = '10,2,80,50,40,18,12,2,3', O = '3,4,70,42,28,14,11,1,4';
+  const csv = [head, ...Array.from({ length: 6 }, (_, i) => row('Jannik Sinner', `Opp ${i}`, S, O)), row('Jannik Sinner', 'Opp 7', ',,,,,,,,', O), row('Alex Smith', 'Jannik Sinner', '', '')].join('\n');
+  const t = atpTable([csv]);
+  const s = t.players['jannik sinner'];
+  assert.equal(s.matches, 6, 'a match without statistics is left out');
+  assert.deepEqual([s.firstIn, s.firstWon, s.secondWon, s.servePts, s.aces, s.dfs], [0.625, 0.8, 0.6, 0.725, 10, 2]);
+  assert.equal(s.held, +(1 - 1 / 12).toFixed(4));
+  assert.equal(s.retPts, +((70 - 28 - 14) / 70).toFixed(4));
+  assert.equal(s.broke, +(3 / 11).toFixed(4));
+  assert.equal(s.period, '2025 season (latest ATP match data)');
+  assert.equal(t.players['opp 0'], undefined, 'fewer than 5 matches: no figures');
+  assert.ok(t.tour.servePts > 0.5 && t.tour.retPts < 0.5);
+  assert.ok(matchModel(s, { ...s, servePts: 0.6, retPts: 0.33 }).match > 0.5);
+});

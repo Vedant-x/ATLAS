@@ -10,7 +10,7 @@ import { out, get, log, noteSource } from '../lib.mjs';
 import { writeFile } from 'node:fs/promises';
 import { LINEUPS_URL, LINEUP_HEADERS, parseLineups, applyLineups } from '../../js/nbalineups.js';
 import { TEAM_URL, rosterOf, applyRosters } from '../../js/esports.js';
-import { WTA_RANKED, WTA_YEAR, wtaIds, wtaStats, nameKey, matchModel } from '../../js/tennisstats.js';
+import { WTA_RANKED, WTA_YEAR, wtaIds, wtaStats, nameKey, matchModel, TML, TML_FILES, atpTable } from '../../js/tennisstats.js';
 import { CRICKET_SUMMARY, squadsOf } from '../../js/cricket.js';
 
 const DAY = 864e5;
@@ -65,7 +65,14 @@ async function tennisStats(events, cache) {
     await new Promise((r) => setTimeout(r, 300));
   }
   for (const k of Object.keys(t.players)) if (!(t.players[k].at > now - 7 * DAY)) delete t.players[k];
-  const statsOf = (name, path) => (/wta/i.test(path) ? t.players[`wta:${ids.get(nameKey(name))?.id}`]?.stats : null) || null;
+  // The men's: the last full season of ATP match data (tennisstats.js atpTable), rebuilt weekly.
+  if (!(t.atpAt > now - 7 * DAY) && singles.some((e) => /atp/i.test(e.leaguePath))) {
+    const csvs = [];
+    for (const f of TML_FILES) { try { csvs.push(await get(TML(f))); } catch { /* keep the last table */ } }
+    const table = atpTable(csvs);
+    if (table.count) { t.atp = table.players; t.atpAt = now; }
+  }
+  const statsOf = (name, path) => (/wta/i.test(path) ? t.players[`wta:${ids.get(nameKey(name))?.id}`]?.stats : /atp/i.test(path) ? t.atp?.[nameKey(name)] : null) || null;
   let n = 0;
   for (const e of singles) {
     const home = statsOf(e.home, e.leaguePath), away = statsOf(e.away, e.leaguePath);
@@ -74,8 +81,10 @@ async function tennisStats(events, cache) {
     n++;
   }
   const wta = singles.filter((e) => /wta/i.test(e.leaguePath));
-  log(`Tennis serve and return (WTA): ${ids.size} ranked players by name; ${want.length} of ${new Set(wta.flatMap((e) => [e.home, e.away])).size} WTA players on the board matched; ${read} season figures read this build; ${n} matches with figures (${singles.filter((e) => e.serveReturn?.model).length} with the match chance)`);
+  const atp = singles.filter((e) => /atp/i.test(e.leaguePath));
+  log(`Tennis serve and return: WTA ${ids.size} ranked players by name, ${want.length} of ${new Set(wta.flatMap((e) => [e.home, e.away])).size} on the board matched, ${read} season figures read this build; ATP ${Object.keys(t.atp || {}).length} players in the 2025 match data, ${new Set(atp.flatMap((e) => [e.home, e.away]).filter((x) => t.atp?.[nameKey(x)])).size} of ${new Set(atp.flatMap((e) => [e.home, e.away])).size} on the board; ${n} matches with figures (${singles.filter((e) => e.serveReturn?.model).length} with the match chance)`);
   if (wta.length) noteSource('WTA serve and return', 'wtatennis.com', "Each player's serve and return figures this season, from the WTA", n > 0, n, `${n} matches with figures`);
+  if (atp.length) noteSource('ATP serve and return', 'github.com/Tennismylife/TML-Database', "Each player's serve and return figures over the 2025 season (the ATP's own site refuses servers)", Boolean(t.atp), atp.filter((e) => e.serveReturn).length, '2025 season and January 2026: the latest free ATP match data');
 }
 
 // Cricket: each match's XIs (or squads) from ESPN's summary, for matches in the next day and live

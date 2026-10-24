@@ -45,14 +45,15 @@ Old addresses (`#/bankers`, `#/edge`, `#/every`, `#/mega`, `#/x/10` …) lead to
 
 | Source | Used for |
 |---|---|
-| ESPN public APIs | Fixtures, scores, one bookmaker's prices (DraftKings) and match summaries for 150+ competitions; player props; injury lists |
+| ESPN public APIs | Fixtures, scores, one bookmaker's prices (DraftKings) and match summaries for 150+ competitions; player props; injury lists; cricket XIs and squads with roles |
 | The Odds API (own key) | Pinnacle's fair line and the typical price across a dozen books on the main leagues; prices where nothing else has one |
 | OddsPapi (own key) | Stake's own prices on the main football leagues, beside each price; value bets taken at Stake's price where it clears the fair odds |
 | football-data.co.uk | Pinnacle odds for European leagues: a price where none, the sharp line where ESPN prices; each referee's cards and fouls per game |
-| NBA (official.nba.com, cdn.nba.com) | The league's injury report; box scores to confirm NBA prop results |
+| NBA (official.nba.com, stats.nba.com, cdn.nba.com) | The league's injury report; its expected and confirmed starting fives; box scores to confirm NBA prop results |
+| WTA (api.wtatennis.com), TML-Database | Tennis serve and return figures (the WTA's own this season; the men's from the 2025 ATP match data), and a point-by-point match chance from them |
 | MLB Stats API, NHL API, FotMob, OpenDota | Starters and pitcher reports; second results sources; soccer team news, line-ups and referees |
 | npb.jp, koreabaseball.com, KHL, EuroLeague, Liiga, Swiss hockey | Their leagues' schedules, starters and live scores |
-| bo3.gg, EsportsBattle | Esports and eFootball |
+| bo3.gg, EsportsBattle | Esports and eFootball; each team's players with their six-month rating |
 | TheSportsDB | Darts, snooker, handball, volleyball and other sports ESPN leaves out |
 | Jolpica, OpenF1 | Formula 1 |
 | Daily Faceoff, Understat, Open-Meteo, Sleeper | NHL goalies, expected goals, kick-off weather, NFL injuries |

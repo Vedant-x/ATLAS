@@ -34,6 +34,11 @@ what changed, week by week. Reasons and reversals are in [docs/DECISIONS.md](doc
 - **Referees (24 October):** each coming soccer match's referee (FotMob), with that referee's
   yellow and red cards, fouls and home wins per game over this season and last beside the league's
   (football-data.co.uk results, in the leagues whose files name the referee), on the match page.
+- **Player data (24 October):** the NBA's own starting fives (expected, then confirmed), tennis
+  serve and return figures (the WTA's own; the men's from the 2025 ATP match data) with a
+  point-by-point match chance, cricket XIs and squads with roles and styles (ESPN), and esports
+  rosters with each player's six-month rating (bo3.gg), on match pages. Every candidate source was
+  tested from GitHub's servers first; the ATP's own site, Sofascore and Cricinfo refuse them.
 - Earlier this week: one site-wide time zone, colour themes, value bets and the drift guard, finished
   matches kept on the watchlist, props on the real over/under lines.
 
