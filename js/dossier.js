@@ -138,6 +138,23 @@ export function dossierSections(e, d, hc, ac) {
   // The referee (FotMob) and what that referee gives (football-data.co.uk results, referees.js).
   if (e.referee?.name) S.push({ id: 'referee', label: 'Referee', html: `<div class="panel reveal facts"><div><small>Referee</small><b>${esc(e.referee.name)}</b><span>${esc(refereeLine(e.referee) || 'No record in this league\'s results files this season or last.')}</span></div></div>` });
 
+  // NBA: the league's starting fives, expected until each team confirms (nbalineups.js).
+  if (e.nbaLineups) {
+    const L = e.nbaLineups, both = L.home.confirmed && L.away.confirmed;
+    S.push({ id: 'starting5', label: both ? 'Starting fives' : 'Starting fives (expected)', html: `<p class="note">${both ? 'Confirmed by both teams' : "The NBA's expected lineups, until each team confirms shortly before tip-off"} · source: NBA.</p><div class="grid two">${['home', 'away'].map((s) => `<div class="panel reveal" style="border-top:3px solid ${side(s)[1]}"><h3 class="ph">${esc(side(s)[0])} <small>${L[s].confirmed ? 'confirmed' : 'expected'}</small></h3><ol class="lineup">${L[s].players.map((p) => `<li><span>${esc(p.pos)}</span>${esc(p.name)}${p.active ? '' : '<em>inactive</em>'}</li>`).join('')}</ol></div>`).join('')}</div>` });
+  }
+  // Esports: both rosters with bo3.gg's six-month rating (esports.js).
+  if (e.rosters) {
+    const av = e.rosters.avg;
+    S.push({ id: 'rosters', label: 'Rosters', html: `<p class="note">Each player's bo3.gg rating over the last six months${av.home != null && av.away != null ? ` · the five's average: ${esc(H)} ${av.home.toFixed(2)}, ${esc(A)} ${av.away.toFixed(2)}` : ''} · source: bo3.gg.</p><div class="grid two">${['home', 'away'].map((s) => `<div class="panel reveal" style="border-top:3px solid ${side(s)[1]}"><h3 class="ph">${esc(side(s)[0])}</h3><ol class="lineup">${e.rosters[s].map((p) => `<li><span>${p.rating != null ? p.rating.toFixed(2) : '–'}</span>${esc(p.nick)}${p.name ? `<em>${esc(p.name)}</em>` : ''}</li>`).join('') || '<li>Not listed</li>'}</ol></div>`).join('')}</div>` });
+  }
+  // Tennis: both players' serve and return this season, and the match chance they give (tennisstats.js).
+  if (e.serveReturn) {
+    const sr = e.serveReturn, m = sr.model, cell = (x) => (x == null ? '–' : `${Math.round(x * 100)}%`);
+    const rows = [['First serves in', 'firstIn'], ['Points won on first serve', 'firstWon'], ['Points won on second serve', 'secondWon'], ['Service games held', 'held'], ['Return points won', 'retPts'], ['Return games won', 'broke'], ['Break points saved', 'bpSaved'], ['Break points converted', 'bpConv']];
+    S.push({ id: 'serve', label: 'Serve and return', html: `<p class="note">This season · source: ${esc(sr.source || '')}${m ? ` · from these numbers alone ${esc(H)} wins ${Math.round(m.match * 100)}%, holding serve ${Math.round(m.holdA * 100)}% of the time against ${Math.round(m.holdB * 100)}% (a reference beside the price, not a pick)` : ''}.</p><div class="table-wrap"><table class="tbl"><thead><tr><th></th><th>${esc(H)}</th><th>${esc(A)}</th></tr></thead><tbody>${rows.map(([l, k]) => `<tr><td>${l}</td><td class="num">${cell(sr.home?.[k])}</td><td class="num">${cell(sr.away?.[k])}</td></tr>`).join('')}<tr><td>Aces / double faults a match</td><td class="num">${sr.home ? `${sr.home.aces} / ${sr.home.dfs}` : '–'}</td><td class="num">${sr.away ? `${sr.away.aces} / ${sr.away.dfs}` : '–'}</td></tr><tr><td>Matches this season</td><td class="num">${sr.home?.matches ?? '–'}</td><td class="num">${sr.away?.matches ?? '–'}</td></tr></tbody></table></div>` });
+  }
+
   if (!d && !native) {
     S.push({ id: 'intel', label: 'Match intel', html: '<div class="panel"><p class="muted loading-dots">Loading injuries, team stats, form, head-to-head and standings</p></div>' });
     return S;

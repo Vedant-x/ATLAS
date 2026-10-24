@@ -45,6 +45,7 @@ import { fields } from './sources/fields.mjs';
 import { europe } from './sources/europe.mjs';
 import { mmaOdds } from './sources/mma.mjs';
 import { stakePrices } from './sources/stake.mjs';
+import { playerData } from './sources/players.mjs';
 
 await rm(out, { recursive: true, force: true });
 await mkdir(`${out}/data`, { recursive: true });
@@ -630,6 +631,8 @@ if (process.env.ODDS_API_KEY) {
 // Stake's own prices (OddsPapi, ODDSPAPI_KEY): beside each main-league price, and Pinnacle's fair
 // chance where the match has no sharp line yet (sources/stake.mjs).
 try { await stakePrices(events); } catch (e) { log(`Stake (OddsPapi) failed: ${e.message}`); noteSource('Stake (OddsPapi)', 'oddspapi.io', "Stake's own prices on the main football leagues", false, null, e.message); }
+// Player data (sources/players.mjs): NBA starting lineups, esports rosters, tennis serve and return.
+try { await playerData(events); } catch (e) { log(`Player data failed: ${e.message}`); }
 // Price movement: every price remembers the first one seen (movement.js), once all prices are in.
 // Then how many prices beat the sharp market's fair odds right now (Value bets), for the log.
 {
