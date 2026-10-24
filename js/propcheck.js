@@ -15,6 +15,7 @@
 // forecast (with its rough range and sample), market estimate, break-even and return at the price,
 // readiness, data age and what is missing.
 import { READY_LABEL } from './readiness.js';
+import { esc as escAttr } from './esc.js';
 
 const OUT = /^(out|doubtful|injured reserve|suspension)/i;
 const QUESTIONABLE = /^(questionable|day-to-day)/i;
@@ -62,7 +63,6 @@ export function propReadiness(e, x, { now = Date.now(), priceAt = null, logsAt =
 
 const pc = (p, d = 0) => (Number.isFinite(p) ? `${(p * 100).toFixed(d)}%` : '–');
 const sign = (x, d = 0) => `${x >= 0 ? '+' : '−'}${Math.abs(x * 100).toFixed(d)}`;
-const escAttr = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 export const readinessBadge = (r) => `<span class="ready ready-${r.state}" data-tip="${escAttr(r.checks.map((c) => `${c.ok === true ? '✓' : c.ok === false ? '✗' : '–'} ${c.label}: ${c.note}`).join('\n'))}">${escAttr(r.label)}</span>`;
 
 // a: { hits, n, avg, forecast, range, nEff, priced, odds, marketEst, why, readiness, priceAge, logsAge, filtersNote }

@@ -3,13 +3,13 @@
 // live team stats and the scorecard for cricket. ESPN matches are read from ESPN's match summary
 // (browser-friendly) every few seconds while the page is open; NPB/KBO/esports/eSoccer use what the
 // live lane publishes. `parseLive` is pure so it can be tested.
+import { esc } from './esc.js';
 
 const BASE = 'https://site.api.espn.com/apis/site/v2/sports';
 const CRICKET = 'https://site.web.api.espn.com/apis/site/v2/sports/cricket';
 const cache = new Map(); // event id → { at, data }
 export const liveFor = (id) => cache.get(id)?.data || null;
 
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const txt = (v) => (v == null ? '' : String(v));
 const athlete = (x) => x?.athlete?.displayName || x?.athlete?.shortName || x?.displayName || '';
 

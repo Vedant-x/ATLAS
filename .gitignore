@@ -8,3 +8,6 @@ test-results/
 !.env.example
 android/build/
 android/ATLAS.apk
+
+# Built from npm by scripts/vendor.mjs (npm ci / npm install)
+vendor/

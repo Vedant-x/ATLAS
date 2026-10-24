@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 const root = await stat('dist/pages/index.html').then(() => 'dist/pages').catch(() => '.');
-const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
+const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.txt': 'text/plain', '.xml': 'application/xml', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 const port = Number(process.env.PORT) || 8080;
 const headers = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
 createServer(async (req, res) => {
@@ -15,8 +15,8 @@ createServer(async (req, res) => {
     if (!['GET', 'HEAD'].includes(req.method)) { res.writeHead(405); res.end('Read only'); return; }
     const pathname = decodeURIComponent(url.pathname);
     // Only site files: never .env, Git history or scripts.
-    const top = new Set(['/', '/index.html', '/favicon.svg', '/manifest.webmanifest', '/sw.js']);
-    const asset = /^\/(js|css|vendor|icons|data)\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_.-]+\.(js|css|json|svg|png)$/.test(pathname) && !pathname.includes('..');
+    const top = new Set(['/', '/index.html', '/favicon.svg', '/manifest.webmanifest', '/sw.js', '/robots.txt', '/sitemap.xml']);
+    const asset = /^\/(js|css|vendor|icons|data)\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_.-]+\.(js|mjs|css|json|svg|png)$/.test(pathname) && !pathname.includes('..');
     if (!top.has(pathname) && !asset) { res.writeHead(404); res.end('Not found'); return; }
     const file = join(root, pathname === '/' ? 'index.html' : pathname);
     const body = await readFile(file);

@@ -1,10 +1,14 @@
+> **Historical.** The status of the 18 October 2026 implementation brief, kept for the record. For the
+> site as it is now see the [README](../README.md); for what changed since and why, [CHANGELOG](../CHANGELOG.md)
+> and [DECISIONS](DECISIONS.md).
+
 # Implementation brief: status (18 October 2026)
 
 PR #102 was merged on 19 October 2026; later fixes are on branch `claude/trusting-shannon-82cdza`.
 
 ## Baseline
 
-`baseline/picks-2026-10-18.json.gz` is an unchanged copy of the live track record (track-record branch at
+`test/fixtures/baseline/picks-2026-10-18.json.gz` is an unchanged copy of the live track record (track-record branch at
 `d0ea77f`). Recomputed totals reproduce the 18 October screenshot exactly: 791–382, 1.44 average odds,
 −40.71u, −3.5% ROI, Brier 0.2197 (ATLAS) vs 0.2182 (market) on 1,046 paired picks, −0.32% vs close.
 

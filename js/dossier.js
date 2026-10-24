@@ -2,7 +2,7 @@
 import { standingsTable } from './standings.js';
 import { fmtDate, fmt as fmtTime, zone as tzZone } from './tz.js';
 import { weatherLine, weatherFlag } from './weather.js';
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+import { esc } from './esc.js';
 const safeHref = (u) => (/^https?:\/\//i.test(String(u || '')) ? esc(u) : '#');
 // A date from a feed: an ISO string or a timestamp (the results history stores milliseconds).
 // Dates and times in the zone chosen in Display (tz.js), never the device's own.

@@ -20,7 +20,7 @@ export function siteData(now = Date.now()) {
     ev('fx-tor-mtl', 'hockey', 'NHL', 'hockey/nhl', 'Maple Leafs', 'Canadiens', 9, [['Maple Leafs', 1.62], ['Canadiens', 2.3]]),
     // No price in the feed: rated by the model from rankings / records (match page only).
     ev('fx-alc-ruu', 'tennis', 'ATP', 'tennis/atp', 'Alcaraz', 'Ruud', 7, [], { markets: [], tennis: { home: { rank: 2, points: 9000 }, away: { rank: 40, points: 1300 } } }),
-    ev('fx-ind-ban', 'cricket', 'T20I', 'cricket/t20i', 'India', 'Bangladesh', 10, [], { markets: [], stats: { homeRecord: '9-1', awayRecord: '3-7', homeForm: ['W', 'W', 'W', 'W', 'L'], awayForm: ['L', 'L', 'W', 'L', 'L'] } }),
+    ev('fx-ind-ban', 'cricket', 'T20I', 'atlas/cricket-intl', 'India', 'Bangladesh', 10, [], { markets: [], stats: { homeRecord: '9-1', awayRecord: '3-7', homeForm: ['W', 'W', 'W', 'W', 'L'], awayForm: ['L', 'L', 'W', 'L', 'L'] } }),
     // Priced by many bookmakers (The Odds API): fair chances from Pinnacle, the best price on offer.
     // Liverpool's best price beats Pinnacle's fair odds (a value bet); Man City's did too, but it has
     // drifted from 1.42 since first seen, so it is left out.

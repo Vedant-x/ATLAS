@@ -1,0 +1,15 @@
+name: Wrong or missing data
+description: A price, line, score, result, injury or prop that does not match the source.
+labels: [data]
+body:
+  - type: input
+    id: match
+    attributes: { label: Match or pick, placeholder: "Celtics v Knicks, Jalen Brunson over 5.5 rebounds" }
+    validations: { required: true }
+  - type: textarea
+    id: wrong
+    attributes: { label: What is wrong, description: "What ATLAS shows, what it should be, and where you saw the right value (bookmaker, league site)." }
+    validations: { required: true }
+  - type: input
+    id: when
+    attributes: { label: When you saw it, description: Date and time, with your time zone. }

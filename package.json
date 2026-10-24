@@ -3,11 +3,28 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20" },
+  "description": "ATLAS: sports betting research with a public record. A static site rebuilt by GitHub Actions.",
+  "engines": { "node": ">=22" },
   "scripts": {
+    "postinstall": "node scripts/vendor.mjs",
+    "vendor": "node scripts/vendor.mjs",
     "build": "node scripts/pages.mjs",
     "start": "node scripts/serve.mjs",
+    "lint": "eslint .",
+    "check": "npm run lint && npm test",
     "test": "node --test test/*.test.mjs",
-    "test:ui": "node --test test/ui/*.ui.mjs"
+    "test:ui": "node --test --test-timeout=180000 test/ui/*.ui.mjs",
+    "check:data": "node scripts/check-data.mjs dist/pages/data"
+  },
+  "dependencies": {
+    "@mlc-ai/web-llm": "0.2.85",
+    "gsap": "3.12.5",
+    "three": "0.160.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.1",
+    "esbuild": "0.24.2",
+    "eslint": "9.39.1",
+    "globals": "16.5.0"
   }
 }

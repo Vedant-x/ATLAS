@@ -210,7 +210,7 @@ export function fitPoisson(win, total, sport) {
 }
 
 function poissonMarkets(e, fit) {
-  const { g, lh, la, n } = fit;
+  const { g, lh, la } = fit;
   const sum = (pred) => g.reduce((s, row, i) => s + row.reduce((t, p, j) => t + (pred(i, j) ? p : 0), 0), 0);
   const o3 = outcome3(g);
   const unit = { football: 'goals', efootball: 'goals', hockey: 'goals', baseball: 'runs' }[e.sport];

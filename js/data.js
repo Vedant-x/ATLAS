@@ -2,8 +2,7 @@
 //   1. data/index.json, the snapshot the Pages workflow rebuilds (every league, NPB/KBO,
 //      MLB starter reports, soccer absences)
 //   2. ESPN live scoreboards fetched straight from the browser (local preview without a snapshot)
-//   3. data/odds.json, an older snapshot file name
-//   4. Simulated DEMO fixtures, so the UI still works offline. Demo odds are NOT real prices.
+//   3. Simulated DEMO fixtures, so the UI still works offline. Demo odds are NOT real prices.
 import { fetchAll, fetchLeague, LEAGUES, leagueStatus } from './espn.js';
 import { CRICKET_URL, parseCricket } from './cricket.js';
 import { absencesFor } from './fotmob.js';
@@ -168,14 +167,6 @@ export async function loadEvents() {
     const events = await fetchAll(AbortSignal.timeout(15000), FEATURED);
     if (events.length) return { events, source: 'ESPN live', demo: false, server: false, fetchedAt: Date.now() };
   } catch { /* blocked or offline: try the snapshot */ }
-
-  try {
-    const res = await fetch('data/odds.json', { cache: 'no-store' });
-    if (res.ok) {
-      const json = await res.json();
-      if (Array.isArray(json.events) && json.events.length) return { events: json.events, source: json.source || 'feed', demo: false, server: false, fetchedAt: json.fetchedAt };
-    }
-  } catch { /* no feed: fall through to demo */ }
 
   const now = Date.now();
   const r = rng(Math.floor(now / 86400000));

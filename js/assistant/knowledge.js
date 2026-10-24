@@ -12,7 +12,7 @@ import { liveWin } from '../live.js';
 import { calibrated, shownProp, rankedBankers, bestBets, valueBets, recommendationFor } from '../track.js';
 import { bankers } from '../intel.js';
 import { trackCalibration, trackStats } from '../trackview.js';
-import { researchRow, caseFor, researchPrefs } from '../research.js';
+import { researchRow, caseFor } from '../research.js';
 import { changesSince, lastVisit, needsReview, timelineUpdatedAt } from '../timeline.js';
 import { watch } from '../alerts.js';
 import { readiness, priceTime } from '../readiness.js';
