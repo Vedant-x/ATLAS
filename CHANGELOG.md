@@ -25,7 +25,7 @@ what changed, week by week. Reasons and reversals are in [docs/DECISIONS.md](doc
   (configure-pages v6, upload-pages-artifact v5, deploy-pages v5, upload-artifact v6); a test fails
   if a workflow goes back to a Node 20 release.
 - **Stake's prices (24 October):** Stake's own price beside each price on the main football leagues
-  (OddsPapi; on once an ODDSPAPI_KEY secret is added), on match pages, picks and the bookmaker table.
+  (OddsPapi; on with the ODDS_PAPI_API_KEY secret), on match pages, picks and the bookmaker table.
   A value bet whose Stake price clears the fair odds is taken and recorded at Stake's price.
 - **Search pages (24 October):** a plain page per sport and per league at real addresses
   (sports/<id>/, leagues/<key>/) with the week's fixtures, India times, the market's chances, prices and
