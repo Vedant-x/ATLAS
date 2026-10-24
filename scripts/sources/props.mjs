@@ -2,13 +2,13 @@
 import { out, UA, get, log, problems, noteSource } from '../lib.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { inflateSync } from 'node:zlib';
-import { REPORT_PAGE, reportLinks, latestReport, reportTime, pdfStreams, textItems, textRows, parseReport, applyOfficial } from '../../js/nbainjury.js';
+import { REPORT_PAGE, reportLinks, latestReport, reportTime, pdfPages, textItems, textRows, parseReport, applyOfficial } from '../../js/nbainjury.js';
 import { CORE, PROVIDER, PROP_STATS, GAMELOG_KEYS, OPPORTUNITY, parseProps, gamelogRows, previousSeason, formFor, propHistory, propChance, withoutTeammate, hasForm, suspectProp } from '../../js/props.js';
 import { pendingNews } from '../../js/newsgate.js';
 
 // The NBA's official injury report (js/nbainjury.js): the latest PDF linked from the league's page,
-// read as text. Returns { url, at, entries, rows } (rows: the first page's text, for the log when
-// nothing could be read from it).
+// read as text. Returns { url, at, entries, pages, rows } (rows: the first page's text, for the log
+// when nothing could be read from it).
 export async function officialNbaReport() {
   const y = new Date().getUTCMonth() >= 6 ? new Date().getUTCFullYear() : new Date().getUTCFullYear() - 1;
   let links = [];
@@ -19,8 +19,8 @@ export async function officialNbaReport() {
   if (!url) throw new Error('no report linked from official.nba.com');
   const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(20000) });
   if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
-  const pages = pdfStreams(Buffer.from(await r.arrayBuffer()), inflateSync).map((c) => textRows(textItems(c))).filter((rows) => rows.length);
-  return { url, at: reportTime(url), entries: parseReport(pages), rows: (pages[0] || []).slice(0, 14).map((row) => row.words.map((w) => w.s).join(' ')) };
+  const pages = pdfPages(Buffer.from(await r.arrayBuffer()), inflateSync).map((c) => textRows(textItems(c))).filter((rows) => rows.length);
+  return { url, at: reportTime(url), entries: parseReport(pages), pages: pages.length, rows: (pages[0] || []).slice(0, 14).map((row) => row.words.map((w) => w.s).join(' ')) };
 }
 
 // DraftKings player milestones and anytime scorers from ESPN's core odds feed, for matches in the
@@ -89,8 +89,8 @@ export async function playerProps(events) {
     try {
       official = await officialNbaReport();
       const teams = new Set(official.entries.map((x) => x.team));
-      log(`NBA injury report (official): ${official.entries.length} entries for ${teams.size} teams, published ${official.at ? new Date(official.at).toISOString().slice(0, 16).replace('T', ' ') : '?'} UTC (${official.url.split('/').pop()})`);
-      if (official.entries.length) log(`  e.g. ${official.entries.slice(0, 4).map((x) => `${x.player} (${x.team}) ${x.status}`).join(' · ')}`);
+      log(`NBA injury report (official): ${official.entries.length} entries for ${teams.size} teams on ${official.pages} page(s), published ${official.at ? new Date(official.at).toISOString().slice(0, 16).replace('T', ' ') : '?'} UTC (${official.url.split('/').pop()})`);
+      if (official.entries.length) log(`  e.g. ${official.entries.filter((x, i, a) => a.findIndex((y) => y.team === x.team) === i).slice(0, 6).map((x) => `${x.matchup} ${x.team}: ${x.player} ${x.status} (${x.reason})`).join(' · ')}`);
       else log(`  nothing read; first rows: ${official.rows.join(' | ').slice(0, 600)}`);
       // Used only when it reads cleanly: several teams, every status a known one.
       if (teams.size < 2) official = null;
@@ -101,6 +101,7 @@ export async function playerProps(events) {
     }
   }
   let injured = 0, pending = 0, pulled = 0, officialChanges = 0;
+  const tally = {}; // the league's report against ESPN's lists (applyOfficial)
   await Promise.all(Array.from({ length: 6 }, async () => {
     while (sq.length) {
       const e = sq.shift();
@@ -123,7 +124,7 @@ export async function playerProps(events) {
           for (const pr of e.props || []) add(pr.player, pr.id);
           for (const x of [...inj.home, ...inj.away]) add(x.name, x.id);
           const g = { home: e.home, away: e.away, injuries: inj };
-          officialChanges += applyOfficial(g, official.entries, (name) => ids.get(name.toLowerCase()) ?? null);
+          officialChanges += applyOfficial(g, official.entries, (name) => ids.get(name.toLowerCase()) ?? null, tally);
         }
         if (inj.home.length || inj.away.length) { e.injuries = { ...inj, source: inj.home.concat(inj.away).some((x) => x.official) ? 'NBA official report, ESPN' : 'ESPN', at: Date.now(), ...(official ? { officialAt: official.at } : {}) }; injured += inj.home.length + inj.away.length; }
         if (e.leaguePath === 'basketball/nba') {
@@ -141,7 +142,7 @@ export async function playerProps(events) {
       } catch { /* no injury report */ }
     }
   }));
-  log(`Injury reports (ESPN${official ? ', NBA statuses from the league\'s report' : ''}): ${official ? `${officialChanges} NBA statuses changed or added by the league's report; ` : ''}${injured} players out, doubtful or questionable across ${withProps.filter((e) => e.injuries).length} of ${withProps.length} prop matches; NBA: ${pending} game(s) waiting on a key player's status, ${pulled} prop(s) of listed players left out`);
+  log(`Injury reports (ESPN${official ? ', NBA statuses from the league\'s report' : ''}): ${official ? `${officialChanges} NBA statuses changed or added by the league's report (${tally.both || 0} players on both lists, ${tally.changed || 0} of them with a new status; ${tally.added || 0} only on the league's; ${tally.cleared || 0} cleared to play); ` : ''}${injured} players out, doubtful or questionable across ${withProps.filter((e) => e.injuries).length} of ${withProps.length} prop matches; NBA: ${pending} game(s) waiting on a key player's status, ${pulled} prop(s) of listed players left out`);
 
   // Player history: each player's last 20 games from his ESPN game log (last season too while this
   // one is under 10 games old). It gives the props page its hit rates, splits and charts, and the

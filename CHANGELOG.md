@@ -18,6 +18,9 @@ what changed, week by week. Reasons and reversals are in [docs/DECISIONS.md](doc
 - **Engineering:** dependencies from npm, ESLint, one CI run per pull request with time limits, a data
   contract check on the real build, the build split into one module per source, Node 24 actions,
   licence, contributing guide and templates.
+- **Fix (24 October):** the NBA injury report reader decoded only the first stream of the league's
+  PDF, so the first live build read no rows from it. It now reads every page in the page tree's
+  order and each row by what its cells hold, and the build log checks its players against ESPN's lists.
 - Earlier this week: one site-wide time zone, colour themes, value bets and the drift guard, finished
   matches kept on the watchlist, props on the real over/under lines.
 
