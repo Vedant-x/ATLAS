@@ -11,6 +11,7 @@ import { writeFile } from 'node:fs/promises';
 import { LINEUPS_URL, LINEUP_HEADERS, parseLineups, applyLineups } from '../../js/nbalineups.js';
 import { TEAM_URL, rosterOf, applyRosters } from '../../js/esports.js';
 import { WTA_RANKED, WTA_YEAR, wtaIds, wtaStats, nameKey, matchModel } from '../../js/tennisstats.js';
+import { CRICKET_SUMMARY, squadsOf } from '../../js/cricket.js';
 
 const DAY = 864e5;
 const getJson = async (u, opt) => JSON.parse(await get(u, opt));
@@ -77,10 +78,26 @@ async function tennisStats(events, cache) {
   if (wta.length) noteSource('WTA serve and return', 'wtatennis.com', "Each player's serve and return figures this season, from the WTA", n > 0, n, `${n} matches with figures`);
 }
 
+// Cricket: each match's XIs (or squads) from ESPN's summary, for matches in the next day and live
+// ones (40 a build, four at a time).
+async function cricketSquads(events) {
+  const now = Date.now();
+  const due = events.filter((e) => e.sport === 'cricket' && e.seriesId && e.compId && !e.final && (e.live || (e.start > now - 6 * 36e5 && e.start < now + DAY))).sort((a, b) => a.start - b.start).slice(0, 40);
+  let n = 0, xi = 0, i = 0;
+  await Promise.all(Array.from({ length: 4 }, async () => {
+    while (i < due.length) {
+      const e = due[i++];
+      try { const sq = squadsOf(await getJson(CRICKET_SUMMARY(e.seriesId, e.compId)), e); if (sq) { e.squads = sq; n++; if (sq.xi) xi++; } } catch { /* next build */ }
+    }
+  }));
+  log(`Cricket players (ESPN): ${n} of ${due.length} matches in the next day or live with their players (${xi} with the XIs named at the toss, ${n - xi} squads)`);
+  if (due.length) noteSource('Cricket players', 'espncricinfo.com (ESPN)', "Each side's XI or squad, with roles and batting and bowling styles", n > 0 || null, n, `${n} of ${due.length} matches with players`);
+}
+
 export async function playerData(events) {
   let cache = {};
   try { const r = await fetch((process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json').replace('index.json', 'players.json'), { signal: AbortSignal.timeout(15000) }); if (r.ok) cache = await r.json(); } catch { /* first run */ }
-  for (const [name, fn] of [['NBA starting lineups', nbaLineups], ['Esports rosters', esportsRosters], ['Tennis serve and return', tennisStats]]) {
+  for (const [name, fn] of [['NBA starting lineups', nbaLineups], ['Esports rosters', esportsRosters], ['Tennis serve and return', tennisStats], ['Cricket players', cricketSquads]]) {
     try { await fn(events, cache); } catch (e) { log(`${name} failed: ${e.message}`); noteSource(name, '', '', false, null, e.message); }
   }
   await writeFile(`${out}/data/players.json`, JSON.stringify(cache));

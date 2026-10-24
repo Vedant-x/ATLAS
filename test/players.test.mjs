@@ -78,3 +78,23 @@ test('the point-by-point model: holds, sets and the match from serve against ret
   assert.ok(matchModel(A, B, { bestOf: 5 }).match > ab.match, 'five sets favour the better player more');
   assert.equal(matchModel(A, null), null);
 });
+
+test('cricket players: the XIs from ESPN\'s rosters once named, else the squads; roles, styles, captain and keeper', async () => {
+  const { squadsOf, CRICKET_SUMMARY } = await import('../js/cricket.js');
+  assert.equal(CRICKET_SUMMARY('23028', '1557530'), 'https://site.web.api.espn.com/apis/site/v2/sports/cricket/23028/summary?event=1557530');
+  const p = (name, role, bat, bowl, extra = {}) => ({ captain: false, starter: true, athlete: { id: '1', displayName: name, style: [{ description: bat, type: 'batting' }, ...(bowl ? [{ description: bowl, type: 'bowling' }] : [])], position: { name: role } }, position: { name: role }, ...extra });
+  const e = { home: 'Tasmania', away: 'Victoria' };
+  // As ESPN serves a match under way: rosters with the XIs (the away side listed first here).
+  const sm = { rosters: [
+    { homeAway: 'away', team: { displayName: 'Victoria' }, roster: [p('Will Sutherland', 'Allrounder', 'Right-hand bat', 'Right-arm fast-medium', { captain: true })] },
+    { homeAway: 'home', team: { displayName: 'Tasmania' }, roster: [p('Mitchell Owen', 'Allrounder', 'Right-hand bat', 'Right-arm medium'), p('Matthew Wade', 'Wicketkeeper batter', 'Left-hand bat')] },
+  ], squads: [] };
+  const sq = squadsOf(sm, e);
+  assert.equal(sq.xi, true);
+  assert.deepEqual(sq.home.map((x) => [x.name, x.role, x.keeper]), [['Mitchell Owen', 'Allrounder', false], ['Matthew Wade', 'Wicketkeeper batter', true]]);
+  assert.deepEqual(sq.away[0], { name: 'Will Sutherland', role: 'Allrounder', bat: 'Right-hand bat', bowl: 'Right-arm fast-medium', captain: true, keeper: false });
+  // Before the toss: no rosters; the squads where ESPN lists them; nothing where it lists none.
+  const pre = squadsOf({ rosters: [{ team: { displayName: 'Tasmania' }, roster: [] }], squads: [{ team: { displayName: 'Tasmania' }, athletes: [{ displayName: 'Beau Webster', position: { name: 'Allrounder' }, style: [] }] }] }, e);
+  assert.deepEqual([pre.xi, pre.home[0].name, pre.away.length], [false, 'Beau Webster', 0]);
+  assert.equal(squadsOf({ rosters: [], squads: [{ team: { displayName: 'Gambia' }, athletes: [] }] }, { home: 'Gambia', away: 'Zambia' }), null);
+});

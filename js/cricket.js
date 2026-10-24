@@ -41,3 +41,27 @@ export function parseCricket(json, now = Date.now()) {
   }
   return out;
 }
+
+// ---------- Players ----------
+// Both sides' players from ESPN's match summary: the XIs once named at the toss (rosters), else the
+// squads, with each player's role, batting and bowling style, captain and keeper.
+// → { home: [{ name, role, bat, bowl, captain, keeper }], away: [...], xi } or null.
+export const CRICKET_SUMMARY = (series, id) => `https://site.web.api.espn.com/apis/site/v2/sports/cricket/${series}/summary?event=${id}`;
+export function squadsOf(sm, e) {
+  const key = (s) => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
+  const sideOf = (t, fallback) => ([t?.displayName, t?.name].some((n) => key(n) && key(n) === key(e.home)) ? 'home' : [t?.displayName, t?.name].some((n) => key(n) && key(n) === key(e.away)) ? 'away' : fallback);
+  const player = (x) => {
+    const a = x?.athlete || x;
+    if (!a?.displayName) return null;
+    const style = (type) => (a.style || []).find((s) => s.type === type)?.description || null;
+    const role = (x.position || a.position || {}).name || null;
+    return { name: a.displayName, role, bat: style('batting'), bowl: style('bowling'), captain: Boolean(x.captain), keeper: /keeper/i.test(role || '') };
+  };
+  const out = { home: [], away: [], xi: false };
+  for (const r of sm?.rosters || []) {
+    const s = sideOf(r.team, r.homeAway);
+    if ((s === 'home' || s === 'away') && r.roster?.length) { out[s] = r.roster.map(player).filter(Boolean); out.xi = true; }
+  }
+  if (!out.home.length && !out.away.length) for (const q of sm?.squads || []) { const s = sideOf(q.team, null); if (s && q.athletes?.length) out[s] = q.athletes.map(player).filter(Boolean); }
+  return out.home.length || out.away.length ? out : null;
+}

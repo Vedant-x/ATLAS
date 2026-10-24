@@ -148,6 +148,11 @@ export function dossierSections(e, d, hc, ac) {
     const av = e.rosters.avg;
     S.push({ id: 'rosters', label: 'Rosters', html: `<p class="note">Each player's bo3.gg rating over the last six months${av.home != null && av.away != null ? ` · the five's average: ${esc(H)} ${av.home.toFixed(2)}, ${esc(A)} ${av.away.toFixed(2)}` : ''} · source: bo3.gg.</p><div class="grid two">${['home', 'away'].map((s) => `<div class="panel reveal" style="border-top:3px solid ${side(s)[1]}"><h3 class="ph">${esc(side(s)[0])}</h3><ol class="lineup">${e.rosters[s].map((p) => `<li><span>${p.rating != null ? p.rating.toFixed(2) : '–'}</span>${esc(p.nick)}${p.name ? `<em>${esc(p.name)}</em>` : ''}</li>`).join('') || '<li>Not listed</li>'}</ol></div>`).join('')}</div>` });
   }
+  // Cricket: the XIs once named at the toss, else the squads (cricket.js squadsOf).
+  if (e.squads) {
+    const sq = e.squads, abbr = (r) => ({ Batter: 'BAT', Bowler: 'BOWL', Allrounder: 'AR', 'Wicketkeeper batter': 'WK', Wicketkeeper: 'WK' }[r] || (r || '').slice(0, 4).toUpperCase());
+    S.push({ id: 'xi', label: sq.xi ? 'Playing XIs' : 'Squads', html: `<p class="note">${sq.xi ? 'The XIs as named at the toss' : 'The squads: the XIs are named at the toss'} · source: ESPN.</p><div class="grid two">${['home', 'away'].map((s) => `<div class="panel reveal" style="border-top:3px solid ${side(s)[1]}"><h3 class="ph">${esc(side(s)[0])}</h3><ol class="lineup">${sq[s].map((p) => `<li><span>${esc(abbr(p.role))}</span>${esc(p.name)}${p.captain ? ' (c)' : ''}${p.keeper ? ' (wk)' : ''}<em>${esc([p.bat, p.bowl].filter(Boolean).join(' · '))}</em></li>`).join('') || '<li>Not named yet</li>'}</ol></div>`).join('')}</div>` });
+  }
   // Tennis: both players' serve and return this season, and the match chance they give (tennisstats.js).
   if (e.serveReturn) {
     const sr = e.serveReturn, m = sr.model, cell = (x) => (x == null ? '–' : `${Math.round(x * 100)}%`);
