@@ -19,7 +19,8 @@ import { fetchAll, LEAGUES, fetchErrors, leagueStatus } from '../js/espn.js';
 import { leagueByPath, CATALOG } from '../js/catalog.js';
 import { leaguePage, sportPage, sitemap } from '../js/staticpages.js';
 import { CLUBELO, parseClubElo, eloIndex, isEuropean } from '../js/clubelo.js';
-import { FD_FIXTURES, parseFixtures, applyFixtures } from '../js/footballdata.js';
+import { FD_FIXTURES, FD_LEAGUES, parseFixtures, applyFixtures } from '../js/footballdata.js';
+import { FD_RESULTS, seasonCodes, parseResults, refereeTable, refereeFor } from '../js/referees.js';
 import { ELO_WORLD, ELO_TEAMS, eloratingsIndex, applyEloratings, isInternational } from '../js/eloratings.js';
 import { SLEEPER_NFL, injuredByTeam, applyNflInjuries } from '../js/sleeper.js';
 import { TA_ELO, parseEloPage, eloIndex as tennisEloIndex, applyTennisElo } from '../js/tennisabstract.js';
@@ -444,6 +445,34 @@ const injNames = await injuryNames();
 await writeFile(`${out}/data/injury-names.json`, JSON.stringify(injNames));
 noteSource('FotMob', 'fotmob.com', 'Soccer injuries, suspensions and lineups', absMatched > 0 || !soccer.length, absMatched, `${absMatched} of ${soccer.length} soccer matches linked`);
 log(`FotMob: ${absMatched}/${soccer.length} soccer matches linked, ${absFound} absences, ${soccer.filter((e) => e.absences?.lineup).length} lineups (${soccer.filter((e) => e.absences?.lineup && !['lastStarting11', 'predicted'].includes(e.absences.lineup.type)).length} confirmed), ${Object.keys(injNames).length} injury names`);
+
+// Referees' habits (js/referees.js): who referees each coming match (FotMob, above), with that
+// referee's cards and fouls per game over this season and last (football-data.co.uk's results files,
+// for the leagues whose files name the referee), kept 12 hours in data/referees.json.
+try {
+  let cache = { at: 0, tables: {} };
+  try { const r = await fetch((process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json').replace('index.json', 'referees.json'), { signal: AbortSignal.timeout(15000) }); if (r.ok) cache = { at: 0, tables: {}, ...(await r.json()) }; } catch { /* first run */ }
+  const named = soccer.filter((e) => e.absences?.referee);
+  const want = new Set(named.map((e) => e.leaguePath));
+  let read = 0;
+  if (!(cache.at > Date.now() - 12 * 36e5) && named.length) {
+    const tables = {}, [cur, prev] = seasonCodes();
+    for (const [div, path] of Object.entries(FD_LEAGUES).filter(([, p]) => want.has(p))) {
+      const rows = [];
+      for (const season of [cur, prev]) { try { rows.push(...parseResults(await get(FD_RESULTS(season, div)))); read++; } catch { /* no file yet */ } }
+      const t = refereeTable(rows);
+      if (t) tables[path] = t;
+    }
+    cache = { at: Date.now(), tables };
+  }
+  let known = 0;
+  for (const e of named) { e.referee = refereeFor(e.absences.referee, cache.tables[e.leaguePath]); if (e.referee?.games) known++; }
+  await writeFile(`${out}/data/referees.json`, JSON.stringify(cache));
+  const withRecords = Object.entries(cache.tables).map(([p, t]) => `${p.split('/')[1]} (${Object.keys(t.refs).length} referees, ${t.league.games} games)`);
+  log(`Referees: ${named.length} of ${soccer.length} coming soccer matches with the referee named (FotMob), ${known} with that referee's record; records ${read ? `read this build (${read} files)` : 'held'}: ${withRecords.join(', ') || 'none (no file names its referees)'}`);
+  if (named.length && !known) log(`  e.g. ${named.slice(0, 5).map((e) => `${e.absences.referee} (${e.leaguePath})`).join(' · ')}`);
+  noteSource('Referees', 'football-data.co.uk, fotmob.com', "Who referees each soccer match, with that referee's cards and fouls per game against the league's", named.length ? true : null, known, `${named.length} matches with the referee named, ${known} with a record`);
+} catch (err) { log(`Referees failed: ${err.message}`); noteSource('Referees', 'football-data.co.uk, fotmob.com', "Who referees each soccer match, with that referee's cards and fouls", false, null, err.message); }
 
 // MLB starters: full reports from the official MLB Stats API.
 const mlbN = await enrichMlb(events, { signal: AbortSignal.timeout(90000), addMissing: true }).catch((e) => { log('MLB Stats API failed', e.message); return 0; });

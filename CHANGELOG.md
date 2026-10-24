@@ -31,6 +31,9 @@ what changed, week by week. Reasons and reversals are in [docs/DECISIONS.md](doc
   (sports/<id>/, leagues/<key>/) with the week's fixtures, India times, the market's chances, prices and
   schema.org match data, all in a sitemap written each build: the app's #/ pages are one page to a
   search engine.
+- **Referees (24 October):** each coming soccer match's referee (FotMob), with that referee's
+  yellow and red cards, fouls and home wins per game over this season and last beside the league's
+  (football-data.co.uk results, in the leagues whose files name the referee), on the match page.
 - Earlier this week: one site-wide time zone, colour themes, value bets and the drift guard, finished
   matches kept on the watchlist, props on the real over/under lines.
 

@@ -76,7 +76,14 @@ export function lineupOf(lu) {
   return { type: lu.lineupType || null, home: xi(lu.homeTeam), away: xi(lu.awayTeam) };
 }
 
-// { home: [...], away: [...], matchId, source } or null when FotMob has no such match.
+// The referee FotMob names for a match (its match facts), or null.
+export function refereeOf(md) {
+  const r = md?.content?.matchFacts?.infoBox?.Referee;
+  const name = typeof r === 'string' ? r : r?.text;
+  return typeof name === 'string' && name.trim() ? name.trim() : null;
+}
+
+// { home: [...], away: [...], matchId, source, referee } or null when FotMob has no such match.
 export async function absencesFor(e, signal) {
   // FotMob's match details refuse browser requests (CORS): in the browser this would only log errors,
   // so team news comes from the build (refreshed every few minutes) instead.
@@ -91,6 +98,7 @@ export async function absencesFor(e, signal) {
     source: 'FotMob', matchId: m.id, fetchedAt: Date.now(),
     lineupType: lu.lineupType || null,
     lineup: lineupOf(lu),
+    referee: refereeOf(md),
     home: (lu.homeTeam?.unavailable || []).map((p) => player(p, names)),
     away: (lu.awayTeam?.unavailable || []).map((p) => player(p, names)),
   };
