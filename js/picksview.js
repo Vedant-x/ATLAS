@@ -9,7 +9,7 @@ import { slipPolicy, bestBets, valueBets, MULTI_TARGETS } from './track.js';
 import { orderBets, orderChips, orderLabel, researchPrefs, windowChips } from './research.js';
 import { ico } from './icons.js';
 import { fmt, zone } from './tz.js';
-import { views, esc, sportOf, notice, istTag, legIndex, prefsBar, prefFilter, miniPick, valuePick, stakeGap } from './views.js';
+import { views, esc, sportOf, notice, istTag, legIndex, prefsBar, prefFilter, miniPick, valuePick, stakeGap, nearBestHtml, nearValueHtml } from './views.js';
 
 let S;
 export function bindPicks(state) { S = state; }
@@ -111,7 +111,7 @@ export const picksViews = {
         ${notice()}
         <details class="sl-filters reveal"><summary>${ico('filter')} Next ${hrs}h · ${esc(orderLabel())}${minOdds > 1 ? ` · odds ${minOdds.toFixed(2)}+` : ''}</summary>${windowChips('shours', hrs)}${orderChips()}${prefsBar()}</details>
         ${rec ? `<p class="rec-line reveal">So far: ${rec} · <a href="#/track">every result</a></p>` : ''}
-        <div class="minilist">${list.map((b) => miniPick(b)).join('') || `<p class="muted">Nothing in the next ${hrs} hours is both likely enough and priced at the market's fair odds or better.${hrs < 48 ? ' A longer window may find some.' : ''}</p>`}</div>`,
+        <div class="minilist">${list.map((b) => miniPick(b)).join('') || `<p class="muted">Nothing in the next ${hrs} hours is both likely enough and priced at the market's fair odds or better.${hrs < 48 ? ' A longer window may find some.' : ''}</p>${nearBestHtml(ev, hrs)}`}</div>`,
     };
   },
 
@@ -126,7 +126,7 @@ export const picksViews = {
         <p class="lede reveal">A bookmaker paying more than the market's fair odds (Pinnacle's, with its cut taken out). Stake's price first where it clears them, at long prices too (the bar rises with the odds). Good at the price shown, or at any bookmaker from the "take" price up.</p></section>
         ${notice()}
         ${rec ? `<p class="rec-line reveal">So far: ${rec} · <a href="#/track">every result</a></p>` : ''}
-        <div class="minilist">${list.map(valuePick).join('') || `<p class="muted">No price beats the sharp market in the next 48 hours right now. They come and go as bookmakers move; this list updates with every price check.</p>${stakeGap(prefFilter(S.events))}`}</div>`,
+        <div class="minilist">${list.map(valuePick).join('') || `<p class="muted">No price beats the sharp market in the next 48 hours right now. They come and go as bookmakers move; this list updates with every price check.</p>${stakeGap(prefFilter(S.events))}${nearValueHtml(prefFilter(S.events))}`}</div>`,
     };
   },
 

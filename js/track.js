@@ -57,6 +57,29 @@ export function bestBets(events, { cal = null, limit = 10 } = {}) {
     .sort((x, y) => Number(Boolean(y.atStake)) - Number(Boolean(x.atStake)) || y.p - x.p);
   return diversify(list, limit).sort((x, y) => y.p - x.p);
 }
+// When no Best bet qualifies: the likeliest winners nearest a fair price (55%+, odds 1.20 to 2.50, a
+// sharp fair chance read within sharpAge), the better of Stake's and the board's price, smallest cut
+// first. Shown as the nearest misses with what each costs on average (ev below 0); never recorded.
+export function nearBest(events, { cal = null, limit = 5 } = {}) {
+  const list = rankedBankers(events.filter(gradable), { cal, min: BEST.min, minOdds: 1, maxOdds: Infinity, limit: 2000, mix: false })
+    .filter((b) => b.consensus && freshAt(refAt(b.event)))
+    .map((b) => (b.stake > 1 && freshAt(b.event.stakeAt) && b.stake >= b.odds ? { ...b, odds: b.stake, book: 'Stake', atStake: true } : b))
+    .filter((b) => b.odds >= BEST.minOdds && b.odds <= BEST.maxOdds && edgeAt(b, b.odds) <= VALUE.maxEdge)
+    .map((b) => ({ ...b, ev: edgeAt(b, b.odds), edge: edgeAt(b, b.odds), near: true }))
+    .sort((x, y) => y.edge - x.edge);
+  return diversify(list, limit);
+}
+// When no value bet qualifies: Stake's prices nearest the bar (each price's distance from the fair
+// odds against the distance it needs), best first. The same checks as valueBets but the bar; never
+// recorded.
+export function nearValue(events, { cal = null, limit = 5 } = {}) {
+  const list = bankers(events.filter((e) => !e.live && gradable(e)), { min: 0, limit: Infinity })
+    .filter((b) => b.consensus && b.fair >= VALUE.stakeMinFair && b.stake > 1 && freshAt(b.event.stakeAt) && b.stake <= VALUE.stakeMaxOdds && !blockedSegment(cal, b.event.sport, b.market) && freshAt(refAt(b.event)))
+    .map((b) => ({ ...b, odds: b.stake, book: 'Stake', atStake: true, pRaw: b.p, p: Math.min(b.fair, b.fairPow ?? 1), edge: edgeAt(b, b.stake), ev: edgeAt(b, b.stake), need: valueNeed(b), near: true }))
+    .filter((b) => b.edge <= VALUE.maxEdge)
+    .sort((x, y) => (y.edge - y.need) - (x.edge - x.need));
+  return diversify(list, limit, { familyShare: 0.6, sportShare: 0.6 });
+}
 // Value bets: prices above the sharp market's own fair odds. With many bookmakers (oddsapi.js) the
 // fair chance is Pinnacle's with its margin removed (the sharpest book), or the books' median; a best
 // price at least VALUE.min above 1 / fair is one the market as a whole calls too long. Such edges are
