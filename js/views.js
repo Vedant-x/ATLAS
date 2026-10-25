@@ -612,7 +612,7 @@ function nearPick(b) {
     `A value bet needs ${(b.need * 100).toFixed(1)}% above at this chance: worth taking at ${odd((1 + b.need) / b.p)} or more`].join('\n');
   return `<div class="mini near reveal" data-tip="${esc(tip)}"><span class="mini-ico">${s.icon}</span>
     <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.event.home)} v ${esc(b.event.away)} · ${esc(fmtTime(b.event.start, tzZone(), 'short'))} · Stake</small></a>
-    <div class="mini-nums"><b class="${b.edge >= 0 ? 'pos' : 'neg'}" data-tip="Stake's price against the fair odds">${signPct(b.edge)}</b><small data-tip="What a value bet needs at this chance">needs +${(b.need * 100).toFixed(1)}%</small></div>
+    <div class="mini-nums"><b class="${b.edge >= 0 ? 'pos' : 'neg'}" data-tip="Stake's price against the fair odds">${signPct(b.edge)}</b>${b.moved ? '<small data-tip="The price has lengthened 3%+ since first seen and the fair odds are over 3 hours old: the market may have moved past them">market moving against it</small>' : `<small data-tip="What a value bet needs at this chance">needs +${(b.need * 100).toFixed(1)}%</small>`}</div>
     ${legButton(leg, odd(b.odds))}</div>`;
 }
 export function stakeGap(pool) {

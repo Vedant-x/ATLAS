@@ -649,7 +649,7 @@ try { await playerData(events); } catch (e) { log(`Player data failed: ${e.messa
   const soon48 = events.filter((e) => !e.live && e.start > Date.now() && e.start < Date.now() + 48 * 36e5);
   const pctN = (x) => `${x >= 0 ? '+' : ''}${(x * 100).toFixed(1)}%`;
   log(`  nearest to a fair price (shown when Best bets is empty): ${nearBest(soon48).map((b) => `${b.pick} ${b.odds}${b.atStake ? ' Stake' : ''} ${pctN(b.edge)}`).join(' · ') || 'none'}`);
-  log(`  Stake nearest the value bar (shown when Value bets is empty): ${nearValue(soon48).map((b) => `${b.pick} ${b.odds} ${pctN(b.edge)} of ${pctN(b.need)}`).join(' · ') || 'none'}`);
+  log(`  Stake nearest the value bar (shown when Value bets is empty): ${nearValue(soon48).map((b) => `${b.pick} ${b.odds} ${pctN(b.edge)} of ${pctN(b.need)}${b.moved ? ' (drifting, sharp line 3h+ old)' : ''}`).join(' · ') || 'none'}`);
   // How Stake's prices compare with the fair odds: what it charges, and where it pays more.
   const sv = stakeVsFair(events);
   if (sv.length) {
