@@ -75,8 +75,10 @@ jobs:
       - name: Site check of the live site (information; the published site, not this change)
         if: always()
         continue-on-error: true
-        timeout-minutes: 8
-        run: node scripts/site-check.mjs https://vedant-x.github.io/ATLAS/
+        timeout-minutes: 10
+        run: |
+          [ -d node_modules/playwright ] || { npm install --no-save playwright@1.56.1 && npx playwright install --with-deps chromium; }
+          node scripts/site-check.mjs https://vedant-x.github.io/ATLAS/
       - name: Keep the browser-test screenshots
         if: always()
         uses: actions/upload-artifact@v6
