@@ -1,4 +1,4 @@
-/* global document, location, innerWidth */
+/* global document, location, innerWidth, window */
 // Site check in a real browser: every main page of a running ATLAS (the live site, or the build just
 // made, served with its own real data) opened in Chromium on a phone and a desktop screen, with the
 // page's errors, failed requests and what each page shows. The browser tests use a fixed board; this
@@ -25,6 +25,14 @@ for (const [screen, viewport] of Object.entries(SCREENS)) {
   const ctx = await browser.newContext({ viewport });
   await ctx.addInitScript(() => { try { localStorage.setItem('atlas-age-ok', '1'); } catch { /* ignore */ } });
   const page = await ctx.newPage();
+  // A phone's slower processor (4x slower than the test machine's), so slow renders show.
+  if (screen === 'phone') { const cdp = await ctx.newCDPSession(page); await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 }); }
+  let loads = 0;
+  page.on('load', () => { loads++; });
+  await page.addInitScript(() => {
+    window.__long = 0;
+    try { new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__long += e.duration; }).observe({ type: 'longtask', buffered: true }); } catch { /* unsupported */ }
+  });
   const errors = [], failed = [];
   page.on('pageerror', (e) => errors.push(`${e.message} ${String(e.stack || '').split('\n').slice(1, 3).join(' ').trim()}`));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text().slice(0, 300)}`); });
@@ -34,19 +42,20 @@ for (const [screen, viewport] of Object.entries(SCREENS)) {
   await page.goto(base, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch((e) => errors.push(`load: ${e.message}`));
   for (const route of ROUTES) {
     errors.length = 0; failed.length = 0;
-    const t = Date.now();
+    const t = Date.now(), loadsBefore = loads;
+    await page.evaluate(() => { window.__long = 0; }).catch(() => {});
     await page.evaluate((r) => { location.hash = r.slice(1); }, route).catch((e) => errors.push(`nav: ${e.message}`));
     // Long enough for the data, the first live refresh (30 s cycle starts at once) and a re-render.
     await page.waitForTimeout(route === '#/' ? 15000 : 6000);
     const s = await page.evaluate(() => {
       const main = document.getElementById('app');
       const txt = (main?.innerText || '').replace(/\s+/g, ' ').trim();
-      return { len: txt.length, head: txt.slice(0, 420), skel: document.querySelectorAll('.skel-row').length, minis: document.querySelectorAll('.mini').length, panels: document.querySelectorAll('.panel').length,
+      return { long: Math.round(window.__long || 0), len: txt.length, head: txt.slice(0, 420), skel: document.querySelectorAll('.skel-row').length, minis: document.querySelectorAll('.mini').length, panels: document.querySelectorAll('.panel').length,
         overflow: document.scrollingElement.scrollWidth > innerWidth + 1 };
     }).catch((e) => ({ err: e.message }));
     const broken = errors.some((x) => !x.startsWith('console:')) || !(s.len > 80) || s.err;
     if (broken) bad++;
-    console.log(`${broken ? 'BROKEN' : 'ok    '} ${screen} ${route} (${Math.round((Date.now() - t) / 1000)}s${route === '#/' ? `, first load ${Math.round((Date.now() - t0) / 1000)}s` : ''}): ${s.err || `${s.len} chars, ${s.panels} panels, ${s.minis} picks, ${s.skel} placeholders${s.overflow ? ', SCROLLS SIDEWAYS' : ''}`}`);
+    console.log(`${broken ? 'BROKEN' : 'ok    '} ${screen} ${route} (${Math.round((Date.now() - t) / 1000)}s${route === '#/' ? `, first load ${Math.round((Date.now() - t0) / 1000)}s` : ''}): ${s.err || `${s.len} chars, ${s.panels} panels, ${s.minis} picks, ${s.skel} placeholders, main thread blocked ${s.long} ms${loads > loadsBefore ? `, RELOADED ${loads - loadsBefore}x` : ''}${s.overflow ? ', SCROLLS SIDEWAYS' : ''}`}`);
     console.log(`    shows: ${s.head || ''}`);
     for (const e of [...new Set(errors)].slice(0, 8)) console.log(`    error: ${e}`);
     for (const f of [...new Set(failed)].slice(0, 6)) console.log(`    failed: ${f}`);

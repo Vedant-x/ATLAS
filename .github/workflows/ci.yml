@@ -65,6 +65,13 @@ jobs:
       - name: Site check with live data (this build's pages and data, every main page, phone and desktop)
         timeout-minutes: 8
         run: node scripts/site-check.mjs http://127.0.0.1:8190/ --serve
+      - name: What ESPN answers a browser on the site (information)
+        if: always()
+        continue-on-error: true
+        run: |
+          for u in soccer/esp.1 soccer/eng.1 basketball/nba hockey/nhl; do
+            echo "== $u"; curl -s -o /dev/null -D - -H 'Origin: https://vedant-x.github.io' -H 'User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148' "https://site.api.espn.com/apis/site/v2/sports/$u/scoreboard" | grep -iE '^(HTTP|access-control|server|x-cache|via|content-type)' || true
+          done
       - name: Site check of the live site (information; the published site, not this change)
         if: always()
         continue-on-error: true
