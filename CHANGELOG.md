@@ -53,6 +53,8 @@ what changed, week by week. Reasons and reversals are in [docs/DECISIONS.md](doc
   the rest; a match priced from many bookmakers keeps its best price until the next build.
 - **More of Stake (25 October):** Stake's prices on the Championship, Eredivisie, Primeira Liga and
   Süper Lig too, with the sharp line to judge them by; they fill the second request's free places.
+  The main leagues' sharp line is refreshed every 3 hours instead of 8 (within the month's credits):
+  Stake prices over a line 5-7 hours old were being set aside as the market had moved since.
 - Earlier this week: one site-wide time zone, colour themes, value bets and the drift guard, finished
   matches kept on the watchlist, props on the real over/under lines.
 
