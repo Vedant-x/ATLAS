@@ -32,7 +32,7 @@ import { UNDERSTAT, understatUrl, understatData, teamsFromJson, teamsData, xgTab
 import { ODDS_API, matchOdds, overlayOdds, MAJOR_KEYS, sportOfKey, pairEvents, fixtureFromApi } from '../js/oddsapi.js';
 import { carryOpen, DRIFT } from '../js/movement.js';
 import { breaker, carryStatus } from '../js/breaker.js';
-import { valueBets, bestBets, VALUE } from '../js/track.js';
+import { valueBets, bestBets, nearBest, nearValue, VALUE } from '../js/track.js';
 import { stakeVsFair } from '../js/oddspapi.js';
 import { out, UA, get, log, problems, sources, noteSource } from './lib.mjs';
 import { npb } from './sources/npb.mjs';
@@ -645,6 +645,11 @@ try { await playerData(events); } catch (e) { log(`Player data failed: ${e.messa
   log(`Value bets (best price at least ${Math.round(VALUE.min * 100)}% above the sharp fair odds, next 48h): ${vb.length}${vb.length ? `: ${vb.slice(0, 8).map((b) => `${b.pick} ${b.odds} (fair ${(1 / b.fair).toFixed(2)}, ${b.book || '?'})`).join(' · ')}` : ''}`);
   const bb = bestBets(events.filter((e) => !e.live && e.start > Date.now() && e.start < Date.now() + 48 * 36e5), { limit: 200 });
   log(`Best bets (55%+ at a price at least the sharp fair odds, next 48h, before the record's guard): ${bb.length}${bb.length ? `: ${bb.slice(0, 8).map((b) => `${b.pick} ${b.odds} (${Math.round(b.p * 100)}%, fair ${(1 / b.fair).toFixed(2)}, ${b.book || '?'})`).join(' · ')}` : ''}`);
+  // What the empty panels show instead: the nearest misses (never recorded).
+  const soon48 = events.filter((e) => !e.live && e.start > Date.now() && e.start < Date.now() + 48 * 36e5);
+  const pctN = (x) => `${x >= 0 ? '+' : ''}${(x * 100).toFixed(1)}%`;
+  log(`  nearest to a fair price (shown when Best bets is empty): ${nearBest(soon48).map((b) => `${b.pick} ${b.odds}${b.atStake ? ' Stake' : ''} ${pctN(b.edge)}`).join(' · ') || 'none'}`);
+  log(`  Stake nearest the value bar (shown when Value bets is empty): ${nearValue(soon48).map((b) => `${b.pick} ${b.odds} ${pctN(b.edge)} of ${pctN(b.need)}${b.moved ? ' (drifting, sharp line 3h+ old)' : ''}`).join(' · ') || 'none'}`);
   // How Stake's prices compare with the fair odds: what it charges, and where it pays more.
   const sv = stakeVsFair(events);
   if (sv.length) {

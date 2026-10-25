@@ -21,7 +21,7 @@ import { watch } from './alerts.js';
 import { finalView } from './finalview.js';
 import { trackCard, trackStrip, trackStats, trackCalibration, recordLine, ensureTrack, officialParlay } from './trackview.js';
 import { zone as tzZone, tzOf, abbr as tzAbbr, fmt as fmtTime, fmtDate } from './tz.js';
-import { bestBets, BEST, POTD_ZONES, potdDay, parlayOfDay, recommendationFor, valueBets, VALUE } from './track.js';
+import { bestBets, BEST, POTD_ZONES, potdDay, parlayOfDay, recommendationFor, valueBets, VALUE, nearBest, nearValue } from './track.js';
 import { stakeVsFair } from './oddspapi.js';
 import { propRow, allProps } from './propsview.js';
 import { coherentBets } from './picks.js';
@@ -396,7 +396,7 @@ function dashboard(ev, live) {
     shortlist: () => `<div class="panel dash-short reveal"><h2 class="ph">Best bets <small>likeliest winners at a fair price or better</small></h2>
       <details class="sl-filters"${filtersOpen ? ' open' : ''}><summary>${ico('filter')} Next ${hrs}h · ${esc(orderLabel())}${minOdds > 1 ? ` · odds ${minOdds.toFixed(2)}+` : ''}</summary>${windowChips('shours', hrs)}${orderChips()}${prefsBar()}</details>
       ${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}
-      <div class="minilist">${S.loading ? skelRows(4) : short.map((b) => miniPick(b)).join('') || `<p class="muted">${empty}</p>`}</div></div>`,
+      <div class="minilist">${S.loading ? skelRows(4) : short.map((b) => miniPick(b)).join('') || `<p class="muted">${empty}</p>${nearBestHtml(pool, hrs)}`}</div></div>`,
     value: () => valuePanel(pool),
     live: () => `<div class="panel dash-live reveal"><h2 class="ph">Live now <small>${S.loading ? '' : live.length}</small></h2>
       ${S.loading ? skelRows(3) : live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${esc(e.score || '')}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>`,
@@ -573,7 +573,7 @@ function valuePanel(pool) {
   const shopped = pool.some((e) => e.markets?.some((m) => m.consensusFrom));
   return `<div class="panel dash-value reveal"><h2 class="ph">Value bets <small>priced above the sharp market's fair odds</small></h2>
     ${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}
-    <div class="minilist">${S.loading ? skelRows(3) : list.map(valuePick).join('') || `<p class="muted">${shopped ? 'No price beats the sharp market in the next 48 hours right now. These come and go as bookmakers move; the list updates with every price check.' : 'Needs prices from several bookmakers: none for the next 48 hours yet.'}</p>${stakeGap(pool)}`}</div></div>`;
+    <div class="minilist">${S.loading ? skelRows(3) : list.map(valuePick).join('') || `<p class="muted">${shopped ? 'No price beats the sharp market in the next 48 hours right now. These come and go as bookmakers move; the list updates with every price check.' : 'Needs prices from several bookmakers: none for the next 48 hours yet.'}</p>${stakeGap(pool)}${nearValueHtml(pool)}`}</div></div>`;
 }
 // The sharp market's fair chance of a market's i-th outcome, the lower of an even split of the sharp
 // book's margin and the power method (track.js edgeAt): what Value bets judge Stake's price against.
@@ -587,14 +587,39 @@ function fairOf(m, i) {
 export const signPct = (x) => `${x >= 0 ? '+' : '−'}${Math.abs(x * 100).toFixed(1)}%`;
 const gapWords = (x) => (x >= 0 ? `${(x * 100).toFixed(1)}% above` : `${Math.abs(x * 100).toFixed(1)}% below`);
 // When no value bet shows: how Stake's prices stand against the fair odds over the next 48 hours (what
-// it charges), and its three closest prices. Information, not picks: below +0% a bet costs money on average.
+// it charges); its nearest prices follow (nearValueHtml).
 // The distance is the lower of the two ways of taking the sharp book's margin off (track.js edgeAt); a
 // distance past VALUE.maxEdge is a data error and is not shown.
+// The nearest misses, when a list is empty: the closest bets with what each costs on average (a red
+// figure) or how far it falls short of the value bar. Never recorded; the cards say so.
+export function nearBestHtml(pool, hrs) {
+  const cal = trackCalibration();
+  let list = nearBest(todayEvents(pool, Date.now(), hrs), { cal }), win = hrs;
+  if (!list.length && hrs < 48) { list = nearBest(todayEvents(pool, Date.now(), 48), { cal }); win = 48; }
+  if (!list.length) return '';
+  return `<p class="muted near-head">Nearest to a fair price${win !== hrs ? ` in the next ${win} hours` : ''}: not Best bets and not recorded. The red figure is what each costs on average at that price.</p>${list.map((b) => miniPick(b)).join('')}`;
+}
+export function nearValueHtml(pool) {
+  const list = nearValue(todayEvents(pool, Date.now(), 48), { cal: trackCalibration() });
+  if (!list.length) return '';
+  return `<p class="muted near-head">Stake's prices nearest the value bar: not value bets yet and not recorded. Each shows its distance from the fair odds and the distance it needs.</p>${list.map(nearPick).join('')}`;
+}
+function nearPick(b) {
+  const s = sportOf(b.event.sport);
+  const rec = recommendationFor(b, trackCalibration());
+  const leg = { key: `${b.event.id}|${b.market}|${b.pick}`, eventId: b.event.id, sport: b.event.sport, match: `${b.event.home} vs ${b.event.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p, recommendationId: rec.recommendationId };
+  const tip = [`Fair odds ${odd(1 / b.p)} (${b.consensusFrom || 'the books\' median'}, the bookmaker's cut taken out): a ${pc(b.p, 0)} chance`, `Stake ${odd(b.odds)}${b.event.stakeAt ? ` (read ${ago(b.event.stakeAt)})` : ''}: ${gapWords(b.edge)} the fair odds`,
+    `A value bet needs ${(b.need * 100).toFixed(1)}% above at this chance: worth taking at ${odd((1 + b.need) / b.p)} or more`].join('\n');
+  return `<div class="mini near reveal" data-tip="${esc(tip)}"><span class="mini-ico">${s.icon}</span>
+    <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.event.home)} v ${esc(b.event.away)} · ${esc(fmtTime(b.event.start, tzZone(), 'short'))} · Stake</small></a>
+    <div class="mini-nums"><b class="${b.edge >= 0 ? 'pos' : 'neg'}" data-tip="Stake's price against the fair odds">${signPct(b.edge)}</b>${b.moved ? '<small data-tip="The price has lengthened 3%+ since first seen and the fair odds are over 3 hours old: the market may have moved past them">market moving against it</small>' : `<small data-tip="What a value bet needs at this chance">needs +${(b.need * 100).toFixed(1)}%</small>`}</div>
+    ${legButton(leg, odd(b.odds))}</div>`;
+}
 export function stakeGap(pool) {
   const rows = stakeVsFair(todayEvents(pool, Date.now(), 48)).map((r) => ({ ...r, gap: Math.min(r.edge, r.edgePow ?? Infinity) })).filter((r) => r.gap <= VALUE.maxEdge).sort((a, b) => b.gap - a.gap);
   if (!rows.length) return '';
   const s = rows.map((r) => r.gap).sort((a, b) => a - b), med = s[Math.floor(s.length / 2)];
-  return `<p class="muted stake-gap">Stake right now: ${rows.length} prices on ${((n) => `${n} match${n === 1 ? '' : 'es'}`)(new Set(rows.map((r) => r.event.id)).size)}, typically ${gapWords(med)} the fair odds (its margin). Closest: ${rows.slice(0, 3).map((r) => `<a href="#/match/${esc(r.event.id)}">${esc(r.pick)} ${odd(r.stake)}</a> (fair ${odd(1 / Math.min(r.fair, r.fairPow ?? 1))}, ${signPct(r.gap)})`).join(' · ')}.</p>`;
+  return `<p class="muted stake-gap">Stake right now: ${rows.length} prices on ${((n) => `${n} match${n === 1 ? '' : 'es'}`)(new Set(rows.map((r) => r.event.id)).size)}, typically ${gapWords(med)} the fair odds (its margin).</p>`;
 }
 export function valuePick(b) {
   const s = sportOf(b.event.sport);

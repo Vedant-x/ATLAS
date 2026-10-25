@@ -156,3 +156,23 @@ test('value at Stake runs to long prices, with a higher bar the longer the price
   assert.equal(v[0].fairPow, 0.2357);
   assert.ok(v[0].takeAt > 4.1 && v[0].takeAt < 4.7, String(v[0].takeAt));
 });
+
+test('nearest misses when the lists are empty: Stake\'s prices nearest the value bar and the likeliest winners nearest a fair price, never as picks', async () => {
+  const { nearBest, nearValue, bestBets } = await import('../js/track.js');
+  const now = Date.now();
+  const ev = (id, outcomes) => ({ id, compId: id, sport: 'football', leaguePath: 'soccer/ita.1', home: outcomes[0].name, away: outcomes[2].name, start: now + 6 * H, stakeAt: now - H, sharpAt: now - 2 * H,
+    markets: [{ name: 'Match Result', consensusFrom: 'Pinnacle', outcomes }] });
+  const board = [
+    ev('a', [{ name: 'Inter', odds: 1.32, cons: 0.7143, stake: 1.34 }, { name: 'Draw', odds: 5.25, cons: 0.1665, stake: 5.6 }, { name: 'Fiorentina', odds: 7, cons: 0.1192, stake: 8 }]),
+    ev('b', [{ name: 'Lecce', odds: 6.5, cons: 0.1288, stake: 6.6 }, { name: 'Draw', odds: 4.1, cons: 0.2316, stake: 4.5 }, { name: 'Juventus', odds: 1.45, cons: 0.6396, stake: 1.42 }]),
+  ];
+  assert.equal(bestBets(board).length, 0);
+  const nb = nearBest(board);
+  // Inter at Stake's 1.34 (4.3% under the fair 1.40) is nearer than Juventus at the board's 1.45 (7.3% under).
+  assert.deepEqual(nb.map((b) => [b.pick, b.odds, Boolean(b.atStake)]), [['Inter', 1.34, true], ['Juventus', 1.45, false]]);
+  assert.ok(nb.every((b) => b.near && b.ev < 0), 'each shows what it costs');
+  const nv = nearValue(board);
+  assert.equal(nv[0].pick, 'Draw');
+  assert.equal(nv[0].event.id, 'b', 'the Lecce draw: +4.2% against the 3.4% it needs');
+  assert.ok(nv.every((b) => b.atStake && b.odds === b.stake && Number.isFinite(b.need)));
+});

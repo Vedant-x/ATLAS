@@ -82,3 +82,14 @@ test('a pick the record could never grade is never offered (eSoccer, the cricket
   ];
   assert.deepEqual(valueBets(evs).map((b) => b.event.id), ['g2']);
 });
+
+test('a drifting price is set aside only while the sharp line is 3+ hours old: a fresher line already holds the move', async () => {
+  const { valueBets, nearValue } = await import('../js/track.js');
+  const now = Date.now();
+  // Real Madrid: the board's price lengthened from 3.75 to 3.95; Stake 4.30 against fair odds of 4.03.
+  const ev = (sharpAt) => ({ id: `rm${sharpAt}`, compId: '1', sport: 'football', leaguePath: 'soccer/esp.1', home: 'Barcelona', away: 'Real Madrid', start: now + 7 * 36e5, stakeAt: now - 36e5, sharpAt,
+    markets: [{ name: 'Match Result', consensusFrom: 'Pinnacle', outcomes: [{ name: 'Barcelona', odds: 1.67, cons: 0.555 }, { name: 'Draw', odds: 5.2, cons: 0.197 }, { name: 'Real Madrid', odds: 3.95, open: 3.75, cons: 0.248, stake: 4.3 }] }] });
+  assert.deepEqual(valueBets([ev(now - 36e5)]).map((b) => [b.pick, b.odds, b.book]), [['Real Madrid', 4.3, 'Stake']], 'line read an hour ago');
+  assert.deepEqual(valueBets([ev(now - 5 * 36e5)]), [], 'line read 5 hours ago, before the move');
+  assert.equal(nearValue([ev(now - 5 * 36e5)])[0].moved, true, 'shown among the nearest with the reason');
+});
