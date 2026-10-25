@@ -10,7 +10,7 @@ import { out, log, noteSource } from '../lib.mjs';
 import { writeFile } from 'node:fs/promises';
 import { ODDSPAPI, STAKE_LEAGUES, stakeEvents, overlayStake, describe, allowance, participantNames } from '../../js/oddspapi.js';
 
-const NAME = 'Stake (OddsPapi)', SITE = 'oddspapi.io', WHAT = "Stake's own prices on the main football leagues, and Pinnacle's fair chance";
+const NAME = 'Stake (OddsPapi)', SITE = 'oddspapi.io', WHAT = "Stake's own prices on the main football leagues and the NBA";
 const MAX_AGE = 12 * 36e5; // older prices are not shown
 
 export async function stakePrices(events) {

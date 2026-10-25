@@ -532,7 +532,8 @@ try {
 //     covers, and add the matches in the next 3 days the bookmakers list that no feed here does
 //     (catalog: "Other competitions"), so nothing they offer is missing from the board.
 //  2. A key is due for odds when (a) it is one of the most-bet leagues (MAJOR_KEYS) with a match in
-//     the next 36 hours and its odds are 8+ hours old: the sharp market (Pinnacle) and the typical
+//     the next 36 hours and its odds are 3+ hours old (Stake's price is judged against it, and a line
+//     hours behind the market makes a moved price look like value): the sharp market (Pinnacle) and the typical
 //     price across books on top of ESPN's one-book price; or (b) it has matches in the next 3 days no
 //     other source prices and its odds are older than ODDS_HOURS (default 12). Majors first, then the
 //     most unpriced matches; credits spent at an even pace to the end of the month.
@@ -596,7 +597,7 @@ if (process.env.ODDS_API_KEY) {
     // Majors: matches in the next 36 hours with a price from another feed and no fresh sharp line.
     const soon = (k) => (byKey[k] || []).filter((e) => e.start < Date.now() + 36 * 36e5 && e.markets?.length && e.oddsSource !== 'the-odds-api');
     const majors = active.filter((k) => MAJOR_KEYS.includes(k)).map((k) => ({ k, n: soon(k).length, major: true, first: Math.min(...soon(k).map((e) => e.start)), at: cache.at?.[k] || 0 }))
-      .filter((x) => x.n > 0 && !(x.at > Date.now() - 8 * 36e5)).sort((x, y) => x.first - y.first);
+      .filter((x) => x.n > 0 && !(x.at > Date.now() - 3 * 36e5)).sort((x, y) => x.first - y.first);
     const wanted = active.map((k) => ({ k, n: need(k), at: cache.at?.[k] || 0 })).filter((x) => x.n > 0);
     const due = [...majors, ...wanted.filter((x) => !majors.some((m) => m.k === x.k) && !(x.at > Date.now() - maxAgeH * 36e5)).sort((x, y) => y.n - x.n || x.at - y.at)].slice(0, allowance);
     const sports = { ...(cache.sports || {}) }, at = { ...(cache.at || {}) };

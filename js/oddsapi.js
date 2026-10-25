@@ -201,9 +201,12 @@ export function overlayOdds(events, oddsEvents, { now = Date.now(), window = 6 *
 }
 
 // The leagues most people bet on: their odds are fetched for the sharp market on top of the feed's
-// own price (overlayOdds), refreshed when 8 hours old while they have a match in the next 36 hours.
+// own price (overlayOdds), refreshed when 3 hours old while they have a match in the next 36 hours
+// (paced with the month's credits, the soonest kick-offs first).
 export const MAJOR_KEYS = ['basketball_nba', 'soccer_epl', 'soccer_uefa_champs_league', 'soccer_spain_la_liga', 'soccer_italy_serie_a', 'soccer_germany_bundesliga',
-  'soccer_france_ligue_one', 'americanfootball_nfl', 'icehockey_nhl', 'soccer_uefa_europa_league', 'basketball_euroleague', 'americanfootball_ncaaf', 'baseball_mlb', 'mma_mixed_martial_arts'];
+  'soccer_france_ligue_one', 'americanfootball_nfl', 'icehockey_nhl', 'soccer_uefa_europa_league', 'basketball_euroleague', 'americanfootball_ncaaf', 'baseball_mlb', 'mma_mixed_martial_arts',
+  // Stake's prices are read on these too (oddspapi.js STAKE_LEAGUES): the sharp line to judge them by.
+  'soccer_efl_champ', 'soccer_netherlands_eredivisie', 'soccer_portugal_primeira_liga', 'soccer_turkey_super_league'];
 
 // ---------- Fixtures from the bookmakers' own lists ----------
 // The API's event list for a sport key (GET /sports/{key}/events) costs no credits and has no odds:
