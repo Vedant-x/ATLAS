@@ -207,7 +207,8 @@ async function poll() {
   polling = true;
   try {
     if (state.snapshot && Date.now() - lastIndex < 300000) {
-      const wide = Date.now() - lastWide > 30000;
+      // The wider sweep (games starting soon) every 5 minutes; live games every cycle.
+      const wide = Date.now() - lastWide > 5 * 6e4;
       let next = (await refreshLive(state.events, { liveOnly: !wide }).catch(() => null)) || null;
       // Cricket: every cycle while a match is live, otherwise with the 30 s sweep.
       if (wide || state.events.some((e) => e.live && e.sport === 'cricket')) next = (await refreshCricket(next || state.events).catch(() => null)) || next;

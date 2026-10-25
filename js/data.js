@@ -17,9 +17,10 @@ const FEATURED = LEAGUES.filter((l) => ['soccer/eng.1', 'soccer/esp.1', 'soccer/
 // Refresh leagues with something live (liveOnly) or also starting soon, and merge into the current list.
 export async function refreshLive(events, { liveOnly = false } = {}) {
   const soon = Date.now() + 3 * 3600e3, recent = Date.now() - 4 * 3600e3;
-  const paths = [...new Set(events.filter((e) => e.leaguePath && !e.leaguePath.startsWith('atlas/') && (e.live || (!liveOnly && e.start < soon && e.start > recent))).map((e) => e.leaguePath))].slice(0, 25);
+  // Live leagues first (one request each); the wider sweep (today and tomorrow) for at most 12.
+  const paths = [...new Set(events.filter((e) => e.leaguePath && !e.leaguePath.startsWith('atlas/') && (e.live || (!liveOnly && e.start < soon && e.start > recent))).sort((a, b) => Number(Boolean(b.live)) - Number(Boolean(a.live))).map((e) => e.leaguePath))].slice(0, liveOnly ? 20 : 12);
   if (!paths.length) return null;
-  const fresh = await fetchAll(AbortSignal.timeout(liveOnly ? 8000 : 15000), LEAGUES.filter((l) => paths.includes(l.path)), liveOnly ? { live: true } : { days: 1 });
+  const fresh = await fetchAll(AbortSignal.timeout(liveOnly ? 8000 : 15000), LEAGUES.filter((l) => paths.includes(l.path)), liveOnly ? { live: true, concurrency: 4 } : { days: 1, from: 0, concurrency: 2 });
   if (!fresh.length) return null;
   const map = new Map(events.map((e) => [e.id, e]));
   for (const f of fresh) map.set(f.id, mergeEvent(map.get(f.id), f));

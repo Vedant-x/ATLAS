@@ -59,6 +59,13 @@ what changed, week by week. Reasons and reversals are in [docs/DECISIONS.md](doc
   nearest a fair price with what each costs on average, and Value bets shows Stake's prices nearest
   the value bar with how far each falls short. Marked as not picks; never recorded. A drifting price
   is set aside only while the sharp line is 3+ hours old: a fresher line already holds the move.
+- **Fix (26 October): the page stopped flooding ESPN.** Opening a sport page fetched every league
+  straight from ESPN (7 requests a league, retried; over 700 for football) and the refresh asked for up
+  to 25 leagues every 30 seconds: ESPN refused the burst, and phones stalled. The browser now asks only
+  for leagues the snapshot lacks (12 at most, two days ahead), at most 4 requests at a time, the wider
+  refresh every 5 minutes, and after 6 refusals in a row it stops asking ESPN for 2 minutes. A site
+  check in CI opens every page with live data on a phone-speed processor and reports errors, failed
+  requests, main-thread time and ESPN requests.
 - Earlier this week: one site-wide time zone, colour themes, value bets and the drift guard, finished
   matches kept on the watchlist, props on the real over/under lines.
 

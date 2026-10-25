@@ -159,6 +159,33 @@ export const fetchErrors = [];
 // actually answered; a failed or throttled league is retried instead.
 export const leagueStatus = new Map();
 
+// In the browser, ESPN is asked gently: at most 4 requests at a time, and after 6 failures in a row
+// (ESPN answers a burst with 403s that the browser reports as a CORS error) no request at all for 2
+// minutes. The page then runs on the snapshot the build publishes every 10 to 20 minutes. The build
+// (no window) is not limited here.
+const inBrowser = typeof window !== 'undefined';
+const gate = { busy: 0, queue: [], fails: 0, pausedUntil: 0 };
+export const espnPaused = () => inBrowser && Date.now() < gate.pausedUntil;
+async function espnFetch(u, opts) {
+  if (!inBrowser) return fetch(u, opts);
+  if (espnPaused()) throw new Error('ESPN paused after repeated refusals');
+  if (gate.busy >= 4) await new Promise((r) => gate.queue.push(r));
+  gate.busy++;
+  try {
+    if (espnPaused()) throw new Error('ESPN paused after repeated refusals');
+    const res = await fetch(u, opts);
+    if (res.status === 403 || res.status === 429) throw new Error(`HTTP ${res.status}`);
+    gate.fails = 0;
+    return res;
+  } catch (e) {
+    if (!opts?.signal?.aborted && ++gate.fails >= 6) { gate.pausedUntil = Date.now() + 2 * 6e4; gate.fails = 0; }
+    throw e;
+  } finally {
+    gate.busy--;
+    gate.queue.shift()?.();
+  }
+}
+
 export async function fetchLeague(league, { days = 3, from = -1, extra = false, signal, live = false, finished = null } = {}) {
   // ESPN rejects multi-day ranges (HTTP 400 since Oct 2026; tennis aside), so ask one day at a time,
   // from `from` days (default: yesterday) through `days` ahead. The live loop only needs the current
@@ -173,10 +200,10 @@ export async function fetchLeague(league, { days = 3, from = -1, extra = false, 
   const headers = typeof window === 'undefined' ? { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', Accept: 'application/json' } : undefined;
   const one = async (u) => {
     let err;
-    // ESPN answers bursts with 403/429: back off and retry.
-    for (let attempt = 0; attempt < 3; attempt++) {
+    // ESPN answers bursts with 403/429: back off and retry (the build; the browser tries once, gated).
+    for (let attempt = 0; attempt < (inBrowser ? 1 : 3); attempt++) {
       try {
-        const res = await fetch(u, { signal, headers });
+        const res = await espnFetch(u, { signal, headers });
         if (res.status === 403 || res.status === 429) { err = new Error(`HTTP ${res.status}`); await new Promise((r) => setTimeout(r, 1500 * (attempt + 1))); continue; }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return parseScoreboard(await res.json(), league, finished);
@@ -242,7 +269,7 @@ export async function fetchAll(signal, leagues = LEAGUES, opts = {}) {
 }
 
 export async function fetchSummary(e) {
-  const res = await fetch(`${BASE}/${e.leaguePath}/summary?event=${e.compId}`);
+  const res = await espnFetch(`${BASE}/${e.leaguePath}/summary?event=${e.compId}`);
   if (!res.ok) throw new Error(`summary ${res.status}`);
   const json = await res.json();
   if (json.code) throw new Error(json.message || 'summary unavailable');
@@ -260,7 +287,7 @@ export async function fetchAthlete(leaguePath, id) {
 export async function fetchLineups(event) {
   const [path, id] = splitId(event.id);
   if (!path) return null;
-  const res = await fetch(`${BASE}/${path}/summary?event=${id}`);
+  const res = await espnFetch(`${BASE}/${path}/summary?event=${id}`);
   if (!res.ok) return null;
   const json = await res.json();
   const rosters = json.rosters || [];
