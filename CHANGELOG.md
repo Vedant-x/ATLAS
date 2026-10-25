@@ -46,6 +46,11 @@ what changed, week by week. Reasons and reversals are in [docs/DECISIONS.md](doc
   pages show how far Stake's price sits from the fair odds, and an empty Value bets panel shows
   Stake's closest prices. The build log measures Stake against the fair odds on every build. The
   old Best bets record (363-192, -50.36 units) is kept on Results as a retired list.
+- **Fix (25 October):** the page's live refresh (every 30 seconds for a league with a match on
+  or about to start) replaced each match's prices with ESPN's bare DraftKings line, dropping the
+  sharp market's fair odds and Stake's prices the build had added: Value bets and the Stake rows
+  emptied in the browser while the build had found them. A refresh now updates the price and keeps
+  the rest; a match priced from many bookmakers keeps its best price until the next build.
 - Earlier this week: one site-wide time zone, colour themes, value bets and the drift guard, finished
   matches kept on the watchlist, props on the real over/under lines.
 
