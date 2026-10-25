@@ -65,6 +65,7 @@ test('home: 30-day record strip and a reason behind each pick', async () => {
   // Minimal cards: the reason is in the card's tip (a tap on the card, or hover), not printed on it.
   const tips = await page.$$eval('.dash-short .mini', (rows) => rows.map((r) => r.dataset.tip).join('\n'));
   assert.match(tips, /Why: Arsenal unbeaten in 5/);
+  assert.match(tips, /Price at Stake/, 'Arsenal is taken at Stake\'s price, which clears the fair odds');
   assert.deepEqual(errors, []);
   await ctx.close();
 });

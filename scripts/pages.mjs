@@ -32,7 +32,8 @@ import { UNDERSTAT, understatUrl, understatData, teamsFromJson, teamsData, xgTab
 import { ODDS_API, matchOdds, overlayOdds, MAJOR_KEYS, sportOfKey, pairEvents, fixtureFromApi } from '../js/oddsapi.js';
 import { carryOpen, DRIFT } from '../js/movement.js';
 import { breaker, carryStatus } from '../js/breaker.js';
-import { valueBets, VALUE } from '../js/track.js';
+import { valueBets, bestBets, VALUE } from '../js/track.js';
+import { stakeVsFair } from '../js/oddspapi.js';
 import { out, UA, get, log, problems, sources, noteSource } from './lib.mjs';
 import { npb } from './sources/npb.mjs';
 import { kbo } from './sources/kbo.mjs';
@@ -641,6 +642,24 @@ try { await playerData(events); } catch (e) { log(`Player data failed: ${e.messa
   log(`Price movement: ${kept} prices carry their first price; ${moved.length} have moved ${Math.round(DRIFT * 100)}%+ since`);
   const vb = valueBets(events.filter((e) => !e.live && e.start > Date.now() && e.start < Date.now() + 48 * 36e5), { limit: 200 });
   log(`Value bets (best price at least ${Math.round(VALUE.min * 100)}% above the sharp fair odds, next 48h): ${vb.length}${vb.length ? `: ${vb.slice(0, 8).map((b) => `${b.pick} ${b.odds} (fair ${(1 / b.fair).toFixed(2)}, ${b.book || '?'})`).join(' · ')}` : ''}`);
+  const bb = bestBets(events.filter((e) => !e.live && e.start > Date.now() && e.start < Date.now() + 48 * 36e5), { limit: 200 });
+  log(`Best bets (55%+ at a price at least the sharp fair odds, next 48h, before the record's guard): ${bb.length}${bb.length ? `: ${bb.slice(0, 8).map((b) => `${b.pick} ${b.odds} (${Math.round(b.p * 100)}%, fair ${(1 / b.fair).toFixed(2)}, ${b.book || '?'})`).join(' · ')}` : ''}`);
+  // How Stake's prices compare with the fair odds: what it charges, and where it pays more.
+  const sv = stakeVsFair(events);
+  if (sv.length) {
+    const pct = (x) => `${x >= 0 ? '+' : ''}${(x * 100).toFixed(1)}%`;
+    const med = (xs) => { const s = [...xs].sort((a, b) => a - b); return s.length ? s[Math.floor(s.length / 2)] : null; };
+    const age = (t) => (t ? `${Math.round((Date.now() - t) / 36e5)}h` : '?');
+    const band = (lo, hi) => sv.filter((r) => r.fair >= lo && r.fair < hi);
+    const pow = sv.filter((r) => Number.isFinite(r.edgePow));
+    log(`Stake vs the fair odds: ${sv.length} prices on ${new Set(sv.map((r) => r.event.id)).size} matches; median ${pct(med(sv.map((r) => r.edge)))}; at or above fair ${sv.filter((r) => r.edge >= 0).length}, 2%+ above ${sv.filter((r) => r.edge >= 0.02).length}`
+      + `; by chance: 50%+ ${pct(med(band(0.5, 1).map((r) => r.edge)) ?? 0)} (${band(0.5, 1).length}), 30-50% ${pct(med(band(0.3, 0.5).map((r) => r.edge)) ?? 0)} (${band(0.3, 0.5).length}), under 30% ${pct(med(band(0, 0.3).map((r) => r.edge)) ?? 0)} (${band(0, 0.3).length})`
+      + (pow.length ? `; Pinnacle's margin off by the power method (${pow.length} prices): median ${pct(med(pow.map((r) => r.edgePow)))}, at or above fair ${pow.filter((r) => r.edgePow >= 0).length}` : ''));
+    const line = (r) => `${r.pick} ${r.stake} in ${r.event.home} v ${r.event.away} (${r.event.league}, ${r.market}; fair ${(1 / r.fair).toFixed(2)}, ${pct(r.edge)}${Number.isFinite(r.edgePow) ? ` / power ${pct(r.edgePow)}` : ''}, ${Math.round(r.fair * 100)}%, sharp ${age(r.sharpAt)} / Stake ${age(r.stakeAt)} old)`;
+    const odd = sv.filter((r) => Math.min(r.edge, r.edgePow ?? Infinity) > VALUE.maxEdge);
+    if (odd.length) log(`  left out as likely data errors (over ${Math.round(VALUE.maxEdge * 100)}% above fair): ${odd.map(line).join(' · ')}`);
+    log(`  closest: ${sv.filter((r) => !odd.includes(r)).slice(0, 10).map(line).join(' · ')}`);
+  }
 }
 // What is still unpriced in the next 48 hours, by league: the gaps left after every price source.
 {

@@ -85,7 +85,8 @@ function shopped(name, lists, names) {
   // med: the typical price (the median across books): what most bookmakers, Stake among them, are
   // likely to offer. A value bet that holds at the typical price does not depend on one book.
   return { name, consensusFrom: sharp.every(Boolean) ? 'Pinnacle' : `median of ${Math.min(...lists.map((l) => l.length))}+ books`,
-    outcomes: names.map((n, i) => ({ name: n, odds: +best[i].p.toFixed(2), book: best[i].book, cons: +(inv[i] / book).toFixed(4), med: +median(lists[i].map((x) => x.p)).toFixed(2), books: lists[i].length })) };
+    // pin: Pinnacle's own price, kept so its margin can be taken off another way (engine.js powerDevig).
+    outcomes: names.map((n, i) => ({ name: n, odds: +best[i].p.toFixed(2), book: best[i].book, cons: +(inv[i] / book).toFixed(4), med: +median(lists[i].map((x) => x.p)).toFixed(2), books: lists[i].length, ...(sharp.every(Boolean) ? { pin: sharp[i].p } : {}) })) };
 }
 
 // Markets in the site's own shape (espn.js marketsFrom), from one matched Odds API event.
@@ -187,6 +188,7 @@ export function overlayOdds(events, oddsEvents, { now = Date.now(), window = 6 *
       if (!pairs.every(([, x]) => x)) continue;
       for (const [o, x] of pairs) {
         o.cons = x.cons; o.med = x.med; o.books = x.books;
+        if (x.pin > 1) o.pin = x.pin; else delete o.pin;
         if (x.odds > o.odds) { o.best = x.odds; o.bestBook = x.book; } else { delete o.best; delete o.bestBook; }
         o.book ||= e.bookmaker || null;
       }

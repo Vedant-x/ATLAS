@@ -3,6 +3,29 @@
 What was decided, why, and what it replaced. Anything that reverses an earlier decision says so here
 first, with the evidence. A change that flips a decision without an entry here should not merge.
 
+## 2026-10-25 · Best bets only at a fair price or better; value at Stake at long prices
+
+- **Decided:** a Best bet needs a sharp fair chance (Pinnacle's with its margin off, or the median of
+  many bookmakers) and a price at or over its fair odds: Stake's where it clears them, else the
+  board's. One bookmaker's own price no longer counts. Value at Stake runs to long prices (a 12%+
+  chance, odds to 10) with a bar that rises one point for every 5 points of chance under 30% (4% at
+  20%). Each fair chance is the lower of an even split of the sharp book's margin and the power
+  method. An edge over 12% is taken for a data error, never a pick (model 2026.10.15).
+- **Why:** Best bets lost 50.36 units over 555 picks (-9.1%). Nearly all were priced at one
+  bookmaker's own odds (DraftKings, bo3.gg), which sit under the fair odds by that bookmaker's margin:
+  they won 65.4% at average odds 1.41, where 71.0% was needed. Measured on 25 Oct, Stake's 174
+  main-league prices sat a median 5.2% under the fair odds (5.9% on 50%+ chances, 3.6% under 30%);
+  the 17 over fair were all draws and underdogs, outside Value bets' old 30% / 4.00 range, so the
+  list showed none. One of them, a draw at 9.80 against fair odds of 7.01, could only be bad data.
+- **Expect:** far fewer Best bets: on the main leagues Stake and DraftKings both charge their margin
+  on the favourites, so most days have few or none. Value at Stake comes mostly on draws and
+  underdogs. An empty list now means nothing is priced fairly, not that the search failed; the
+  Value bets panel then says how far Stake's prices sit from the fair odds.
+- **Record:** the old list is a different list, so it is retired with its final record (Results:
+  "Best bets at one bookmaker's price", 363-192, -50.36 units), and Best bets' record starts again
+  from model 2026.10.15. Its picks still to settle count toward the retired record.
+- **Reverses:** "with one bookmaker, ATLAS does not claim more than the price says" (Best bets, 23 Oct).
+
 ## 2026-10-24 · Stake's own prices; value bets at Stake are recorded at Stake's price
 
 - **Decided:** Stake's prices come from OddsPapi (the one odds service found that carries Stake;

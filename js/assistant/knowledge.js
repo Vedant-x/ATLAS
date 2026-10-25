@@ -164,6 +164,9 @@ export function createKnowledge(S) {
       if (ev < 0) reasons.push(`below break-even at this price (needs ${Math.round(100 / b.odds)}%, ATLAS ${Math.round(b.p * 100)}%)`);
       if (mode === 'safe' && b.p < 0.6) reasons.push('under the 60% chance this list needs');
       if (mode === 'balanced' && b.p < 0.55) reasons.push('under the 55% chance Best bets need');
+      // Best bets take a price only at or over the sharp market's fair odds (track.js bestBets).
+      if (mode !== 'value' && !b.consensus) reasons.push('one bookmaker\'s own price, with no sharp line to check it against');
+      else if (mode !== 'value' && b.fair * b.odds < 1) reasons.push(`under the sharp market's fair odds (${(1 / b.fair).toFixed(2)})`);
       const missing = r.checks.filter((x) => x.ok === false && x.key !== 'price').map((x) => x.label.toLowerCase());
       if (missing.length) reasons.push(`missing: ${missing.join(', ')}`);
       if (r.checks.some((x) => x.key === 'price' && x.ok === false)) reasons.push('price not fresh');

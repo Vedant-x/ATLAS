@@ -2,7 +2,7 @@
 import { ico, watchLabel, pinLabel } from './icons.js';
 import { SPORTS } from './data.js';
 import { readable } from './color.js';
-import { devig, buildSlips, todayEvents } from './engine.js';
+import { devig, buildSlips, todayEvents, powerDevig } from './engine.js';
 import { liveCenterHtml } from './livecenter.js';
 import { f1View, f1Teaser } from './f1view.js';
 import { fieldView, fieldsTeaser } from './fieldview.js';
@@ -21,7 +21,8 @@ import { watch } from './alerts.js';
 import { finalView } from './finalview.js';
 import { trackCard, trackStrip, trackStats, trackCalibration, recordLine, ensureTrack, officialParlay } from './trackview.js';
 import { zone as tzZone, tzOf, abbr as tzAbbr, fmt as fmtTime, fmtDate } from './tz.js';
-import { bestBets, BEST, POTD_ZONES, potdDay, parlayOfDay, recommendationFor, valueBets } from './track.js';
+import { bestBets, BEST, POTD_ZONES, potdDay, parlayOfDay, recommendationFor, valueBets, VALUE } from './track.js';
+import { stakeVsFair } from './oddspapi.js';
 import { propRow, allProps } from './propsview.js';
 import { coherentBets } from './picks.js';
 import { mergeEvent } from './merge.js';
@@ -303,12 +304,13 @@ export const views = {
     const main = e.markets?.find((m) => m.name === 'Winner' || m.name === 'Match Result');
     const book = (name) => main?.outcomes.find((o) => o.name === name)?.odds;
     const stakeOf = (name) => main?.outcomes.find((o) => o.name === name)?.stake;
+    const consOf = (name) => { const i = main?.outcomes.findIndex((o) => o.name === name) ?? -1; return i < 0 ? null : fairOf(main, i); };
     const side = (label, p, color, bookOdds) => {
       const ev = bookOdds ? p * bookOdds - 1 : null;
       return `<div class="side reveal">${gauge(p, color, label)}
         <dl><dt>Fair odds</dt><dd>${odd(1 / p)}</dd>
         <dt>${esc(e.bookmaker?.split(' (')[0] || 'Book')} odds</dt><dd>${bookOdds ? odd(bookOdds) : '<span class="muted">none</span>'}</dd>
-        ${stakeOf(label) > 1 ? `<dt data-tip="Stake's own price${e.stakeAt ? `, read ${ago(e.stakeAt)}` : ''}">Stake</dt><dd>${odd(stakeOf(label))}</dd>` : ''}
+        ${stakeOf(label) > 1 ? (() => { const g = consOf(label) > 0 ? stakeOf(label) * consOf(label) - 1 : null; return `<dt data-tip="Stake's own price${e.stakeAt ? `, read ${ago(e.stakeAt)}` : ''}${g == null ? '' : `; ${gapWords(g)} the sharp market's fair odds (${odd(1 / consOf(label))})`}">Stake</dt><dd>${odd(stakeOf(label))}${g == null ? '' : ` <span class="${g >= 0 ? 'pos' : 'neg'}">${signPct(g)}</span>`}</dd>`; })() : ''}
         <dt data-tip="Estimated return per unit staked">Return</dt><dd class="${ev == null ? '' : ev >= 0 ? 'pos' : 'neg'}">${ev == null ? '—' : `${(ev * 100).toFixed(1)}%`}</dd></dl></div>`;
     };
     const d = detailFor(e.id);
@@ -381,11 +383,11 @@ function dashboard(ev, live) {
   // Matches starting within the chosen window (3 to 48 hours; 12 by default).
   const hrs = researchPrefs().shortHours;
   // One list, no modes: Best bets, the likeliest winners across every sport at a price no shorter than
-  // the market's fair odds (best price across bookmakers where the Odds API gives several), 1.20 to 2.50.
+  // the sharp market's fair odds (Stake's price where it clears them), 1.20 to 2.50 (track.js bestBets).
   // The visitor's minimum odds apply here as in the assistant (same list, same rule, then the first 10).
   const minOdds = prefs.get().minOdds || 1;
   const short = orderBets(bestBets(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration(), limit: 2000 }).filter((b) => b.odds >= minOdds).slice(0, 10));
-  const empty = `No best bet in the next ${hrs} hours: no ${Math.round(BEST.min * 100)}%+ pick at odds ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)} is priced at or above the market's fair odds.${hrs < 48 ? ' Try a longer window in Filters.' : ''}`;
+  const empty = `No best bet in the next ${hrs} hours: no ${Math.round(BEST.min * 100)}%+ pick at odds ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)} is priced at or above the sharp market's fair odds (one bookmaker's own price never counts: it carries that bookmaker's cut).${hrs < 48 ? ' Try a longer window in Filters.' : ''}`;
   const rec = recordLine(trackStats()?.best);
   // Every panel by name, shown in the visitor's saved order with hidden ones left out (Customise).
   const panels = {
@@ -571,13 +573,35 @@ function valuePanel(pool) {
   const shopped = pool.some((e) => e.markets?.some((m) => m.consensusFrom));
   return `<div class="panel dash-value reveal"><h2 class="ph">Value bets <small>priced above the sharp market's fair odds</small></h2>
     ${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}
-    <div class="minilist">${S.loading ? skelRows(3) : list.map(valuePick).join('') || `<p class="muted">${shopped ? 'No price beats the sharp market in the next 48 hours right now. These come and go as bookmakers move; the list updates with every price check.' : 'Needs prices from several bookmakers: none for the next 48 hours yet.'}</p>`}</div></div>`;
+    <div class="minilist">${S.loading ? skelRows(3) : list.map(valuePick).join('') || `<p class="muted">${shopped ? 'No price beats the sharp market in the next 48 hours right now. These come and go as bookmakers move; the list updates with every price check.' : 'Needs prices from several bookmakers: none for the next 48 hours yet.'}</p>${stakeGap(pool)}`}</div></div>`;
+}
+// The sharp market's fair chance of a market's i-th outcome, the lower of an even split of the sharp
+// book's margin and the power method (track.js edgeAt): what Value bets judge Stake's price against.
+function fairOf(m, i) {
+  const o = m?.outcomes?.[i];
+  if (!(o?.cons > 0)) return null;
+  const pow = m.outcomes.every((x) => x.pin > 1) ? powerDevig(m.outcomes.map((x) => x.pin)) : null;
+  return Math.min(o.cons, pow?.[i] ?? 1);
+}
+// A distance from the fair odds as a signed percentage, and in words.
+export const signPct = (x) => `${x >= 0 ? '+' : '−'}${Math.abs(x * 100).toFixed(1)}%`;
+const gapWords = (x) => (x >= 0 ? `${(x * 100).toFixed(1)}% above` : `${Math.abs(x * 100).toFixed(1)}% below`);
+// When no value bet shows: how Stake's prices stand against the fair odds over the next 48 hours (what
+// it charges), and its three closest prices. Information, not picks: below +0% a bet costs money on average.
+// The distance is the lower of the two ways of taking the sharp book's margin off (track.js edgeAt); a
+// distance past VALUE.maxEdge is a data error and is not shown.
+export function stakeGap(pool) {
+  const rows = stakeVsFair(todayEvents(pool, Date.now(), 48)).map((r) => ({ ...r, gap: Math.min(r.edge, r.edgePow ?? Infinity) })).filter((r) => r.gap <= VALUE.maxEdge).sort((a, b) => b.gap - a.gap);
+  if (!rows.length) return '';
+  const s = rows.map((r) => r.gap).sort((a, b) => a - b), med = s[Math.floor(s.length / 2)];
+  return `<p class="muted stake-gap">Stake right now: ${rows.length} prices on ${((n) => `${n} match${n === 1 ? '' : 'es'}`)(new Set(rows.map((r) => r.event.id)).size)}, typically ${gapWords(med)} the fair odds (its margin). Closest: ${rows.slice(0, 3).map((r) => `<a href="#/match/${esc(r.event.id)}">${esc(r.pick)} ${odd(r.stake)}</a> (fair ${odd(1 / Math.min(r.fair, r.fairPow ?? 1))}, ${signPct(r.gap)})`).join(' · ')}.</p>`;
 }
 export function valuePick(b) {
   const s = sportOf(b.event.sport);
   const rec = recommendationFor(b, trackCalibration());
   const leg = { key: `${b.event.id}|${b.market}|${b.pick}`, eventId: b.event.id, sport: b.event.sport, match: `${b.event.home} vs ${b.event.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p, recommendationId: rec.recommendationId };
-  const tip = [`Fair odds ${odd(1 / b.fair)} (${b.consensusFrom || 'the books\' median'}, the bookmaker's cut taken out): a ${pc(b.fair, 0)} chance`, b.book && `Price ${odd(b.odds)} at ${b.book}${b.atStake && b.event.stakeAt ? ` (read ${ago(b.event.stakeAt)})` : ''}`,
+  const fair = Math.min(b.fair, b.fairPow ?? 1); // the lower of the two ways of taking the cut off (track.js edgeAt)
+  const tip = [`Fair odds ${odd(1 / fair)} (${b.consensusFrom || 'the books\' median'}, the bookmaker's cut taken out): a ${pc(fair, 0)} chance`, b.book && `Price ${odd(b.odds)} at ${b.book}${b.atStake && b.event.stakeAt ? ` (read ${ago(b.event.stakeAt)})` : ''}`,
     !b.atStake && b.stake > 1 && `Stake ${odd(b.stake)}: below the line worth taking`,
     b.best > b.odds && `Better price ${odd(b.best)} at ${b.bestBook}`,
     b.med > 1 && `Typical price across bookmakers ${odd(b.med)}: ${b.wide ? 'the value holds at most of them' : 'below the line worth taking, so check your bookmaker\'s price first'}`,
@@ -631,7 +655,7 @@ function bookPanel(e) {
     `<div class="table-wrap"><table class="tbl"><thead><tr><th>Market</th><th>Pick</th><th>Odds</th><th data-tip="The bookmaker's chance with its cut taken out">Bookmaker</th><th>ATLAS</th><th data-tip="Estimated return per unit staked">Return</th><th></th></tr></thead><tbody>
     ${e.markets.map((m) => { const d = devig(m); return m.outcomes.map((o, i) => {
       const fair = d.outcomes[i].fair, p = o.model ?? fair, ev = p * o.odds - 1;
-      return `<tr><td>${i ? '' : esc(m.name)}</td><td>${esc(o.name)}</td><td class="num">${odd(o.odds)}${o.book ? `<small>${esc(o.book)}</small>` : ''}${o.stake > 1 ? `<small>Stake ${odd(o.stake)}</small>` : ''}</td><td class="num">${pc(fair)}</td><td class="num">${o.model != null ? pc(o.model) : '—'}</td>
+      return `<tr><td>${i ? '' : esc(m.name)}</td><td>${esc(o.name)}</td><td class="num">${odd(o.odds)}${o.book ? `<small>${esc(o.book)}</small>` : ''}${o.stake > 1 ? `<small>Stake ${odd(o.stake)}${fairOf(m, i) > 0 ? ` (${signPct(o.stake * fairOf(m, i) - 1)})` : ''}</small>` : ''}</td><td class="num">${pc(fair)}</td><td class="num">${o.model != null ? pc(o.model) : '—'}</td>
         <td class="num ${ev >= 0 ? 'pos' : 'neg'}">${(ev * 100).toFixed(1)}%</td><td>${legButton(bookLeg(e, m, o, p), '+')}</td></tr>`;
     }).join(''); }).join('')}</tbody></table></div>`];
 }

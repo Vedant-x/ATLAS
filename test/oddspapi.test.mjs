@@ -108,3 +108,51 @@ test('OddsPapi as it really answers: teams by id only; names from the participan
   assert.deepEqual([nba.league, nba.stake, nba.slug], ['NBA', [1.62, 2.35], 'boston-celtics-new-york-knicks']);
   assert.deepEqual(slugMatch(nba, { leaguePath: 'basketball/nba', home: 'Boston Celtics', away: 'New York Knicks', start: t }), { orient: 'same', score: 2, dt: 0 });
 });
+
+test('Stake against the fair odds: each price\'s distance from the fair odds, best first; Pinnacle\'s margin off by the power method', async () => {
+  const { stakeVsFair } = await import('../js/oddspapi.js');
+  const { powerDevig } = await import('../js/engine.js');
+  // The power method takes more of the margin off the long prices than an even split does.
+  const p = powerDevig([1.36, 5.5, 8.6]), even = [1.36, 5.5, 8.6].map((x) => 1 / x), sum = even.reduce((a, b) => a + b, 0);
+  assert.ok(Math.abs(p.reduce((a, b) => a + b, 0) - 1) < 1e-3, 'adds up to 1');
+  assert.ok(p[0] > even[0] / sum && p[2] < even[2] / sum, 'favourite up, long shot down');
+  assert.equal(powerDevig([1.5]), null);
+  assert.equal(powerDevig([0.9, 2]), null);
+  const event = (id, outcomes, extra = {}) => ({ id, sport: 'football', home: 'Home', away: 'Away', start: Date.now() + 5 * H, markets: [{ name: 'Match Result', consensusFrom: 'Pinnacle', outcomes }], stakeAt: Date.now() - H, sharpAt: Date.now() - 2 * H, ...extra });
+  const rows = stakeVsFair([
+    // Pinnacle 1.36 / 5.5 / 8.6, its margin split evenly: 0.7115 / 0.1759 / 0.1125.
+    event('a', [{ name: 'Home', odds: 1.32, stake: 1.34, cons: 0.7115, pin: 1.36 }, { name: 'Draw', odds: 5.25, stake: 5.6, cons: 0.1759, pin: 5.5 }, { name: 'Away', odds: 7, stake: 8, cons: 0.1125, pin: 8.6 }]),
+    event('b', [{ name: 'Home', odds: 1.6, stake: 1.56, cons: 0.6022 }, { name: 'Draw', odds: 4, stake: 3.95, cons: 0.235 }, { name: 'Away', odds: 6, stake: 6.4, cons: 0.1628 }]),
+    event('live', [{ name: 'Home', odds: 2, stake: 2.5, cons: 0.5 }, { name: 'Away', odds: 2, stake: 2.5, cons: 0.5 }], { live: true }),
+  ]);
+  assert.deepEqual(rows.map((r) => [r.event.id, r.pick]).slice(0, 2), [['b', 'Away'], ['a', 'Draw']], 'best edge first; live matches left out');
+  assert.equal(rows.length, 6);
+  assert.equal(+rows[0].edge.toFixed(3), 0.042);
+  const away = rows.find((r) => r.event.id === 'a' && r.pick === 'Away'), home = rows.find((r) => r.event.id === 'a' && r.pick === 'Home');
+  assert.ok(away.edgePow < away.edge && home.edgePow > home.edge, 'the long price looks less good, the favourite better, once the margin comes off the long prices');
+  assert.equal(rows.find((r) => r.event.id === 'b').edgePow, undefined, 'no Pinnacle prices held: no power figure');
+});
+
+test('value at Stake runs to long prices, with a higher bar the longer the price; the lower of the two fair chances; data errors left out', () => {
+  const now = Date.now();
+  const event = (id, outcomes, extra = {}) => ({ id, sport: 'football', leaguePath: 'soccer/esp.1', compId: id, home: 'Home', away: 'Away', start: now + 5 * H, live: false, stakeAt: now - H, sharpAt: now - 2 * H,
+    markets: [{ name: 'Match Result', consensusFrom: 'Pinnacle', outcomes }], ...extra });
+  // Pinnacle 1.62 / 4.10 / 6.20 (fair, margin split evenly: 0.5956 / 0.2353 / 0.1556).
+  const pin = (o) => o.map(([name, odds, cons, pinP, stake]) => ({ name, odds, cons, pin: pinP, ...(stake ? { stake } : {}) }));
+  const v = valueBets([
+    // The draw (23.5%) at Stake 4.70: +10.6% against the fair odds; the bar at a 23.5% chance is 3.3%.
+    event('draw', pin([['Home', 1.6, 0.5956, 1.62], ['Draw', 4.3, 0.2353, 4.1, 4.7], ['Away', 6.0, 0.1556, 6.2]])),
+    // The away side (15.4-15.6%) at Stake 6.60: +1.8% by the power method, under the 4.9% bar for that chance.
+    event('dog', pin([['Home', 1.6, 0.5956, 1.62], ['Draw', 4.0, 0.2353, 4.1], ['Away', 6.0, 0.1556, 6.2, 6.6]])),
+    // The same draw at the board's own book (not Stake): outside the 30%+ range other books keep.
+    event('book', pin([['Home', 1.6, 0.5956, 1.62], ['Draw', 4.7, 0.2353, 4.1], ['Away', 6.0, 0.1556, 6.2]])),
+    // A draw at 9.80 against fair odds of 7.01 is no value bet: another match, or a stale price.
+    event('error', [{ name: 'Home', odds: 1.3, cons: 0.74 }, { name: 'Draw', odds: 6.5, cons: 0.1427, stake: 9.8 }, { name: 'Away', odds: 9, cons: 0.1173 }]),
+  ], { limit: 10 });
+  assert.deepEqual(v.map((b) => [b.event.id, b.pick, b.odds, b.book]), [['draw', 'Draw', 4.7, 'Stake']]);
+  // Power method on Pinnacle's prices: 0.6101 / 0.2357 / 0.1543. The draw's two figures are 0.2353 and
+  // 0.2357: the lower is the one used; the away side's power figure (0.1543) is the lower of its two.
+  assert.equal(+v[0].edge.toFixed(4), +(4.7 * 0.2353 - 1).toFixed(4));
+  assert.equal(v[0].fairPow, 0.2357);
+  assert.ok(v[0].takeAt > 4.1 && v[0].takeAt < 4.7, String(v[0].takeAt));
+});
