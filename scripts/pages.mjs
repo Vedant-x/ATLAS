@@ -653,7 +653,10 @@ try { await playerData(events); } catch (e) { log(`Player data failed: ${e.messa
     log(`Stake vs the fair odds: ${sv.length} prices on ${new Set(sv.map((r) => r.event.id)).size} matches; median ${pct(med(sv.map((r) => r.edge)))}; at or above fair ${sv.filter((r) => r.edge >= 0).length}, 2%+ above ${sv.filter((r) => r.edge >= 0.02).length}`
       + `; by chance: 50%+ ${pct(med(band(0.5, 1).map((r) => r.edge)) ?? 0)} (${band(0.5, 1).length}), 30-50% ${pct(med(band(0.3, 0.5).map((r) => r.edge)) ?? 0)} (${band(0.3, 0.5).length}), under 30% ${pct(med(band(0, 0.3).map((r) => r.edge)) ?? 0)} (${band(0, 0.3).length})`
       + (pow.length ? `; Pinnacle's margin off by the power method (${pow.length} prices): median ${pct(med(pow.map((r) => r.edgePow)))}, at or above fair ${pow.filter((r) => r.edgePow >= 0).length}` : ''));
-    log(`  closest: ${sv.slice(0, 10).map((r) => `${r.pick} ${r.stake} (fair ${(1 / r.fair).toFixed(2)}, ${pct(r.edge)}${Number.isFinite(r.edgePow) ? ` / power ${pct(r.edgePow)}` : ''}, ${Math.round(r.fair * 100)}%, sharp ${age(r.sharpAt)} / Stake ${age(r.stakeAt)} old)`).join(' · ')}`);
+    const line = (r) => `${r.pick} ${r.stake} in ${r.event.home} v ${r.event.away} (${r.event.league}, ${r.market}; fair ${(1 / r.fair).toFixed(2)}, ${pct(r.edge)}${Number.isFinite(r.edgePow) ? ` / power ${pct(r.edgePow)}` : ''}, ${Math.round(r.fair * 100)}%, sharp ${age(r.sharpAt)} / Stake ${age(r.stakeAt)} old)`;
+    const odd = sv.filter((r) => Math.min(r.edge, r.edgePow ?? Infinity) > VALUE.maxEdge);
+    if (odd.length) log(`  left out as likely data errors (over ${Math.round(VALUE.maxEdge * 100)}% above fair): ${odd.map(line).join(' · ')}`);
+    log(`  closest: ${sv.filter((r) => !odd.includes(r)).slice(0, 10).map(line).join(' · ')}`);
   }
 }
 // What is still unpriced in the next 48 hours, by league: the gaps left after every price source.

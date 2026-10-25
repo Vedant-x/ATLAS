@@ -9,7 +9,7 @@ import { slipPolicy, bestBets, valueBets, MULTI_TARGETS } from './track.js';
 import { orderBets, orderChips, orderLabel, researchPrefs, windowChips } from './research.js';
 import { ico } from './icons.js';
 import { fmt, zone } from './tz.js';
-import { views, esc, sportOf, notice, istTag, legIndex, prefsBar, prefFilter, miniPick, valuePick } from './views.js';
+import { views, esc, sportOf, notice, istTag, legIndex, prefsBar, prefFilter, miniPick, valuePick, stakeGap } from './views.js';
 
 let S;
 export function bindPicks(state) { S = state; }
@@ -123,10 +123,10 @@ export const picksViews = {
     return {
       mode: 'bankers', accent: '#3dff9a', title: 'Value bets',
       html: `<section class="hero small"><p class="kicker reveal">NEXT 48 HOURS · PRICED ABOVE THE SHARP MARKET</p><h1>${split('VALUE BETS')}</h1>${builderNav('value')}
-        <p class="lede reveal">A bookmaker paying more than the market's fair odds (Pinnacle's, with its cut taken out). Good at the price shown, or at any bookmaker from the "good at" price up.</p></section>
+        <p class="lede reveal">A bookmaker paying more than the market's fair odds (Pinnacle's, with its cut taken out). Stake's price first where it clears them, at long prices too (the bar rises with the odds). Good at the price shown, or at any bookmaker from the "take" price up.</p></section>
         ${notice()}
         ${rec ? `<p class="rec-line reveal">So far: ${rec} · <a href="#/track">every result</a></p>` : ''}
-        <div class="minilist">${list.map(valuePick).join('') || '<p class="muted">No price beats the sharp market in the next 48 hours right now. They come and go as bookmakers move; this list updates with every price check.</p>'}</div>`,
+        <div class="minilist">${list.map(valuePick).join('') || `<p class="muted">No price beats the sharp market in the next 48 hours right now. They come and go as bookmakers move; this list updates with every price check.</p>${stakeGap(prefFilter(S.events))}`}</div>`,
     };
   },
 

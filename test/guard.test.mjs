@@ -28,8 +28,9 @@ test('the shortlist leaves held-back bet types out', () => {
 test('a blocked bet type is still measured: probes are recorded unseen, so the block can lift', () => {
   const cal = calibration([...spreads, ...winners]);
   const e = { id: 'x', compId: '1', sport: 'hockey', league: 'NHL', home: 'Leafs', away: 'Sabres', start: Date.now() + 36e5, markets: [
-    { name: 'Spread', outcomes: [{ name: 'Leafs -1.5', odds: 1.6, line: -1.5 }, { name: 'Sabres +1.5', odds: 2.4, line: 1.5 }] },
-    { name: 'Winner', outcomes: [{ name: 'Leafs', odds: 1.4 }, { name: 'Sabres', odds: 2.9 }] }] };
+    // The sharp market's fair chance (cons): probes follow the Best bets price rule (at least fair odds).
+    { name: 'Spread', consensusFrom: 'Pinnacle', outcomes: [{ name: 'Leafs -1.5', odds: 1.6, line: -1.5, cons: 0.63 }, { name: 'Sabres +1.5', odds: 2.4, line: 1.5, cons: 0.37 }] },
+    { name: 'Winner', consensusFrom: 'Pinnacle', outcomes: [{ name: 'Leafs', odds: 1.4, cons: 0.7 }, { name: 'Sabres', odds: 2.9, cons: 0.3 }] }] };
   const probes = probePicks([e], { cal });
   assert.ok(probes.length && probes.every((b) => b.market === 'Spread'), JSON.stringify(probes.map((b) => b.market)));
   assert.deepEqual(probePicks([e], { cal: null }), [], 'no calibration, nothing blocked, no probes');

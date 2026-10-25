@@ -95,13 +95,13 @@ function sharpen(e, f) {
   const res = e.markets.find((m) => ['Match Result', 'Winner', 'Moneyline'].includes(m.name) && m.outcomes?.length === 3);
   const byName = res && [e.home, 'Draw', e.away].map((n) => res.outcomes.find((o) => o.name === n));
   if (byName?.every(Boolean)) {
-    devig(f.res).forEach((c, i) => { byName[i].cons = c; byName[i].book ||= e.bookmaker || null; });
+    devig(f.res).forEach((c, i) => { byName[i].cons = c; byName[i].pin = f.res[i]; byName[i].book ||= e.bookmaker || null; });
     res.consensusFrom = 'Pinnacle (football-data.co.uk)'; done = true;
   }
   const tot = f.ou && f.ouSharp && e.markets.find((m) => m.name === 'Total 2.5');
   const ou = tot && ['Over 2.5', 'Under 2.5'].map((n) => tot.outcomes.find((o) => o.name === n));
   if (ou?.every(Boolean)) {
-    devig(f.ou).forEach((c, i) => { ou[i].cons = c; ou[i].book ||= e.bookmaker || null; });
+    devig(f.ou).forEach((c, i) => { ou[i].cons = c; ou[i].pin = f.ou[i]; ou[i].book ||= e.bookmaker || null; });
     tot.consensusFrom = 'Pinnacle (football-data.co.uk)'; done = true;
   }
   return done;

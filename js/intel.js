@@ -2,7 +2,7 @@
 // The market is the strongest single predictor, so the model starts from the de-vigged price and nudges it
 // toward each side's season record and recent form. Disagreement between the two shows up as value (EV).
 import { newsHold } from './newsgate.js';
-import { devig, underdogCushion } from './engine.js';
+import { devig, underdogCushion, powerDevig } from './engine.js';
 import { propLabel, propMarket } from './props.js';
 import { normCdf } from './models.js';
 
@@ -137,6 +137,8 @@ export function bankers(events, { min = 0.7, limit = 24, minOdds = 1, cushions =
     if (newsHold(e)) continue; // NBA: waiting on the injury report (newsgate.js)
     for (const m of e.markets || []) {
       const { outcomes } = devig(m);
+      // The sharp book's margin taken off by the power method too, where its own prices are held.
+      const pow = m.outcomes.every((o) => o.pin > 1) ? powerDevig(m.outcomes.map((o) => o.pin)) : null;
       outcomes.forEach((o, i) => {
         const p = m.outcomes[i].model ?? o.fair;
         if (p < min || o.odds < minOdds) return;
@@ -146,7 +148,7 @@ export function bankers(events, { min = 0.7, limit = 24, minOdds = 1, cushions =
           // The first price seen for it (movement.js), to tell a drifting price.
           ...(m.outcomes[i].open > 1 ? { open: m.outcomes[i].open } : {}),
           // Many bookmakers: the best price's bookmaker, and a fair chance that is the market consensus.
-          ...(Number.isFinite(m.outcomes[i].cons) ? { consensus: true, book: m.outcomes[i].book || null, consensusFrom: m.consensusFrom || null } : {}),
+          ...(Number.isFinite(m.outcomes[i].cons) ? { consensus: true, book: m.outcomes[i].book || null, consensusFrom: m.consensusFrom || null, ...(pow ? { fairPow: pow[i] } : {}) } : {}),
           // The typical price across books, and a better one elsewhere (oddsapi.js overlayOdds).
           ...(m.outcomes[i].med > 1 ? { med: m.outcomes[i].med } : {}), ...(m.outcomes[i].best > 1 ? { best: m.outcomes[i].best, bestBook: m.outcomes[i].bestBook || null } : {}),
           // Stake's own price (oddspapi.js), the book ATLAS's users bet at.
