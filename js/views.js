@@ -14,7 +14,7 @@ import { slip } from './slip.js';
 import { CATALOG, sportById, leagueKey, leagueFromKey } from './catalog.js';
 import { detailFor, loadDetail as fetchDetail } from './detail.js';
 import { dossierSections } from './dossier.js';
-import { fetchAll, LEAGUES, leagueStatus } from './espn.js';
+import { fetchAll, LEAGUES, leagueStatus, espnPaused } from './espn.js';
 import { prefs, prefEvents } from './prefs.js';
 import { liveWin } from './live.js';
 import { watch } from './alerts.js';
@@ -725,12 +725,17 @@ function notes(e, a) {
 const liveLoaded = new Set();
 // Load leagues straight from ESPN when their page opens. A league that fails is retried (never
 // marked as loaded), so a hiccup can't leave a page saying there are no fixtures.
+// Only leagues the snapshot holds no match for (it has every league ESPN answered, rebuilt every 10
+// to 20 minutes), at most 12 a visit, two days ahead: a page of 100 leagues once sent over 700
+// requests, ESPN refused them, and phones stalled.
 async function liveLoad(paths, tries = 0) {
-  const todo = LEAGUES.filter((l) => paths.includes(l.path) && !liveLoaded.has(l.path));
+  if (espnPaused()) return;
+  const have = new Set(S.events.map((e) => e.leaguePath));
+  const todo = LEAGUES.filter((l) => paths.includes(l.path) && !liveLoaded.has(l.path) && !have.has(l.path)).slice(0, 12);
   if (!todo.length) return;
   todo.forEach((l) => liveLoaded.add(l.path));
   const started = Date.now();
-  const fresh = await fetchAll(undefined, todo, { days: 4, concurrency: 4 }).catch(() => []);
+  const fresh = await fetchAll(undefined, todo, { days: 2, concurrency: 2 }).catch(() => []);
   const failed = todo.filter((l) => !(leagueStatus.get(l.path)?.ok && leagueStatus.get(l.path).at >= started));
   failed.forEach((l) => liveLoaded.delete(l.path));
   if (fresh.length) {
@@ -740,11 +745,11 @@ async function liveLoad(paths, tries = 0) {
     S.events.splice(0, S.events.length, ...map.values());
   }
   S.refresh?.();
-  if (failed.length && tries < 4) setTimeout(() => liveLoad(failed.map((l) => l.path), tries + 1), 6000 * (tries + 1));
+  if (failed.length && tries < 2) setTimeout(() => liveLoad(failed.map((l) => l.path), tries + 1), 30000 * (tries + 1));
 }
 // "No fixtures" only for leagues whose feed actually answered; otherwise we are still loading.
 const leagueKnown = (path) => path.startsWith('atlas/') || leagueStatus.get(path)?.ok === true;
-const emptyText = (paths) => (paths.every(leagueKnown) ? 'No fixtures in the next 4 days' : 'Loading fixtures…');
+const emptyText = (paths) => (paths.every(leagueKnown) || espnPaused() ? 'No fixtures in the next 4 days' : 'Loading fixtures…');
 
 function countBy() {
   const out = {};

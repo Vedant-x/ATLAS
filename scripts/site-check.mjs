@@ -34,6 +34,8 @@ for (const [screen, viewport] of Object.entries(SCREENS)) {
     try { new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__long += e.duration; }).observe({ type: 'longtask', buffered: true }); } catch { /* unsupported */ }
   });
   const errors = [], failed = [];
+  let espn = 0;
+  page.on('request', (r) => { if (/espn\.com/.test(r.url())) espn++; });
   page.on('pageerror', (e) => errors.push(`${e.message} ${String(e.stack || '').split('\n').slice(1, 3).join(' ').trim()}`));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text().slice(0, 300)}`); });
   page.on('requestfailed', (r) => failed.push(`${r.failure()?.errorText} ${r.url().slice(0, 140)}`));
@@ -42,7 +44,7 @@ for (const [screen, viewport] of Object.entries(SCREENS)) {
   await page.goto(base, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch((e) => errors.push(`load: ${e.message}`));
   for (const route of ROUTES) {
     errors.length = 0; failed.length = 0;
-    const t = Date.now(), loadsBefore = loads;
+    const t = Date.now(), loadsBefore = loads, espnBefore = espn;
     await page.evaluate(() => { window.__long = 0; }).catch(() => {});
     await page.evaluate((r) => { location.hash = r.slice(1); }, route).catch((e) => errors.push(`nav: ${e.message}`));
     // Long enough for the data, the first live refresh (30 s cycle starts at once) and a re-render.
@@ -55,7 +57,7 @@ for (const [screen, viewport] of Object.entries(SCREENS)) {
     }).catch((e) => ({ err: e.message }));
     const broken = errors.some((x) => !x.startsWith('console:')) || !(s.len > 80) || s.err;
     if (broken) bad++;
-    console.log(`${broken ? 'BROKEN' : 'ok    '} ${screen} ${route} (${Math.round((Date.now() - t) / 1000)}s${route === '#/' ? `, first load ${Math.round((Date.now() - t0) / 1000)}s` : ''}): ${s.err || `${s.len} chars, ${s.panels} panels, ${s.minis} picks, ${s.skel} placeholders, main thread blocked ${s.long} ms${loads > loadsBefore ? `, RELOADED ${loads - loadsBefore}x` : ''}${s.overflow ? ', SCROLLS SIDEWAYS' : ''}`}`);
+    console.log(`${broken ? 'BROKEN' : 'ok    '} ${screen} ${route} (${Math.round((Date.now() - t) / 1000)}s${route === '#/' ? `, first load ${Math.round((Date.now() - t0) / 1000)}s` : ''}): ${s.err || `${s.len} chars, ${s.panels} panels, ${s.minis} picks, ${s.skel} placeholders, main thread blocked ${s.long} ms, ${espn - espnBefore} ESPN requests${loads > loadsBefore ? `, RELOADED ${loads - loadsBefore}x` : ''}${s.overflow ? ', SCROLLS SIDEWAYS' : ''}`}`);
     console.log(`    shows: ${s.head || ''}`);
     for (const e of [...new Set(errors)].slice(0, 8)) console.log(`    error: ${e}`);
     for (const f of [...new Set(failed)].slice(0, 6)) console.log(`    failed: ${f}`);
