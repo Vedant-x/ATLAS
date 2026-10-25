@@ -162,3 +162,17 @@ test('best bets: one bookmaker\'s own price is never enough; Stake\'s price is t
   assert.deepEqual(list.map((b) => [b.event.id, b.odds, b.book]), [['2', 1.46, 'Stake'], ['3', 1.62, 'DraftKings']]);
   assert.equal(list[0].atStake, true);
 });
+
+test('Best bets at one bookmaker\'s price (before model 2026.10.15) are a retired list with their own final record', () => {
+  const h = [
+    { status: 'lost', odds: 1.4, p: 0.7, type: 'best', model: '2026.10.14', sport: 'football', start: 1 },
+    { status: 'won', odds: 1.3, p: 0.75, type: 'best', model: '2026.10.9', sport: 'football', start: 2 },
+    { status: 'won', odds: 1.6, p: 0.64, type: 'best', model: '2026.10.15', sport: 'football', start: 3 },
+    { status: 'pending', odds: 1.5, p: 0.66, type: 'best', model: '2026.10.14', sport: 'football', start: 4 },
+  ];
+  const s = summarize(h);
+  assert.deepEqual([s.best.won, s.best.lost, s.live.won, s.live.lost], [1, 0, 1, 0], 'the list since 2026.10.15 only');
+  assert.equal(s.pending.length, 0, 'an old-rule pick still to settle counts toward the retired record, not the live one');
+  const old = s.retired.find((r) => /one bookmaker/.test(r.name));
+  assert.deepEqual([old.won, old.lost], [1, 1]);
+});

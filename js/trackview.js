@@ -1,6 +1,6 @@
 // Record page: every official ATLAS pick (locked before kick-off) and how it turned out.
 import { esc, sportOf, ist } from './views.js';
-import { summarize, calibration, marketChance, BEST, VALUE, potdDay, walkForward } from './track.js';
+import { summarize, calibration, marketChance, BEST, VALUE, potdDay, walkForward, oldBest } from './track.js';
 import { serviceStats } from './compare.js';
 import { FINAL, independentlyConfirmed } from './settle.js';
 import { localDay } from './engine.js';
@@ -126,7 +126,7 @@ function verdict(a) {
 // ATLAS's own ledger in the format a fair comparison with another service would use (compare.js), and
 // the honest state of any comparison: none has been run.
 function comparisonPanel(picks) {
-  const rows = [['Best bets', 'best'], ['Value bets', 'edge'], ['Shortlist bankers (retired)', 'banker']].map(([label, type]) => [label, serviceStats({ service: 'ATLAS', evidence: 'ledger', selections: picks.filter((h) => h.type === type && ['won', 'lost', 'push', 'void'].includes(h.status)).map((h) => ({ date: new Date(h.start).toISOString(), odds: h.odds, status: h.status, p: h.shown ?? h.p, close: h.close })) })]).filter(([, st]) => st.selections);
+  const rows = [['Best bets', (h) => h.type === 'best' && !oldBest(h)], ['Value bets', (h) => h.type === 'edge'], ['Best bets at one bookmaker\'s price (retired)', oldBest], ['Shortlist bankers (retired)', (h) => h.type === 'banker']].map(([label, of]) => [label, serviceStats({ service: 'ATLAS', evidence: 'ledger', selections: picks.filter((h) => of(h) && ['won', 'lost', 'push', 'void'].includes(h.status)).map((h) => ({ date: new Date(h.start).toISOString(), odds: h.odds, status: h.status, p: h.shown ?? h.p, close: h.close })) })]).filter(([, st]) => st.selections);
   if (!rows.length) return '';
   const f = (x, d = 2) => (x == null ? '—' : x.toFixed(d));
   return `<div class="panel reveal"><h3 class="ph">ATLAS in the comparison format <small>reproduced from its complete ledger · no comparison with another service has been run</small></h3>

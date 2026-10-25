@@ -39,6 +39,15 @@ export const takePrice = (b, need) => (b.consensus && b.stake > 1 && freshAt(b.e
 // odds 1.41, where 71.0% was needed (555 picks, -9.1%). Likeliest first, spread across sports and bet
 // types. Its own record.
 export const BEST = { minOdds: 1.2, maxOdds: 2.5, min: 0.55 };
+// Best bets before model 2026.10.15 took one bookmaker's own price: a different list from the one
+// since, so it is retired with its own final record (Results), and the list's record starts again.
+export const BEST_SINCE = '2026.10.15';
+const versionBefore = (v, ref) => {
+  const a = String(v).split('.').map(Number), r = ref.split('.').map(Number);
+  for (let i = 0; i < Math.max(a.length, r.length); i++) if ((a[i] || 0) !== (r[i] || 0)) return (a[i] || 0) < (r[i] || 0);
+  return false;
+};
+export const oldBest = (h) => h.type === 'best' && Boolean(h.model) && versionBefore(h.model, BEST_SINCE);
 export function bestBets(events, { cal = null, limit = 10 } = {}) {
   const list = rankedBankers(events.filter(gradable), { cal, min: BEST.min, minOdds: 1, maxOdds: Infinity, limit: 2000, mix: false })
     .filter((b) => b.consensus && freshAt(refAt(b.event))).map((b) => takePrice(b, 0))
@@ -620,9 +629,9 @@ export function summarize(history) {
   const outside = settledAll.filter((h) => !['multi', 'safe', 'model', 'best', 'two', 'edge', 'probe', 'botd'].includes(h.type) && !inRecord(h));
   // The lists the site shows today (Best bets and Value bets): the headline record. Everything else
   // is either a slip (its own record) or retired (kept below, with its final record).
-  const isLive = (h) => h.type === 'best' || h.type === 'edge';
+  const isLive = (h) => (h.type === 'best' && !oldBest(h)) || h.type === 'edge';
   const live = settledAll.filter(isLive);
-  const best = settledAll.filter((h) => h.type === 'best');
+  const best = settledAll.filter((h) => h.type === 'best' && !oldBest(h));
   const models = settledAll.filter((h) => h.type === 'model');
   const safe = settledAll.filter((h) => h.type === 'safe');
   const multis = settledAll.filter((h) => h.type === 'multi');
@@ -659,8 +668,9 @@ export function summarize(history) {
     byType: group((h) => h.type, graded), bySport: group((h) => h.sport), byFamily: group((h) => familyOf(h.market)), byModel: group((h) => h.model || 'before 2026.10.1'), buckets,
     pending: history.filter((h) => h.status === 'pending' && (isLive(h) || (h.type === 'multi' && (MULTI_TARGETS.includes(h.target) || h.target === 'potd')))).sort((a, b) => a.start - b.start),
     unresolved: history.filter((h) => h.status === 'unresolved' && isLive(h)).length,
-    // Retired on 23 Oct 2026, each with its final record (they lost money; the reason they were cut).
-    retired: [['Shortlist bankers (odds 1.30-1.80)', stat(graded)], ['Surest (odds 1.20-1.40)', stat(safe)], ['Singles near 2.00', stat(settledAll.filter((h) => h.type === 'two'))],
+    // Retired on 23 Oct 2026 (Best bets at one bookmaker's price: 25 Oct), each with its final record
+    // (they lost money; the reason they were cut).
+    retired: [['Best bets at one bookmaker\'s price (to 25 Oct)', stat(settledAll.filter(oldBest))], ['Shortlist bankers (odds 1.30-1.80)', stat(graded)], ['Surest (odds 1.20-1.40)', stat(safe)], ['Singles near 2.00', stat(settledAll.filter((h) => h.type === 'two'))],
       ['Model-only picks (no price)', stat(models)], ['4x to 20x slips', stat(multis.filter((m) => [4, 5, 10, 20].includes(m.target)))], ['Mega slips (100x, 1000x)', stat(multis.filter((m) => m.target >= 100))]]
       .map(([name, st]) => ({ name, ...st })).filter((r) => r.won + r.lost),
     outside: stat(outside), safe: stat(safe), best: stat(best), two: stat(settledAll.filter((h) => h.type === 'two')), edge: stat(settledAll.filter((h) => h.type === 'edge')),

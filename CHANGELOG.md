@@ -44,7 +44,8 @@ what changed, week by week. Reasons and reversals are in [docs/DECISIONS.md](doc
   lost 9.1% over 555 picks). Value at Stake now reaches draws and underdogs, where Stake's margin is
   lightest, with a higher bar for longer prices; edges over 12% are treated as data errors. Match
   pages show how far Stake's price sits from the fair odds, and an empty Value bets panel shows
-  Stake's closest prices. The build log measures Stake against the fair odds on every build.
+  Stake's closest prices. The build log measures Stake against the fair odds on every build. The
+  old Best bets record (363-192, -50.36 units) is kept on Results as a retired list.
 - Earlier this week: one site-wide time zone, colour themes, value bets and the drift guard, finished
   matches kept on the watchlist, props on the real over/under lines.
 

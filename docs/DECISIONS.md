@@ -21,6 +21,9 @@ first, with the evidence. A change that flips a decision without an entry here s
   on the favourites, so most days have few or none. Value at Stake comes mostly on draws and
   underdogs. An empty list now means nothing is priced fairly, not that the search failed; the
   Value bets panel then says how far Stake's prices sit from the fair odds.
+- **Record:** the old list is a different list, so it is retired with its final record (Results:
+  "Best bets at one bookmaker's price", 363-192, -50.36 units), and Best bets' record starts again
+  from model 2026.10.15. Its picks still to settle count toward the retired record.
 - **Reverses:** "with one bookmaker, ATLAS does not claim more than the price says" (Best bets, 23 Oct).
 
 ## 2026-10-24 · Stake's own prices; value bets at Stake are recorded at Stake's price
