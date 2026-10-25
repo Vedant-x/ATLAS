@@ -30,6 +30,12 @@ export const STAKE_LEAGUES = [
   { id: 7, name: 'UEFA Champions League', sport: 'football', market: 101, path: 'soccer/uefa.champions' },
   { id: 679, name: 'UEFA Europa League', sport: 'football', market: 101, path: 'soccer/uefa.europa' },
   { id: 132, name: 'NBA', sport: 'basketball', market: 111, path: 'basketball/nba' },
+  // The next most-bet leagues, filling the second request's free places (5 tournaments a request):
+  // most weekends they cost no extra request. Their sharp line comes from The Odds API (MAJOR_KEYS).
+  { id: 18, name: 'Championship', sport: 'football', market: 101, path: 'soccer/eng.2' },
+  { id: 37, name: 'Eredivisie', sport: 'football', market: 101, path: 'soccer/ned.1' },
+  { id: 238, name: 'Primeira Liga', sport: 'football', market: 101, path: 'soccer/por.1' },
+  { id: 52, name: 'Süper Lig', sport: 'football', market: 101, path: 'soccer/tur.1' },
 ];
 
 // A fixture's two sides and start: names from the response, else from names (the participants list,
