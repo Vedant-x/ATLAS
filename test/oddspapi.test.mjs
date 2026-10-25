@@ -108,3 +108,27 @@ test('OddsPapi as it really answers: teams by id only; names from the participan
   assert.deepEqual([nba.league, nba.stake, nba.slug], ['NBA', [1.62, 2.35], 'boston-celtics-new-york-knicks']);
   assert.deepEqual(slugMatch(nba, { leaguePath: 'basketball/nba', home: 'Boston Celtics', away: 'New York Knicks', start: t }), { orient: 'same', score: 2, dt: 0 });
 });
+
+test('Stake against the fair odds: each price\'s distance from the fair odds, best first; Pinnacle\'s margin off by the power method', async () => {
+  const { stakeVsFair } = await import('../js/oddspapi.js');
+  const { powerDevig } = await import('../js/engine.js');
+  // The power method takes more of the margin off the long prices than an even split does.
+  const p = powerDevig([1.36, 5.5, 8.6]), even = [1.36, 5.5, 8.6].map((x) => 1 / x), sum = even.reduce((a, b) => a + b, 0);
+  assert.ok(Math.abs(p.reduce((a, b) => a + b, 0) - 1) < 1e-3, 'adds up to 1');
+  assert.ok(p[0] > even[0] / sum && p[2] < even[2] / sum, 'favourite up, long shot down');
+  assert.equal(powerDevig([1.5]), null);
+  assert.equal(powerDevig([0.9, 2]), null);
+  const event = (id, outcomes, extra = {}) => ({ id, sport: 'football', home: 'Home', away: 'Away', start: Date.now() + 5 * H, markets: [{ name: 'Match Result', consensusFrom: 'Pinnacle', outcomes }], stakeAt: Date.now() - H, sharpAt: Date.now() - 2 * H, ...extra });
+  const rows = stakeVsFair([
+    // Pinnacle 1.36 / 5.5 / 8.6, its margin split evenly: 0.7115 / 0.1759 / 0.1125.
+    event('a', [{ name: 'Home', odds: 1.32, stake: 1.34, cons: 0.7115, pin: 1.36 }, { name: 'Draw', odds: 5.25, stake: 5.6, cons: 0.1759, pin: 5.5 }, { name: 'Away', odds: 7, stake: 8, cons: 0.1125, pin: 8.6 }]),
+    event('b', [{ name: 'Home', odds: 1.6, stake: 1.56, cons: 0.6022 }, { name: 'Draw', odds: 4, stake: 3.95, cons: 0.235 }, { name: 'Away', odds: 6, stake: 6.4, cons: 0.1628 }]),
+    event('live', [{ name: 'Home', odds: 2, stake: 2.5, cons: 0.5 }, { name: 'Away', odds: 2, stake: 2.5, cons: 0.5 }], { live: true }),
+  ]);
+  assert.deepEqual(rows.map((r) => [r.event.id, r.pick]).slice(0, 2), [['b', 'Away'], ['a', 'Draw']], 'best edge first; live matches left out');
+  assert.equal(rows.length, 6);
+  assert.equal(+rows[0].edge.toFixed(3), 0.042);
+  const away = rows.find((r) => r.event.id === 'a' && r.pick === 'Away'), home = rows.find((r) => r.event.id === 'a' && r.pick === 'Home');
+  assert.ok(away.edgePow < away.edge && home.edgePow > home.edge, 'the long price looks less good, the favourite better, once the margin comes off the long prices');
+  assert.equal(rows.find((r) => r.event.id === 'b').edgePow, undefined, 'no Pinnacle prices held: no power figure');
+});

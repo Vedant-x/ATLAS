@@ -14,6 +14,23 @@ export function devig(market) {
   };
 }
 
+// A sharp book's prices, margin removed by the power method: each implied chance raised to the same
+// power k so they add up to 1. Books load more of their margin onto the longer prices (the
+// favourite-longshot bias); an even split leaves a long price's chance too high, so a long price at
+// another book looks better than it is. Prices in, fair chances out (same order); null if unusable.
+export function powerDevig(prices) {
+  const inv = prices.map((x) => 1 / x);
+  if (inv.length < 2 || !inv.every((x) => x > 0 && x < 1)) return null;
+  const sum = (k) => inv.reduce((a, x) => a + x ** k, 0);
+  // sum(k) falls as k grows: bracket the k where it is 1, then halve the bracket.
+  let lo = 1, hi = 1;
+  while (sum(hi) > 1) hi *= 2;
+  while (sum(lo) < 1) lo /= 2;
+  for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (sum(mid) > 1) lo = mid; else hi = mid; }
+  const k = (lo + hi) / 2;
+  return inv.map((x) => +(x ** k).toFixed(4));
+}
+
 // Each side's chance to win outright (the model's where it has one), from the match-winner market.
 export function winChances(ev) {
   const m = (ev.markets || []).find((x) => x.name === 'Winner' || x.name === 'Match Result' || x.name === 'Moneyline');

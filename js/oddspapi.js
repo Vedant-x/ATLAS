@@ -11,6 +11,7 @@
 // (scripts/sources/stake.mjs) fetches, budgets and caches.
 
 import { normName, lineUp } from './oddsapi.js';
+import { powerDevig } from './engine.js';
 
 export const ODDSPAPI = 'https://api.oddspapi.io/v4';
 // The books read: Stake (the API takes one bookmaker per request); Pinnacle where a response has it.
@@ -152,6 +153,26 @@ export function overlayStake(events, stakeEvs, { at = Date.now(), now = Date.now
     }
   }
   return { stake, sharp };
+}
+
+// Stake against the fair odds: each upcoming outcome with Stake's price and a sharp fair chance, and
+// how far Stake's price sits from the fair odds (edge = Stake x fair - 1; below 0, Stake pays less
+// than the bet is worth). edgePow: the same against Pinnacle's margin taken off by the power method,
+// where Pinnacle's own prices are held. Best edge first.
+export function stakeVsFair(events, { now = Date.now() } = {}) {
+  const rows = [];
+  for (const e of events) {
+    if (e.live || !(e.start > now)) continue;
+    for (const m of e.markets || []) {
+      const pow = m.outcomes?.every((o) => o.pin > 1) ? powerDevig(m.outcomes.map((o) => o.pin)) : null;
+      m.outcomes?.forEach((o, i) => {
+        if (!(o.stake > 1) || !(o.cons > 0)) return;
+        rows.push({ event: e, market: m.name, pick: o.name, stake: o.stake, fair: o.cons, edge: o.stake * o.cons - 1, ...(pow ? { fairPow: pow[i], edgePow: o.stake * pow[i] - 1 } : {}),
+          from: m.consensusFrom || null, sharpAt: e.sharpAt ?? null, stakeAt: e.stakeAt ?? null });
+      });
+    }
+  }
+  return rows.sort((a, b) => b.edge - a.edge);
 }
 
 // The month's requests: the allowance left, spent at an even pace over the rest of the month (the
