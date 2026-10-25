@@ -52,7 +52,8 @@ export function bestBets(events, { cal = null, limit = 10 } = {}) {
   const list = rankedBankers(events.filter(gradable), { cal, min: BEST.min, minOdds: 1, maxOdds: Infinity, limit: 2000, mix: false })
     .filter((b) => b.consensus && freshAt(refAt(b.event))).map((b) => takePrice(b, 0))
     .filter((b) => b.odds >= BEST.minOdds && b.odds <= BEST.maxOdds && edgeAt(b, b.odds) >= 0 && edgeAt(b, b.odds) <= VALUE.maxEdge)
-    .map((b) => ({ ...b, ev: b.p * b.odds - 1, edge: edgeAt(b, b.odds) }))
+    // The return shown is the sharp market's (what qualifies the pick); the chance is ATLAS's.
+    .map((b) => ({ ...b, ev: edgeAt(b, b.odds), edge: edgeAt(b, b.odds) }))
     .sort((x, y) => Number(Boolean(y.atStake)) - Number(Boolean(x.atStake)) || y.p - x.p);
   return diversify(list, limit).sort((x, y) => y.p - x.p);
 }

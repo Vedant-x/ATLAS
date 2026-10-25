@@ -310,7 +310,7 @@ export const views = {
       return `<div class="side reveal">${gauge(p, color, label)}
         <dl><dt>Fair odds</dt><dd>${odd(1 / p)}</dd>
         <dt>${esc(e.bookmaker?.split(' (')[0] || 'Book')} odds</dt><dd>${bookOdds ? odd(bookOdds) : '<span class="muted">none</span>'}</dd>
-        ${stakeOf(label) > 1 ? (() => { const g = consOf(label) > 0 ? stakeOf(label) * consOf(label) - 1 : null; return `<dt data-tip="Stake's own price${e.stakeAt ? `, read ${ago(e.stakeAt)}` : ''}${g == null ? '' : `; ${gapWords(g)} the sharp market's fair odds (${odd(1 / consOf(label))})`}">Stake</dt><dd>${odd(stakeOf(label))}${g == null ? '' : ` <small class="${g >= 0 ? 'pos' : 'neg'}">${signPct(g)}</small>`}</dd>`; })() : ''}
+        ${stakeOf(label) > 1 ? (() => { const g = consOf(label) > 0 ? stakeOf(label) * consOf(label) - 1 : null; return `<dt data-tip="Stake's own price${e.stakeAt ? `, read ${ago(e.stakeAt)}` : ''}${g == null ? '' : `; ${gapWords(g)} the sharp market's fair odds (${odd(1 / consOf(label))})`}">Stake</dt><dd>${odd(stakeOf(label))}${g == null ? '' : ` <span class="${g >= 0 ? 'pos' : 'neg'}">${signPct(g)}</span>`}</dd>`; })() : ''}
         <dt data-tip="Estimated return per unit staked">Return</dt><dd class="${ev == null ? '' : ev >= 0 ? 'pos' : 'neg'}">${ev == null ? '—' : `${(ev * 100).toFixed(1)}%`}</dd></dl></div>`;
     };
     const d = detailFor(e.id);
@@ -594,7 +594,7 @@ export function stakeGap(pool) {
   const rows = stakeVsFair(todayEvents(pool, Date.now(), 48)).map((r) => ({ ...r, gap: Math.min(r.edge, r.edgePow ?? Infinity) })).filter((r) => r.gap <= VALUE.maxEdge).sort((a, b) => b.gap - a.gap);
   if (!rows.length) return '';
   const s = rows.map((r) => r.gap).sort((a, b) => a - b), med = s[Math.floor(s.length / 2)];
-  return `<p class="muted stake-gap">Stake right now: ${rows.length} prices on ${new Set(rows.map((r) => r.event.id)).size} matches, typically ${gapWords(med)} the fair odds (its margin). Closest: ${rows.slice(0, 3).map((r) => `<a href="#/match/${esc(r.event.id)}">${esc(r.pick)} ${odd(r.stake)}</a> (fair ${odd(1 / Math.min(r.fair, r.fairPow ?? 1))}, ${signPct(r.gap)})`).join(' · ')}.</p>`;
+  return `<p class="muted stake-gap">Stake right now: ${rows.length} prices on ${((n) => `${n} match${n === 1 ? '' : 'es'}`)(new Set(rows.map((r) => r.event.id)).size)}, typically ${gapWords(med)} the fair odds (its margin). Closest: ${rows.slice(0, 3).map((r) => `<a href="#/match/${esc(r.event.id)}">${esc(r.pick)} ${odd(r.stake)}</a> (fair ${odd(1 / Math.min(r.fair, r.fairPow ?? 1))}, ${signPct(r.gap)})`).join(' · ')}.</p>`;
 }
 export function valuePick(b) {
   const s = sportOf(b.event.sport);
