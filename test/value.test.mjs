@@ -5,7 +5,7 @@ import { valueBets, rankedBankers, selectPicks, summarize, VALUE } from '../js/t
 
 const H = 36e5;
 const mk = (outcomes, extra = {}) => ({ name: 'Match Result', consensusFrom: 'Pinnacle', outcomes, ...extra });
-const event = (id, markets, extra = {}) => ({ id, sport: 'football', leaguePath: 'soccer/eng.1', compId: id, home: 'Home', away: 'Away', start: Date.now() + 5 * H, live: false, markets, oddsSource: 'the-odds-api', ...extra });
+const event = (id, markets, extra = {}) => ({ id, sport: 'football', leaguePath: 'soccer/eng.1', compId: id, home: 'Home', away: 'Away', start: Date.now() + 5 * H, live: false, markets, oddsSource: 'the-odds-api', priceAt: Date.now() - H, fetchedAt: Date.now() - 6e4, ...extra });
 
 test('price memory: the first price seen is kept build to build; a new source or a moved line starts afresh', () => {
   const prev = [event('a', [mk([{ name: 'Home', odds: 1.9, open: 2.0 }, { name: 'Away', odds: 2.0 }]), { name: 'Total 2.5', outcomes: [{ name: 'Over 2.5', odds: 1.8 }] }])];
@@ -25,7 +25,8 @@ test('value bets: best price 2%+ above Pinnacle fair odds (3% from a median), ne
     event('v1', [mk([{ name: 'Home', odds: 1.8, cons: 0.58, book: 'Unibet' }, { name: 'Draw', odds: 4.1, cons: 0.24 }, { name: 'Away', odds: 5.4, cons: 0.18 }])]),
     event('v2', [mk([{ name: 'Home', odds: 2.2, cons: 0.48, book: 'Betway' }, { name: 'Draw', odds: 3.3, cons: 0.28 }, { name: 'Away', odds: 4.2, cons: 0.24 }])]),
     // 1.55 x 0.70 = +8.5%, but the price was 1.42 when first seen: drifting.
-    event('v3', [mk([{ name: 'Home', odds: 1.55, cons: 0.7, open: 1.42 }, { name: 'Draw', odds: 4.6, cons: 0.19 }, { name: 'Away', odds: 9.5, cons: 0.11 }])]),
+    // The quotes are 4 hours old (past driftTrust), so a fresher read may have the move: set aside.
+    event('v3', [mk([{ name: 'Home', odds: 1.55, cons: 0.7, open: 1.42 }, { name: 'Draw', odds: 4.6, cons: 0.19 }, { name: 'Away', odds: 9.5, cons: 0.11 }])], { priceAt: Date.now() - 4 * H }),
     // A median of books needs 3%: +2.5% is not enough.
     event('v4', [mk([{ name: 'Home', odds: 2.05, cons: 0.5 }, { name: 'Away', odds: 1.9, cons: 0.5 }], { name: 'Winner', consensusFrom: 'median of 6+ books' })]),
     // One bookmaker (no consensus): never a value bet, whatever the model says.

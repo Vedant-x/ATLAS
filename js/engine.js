@@ -59,8 +59,13 @@ export function allLegs(events) {
   for (const ev of events) {
     for (const m of ev.markets) {
       const { margin, outcomes } = devig(m);
-      for (const o of outcomes) {
+      // The sharp book's margin off by the power method too, where its own prices are held.
+      const pow = m.outcomes.every((x) => x.pin > 1) ? powerDevig(m.outcomes.map((x) => x.pin)) : null;
+      for (const [i, o] of outcomes.entries()) {
         const p = o.model ?? o.fair;
+        // The market reference behind the leg (a sharp or many-book fair chance) and when it and the
+        // leg's own price were read, so a slip can be held to the same price rule as a single.
+        const consensus = Number.isFinite(m.outcomes[i].cons);
         legs.push({
           eventId: ev.id,
           sport: ev.sport,
@@ -73,6 +78,9 @@ export function allLegs(events) {
           margin,
           ev: p * o.odds - 1,
           cushion: underdogCushion(ev, m.name, o.name),
+          ...(consensus ? { consensus: true, fair: o.fair, ...(pow ? { fairPow: pow[i] } : {}), refAt: ev.sharpAt ?? (ev.oddsSource === 'the-odds-api' ? ev.priceAt : null) ?? null } : {}),
+          quoteAt: ev.priceAt ?? ev.fetchedAt ?? null,
+          ...(m.outcomes[i].stake > 1 ? { stake: m.outcomes[i].stake, stakeAt: ev.stakeAt ?? null } : {}),
         });
       }
     }

@@ -27,7 +27,7 @@ test('the shortlist leaves held-back bet types out', () => {
 
 test('a blocked bet type is still measured: probes are recorded unseen, so the block can lift', () => {
   const cal = calibration([...spreads, ...winners]);
-  const e = { id: 'x', compId: '1', sport: 'hockey', league: 'NHL', home: 'Leafs', away: 'Sabres', start: Date.now() + 36e5, markets: [
+  const e = { id: 'x', compId: '1', sport: 'hockey', league: 'NHL', home: 'Leafs', away: 'Sabres', start: Date.now() + 36e5, sharpAt: Date.now() - 36e5, fetchedAt: Date.now() - 6e4, markets: [
     // The sharp market's fair chance (cons): probes follow the Best bets price rule (at least fair odds).
     { name: 'Spread', consensusFrom: 'Pinnacle', outcomes: [{ name: 'Leafs -1.5', odds: 1.6, line: -1.5, cons: 0.63 }, { name: 'Sabres +1.5', odds: 2.4, line: 1.5, cons: 0.37 }] },
     { name: 'Winner', consensusFrom: 'Pinnacle', outcomes: [{ name: 'Leafs', odds: 1.4, cons: 0.7 }, { name: 'Sabres', odds: 2.9, cons: 0.3 }] }] };

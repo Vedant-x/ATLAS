@@ -56,7 +56,8 @@ for (const d of ['vendor', 'icons']) await cp(d, `${out}/${d}`, { recursive: tru
 // The worker's version is the code version (commit), not the build time: data refreshes every few
 // minutes must not count as a new version, or open tabs would reload each time (main.js reloads
 // once when a new version takes over).
-await writeFile(`${out}/sw.js`, (await readFile('sw.js', 'utf8')).replace('__BUILD__', (process.env.GITHUB_SHA || String(Date.now())).slice(0, 12)));
+const BUILD_ID = (process.env.GITHUB_SHA || String(Date.now())).slice(0, 12);
+await writeFile(`${out}/sw.js`, (await readFile('sw.js', 'utf8')).replace('__BUILD__', BUILD_ID));
 // Speed: bundle + minify the JavaScript (three.js and the AI model load as separate lazy chunks, unused
 // code is dropped) and inline the minified CSS so nothing blocks the first paint. If esbuild isn't
 // installed the plain source files are served as before.
@@ -83,6 +84,8 @@ await writeFile(`${out}/sw.js`, (await readFile('sw.js', 'utf8')).replace('__BUI
     const css = (await esbuild.transform((await Promise.all(links.map((m) => readFile(m[1], 'utf8')))).join('\n'), { loader: 'css', minify: true })).code;
     html = html.replace(links[0][0], () => `<style>${css}</style>\n`);
     for (const m of links.slice(1)) html = html.replace(m[0], '');
+    // The app's build, readable by the page (footer) beside the data's build.
+    html = html.replace('__BUILD__', BUILD_ID);
     await writeFile(`${out}/index.html`, html);
     const sizes = Object.entries(r.metafile.outputs).map(([f, o]) => [f.replace(`${out}/`, ''), o.bytes]).sort((x, y) => y[1] - x[1]);
     log(`Bundled: main ${(sizes.find(([f]) => f === 'js/main.js')?.[1] / 1024).toFixed(0)} KB, ${sizes.length} files (largest ${sizes.slice(0, 3).map(([f, n]) => `${f} ${(n / 1024).toFixed(0)} KB`).join(', ')}); CSS inlined (${(css.length / 1024).toFixed(0)} KB)`);
@@ -689,7 +692,7 @@ if (tsdbFile) await writeFile(`${out}/data/sportsdb.json`, JSON.stringify(tsdbFi
   }
 }
 await writeFile(`${out}/data/sources.json`, JSON.stringify({ at: Date.now(), sources }));
-await writeFile(`${out}/data/index.json`, JSON.stringify({ source: 'ATLAS snapshot', fetchedAt: Date.now(), leagueStatus: Object.fromEntries(leagueStatus), events }));
+await writeFile(`${out}/data/index.json`, JSON.stringify({ source: 'ATLAS snapshot', build: BUILD_ID, fetchedAt: Date.now(), leagueStatus: Object.fromEntries(leagueStatus), events }));
 // Pages search engines can read (js/staticpages.js): one per league and per sport with fixtures in the
 // next 7 days, at real addresses, and the sitemap listing them.
 {

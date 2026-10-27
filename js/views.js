@@ -21,7 +21,7 @@ import { watch } from './alerts.js';
 import { finalView } from './finalview.js';
 import { trackCard, trackStrip, trackStats, trackCalibration, recordLine, ensureTrack, officialParlay } from './trackview.js';
 import { zone as tzZone, tzOf, abbr as tzAbbr, fmt as fmtTime, fmtDate } from './tz.js';
-import { bestBets, BEST, POTD_ZONES, potdDay, parlayOfDay, recommendationFor, valueBets, VALUE, nearBest, nearValue } from './track.js';
+import { bestBets, POTD_ZONES, potdDay, parlayOfDay, recommendationFor, valueBets, VALUE, nearBest, nearValue, bestExclusions } from './track.js';
 import { stakeVsFair } from './oddspapi.js';
 import { propRow, allProps } from './propsview.js';
 import { coherentBets } from './picks.js';
@@ -339,7 +339,7 @@ export const views = {
         <p class="kicker reveal">${s.icon} ${e.tennis ? esc(`${e.tennis.tournament} · ${e.tennis.drawName}`) : esc(e.league)} · ${when(e)} · ${e.bookmaker ? esc(e.bookmaker) : e.markets?.length ? 'bookmaker price' : 'no bookmaker price'} ${confBadge(a.confidence)}</p>
         <h1 class="vs"><span style="--tc:${hc}">${split(e.home.toUpperCase())}</span><small>VS</small><span style="--tc:${ac}">${split(e.away.toUpperCase())}</span></h1>
         ${e.tennis ? `<div class="tennis-facts reveal">${[['Tournament', e.tennis.tournament + (e.tennis.major ? ' (Grand Slam)' : '')], ['Location', e.tennis.location], ['Draw', e.tennis.drawName], ['Round', e.tennis.round], ['Court', e.tennis.court], ['Format', e.tennis.bestOf ? `Best of ${e.tennis.bestOf} sets` : ''], [e.home, [e.tennis.home.seed ? `Seed ${e.tennis.home.seed}` : '', e.tennis.home.country].filter(Boolean).join(' · ')], [e.away, [e.tennis.away.seed ? `Seed ${e.tennis.away.seed}` : '', e.tennis.away.country].filter(Boolean).join(' · ')]].filter(([, v]) => v).map(([k, v]) => `<div><small>${esc(k)}</small><b>${esc(v)}</b></div>`).join('')}</div>` : ''}
-        ${e.live ? `<div class="scoreline reveal ${String(e.score || '').length > 12 ? 'long' : ''}"><b>${esc(e.score || '')}</b><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></div>${liveCenterHtml(e)}${liveBlock(e)}` : ''}
+        ${e.live ? `<div class="scoreline reveal ${String(e.score || '').length > 12 ? 'long' : ''}"><b>${scoreText(e)}</b><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></div>${liveCenterHtml(e)}${liveBlock(e)}` : ''}
         <div class="match-actions reveal"><button class="watch-btn ${watch.has(e.id) ? 'on' : ''}" data-watch="${esc(e.id)}" aria-pressed="${watch.has(e.id)}">${watchLabel(watch.has(e.id))}</button>
           <button class="watch-btn ${pins().includes(e.id) ? 'on' : ''}" data-pin="${esc(e.id)}">${pinLabel(pins().includes(e.id))}</button></div>
         ${sourcesLine(e)}
@@ -387,7 +387,7 @@ function dashboard(ev, live) {
   // The visitor's minimum odds apply here as in the assistant (same list, same rule, then the first 10).
   const minOdds = prefs.get().minOdds || 1;
   const short = orderBets(bestBets(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration(), limit: 2000 }).filter((b) => b.odds >= minOdds).slice(0, 10));
-  const empty = `No best bet in the next ${hrs} hours: no ${Math.round(BEST.min * 100)}%+ pick at odds ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)} is priced at or above the sharp market's fair odds (one bookmaker's own price never counts: it carries that bookmaker's cut).${hrs < 48 ? ' Try a longer window in Filters.' : ''}`;
+  const empty = `No qualifying bets in the next ${hrs} hours with your filters.${exclusionLine(todayEvents(pool, Date.now(), hrs))}`;
   const rec = recordLine(trackStats()?.best);
   // Every panel by name, shown in the visitor's saved order with hidden ones left out (Customise).
   const panels = {
@@ -399,7 +399,7 @@ function dashboard(ev, live) {
       <div class="minilist">${S.loading ? skelRows(4) : short.map((b) => miniPick(b)).join('') || `<p class="muted">${empty}</p>${nearBestHtml(pool, hrs)}`}</div></div>`,
     value: () => valuePanel(pool),
     live: () => `<div class="panel dash-live reveal"><h2 class="ph">Live now <small>${S.loading ? '' : live.length}</small></h2>
-      ${S.loading ? skelRows(3) : live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${esc(e.score || '')}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>`,
+      ${S.loading ? skelRows(3) : live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${scoreText(e)}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>`,
     changes: () => `${changesPanel(ev, { title: lastVisit() ? 'Since your last visit' : 'What changed', limit: 6, hideEmpty: true })}`,
     record: () => `${trackCard(() => S.refresh?.())}`,
     health: () => `<div class="panel dash-health reveal"><h2 class="ph">Source health <small><a href="#/sources">every source →</a></small></h2>${sourceHealth(ev)}</div>`,
@@ -415,7 +415,8 @@ export const setFiltersOpen = (v) => { filtersOpen = Boolean(v); };
 
 // Home panels: order and visibility, saved per visitor (localStorage, best effort). Unknown or missing
 // names fall back to the default order, so a new panel always appears.
-const HOME_PANELS = [['potd', 'Parlay of the day'], ['shortlist', 'Best bets'], ['value', 'Value bets'], ['live', 'Live now'], ['changes', 'What changed'], ['record', 'Results'], ['health', 'Source health']];
+// Qualifying singles (or a plain no-pick answer) first; the parlay of the day after them.
+const HOME_PANELS = [['shortlist', 'Best bets'], ['value', 'Value bets'], ['potd', 'Parlay of the day'], ['live', 'Live now'], ['changes', 'What changed'], ['record', 'Results'], ['health', 'Source health']];
 const LAYOUT_KEY = 'atlas-home-layout';
 // Minimal by default: source health, what changed and the full record card start hidden (the record
 // is the strip at the top); Customise shows them.
@@ -474,13 +475,18 @@ function potdPanel(ev) {
   const byId = new Map(ev.map((e) => [e.id, e]));
   const legs = saved ? saved.legs : (live?.legs || []).map((l) => { const e = byId.get(l.eventId); return { ...l, home: e?.home, away: e?.away, status: 'pending' }; });
   const odds = saved ? saved.odds : live?.odds, p = saved ? saved.p : live?.p;
+  // The market's chance for the slip (legs taken as independent), where the legs carry it; slips saved
+  // before 27 Oct could include legs below their fair odds and say so.
+  const refP = saved ? saved.refP ?? null : live?.referenceProbability ?? null;
+  const oldRule = saved && saved.fairOnly !== true;
   const rec = recordLine(trackStats()?.potd);
   const done = saved && RESULT[saved.status];
   const body = legs.length ? `${done ? `<p class="potd-result res-${saved.status}">${saved.status === 'won' ? `Won · paid ${odd(saved.settledOdds ?? odds)}` : saved.status === 'lost' ? `Lost · ${esc(legs.filter((l) => l.status === 'lost').map((l) => l.pick).join(', '))}` : 'Void'}</p>` : ''}
     <ul class="potd-legs">${legs.map((l) => { const e = byId.get(l.eventId); return `<li class="leg-${esc(l.status || 'pending')}"><a href="#/match/${esc(l.eventId)}"><b>${esc(l.pick)}</b><small>${esc(l.market)} · ${esc(l.home || '')} v ${esc(l.away || '')} · ${esc(fmtTime(l.start, tzZone(), 'short'))}</small></a>
       <span class="leg-side">${resultBadge(l.status, e?.live && e)}<span class="leg-p" data-tip="ATLAS chance for this leg">${pc(l.p, 0)}</span>${legButton({ key: `${l.eventId}|${l.market}|${l.pick}`, eventId: l.eventId, sport: l.sport, match: `${l.home} vs ${l.away}`, market: l.market, pick: l.pick, odds: l.odds, p: l.p }, odd(l.odds))}</span></li>`; }).join('')}</ul>
-    <div class="potd-sum"><span><small>Total odds</small><b>${odd(odds)}</b></span><span><small>ATLAS chance</small><b>${pc(p, 0)}</b></span><span data-tip="The chance the bookmakers' price gives a slip at these odds"><small>Break-even</small><b>${pc(1 / odds, 0)}</b></span><span><small>Next parlay in</small><b>${nextIn(day)}</b></span></div>`
-    : `<p class="muted">${S.loading ? 'Loading…' : `None today: not enough strong legs. Next one in ${nextIn(day)}.`}</p>`;
+    <div class="potd-sum"><span><small>Total odds</small><b>${odd(odds)}</b></span>${refP ? `<span data-tip="The market's fair chance for the slip, its legs taken as independent"><small>Market chance</small><b>${pc(refP, 1)}</b></span>` : ''}<span data-tip="ATLAS's chance for the slip, its legs taken as independent"><small>ATLAS chance</small><b>${pc(p, 1)}</b></span><span data-tip="The chance the price needs to pay off"><small>Break-even</small><b>${pc(1 / odds, 1)}</b></span><span><small>Next check in</small><b>${nextIn(day)}</b></span></div>
+    ${oldRule ? '<p class="muted">Saved under the rule before 27 Oct, which allowed legs below their fair odds.</p>' : ''}`
+    : `<p class="muted">${S.loading ? 'Loading…' : `No parlay today: no 2 to 6 legs at or above the market's fair odds add up to 1.70–2.00. No parlay is a complete answer. Next check in ${nextIn(day)}.`}</p>`;
   return `<div class="panel dash-potd reveal"><h2 class="ph">Parlay of the day <small>${legs.length ? `${legs.length} legs · ` : ''}${esc(dayLabel(day))}${saved ? '' : legs.length ? ' · not saved yet' : ''}</small>${zoneLink()}</h2>${body}${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}</div>`;
 }
 
@@ -596,24 +602,28 @@ export function nearBestHtml(pool, hrs) {
   const cal = trackCalibration();
   let list = nearBest(todayEvents(pool, Date.now(), hrs), { cal }), win = hrs;
   if (!list.length && hrs < 48) { list = nearBest(todayEvents(pool, Date.now(), 48), { cal }); win = 48; }
-  if (!list.length) return '';
-  return `<p class="muted near-head">Nearest to a fair price${win !== hrs ? ` in the next ${win} hours` : ''}: not Best bets and not recorded. The red figure is what each costs on average at that price.</p>${list.map((b) => miniPick(b)).join('')}`;
+  return nearDrawer(list, `the likeliest winners nearest a fair price${win !== hrs ? ` in the next ${win} hours` : ''}`);
 }
 export function nearValueHtml(pool) {
-  const list = nearValue(todayEvents(pool, Date.now(), 48), { cal: trackCalibration() });
-  if (!list.length) return '';
-  return `<p class="muted near-head">Stake's prices nearest the value bar: not value bets yet and not recorded. Each shows its distance from the fair odds and the distance it needs.</p>${list.map(nearPick).join('')}`;
+  return nearDrawer(nearValue(todayEvents(pool, Date.now(), 48), { cal: trackCalibration() }), "Stake's prices nearest the value bar");
 }
-function nearPick(b) {
-  const s = sportOf(b.event.sport);
-  const rec = recommendationFor(b, trackCalibration());
-  const leg = { key: `${b.event.id}|${b.market}|${b.pick}`, eventId: b.event.id, sport: b.event.sport, match: `${b.event.home} vs ${b.event.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p, recommendationId: rec.recommendationId };
-  const tip = [`Fair odds ${odd(1 / b.p)} (${b.consensusFrom || 'the books\' median'}, the bookmaker's cut taken out): a ${pc(b.p, 0)} chance`, `Stake ${odd(b.odds)}${b.event.stakeAt ? ` (read ${ago(b.event.stakeAt)})` : ''}: ${gapWords(b.edge)} the fair odds`,
-    `A value bet needs ${(b.need * 100).toFixed(1)}% above at this chance: worth taking at ${odd((1 + b.need) / b.p)} or more`].join('\n');
-  return `<div class="mini near reveal" data-tip="${esc(tip)}"><span class="mini-ico">${s.icon}</span>
-    <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.event.home)} v ${esc(b.event.away)} · ${esc(fmtTime(b.event.start, tzZone(), 'short'))} · Stake</small></a>
-    <div class="mini-nums"><b class="${b.edge >= 0 ? 'pos' : 'neg'}" data-tip="Stake's price against the fair odds">${signPct(b.edge)}</b>${b.moved ? '<small data-tip="The price has lengthened 3%+ since first seen and the fair odds are over 3 hours old: the market may have moved past them">market moving against it</small>' : `<small data-tip="What a value bet needs at this chance">needs +${(b.need * 100).toFixed(1)}%</small>`}</div>
-    ${legButton(leg, odd(b.odds))}</div>`;
+// Why nothing qualified, by count (track.js bestExclusions): the likeliest candidates and the rule
+// each failed first.
+export function exclusionLine(events) {
+  const x = Object.entries(bestExclusions(events, { cal: trackCalibration() })).sort((a, b) => b[1] - a[1]);
+  return x.length ? ` Not qualifying: ${x.map(([why, n]) => `${n} ${why}`).join(' · ')}.` : '';
+}
+// The nearest misses, folded away as research: each says why it fails and the lowest price that would
+// qualify it. No odds button: they are not recommendations and cannot be added to a slip from here.
+function nearDrawer(list, what) {
+  if (!list.length) return '';
+  return `<details class="near-drawer"><summary>Research: ${list.length} nearest miss${list.length === 1 ? '' : 'es'} (not recommendations)</summary>
+    <p class="muted near-head">${esc(what[0].toUpperCase() + what.slice(1))}. None qualifies; none is recorded. Each shows the price now, why it fails and the lowest price that would qualify it.</p>
+    <ul class="near-list">${list.map(nearRow).join('')}</ul></details>`;
+}
+function nearRow(b) {
+  return `<li><a href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b> <small>${esc(b.event.home)} v ${esc(b.event.away)} · ${esc(fmtTime(b.event.start, tzZone(), 'short'))}</small></a>
+    <span>${odd(b.odds)}${b.book ? ` at ${esc(b.book)}` : ''} · market's fair chance ${pc(b.referenceProbability, 0)} · <span class="${b.referenceEV >= 0 ? 'pos' : 'neg'}">${signPct(b.referenceEV)}</span> by it · fails: ${esc(b.why)} · qualifies at ${odd(b.priceNeeded)}+</span></li>`;
 }
 export function stakeGap(pool) {
   const rows = stakeVsFair(todayEvents(pool, Date.now(), 48)).map((r) => ({ ...r, gap: Math.min(r.edge, r.edgePow ?? Infinity) })).filter((r) => r.gap <= VALUE.maxEdge).sort((a, b) => b.gap - a.gap);
@@ -645,11 +655,19 @@ export function miniPick(b) {
   const s = sportOf(b.event.sport);
   const rec = recommendationFor(b, trackCalibration());
   const leg = { key: `${b.event.id}|${b.market}|${b.pick}`, eventId: b.event.id, sport: b.event.sport, match: `${b.event.home} vs ${b.event.away}`, market: b.market, pick: b.pick, odds: b.odds, p: b.p, recommendationId: rec.recommendationId, ...(b.prop ? { prop: b.prop } : {}) };
-  const edge = `${b.ev >= 0 ? '+' : ''}${(b.ev * 100).toFixed(1)}%`;
-  const tip = [`${b.market} · ${b.event.league}`, whyLine(b) && `Why: ${whyLine(b)}`, b.fair != null && `Bookmakers' chance (their cut taken out): ${pc(b.fair, 0)}`, b.book && `Price at ${b.book}`, b.stake > 1 && `Stake ${odd(b.stake)}${b.event.stakeAt ? ` (read ${ago(b.event.stakeAt)})` : ''}`, b.best > b.odds && `Better price ${odd(b.best)} at ${b.bestBook}`, `Chance range ${pc(rec.uncertaintyRange[0], 0)}–${pc(rec.uncertaintyRange[1], 0)}`, rec.settlementRules].filter(Boolean).join('\n');
+  // A list that selects on the market reference (Best bets) shows that return, labelled; ATLAS's own
+  // chance and its return are named beside it. Otherwise the return is ATLAS's, and says so.
+  const ref = b.selectionBasis === 'reference' && b.referenceProbability != null;
+  const ret = ref ? b.referenceEV : b.modelEV ?? b.ev;
+  const edge = `${ret >= 0 ? '+' : ''}${(ret * 100).toFixed(1)}%`;
+  const tip = [`${b.market} · ${b.event.league}`, whyLine(b) && `Why: ${whyLine(b)}`,
+    ref ? `Market's fair chance ${pc(b.referenceProbability, 0)} (${b.referenceMethod}): return ${signPct(b.referenceEV)} at this price` : b.fair != null && `Bookmakers' chance (their cut taken out): ${pc(b.fair, 0)}`,
+    Number.isFinite(b.modelProbability ?? b.p) && `ATLAS chance ${pc(b.modelProbability ?? b.p, 0)}: return ${signPct(b.modelEV ?? b.p * b.odds - 1)} at this price`,
+    b.book && `Price at ${b.book}${b.quoteAt ? ` (read ${ago(b.quoteAt)})` : ''}`, !b.atStake && b.stake > 1 && `Stake ${odd(b.stake)}${b.event.stakeAt ? ` (read ${ago(b.event.stakeAt)})` : ''}`, b.best > b.odds && `Better price ${odd(b.best)} at ${b.bestBook}`,
+    ref && `Lowest price that still qualifies: ${odd(1 / b.referenceProbability)}`, 'Chance range for one match: not shown (no validated method yet)', rec.settlementRules].filter(Boolean).join('\n');
   return `<div class="mini reveal" data-rec="${esc(rec.recommendationId)}" data-tip="${esc(tip)}"><span class="mini-ico">${s.icon}</span>
     <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.event.home)} v ${esc(b.event.away)} · ${b.event.live ? '<span class="live">LIVE</span>' : esc(fmtTime(b.event.start, tzZone(), 'short'))}</small></a>
-    <div class="mini-nums"><b data-tip="ATLAS chance">${pc(b.p, 0)}</b><small><span class="mm-need" data-tip="The chance this price needs to break even">needs ${pc(1 / b.odds, 0)} · </span><span class="${b.ev >= 0 ? 'pos' : 'neg'}" data-tip="Estimated return per unit staked${b.ev < 0 ? ': below break-even at this price' : ''}">${edge}</span></small></div>
+    <div class="mini-nums"><b data-tip="ATLAS chance">${pc(b.p, 0)}</b><small>${ref ? `<span class="mm-need" data-tip="The market's fair chance (the bookmakers' cut taken out)">market ${pc(b.referenceProbability, 0)} · </span>` : `<span class="mm-need" data-tip="The chance this price needs to break even">needs ${pc(1 / b.odds, 0)} · </span>`}<span class="${ret >= 0 ? 'pos' : 'neg'}" data-tip="${ref ? "Return per unit staked by the market's fair chance" : "Return per unit staked by ATLAS's chance"}${ret < 0 ? ': below break-even at this price' : ''}">${edge}${ref ? ' vs market' : ''}</span></small></div>
     ${legButton(leg, odd(b.odds))}</div>`;
 }
 
@@ -749,7 +767,16 @@ async function liveLoad(paths, tries = 0) {
 }
 // "No fixtures" only for leagues whose feed actually answered; otherwise we are still loading.
 const leagueKnown = (path) => path.startsWith('atlas/') || leagueStatus.get(path)?.ok === true;
-const emptyText = (paths) => (paths.every(leagueKnown) || espnPaused() ? 'No fixtures in the next 4 days' : 'Loading fixtures…');
+// A league with nothing to show: an empty schedule only when its feed answered with none; a feed that
+// failed, or the paused ESPN gate (espn.js), is unavailable, never "no fixtures".
+const emptyText = (paths) => {
+  if (paths.every(leagueKnown)) return 'No fixtures in the next 4 days';
+  const failed = paths.some((p) => leagueStatus.get(p)?.ok === false);
+  if (espnPaused() || failed) return `Feed temporarily unavailable; showing the last successful snapshot${S.fetchedAt ? ` (built ${ago(S.fetchedAt)})` : ''}`;
+  return 'Loading fixtures…';
+};
+// A live match the feed sends no score for: said, with where and when the match was last read.
+const scoreText = (e) => (e.score ? esc(e.score) : `<span class="muted" data-tip="${esc(`No score in the feed${e.source ? ` (${e.source})` : ''}${e.fetchedAt ? `, last read ${ago(e.fetchedAt)}` : ''}`)}">Score unavailable</span>`);
 
 function countBy() {
   const out = {};

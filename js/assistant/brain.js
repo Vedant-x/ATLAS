@@ -21,7 +21,7 @@ export function createBrain(K) {
     const w = Object.keys(NUM).find((k) => new RegExp(`\\b${k}\\b`).test(q));
     return w ? NUM[w] : d;
   };
-  const pickCard = (x) => ({ type: 'pick', e: x.e, market: x.market, pick: x.pick, odds: x.odds, p: x.p, ev: x.ev, priced: x.priced, ...(x.prop ? { prop: x.prop } : {}), ...(x.recommendationId ? { recommendationId: x.recommendationId } : {}), at: Date.now() });
+  const pickCard = (x) => ({ type: 'pick', e: x.e, market: x.market, pick: x.pick, odds: x.odds, p: x.p, ev: x.ev, refP: x.refP ?? null, modelEV: x.modelEV ?? null, basis: x.basis || 'model', priced: x.priced, ...(x.prop ? { prop: x.prop } : {}), ...(x.recommendationId ? { recommendationId: x.recommendationId } : {}), at: Date.now() });
   // Structured memory of this conversation.
   const mem = { list: [], focus: null, constraints: null, event: null };
   const remember = (list, c) => { mem.list = list; mem.constraints = c; mem.focus = list[0] || null; mem.event = list[0]?.e || mem.event; };
@@ -161,7 +161,9 @@ export function createBrain(K) {
     const why = (x) => {
       const cs = K.caseOf?.(x.e) || { pro: [], con: [], invalid: [] }, r = K.readinessOf?.(x.e) || { label: 'not checked', missing: [], uncovered: [] };
       return [
-        `   Price ${od(x.odds)} needs ${pc(1 / x.odds)} · ATLAS ${pc(x.p)} · return ${x.ev >= 0 ? '+' : ''}${(x.ev * 100).toFixed(1)}%${x.priced ? '' : ' (model, no bookmaker price)'}`,
+        x.basis === 'reference' && x.refP != null
+          ? `   Price ${od(x.odds)}${x.book ? ` at ${x.book}` : ''} needs ${pc(1 / x.odds)} · market's fair chance ${pc(x.refP)} · return ${x.ev >= 0 ? '+' : ''}${(x.ev * 100).toFixed(1)}% by the market · ATLAS ${pc(x.p)} (return ${x.modelEV >= 0 ? '+' : ''}${(x.modelEV * 100).toFixed(1)}% by ATLAS)`
+          : `   Price ${od(x.odds)} needs ${pc(1 / x.odds)} · ATLAS ${pc(x.p)} · return ${x.ev >= 0 ? '+' : ''}${(x.ev * 100).toFixed(1)}% by ATLAS's chance${x.priced ? '' : ' (model, no bookmaker price)'}`,
         cs.pro.find((t) => !/^Bookmaker price/.test(t)) ? `   For: ${cs.pro.find((t) => !/^Bookmaker price/.test(t)).replace(/\.$/, '')}.` : '',
         cs.con[0] ? `   Against: ${cs.con[0]}` : '',
         `   Evidence: ${r.label}${r.missing.length || r.uncovered.length ? ` (unknown: ${[...r.missing, ...r.uncovered].join(', ').toLowerCase()})` : ''}.`,
@@ -215,7 +217,7 @@ export function createBrain(K) {
   function alternatives(x) {
     const others = K.candidates([x.e]).filter((y) => K.pickId(y) !== K.pickId(x)).sort((a, b) => b.ev - a.ev).slice(0, 4);
     if (!others.length) return { text: `No other priced markets for **${x.e.home} vs ${x.e.away}**.`, cards: [{ type: 'match', e: x.e }] };
-    return { text: `**Alternatives in ${x.e.home} vs ${x.e.away}** (by estimated return)\n\n${others.map((y) => `- **${y.pick}** · ${y.market} @ ${od(y.odds)}: ATLAS ${pc(y.p)}, return ${y.ev >= 0 ? '+' : ''}${(y.ev * 100).toFixed(1)}%`).join('\n')}\n\nCurrent pick: **${x.pick}** @ ${od(x.odds)}, return ${x.ev >= 0 ? '+' : ''}${(x.ev * 100).toFixed(1)}%.`, cards: others.slice(0, 3).map(pickCard), followups: ['Explain the risk'] };
+    return { text: `**Alternatives in ${x.e.home} vs ${x.e.away}** (by estimated return)\n\n${others.map((y) => `- **${y.pick}** · ${y.market} @ ${od(y.odds)}: ATLAS ${pc(y.p)}, return ${y.ev >= 0 ? '+' : ''}${(y.ev * 100).toFixed(1)}% by ATLAS's chance`).join('\n')}\n\nCurrent pick: **${x.pick}** @ ${od(x.odds)}, return ${x.ev >= 0 ? '+' : ''}${(x.ev * 100).toFixed(1)}%.`, cards: others.slice(0, 3).map(pickCard), followups: ['Explain the risk'] };
   }
   function playerHistory(x) {
     if (!x.prop) return { text: `**${x.pick}** is not a player prop. Open the [match dossier](#/match/${x.e.id}) for team form.`, cards: [{ type: 'match', e: x.e }] };

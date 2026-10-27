@@ -48,8 +48,13 @@ export function officialParlay(zone) {
 export function slipHistory(slips = []) {
   return slips.length ? `<ul class="tr-list">${slips.map(pickRow).join('')}</ul>` : '';
 }
+// Below MIN_EVIDENCE settled picks a hit rate and ROI say nothing about the list (1-0 is not "100%,
+// +37%"): the line leads with the count and says so; the numbers are on the Results page.
+export const MIN_EVIDENCE = 30;
 export function recordLine(st) {
   if (!st || !(st.won + st.lost)) return '';
+  const n = st.won + st.lost;
+  if (n < MIN_EVIDENCE) return `${n} settled pick${n === 1 ? '' : 's'} (${st.won}–${st.lost}): too few to judge yet`;
   return `${st.won}–${st.lost} · ${pct(st.hitRate, 0)} hit rate · <span class="${st.profit >= 0 ? 'pos' : 'neg'}">${units(st.profit)} (ROI ${st.roi == null ? '—' : `${st.roi >= 0 ? '+' : ''}${(st.roi * 100).toFixed(1)}%`})</span>`;
 }
 

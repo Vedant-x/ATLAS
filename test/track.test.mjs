@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { withRef } from './support/ref.mjs';
 import assert from 'node:assert/strict';
 import { selectPicks, addPicks, gradePick, resultFromSummary, summarize } from '../js/track.js';
 
@@ -30,7 +31,7 @@ test('ESPN summaries become results; postponed games wait, cancelled games are v
 test('picks are recorded once, at the first price, only before kick-off', () => {
   const now = Date.now();
   // The sharp market's fair chance on each outcome (cons): 1.35 x 0.75 clears the fair odds.
-  const ev = (id, start, odds) => ({ id, compId: id, leaguePath: 'soccer/eng.1', sport: 'football', league: 'EPL', home: 'A', away: 'B', start, live: false, stats: {}, markets: [{ name: 'Winner', consensusFrom: 'Pinnacle', outcomes: [{ name: 'A', odds, cons: 0.75 }, { name: 'B', odds: 3.2, cons: 0.25 }] }] });
+  const ev = (id, start, odds) => ({ id, compId: id, leaguePath: 'soccer/eng.1', sport: 'football', league: 'EPL', home: 'A', away: 'B', start, live: false, stats: {}, sharpAt: now - 36e5, fetchedAt: now - 6e4, markets: [{ name: 'Winner', consensusFrom: 'Pinnacle', outcomes: [{ name: 'A', odds, cons: 0.75 }, { name: 'B', odds: 3.2, cons: 0.25 }] }] });
   const first = selectPicks([ev('1', now + 36e5, 1.35), ev('2', now - 60e3, 1.35), ev('3', now + 30 * 36e5, 1.35)], now);
   assert.deepEqual([...new Set(first.map((p) => p.eventId))], ['1']); // started and far-future games skipped
   const h1 = addPicks([], first);
@@ -68,7 +69,7 @@ test('summary: the live lists (Best bets, Value bets) are the headline; retired 
 test('official picks: Best bets (1.20 to 2.50) and Value bets only; nothing from the retired lists', async () => {
   const { selectPicks } = await import('../js/track.js');
   const now = Date.parse('2026-10-07T08:00:00Z');
-  const ev = (id, a, b, ca, cb) => ({ id, compId: id, sport: 'basketball', league: 'NBA', home: `H${id}`, away: `A${id}`, start: now + 36e5, markets: [{ name: 'Winner', consensusFrom: 'Pinnacle', outcomes: [{ name: `H${id}`, odds: a, cons: ca }, { name: `A${id}`, odds: b, cons: cb }] }] });
+  const ev = (id, a, b, ca, cb) => ({ id, compId: id, sport: 'basketball', league: 'NBA', home: `H${id}`, away: `A${id}`, start: now + 36e5, sharpAt: now - 36e5, fetchedAt: now - 6e4, markets: [{ name: 'Winner', consensusFrom: 'Pinnacle', outcomes: [{ name: `H${id}`, odds: a, cons: ca }, { name: `A${id}`, odds: b, cons: cb }] }] });
   const picks = selectPicks([ev('1', 1.35, 3.3, 0.75, 0.25), ev('2', 1.25, 4.1, 0.81, 0.19), ev('3', 1.62, 2.35, 0.6, 0.4), ev('4', 1.9, 1.95, 0.51, 0.49)], now, 12, []).filter((p) => p.type !== 'multi');
   assert.ok(picks.length > 0);
   assert.ok(picks.every((p) => (p.type === 'best' && p.odds >= 1.2 && p.odds <= 2.5) || p.type === 'edge'), JSON.stringify(picks.map((p) => [p.type, p.odds])));
@@ -106,13 +107,13 @@ test('best bets: likeliest first, and only at a price at least the market\'s fai
   const { bestBets } = await import('../js/track.js');
   const now = Date.parse('2026-10-07T08:00:00Z');
   // Many bookmakers: best price and consensus chance (oddsapi.js) on each outcome.
-  const ev = (id, sport, odds, cons, oddsB, consB) => ({ id, compId: id, sport, league: 'L', leaguePath: `${sport}/l`, home: `H${id}`, away: `A${id}`, start: now + 36e5,
+  const ev = (id, sport, odds, cons, oddsB, consB) => ({ id, compId: id, sport, league: 'L', leaguePath: `${sport}/l`, home: `H${id}`, away: `A${id}`, start: now + 36e5, sharpAt: now - 36e5, fetchedAt: now - 6e4,
     markets: [{ name: 'Winner', outcomes: [{ name: `H${id}`, odds, cons, book: 'fanduel' }, { name: `A${id}`, odds: oddsB, cons: consB, book: 'pinnacle' }] }] });
   const list = bestBets([
     ev('1', 'basketball', 1.27, 0.80, 4.2, 0.20), // 1.27 x 0.80 = 1.016: longer than fair, likeliest
     ev('2', 'hockey', 1.55, 0.66, 2.5, 0.34), // 1.55 x 0.66 = 1.023: longer than fair
     ev('3', 'baseball', 1.40, 0.68, 3.0, 0.32), // 1.40 x 0.68 = 0.952: shorter than fair, left out
-  ]);
+  ], { now });
   assert.deepEqual(list.map((b) => b.event.id), ['1', '2']);
   assert.ok(list[0].p >= list[1].p);
   assert.equal(list[0].book, 'fanduel');
@@ -128,7 +129,7 @@ test('parlay of the day: a day runs 12:00 to 12:00 in the chosen zone; one slip 
   assert.equal(potdDay(ist(18, 13), 'IST').end, ist(19, 12));
   assert.equal(potdDay(Date.parse('2026-10-18T11:30:00Z'), 'GMT').key, '2026-10-17');
   const now = ist(18, 13);
-  const ev = (id, h, a, start) => ({ id, compId: id, sport: 'basketball', league: 'L', leaguePath: 'basketball/l', home: `H${id}`, away: `A${id}`, start, markets: [{ name: 'Winner', outcomes: [{ name: `H${id}`, odds: h }, { name: `A${id}`, odds: a }] }] });
+  const ev = (id, h, a, start) => withRef({ id, compId: id, sport: 'basketball', league: 'L', leaguePath: 'basketball/l', home: `H${id}`, away: `A${id}`, start, markets: [{ name: 'Winner', outcomes: [{ name: `H${id}`, odds: h }, { name: `A${id}`, odds: a }] }] }, now);
   const board = [ev('1', 1.25, 4.2, now + 2 * 36e5), ev('2', 1.3, 3.7, now + 3 * 36e5), ev('3', 1.22, 4.6, now + 4 * 36e5), ev('4', 1.28, 3.9, now + 5 * 36e5), ev('5', 1.2, 4.8, now + 30 * 36e5)];
   const slip = parlayOfDay(board, { now, zone: 'IST' });
   assert.ok(slip, 'a slip from the day\'s matches');
@@ -143,7 +144,7 @@ test('parlay of the day: a day runs 12:00 to 12:00 in the chosen zone; one slip 
 test('best bets: one bookmaker\'s own price is never enough; Stake\'s price is taken where it clears the fair odds', async () => {
   const { bestBets } = await import('../js/track.js');
   const now = Date.now();
-  const ev = (id, outcomes, extra = {}) => ({ id, compId: id, sport: 'football', league: 'L', leaguePath: 'soccer/l', home: `H${id}`, away: `A${id}`, start: now + 36e5, stakeAt: now - 36e5, sharpAt: now - 36e5,
+  const ev = (id, outcomes, extra = {}) => ({ id, compId: id, sport: 'football', league: 'L', leaguePath: 'soccer/l', home: `H${id}`, away: `A${id}`, start: now + 36e5, stakeAt: now - 36e5, sharpAt: now - 36e5, fetchedAt: now - 6e4,
     markets: [{ name: 'Winner', ...(outcomes[0].cons ? { consensusFrom: 'Pinnacle' } : {}), outcomes: outcomes.map((o, i) => ({ name: i ? `A${id}` : `H${id}`, ...o })) }], ...extra });
   const list = bestBets([
     // One bookmaker, no sharp line: 1.45 on a 66% favourite is the bookmaker's own view less its margin.

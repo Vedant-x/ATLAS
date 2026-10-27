@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { withRef } from './support/ref.mjs';
 import assert from 'node:assert/strict';
 import { calibration, calibrated, familyOf, settleMulti, multiPicks, summarize, rankedBankers, slipWindow, updateClosing } from '../js/track.js';
 import { bankerSlips } from '../js/picks.js';
@@ -33,7 +34,7 @@ test('multiplier slips: lost on any loss, won when all settle, pushes drop out',
 test('daily multiplier picks lock one slip per target with gradeable legs', () => {
   const now = Date.parse('2026-10-05T08:00:00Z');
   const ev = (i, h, a) => ({ id: `e${i}`, compId: String(i), leaguePath: 'basketball/nba', sport: 'basketball', home: `H${i}`, away: `A${i}`, start: now + (2 + i) * 36e5, markets: [{ name: 'Winner', outcomes: [{ name: `H${i}`, odds: h }, { name: `A${i}`, odds: a }] }] });
-  const events = Array.from({ length: 30 }, (_, i) => ev(i + 1, [1.18, 1.22, 1.25, 1.3, 1.35, 1.4][i % 6], [5.5, 4.6, 4.1, 3.6, 3.2, 2.95][i % 6]));
+  const events = Array.from({ length: 30 }, (_, i) => withRef(ev(i + 1, [1.18, 1.22, 1.25, 1.3, 1.35, 1.4][i % 6], [5.5, 4.6, 4.1, 3.6, 3.2, 2.95][i % 6]), now));
   const m = multiPicks(events, now);
   assert.ok(m.length >= 2);
   for (const s of m) {

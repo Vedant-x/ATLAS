@@ -293,7 +293,7 @@ test('home: panels can be hidden and reordered, and the layout is kept', async (
   await page.click('[data-lay="toggle"][data-lay-key="potd"]');
   await page.waitForFunction(() => !document.querySelector('.dash-potd'));
   assert.ok(await page.$('.dash-layout[open]'), 'still open after a change');
-  for (let i = 0; i < 2; i++) await page.click('[data-lay="up"][data-lay-key="live"]'); // above Value bets, then Best bets
+  for (let i = 0; i < 3; i++) await page.click('[data-lay="up"][data-lay-key="live"]'); // past the hidden parlay, above Value bets, then Best bets
   await page.waitForFunction(() => { const ps = [...document.querySelectorAll('.dash > .panel')]; return ps.findIndex((p) => p.classList.contains('dash-live')) < ps.findIndex((p) => p.classList.contains('dash-short')); });
   await page.reload();
   await page.waitForSelector('.dash-live');

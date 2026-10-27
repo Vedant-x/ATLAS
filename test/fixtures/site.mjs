@@ -25,20 +25,20 @@ export function siteData(now = Date.now()) {
     ev('fx-ind-ban', 'cricket', 'T20I', 'atlas/cricket-intl', 'India', 'Bangladesh', 10, [], { markets: [], stats: { homeRecord: '9-1', awayRecord: '3-7', homeForm: ['W', 'W', 'W', 'W', 'L'], awayForm: ['L', 'L', 'W', 'L', 'L'] } }),
     // Priced by many bookmakers (The Odds API): fair chances from Pinnacle, the best price on offer.
     // Liverpool's best price beats Pinnacle's fair odds (a value bet); Man City's did too, but it has
-    // drifted from 1.42 since first seen, so it is left out.
+    // drifted from 1.42 since first seen and its quotes are 4 hours old, so it is left out.
     ev('fx-liv-che', 'football', 'Premier League', 'soccer/eng.1', 'Liverpool', 'Chelsea', 20, [], { markets: [{ name: 'Match Result', consensusFrom: 'Pinnacle', outcomes: [
       { name: 'Liverpool', odds: 1.8, book: 'Unibet', cons: 0.58, open: 1.78 }, { name: 'Draw', odds: 4.1, book: 'Betway', cons: 0.24 }, { name: 'Chelsea', odds: 5.4, book: 'Marathonbet', cons: 0.18 }] }],
-      bookmaker: 'best of 14 bookmakers; fair chance from Pinnacle', oddsSource: 'the-odds-api', quoteType: 'best-available' }),
+      bookmaker: 'best of 14 bookmakers; fair chance from Pinnacle', oddsSource: 'the-odds-api', quoteType: 'best-available', priceAtAgo: H }),
     ev('fx-mci-bur', 'football', 'Premier League', 'soccer/eng.1', 'Man City', 'Burnley', 22, [], { markets: [{ name: 'Match Result', consensusFrom: 'Pinnacle', outcomes: [
       { name: 'Man City', odds: 1.55, book: 'Betway', cons: 0.7, open: 1.42 }, { name: 'Draw', odds: 4.6, book: 'Unibet', cons: 0.19 }, { name: 'Burnley', odds: 9.5, book: '1xBet', cons: 0.11 }] }],
-      bookmaker: 'best of 12 bookmakers; fair chance from Pinnacle', oddsSource: 'the-odds-api', quoteType: 'best-available' }),
+      bookmaker: 'best of 12 bookmakers; fair chance from Pinnacle', oddsSource: 'the-odds-api', quoteType: 'best-available', priceAtAgo: 4 * H }),
     ev('fx-lal-gsw', 'basketball', 'NBA', 'basketball/nba', 'Lakers', 'Warriors', -1, [['Lakers', 1.7], ['Warriors', 2.15]], { live: true, score: '54-49', clock: 'Q3 4:12' }),
   ];
   // Every match has its feed's match id, as ESPN's do (picks are only offered where a result can be read).
   // The feed's prices carry the sharp market's fair chances (read an hour ago); Arsenal's Stake price
   // (1.37) clears its fair odds (1.35) by 1.4%: a Best bet at Stake, short of a value bet's 2%.
   const events = list.map(({ inHours, ...e }, i) => ({ compId: String(401000000 + i), ...e, start: now + inHours * H, fetchedAt: now - 2 * 6e4,
-    ...(e.markets?.[0]?.consensusFrom && !e.oddsSource ? { sharpAt: now - H, sharpFrom: 'the-odds-api' } : {}), ...(e.id === 'fx-ars-lee' ? { stakeAt: now - H } : {}) }));
+    ...(e.markets?.[0]?.consensusFrom && !e.oddsSource ? { sharpAt: now - H, sharpFrom: 'the-odds-api' } : {}), ...(e.priceAtAgo ? { priceAt: now - e.priceAtAgo, priceAtAgo: undefined } : {}), ...(e.id === 'fx-ars-lee' ? { stakeAt: now - H } : {}) }));
   return { events, fetchedAt: now - 2 * 6e4, leagueStatus: {} };
 }
 
