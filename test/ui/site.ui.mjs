@@ -22,7 +22,7 @@ before(async () => {
 after(async () => { await browser?.close(); server?.kill(); });
 
 // A page with the fixture board. `hold` keeps data/index.json waiting until released (loading state).
-async function open(route, { viewport = DESK, adult = true, hold = false, feeds = [] } = {}) {
+async function open(route, { viewport = DESK, adult = true, hold = false, feeds = [], data = null } = {}) {
   const ctx = await browser.newContext({ viewport, serviceWorkers: 'block' }); // feeds come only from the fixtures
   if (adult) await ctx.addInitScript(() => { try { localStorage.setItem('atlas-age-ok', '1'); } catch { /* ignore */ } });
   const page = await ctx.newPage();
@@ -31,7 +31,7 @@ async function open(route, { viewport = DESK, adult = true, hold = false, feeds 
   let release = () => {};
   const held = hold ? new Promise((r) => { release = r; }) : null;
   await page.route(/^https?:\/\/(?!127\.0\.0\.1)/, (r) => r.abort());
-  await page.route('**/data/index.json*', async (r) => { if (held) await held; r.fulfill({ json: siteData() }); });
+  await page.route('**/data/index.json*', async (r) => { if (held) await held; r.fulfill({ json: data ? data() : siteData() }); });
   await page.route('**/data/track.json*', (r) => r.fulfill({ json: trackData() }));
   await page.route(/\/data\/(?!index|track)[^/]+\.json/, (r) => r.fulfill({ status: 404, body: '' }));
   for (const [url, json] of feeds) await page.route(url, (r) => r.fulfill({ json })); // outside feeds a test stands in for
@@ -460,4 +460,19 @@ test('first visit: the age check asks for a year of birth; under 18 is turned aw
   await adult.page.click('.age-gate button[type="submit"]');
   await adult.page.waitForSelector('.age-gate', { state: 'detached' });
   await adult.ctx.close();
+});
+
+test('no qualifying bet: an explicit answer with the reasons counted; the nearest misses are folded research with no odds buttons', async () => {
+  // The same board with every favourite's fair chance cut 5%: its fair odds rise above every price.
+  const data = () => { const d = siteData(); return { ...d, events: d.events.map((e) => ({ ...e, markets: (e.markets || []).map((m) => ({ ...m, outcomes: m.outcomes.map((o) => ({ ...o, ...(o.cons > 0.5 ? { cons: o.cons * 0.95 } : {}) })) })) })) }; };
+  const { page, ctx, errors } = await open('#/', { data });
+  await page.waitForSelector('.dash-short .near-drawer');
+  assert.equal(await page.locator('.dash-short .mini').count(), 0, 'no pick cards');
+  assert.match(await page.textContent('.dash-short'), /No qualifying bets in the next 12 hours with your filters\. Not qualifying: \d+ below the fair price/);
+  assert.equal(await page.locator('.near-drawer [data-leg]').count(), 0, 'a near miss cannot be added to a slip');
+  assert.equal(await page.locator('.near-drawer[open]').count(), 0, 'folded until asked for');
+  await page.click('.dash-short .near-drawer > summary');
+  assert.match(await page.textContent('.dash-short .near-drawer'), /fails: below the fair price · qualifies at \d\.\d\d\+/);
+  assert.deepEqual(errors, []);
+  await ctx.close();
 });

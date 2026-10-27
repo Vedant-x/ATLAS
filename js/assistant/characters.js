@@ -62,4 +62,6 @@ export const CHARACTERS = [
 ];
 
 export const characterById = (id) => CHARACTERS.find((c) => c.id === id) || CHARACTERS[0];
-export const svgOf = (c, cls = '') => `<svg class="ai-char ${cls}" viewBox="0 0 120 120" aria-hidden="true" style="--ai:${c.color}">${c.svg}</svg>`;
+// Each copy of an avatar gets its own ids (a page shows several): one id, one element.
+let copies = 0;
+export const svgOf = (c, cls = '') => { const n = ++copies; return `<svg class="ai-char ${cls}" viewBox="0 0 120 120" aria-hidden="true" style="--ai:${c.color}">${c.svg.replace(/\b(id="|url\(#)(g-[a-z]+)/g, `$1$2-${n}`)}</svg>`; };

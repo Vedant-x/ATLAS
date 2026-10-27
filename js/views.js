@@ -23,6 +23,7 @@ import { trackCard, trackStrip, trackStats, trackCalibration, recordLine, ensure
 import { zone as tzZone, tzOf, abbr as tzAbbr, fmt as fmtTime, fmtDate } from './tz.js';
 import { bestBets, POTD_ZONES, potdDay, parlayOfDay, recommendationFor, valueBets, VALUE, nearBest, nearValue, bestExclusions } from './track.js';
 import { stakeVsFair } from './oddspapi.js';
+import { feedText } from './honest.js';
 import { propRow, allProps } from './propsview.js';
 import { coherentBets } from './picks.js';
 import { mergeEvent } from './merge.js';
@@ -769,12 +770,7 @@ async function liveLoad(paths, tries = 0) {
 const leagueKnown = (path) => path.startsWith('atlas/') || leagueStatus.get(path)?.ok === true;
 // A league with nothing to show: an empty schedule only when its feed answered with none; a feed that
 // failed, or the paused ESPN gate (espn.js), is unavailable, never "no fixtures".
-const emptyText = (paths) => {
-  if (paths.every(leagueKnown)) return 'No fixtures in the next 4 days';
-  const failed = paths.some((p) => leagueStatus.get(p)?.ok === false);
-  if (espnPaused() || failed) return `Feed temporarily unavailable; showing the last successful snapshot${S.fetchedAt ? ` (built ${ago(S.fetchedAt)})` : ''}`;
-  return 'Loading fixtures…';
-};
+const emptyText = (paths) => feedText({ known: paths.every(leagueKnown), failed: paths.some((p) => leagueStatus.get(p)?.ok === false), paused: espnPaused(), builtAgo: S.fetchedAt ? ago(S.fetchedAt) : null });
 // A live match the feed sends no score for: said, with where and when the match was last read.
 const scoreText = (e) => (e.score ? esc(e.score) : `<span class="muted" data-tip="${esc(`No score in the feed${e.source ? ` (${e.source})` : ''}${e.fetchedAt ? `, last read ${ago(e.fetchedAt)}` : ''}`)}">Score unavailable</span>`);
 
