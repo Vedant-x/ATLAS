@@ -159,7 +159,7 @@ export async function loadEvents() {
       if (json.events?.length) {
         // Which leagues the build actually loaded (so pages never claim "no fixtures" for one that failed).
         for (const [path, st] of Object.entries(json.leagueStatus || {})) { const cur = leagueStatus.get(path); if (!cur || cur.at < st.at) leagueStatus.set(path, st); }
-        return { events: json.events, source: 'ATLAS live index', demo: false, server: false, snapshot: true, fetchedAt: json.fetchedAt };
+        return { events: json.events, source: 'ATLAS live index', demo: false, server: false, snapshot: true, fetchedAt: json.fetchedAt, build: json.build || null };
       }
     }
   } catch { /* no snapshot (local server or file) */ }

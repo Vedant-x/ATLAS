@@ -3,6 +3,35 @@
 What was decided, why, and what it replaced. Anything that reverses an earlier decision says so here
 first, with the evidence. A change that flips a decision without an entry here should not merge.
 
+## 2026-10-27 · No pick without fresh, comparable prices; no negative-value slips; honest states
+
+- **Decided (review of 27 Oct, P0):**
+  - Freshness fails closed: a missing, zero, non-finite, future-dated or too-old time never qualifies a
+    pick, and the quote taken must be read within 6 hours of the market reference it is judged against.
+  - Every pick carries ATLAS's chance and return and the market's chance and return under their own
+    names, with the selection basis. Cards, the assistant and the record use those names.
+  - Slips and the parlay of the day are built only from legs at or above their fair odds. The fallback
+    to legs up to 7% below (0.93) is now research mode only. No qualifying legs means no slip.
+  - A pick's quote time and bookmaker are those of the quote taken (Stake's read for Stake's price).
+  - The fixture-level "chance range" is withdrawn: it was a cohort interval.
+  - The probability cap (the price's chance plus 3 points) stays as a heuristic safeguard until a
+    challenger passes held-out tests.
+  - Model 2026.10.16.
+- **Decided (P1):**
+  - A record under 30 settled picks says so instead of showing a hit rate and ROI.
+  - No parlay is a complete answer; singles lead the home page.
+  - A failed or paused feed is never "no fixtures".
+  - Near misses are folded research with no odds button.
+  - An empty list counts why nothing qualified.
+  - The footer shows the app's and the data's build; updates are offered, not forced.
+- **Why:**
+  - The review found three faults: a missing timestamp counted as fresh; slips accepted legs with up
+    to −7% estimated return each (two at the floor: −13.5% for the slip); one `ev` field carried two
+    meanings.
+  - The cohort report (docs/cohort-report.md) shows no list with an ROI interval above zero. 2-leg 2x
+    slips went 5–12 against 54% shown.
+- **Plan:** docs/model-recovery.md (steps 2 to 7).
+
 ## 2026-10-25 · Best bets only at a fair price or better; value at Stake at long prices
 
 - **Decided:** a Best bet needs a sharp fair chance (Pinnacle's with its margin off, or the median of

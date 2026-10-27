@@ -5,7 +5,7 @@ import { rankedBankers, valueBets } from '../js/track.js';
 import { legPool } from '../js/picks.js';
 
 const now = Date.now(), M = 6e4;
-const nba = (id, inMin, extra = {}) => ({ id, sport: 'basketball', leaguePath: 'basketball/nba', compId: id, home: 'Celtics', away: 'Knicks', start: now + inMin * M, live: false,
+const nba = (id, inMin, extra = {}) => ({ id, sport: 'basketball', leaguePath: 'basketball/nba', compId: id, home: 'Celtics', away: 'Knicks', start: now + inMin * M, live: false, sharpAt: now - 60 * M, fetchedAt: now - M,
   markets: [{ name: 'Winner', consensusFrom: 'Pinnacle', outcomes: [{ name: 'Celtics', odds: 1.5, cons: 0.7 }, { name: 'Knicks', odds: 2.8, cons: 0.3 }] }], ...extra });
 
 test('NBA picks come hours ahead, but not while a key player is unresolved', () => {

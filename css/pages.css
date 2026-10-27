@@ -337,3 +337,15 @@ p a:not(.btn):not(.more), .rec-line a, .lede a, .note a, .muted a { text-decorat
 .pcheck { display: block; font: 500 12px var(--sans); color: var(--muted, #9aa3ad); font-variant-numeric: tabular-nums; letter-spacing: 0; text-transform: none; }
 .panel.official { border-color: var(--accent); margin-bottom: 18px; }
 .tr-unresolved .tr-badge { background: #ffb547; color: #000; }
+
+/* Near misses: research, folded away under the qualified list (never pick cards). */
+.near-drawer { margin-top: 10px; border-top: 1px solid var(--line, rgba(255,255,255,.12)); padding-top: 8px; }
+.near-drawer > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: var(--muted, #b8bcc6); }
+.near-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 8px; }
+.near-list li { display: grid; gap: 2px; }
+.near-list li > span { color: var(--muted, #b8bcc6); }
+/* A new version is ready: offered, never forced. */
+.update-bar { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: 60; display: flex; gap: 10px; align-items: center;
+  max-width: calc(100vw - 32px); padding: 8px 12px; border-radius: 12px; background: #15171c; color: #f2f3f5; border: 1px solid rgba(255,255,255,.18); box-shadow: 0 6px 24px rgba(0,0,0,.4); }
+.update-bar button { min-height: 44px; padding: 0 14px; border-radius: 10px; border: 0; background: #d2ff00; color: #101010; font-weight: 600; cursor: pointer; }
+.near-list a { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0 6px; min-height: 44px; }

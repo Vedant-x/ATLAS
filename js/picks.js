@@ -8,7 +8,7 @@
 import { newsHold } from './newsgate.js';
 import { devig, allLegs } from './engine.js';
 import { propLabel, propMarket } from './props.js';
-import { calibrated, blockedSegment } from './track.js';
+import { calibrated, blockedSegment, freshAt, FRESH } from './track.js';
 import { gradable } from './settle.js';
 
 const norm = (s) => String(s || '').toLowerCase();
@@ -89,14 +89,31 @@ const propLegs = (events) => events.filter((e) => !e.live).flatMap((e) => (e.pro
   eventId: e.id, sport: e.sport, start: e.start, match: `${e.home} vs ${e.away}`, market: propMarket(pr), pick: propLabel(pr),
   odds: pr.odds, p: pr.p, margin: 0.05, ev: pr.p * pr.odds - 1, prop: { id: String(pr.id), league: e.leaguePath?.split('/')[1], type: pr.type, target: pr.target },
 })));
-export function legPool(events, { minP = 0.55, minOdds = 1.04, maxOdds = 1.6, cal = null, positiveOnly = false } = {}) {
+// A leg at the market's price rule (the same as a Best bet): a market reference read recently, the
+// leg's price read close to it, and a price (Stake's where its read is comparable and it is better)
+// at or over the fair odds. Returns the leg at that price with its reference chance, or null.
+export function referenceLeg(l, now = Date.now()) {
+  if (!l.consensus || !freshAt(l.refAt, FRESH.reference, now)) return null;
+  const refP = Math.min(l.fair, Number.isFinite(l.fairPow) ? l.fairPow : 1);
+  const ok = (odds, at, maxAge) => freshAt(at, maxAge, now) && Math.abs(at - l.refAt) <= FRESH.apart && odds * refP >= 1;
+  if (l.stake > l.odds && ok(l.stake, l.stakeAt, FRESH.stake)) return { ...l, odds: l.stake, book: 'Stake', atStake: true, quoteAt: l.stakeAt, referenceProbability: refP };
+  return ok(l.odds, l.quoteAt, FRESH.board) ? { ...l, referenceProbability: refP } : null;
+}
+// The legs slips are built from. reference (the default, and the only mode the pages and the record
+// use): every leg at or over the market's fair odds (referenceLeg), so a slip of them is too; there is
+// no fallback to legs below it, and no qualifying legs means no slip. reference: false is a research
+// mode only (legs whose ATLAS chance is within 7% of their price), never recommended.
+export function legPool(events, { minP = 0.55, minOdds = 1.04, maxOdds = 1.6, cal = null, positiveOnly = false, reference = true, now = Date.now() } = {}) {
   const best = new Map();
   // Only legs the record can grade (settle.js gradable): a slip with an ungradable leg never settles.
   for (const l of [...allLegs(events.filter((e) => e.markets?.length && !e.live && !newsHold(e) && gradable(e))), ...propLegs(events.filter((e) => !newsHold(e) && gradable(e)))]) {
-    const p = calibrated(l.p, l.market, cal, l.sport, l.derived ? null : l.odds);
-    // A banker is a clear favourite at a fair-ish price: short odds and an estimate close to the price.
-    if (l.cushion || l.odds < minOdds || l.odds > maxOdds || p < minP || p * l.odds < (positiveOnly ? 1.000001 : 0.93) || blockedSegment(cal, l.sport, l.market)) continue;
-    const leg = { ...l, pRaw: l.p, p };
+    const r = reference ? referenceLeg(l, now) : l;
+    if (!r) continue;
+    const p = calibrated(l.p, l.market, cal, l.sport, l.derived ? null : r.odds);
+    // A banker is a clear favourite at a fair price or better (reference) or, in research mode, an
+    // estimate close to the price.
+    if (r.cushion || r.odds < minOdds || r.odds > maxOdds || p < minP || (positiveOnly && p * r.odds < 1.000001) || (!reference && p * r.odds < 0.93) || blockedSegment(cal, l.sport, l.market)) continue;
+    const leg = { ...r, pRaw: l.p, p, modelProbability: p };
     const cur = best.get(l.eventId);
     if (!cur || ratio(leg) < ratio(cur)) best.set(l.eventId, leg);
   }
@@ -106,7 +123,7 @@ export function legPool(events, { minP = 0.55, minOdds = 1.04, maxOdds = 1.6, ca
 // Up to `count` slips near `target` built from the pool, each using its own legs where possible.
 // minOdds / maxOdds (per leg) and positiveOnly are the viewer's or the question's hard rules: the
 // fallbacks below widen the search but never past them.
-export function bankerSlips(events, target, { count = 5, tolerance = 0.1, cal = null, minOdds = 1.2, maxOdds = null, positiveOnly = false } = {}) {
+export function bankerSlips(events, target, { count = 5, tolerance = 0.1, cal = null, minOdds = 1.2, maxOdds = null, positiveOnly = false, reference = true, now = Date.now() } = {}) {
   // Fewer, longer legs: every leg pays the bookmaker's margin again, so for the same total odds two
   // legs at 1.73 keep more of the true chance than four at 1.32. The longest leg allowed grows with
   // the target (about its square root, so a slip has two legs or more), and legs are ranked by
@@ -122,7 +139,7 @@ export function bankerSlips(events, target, { count = 5, tolerance = 0.1, cal = 
     const lo = Math.max(1.04, minOdds);
     const hi = Math.min(Math.max(bandMax, lo + 0.15), maxOdds ?? Infinity);
     if (hi < lo) return [];
-    const pool = legPool(events, { minP, maxOdds: hi, cal, minOdds: lo, positiveOnly });
+    const pool = legPool(events, { minP, maxOdds: hi, cal, minOdds: lo, positiveOnly, reference, now });
     // Mixed bet types first (no market family over half the legs); one type only if that is all
     // the board allows.
     const search = { pass, wider: pass > 0, minP, maxLegOdds: +hi.toFixed(2), tolerance: tol };
@@ -171,7 +188,10 @@ function buildFrom(pool, target, count, tolerance, mix = false) {
     if (odds < lo || odds > hi || legs.length < 2) break;
     const p = legs.reduce((s, l) => s * l.p, 1);
     if (slips.some((s) => s.legs.length === legs.length && s.legs.every((l, i) => l.eventId === legs[i].eventId))) break;
-    slips.push({ legs, odds, p, ev: p * odds - 1 });
+    // Joint value by the market reference, treating the legs as independent (they share no team; that
+    // is not proof of independence). Null when a leg has no reference (research mode).
+    const refP = legs.every((l) => l.referenceProbability > 0) ? legs.reduce((s, l) => s * l.referenceProbability, 1) : null;
+    slips.push({ legs, odds, p, ev: p * odds - 1, modelProbability: p, modelEV: p * odds - 1, referenceProbability: refP, referenceEV: refP == null ? null : refP * odds - 1 });
     legs.forEach((l) => used.add(l.eventId));
   }
   return slips;

@@ -66,7 +66,7 @@ test('OddsPapi budget: spent at an even pace to the end of the month; a new mont
 
 test('value at Stake: Stake\'s price over the fair odds is the price taken and recorded, and comes first', () => {
   const mk = (o) => [{ name: 'Match Result', consensusFrom: 'Pinnacle', outcomes: o }];
-  const event = (id, outcomes, extra = {}) => ({ id, sport: 'football', leaguePath: 'soccer/eng.1', compId: id, home: 'Home', away: 'Away', start: Date.now() + 5 * H, live: false, markets: mk(outcomes), oddsSource: 'espn', stakeAt: Date.now() - H, ...extra });
+  const event = (id, outcomes, extra = {}) => ({ id, sport: 'football', leaguePath: 'soccer/eng.1', compId: id, home: 'Home', away: 'Away', start: Date.now() + 5 * H, live: false, markets: mk(outcomes), oddsSource: 'espn', stakeAt: Date.now() - H, sharpAt: Date.now() - 2 * H, fetchedAt: Date.now() - 6e4, ...extra });
   const evs = [
     // The feed's 2.0 is below the fair 2.08 (0.48); Stake's 2.2 is 5.6% above it.
     event('s1', [{ name: 'Home', odds: 2.0, stake: 2.2, cons: 0.48, book: 'DraftKings' }, { name: 'Draw', odds: 3.3, cons: 0.28 }, { name: 'Away', odds: 4.0, cons: 0.24 }]),
@@ -160,7 +160,7 @@ test('value at Stake runs to long prices, with a higher bar the longer the price
 test('nearest misses when the lists are empty: Stake\'s prices nearest the value bar and the likeliest winners nearest a fair price, never as picks', async () => {
   const { nearBest, nearValue, bestBets } = await import('../js/track.js');
   const now = Date.now();
-  const ev = (id, outcomes) => ({ id, compId: id, sport: 'football', leaguePath: 'soccer/ita.1', home: outcomes[0].name, away: outcomes[2].name, start: now + 6 * H, stakeAt: now - H, sharpAt: now - 2 * H,
+  const ev = (id, outcomes) => ({ id, compId: id, sport: 'football', leaguePath: 'soccer/ita.1', home: outcomes[0].name, away: outcomes[2].name, start: now + 6 * H, stakeAt: now - H, sharpAt: now - 2 * H, fetchedAt: now - 6e4,
     markets: [{ name: 'Match Result', consensusFrom: 'Pinnacle', outcomes }] });
   const board = [
     ev('a', [{ name: 'Inter', odds: 1.32, cons: 0.7143, stake: 1.34 }, { name: 'Draw', odds: 5.25, cons: 0.1665, stake: 5.6 }, { name: 'Fiorentina', odds: 7, cons: 0.1192, stake: 8 }]),
@@ -171,8 +171,10 @@ test('nearest misses when the lists are empty: Stake\'s prices nearest the value
   // Inter at Stake's 1.34 (4.3% under the fair 1.40) is nearer than Juventus at the board's 1.45 (7.3% under).
   assert.deepEqual(nb.map((b) => [b.pick, b.odds, Boolean(b.atStake)]), [['Inter', 1.34, true], ['Juventus', 1.45, false]]);
   assert.ok(nb.every((b) => b.near && b.ev < 0), 'each shows what it costs');
+  // The Lecce draw at Stake (+4.2% against the 3.4% it needs) is a value bet, so it is not a miss.
+  const { valueBets } = await import('../js/track.js');
+  assert.deepEqual(valueBets(board).map((b) => [b.event.id, b.pick]), [['b', 'Draw']]);
   const nv = nearValue(board);
-  assert.equal(nv[0].pick, 'Draw');
-  assert.equal(nv[0].event.id, 'b', 'the Lecce draw: +4.2% against the 3.4% it needs');
-  assert.ok(nv.every((b) => b.atStake && b.odds === b.stake && Number.isFinite(b.need)));
+  assert.ok(nv.length && !nv.some((b) => b.event.id === 'b' && b.pick === 'Draw'));
+  assert.ok(nv.every((b) => b.atStake && b.odds === b.stake && Number.isFinite(b.need) && b.why && b.priceNeeded > b.odds), 'each says why and the price it needs');
 });

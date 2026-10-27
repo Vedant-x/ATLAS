@@ -50,7 +50,7 @@ test('pick lists and slips are varied: no single bet type fills them', () => {
   assert.equal(out.filter((b) => b.market === 'Winner').length, 4);
   const evs = Array.from({ length: 10 }, (_, i) => nhl(i, { stats: {} })).concat(Array.from({ length: 6 }, (_, i) => ({ id: `w${i}`, sport: 'basketball', league: 'NBA', home: `BH${i}`, away: `BA${i}`, start: now + 36e5,
     markets: [{ name: 'Winner', outcomes: [{ name: `BH${i}`, odds: 1.35 }, { name: `BA${i}`, odds: 3.3 }] }] })));
-  const slip = bankerSlips(evs, 5, { count: 1, minOdds: 1.3 })[0];
+  const slip = bankerSlips(evs, 5, { count: 1, minOdds: 1.3, reference: false })[0]; // the shape of a slip (research mode)
   const spreads = slip.legs.filter((l) => l.market === 'Spread').length;
   assert.ok(spreads <= Math.max(2, Math.ceil(slip.legs.length / 2)), `slip legs ${slip.legs.map((l) => l.market).join(',')}`);
 });

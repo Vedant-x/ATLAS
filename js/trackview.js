@@ -1,5 +1,6 @@
 // Record page: every official ATLAS pick (locked before kick-off) and how it turned out.
 import { esc, sportOf, ist } from './views.js';
+import { recordText } from './honest.js';
 import { summarize, calibration, marketChance, BEST, VALUE, potdDay, walkForward, oldBest } from './track.js';
 import { serviceStats } from './compare.js';
 import { FINAL, independentlyConfirmed } from './settle.js';
@@ -48,10 +49,8 @@ export function officialParlay(zone) {
 export function slipHistory(slips = []) {
   return slips.length ? `<ul class="tr-list">${slips.map(pickRow).join('')}</ul>` : '';
 }
-export function recordLine(st) {
-  if (!st || !(st.won + st.lost)) return '';
-  return `${st.won}–${st.lost} · ${pct(st.hitRate, 0)} hit rate · <span class="${st.profit >= 0 ? 'pos' : 'neg'}">${units(st.profit)} (ROI ${st.roi == null ? '—' : `${st.roi >= 0 ? '+' : ''}${(st.roi * 100).toFixed(1)}%`})</span>`;
-}
+// A list's record line (honest.js): below 30 settled picks it says the count is too small to judge.
+export const recordLine = recordText;
 
 const ago = (t) => { const m = Math.round((Date.now() - t) / 6e4); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
 const statCards = (s, updatedAt) => `${updatedAt ? `<p class="note reveal">Results updated ${ago(updatedAt)} · picks are graded about two hours after each match ends.</p>` : ''}<div class="tr-stats">

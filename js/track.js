@@ -24,24 +24,56 @@ export const FLOOR_ODDS = 1.2;
 // of taking the sharp book's margin off (an even split; the power method, where its own prices are
 // held), so a long price is never made to look better than it is.
 export const edgeAt = (b, price) => Math.min(price * b.fair - 1, Number.isFinite(b.fairPow) ? price * b.fairPow - 1 : Infinity);
-// The price a pick is taken at: Stake's (the book ATLAS's users bet at) where it was read within
-// sharpAge and clears `need` against the fair odds, else the board's own.
-const freshAt = (t, now = Date.now()) => !(t && now - t > VALUE.sharpAge);
+export const referenceOf = (b) => Math.min(b.fair, Number.isFinite(b.fairPow) ? b.fairPow : 1);
+
+// ---------- Freshness and quote identity (fail closed) ----------
+// A time counts only if it is a real, finite past time (5 minutes of clock skew allowed) within the
+// source's maximum age: missing, zero, NaN or future-dated times never qualify a pick. The quote taken
+// and the fair chance it is judged against must also have been read within FRESH.apart of each other:
+// a price compared with a line read hours earlier or later is not a comparison of the same market.
+// These are observation times (when ATLAS read the price), the only time most feeds give; the
+// many-bookmaker feed's own quote time is used where it has one.
+export const FRESH = { skew: 5 * 6e4, reference: 10 * 36e5, stake: 10 * 36e5, board: 6 * 36e5, apart: 6 * 36e5 };
+export const freshAt = (t, maxAge = FRESH.reference, now = Date.now()) => Number.isFinite(t) && t > 0 && t <= now + FRESH.skew && now - t <= maxAge;
 // When a match's fair chance was read: the sharp line laid over its price, else the quotes of the
-// many-bookmaker price it carries (the consensus comes with them).
-const refAt = (e) => e?.sharpAt ?? (e?.oddsSource === 'the-odds-api' ? e.priceAt : null);
+// many-bookmaker price it carries (the consensus comes with them). Null when unknown.
+export const refAt = (e) => e?.sharpAt ?? (e?.oddsSource === 'the-odds-api' ? e.priceAt : null) ?? null;
+// When the quote a pick is taken at was read: Stake's read for Stake's price; else the board's quote
+// time (the many-bookmaker feed's own), else when the build read the feed.
+export const quoteAtOf = (b) => (b.atStake ? b.event?.stakeAt : b.event?.priceAt ?? b.event?.fetchedAt) ?? null;
+// Quote and reference both fresh and read close together.
+export const comparable = (b, now = Date.now()) => {
+  const q = quoteAtOf(b), r = refAt(b.event);
+  return freshAt(r, FRESH.reference, now) && freshAt(q, b.atStake ? FRESH.stake : FRESH.board, now) && Math.abs(q - r) <= FRESH.apart;
+};
 // Drifting (movement.js): the board's price 3%+ longer than the first seen, the market moving against
 // the pick. It only sets a value bet aside while the fair odds are older than driftTrust: a sharp line
 // read since already holds the move.
-const moved = (b) => drifting(b.odds, b.open) && !(refAt(b.event) > Date.now() - VALUE.driftTrust);
-export const takePrice = (b, need) => (b.consensus && b.stake > 1 && freshAt(b.event?.stakeAt) && edgeAt(b, b.stake) >= need && edgeAt(b, b.stake) <= VALUE.maxEdge ? { ...b, odds: b.stake, book: 'Stake', atStake: true } : b);
+const moved = (b, now = Date.now()) => drifting(b.odds, b.open) && !(freshAt(refAt(b.event), VALUE.driftTrust, now));
+// The price a pick is taken at: Stake's (the book ATLAS's users bet at) where its read is comparable
+// with the reference and it clears `need`, else the board's own.
+export const takePrice = (b, need, now = Date.now()) => {
+  if (!(b.consensus && b.stake > 1)) return b;
+  const s = { ...b, odds: b.stake, book: 'Stake', atStake: true };
+  return comparable(s, now) && edgeAt(b, b.stake) >= need && edgeAt(b, b.stake) <= VALUE.maxEdge ? s : b;
+};
+// Every candidate a list shows carries both probabilities and both returns under their own names,
+// never one "ev" with two meanings: modelProbability (ATLAS's calibrated chance) and modelEV from it;
+// referenceProbability (the market's fair chance, method in referenceMethod) and referenceEV from it;
+// selectionBasis says which one the list selected on. quoteAt / referenceAt: when each was read.
+export function named(b, { basis = 'reference', modelP = b.p } = {}) {
+  const ref = b.consensus ? referenceOf(b) : null;
+  return { ...b, modelProbability: modelP, modelEV: modelP * b.odds - 1, referenceProbability: ref, referenceEV: ref == null ? null : edgeAt(b, b.odds),
+    referenceMethod: ref == null ? null : `${b.consensusFrom || 'median of several bookmakers'}, margin removed (the lower of an even split and the power method)`,
+    selectionBasis: basis, quoteAt: quoteAtOf(b), referenceAt: refAt(b.event) };
+}
 
 // Best bets: the likeliest winners at a fair price or better, odds 1.20 to 2.50: the price taken (Stake's
 // where it clears, else the board's) is at least the fair odds by the sharp market (Pinnacle, margin
-// off) or the median of many bookmakers. One bookmaker's own price is never enough: it sits below
-// the fair odds by that bookmaker's margin. Up to 24 Oct, picks priced that way won 65.4% at average
-// odds 1.41, where 71.0% was needed (555 picks, -9.1%). Likeliest first, spread across sports and bet
-// types. Its own record.
+// off) or the median of many bookmakers, both read recently and close together. One bookmaker's own
+// price is never enough: it sits below the fair odds by that bookmaker's margin. Up to 24 Oct, picks
+// priced that way won 65.4% at average odds 1.41, where 71.0% was needed (555 picks, -9.1%).
+// Likeliest first, spread across sports and bet types. Its own record. Zero picks is a full answer.
 export const BEST = { minOdds: 1.2, maxOdds: 2.5, min: 0.55 };
 // Best bets before model 2026.10.15 took one bookmaker's own price: a different list from the one
 // since, so it is retired with its own final record (Results), and the list's record starts again.
@@ -52,36 +84,58 @@ const versionBefore = (v, ref) => {
   return false;
 };
 export const oldBest = (h) => h.type === 'best' && Boolean(h.model) && versionBefore(h.model, BEST_SINCE);
-export function bestBets(events, { cal = null, limit = 10 } = {}) {
-  const list = rankedBankers(events.filter(gradable), { cal, min: BEST.min, minOdds: 1, maxOdds: Infinity, limit: 2000, mix: false })
-    .filter((b) => b.consensus && freshAt(refAt(b.event))).map((b) => takePrice(b, 0))
-    .filter((b) => b.odds >= BEST.minOdds && b.odds <= BEST.maxOdds && edgeAt(b, b.odds) >= 0 && edgeAt(b, b.odds) <= VALUE.maxEdge)
-    // The return shown is the sharp market's (what qualifies the pick); the chance is ATLAS's.
-    .map((b) => ({ ...b, ev: edgeAt(b, b.odds), edge: edgeAt(b, b.odds) }))
+// Each Best-bets candidate with the first rule it fails (null: it qualifies), so an empty list can
+// say why: one bookmaker's price only, a stale or missing quote time, below the fair odds, and so on.
+function bestCandidates(events, cal, now = Date.now()) {
+  return rankedBankers(events.filter(gradable), { cal, min: BEST.min, minOdds: 1, maxOdds: Infinity, limit: 2000, mix: false }).map((b0) => {
+    if (!b0.consensus) return { b: b0, why: 'no market reference' };
+    const b = takePrice(b0, 0, now);
+    if (!freshAt(refAt(b.event), FRESH.reference, now)) return { b, why: 'reference stale or missing' };
+    if (!comparable(b, now)) return { b, why: 'quote stale or read apart from the reference' };
+    if (b.odds < BEST.minOdds || b.odds > BEST.maxOdds) return { b, why: 'outside odds 1.20-2.50' };
+    const edge = edgeAt(b, b.odds);
+    if (edge > VALUE.maxEdge) return { b, why: 'quarantined: edge too large to trust' };
+    if (edge < 0) return { b, why: 'below the fair price' };
+    return { b, why: null };
+  });
+}
+export function bestBets(events, { cal = null, limit = 10, now = Date.now() } = {}) {
+  const list = bestCandidates(events, cal, now).filter((x) => !x.why).map((x) => named(x.b))
+    // ev here is the reference return (the selection basis); cards read the named fields.
+    .map((b) => ({ ...b, ev: b.referenceEV, edge: b.referenceEV }))
     .sort((x, y) => Number(Boolean(y.atStake)) - Number(Boolean(x.atStake)) || y.p - x.p);
   return diversify(list, limit).sort((x, y) => y.p - x.p);
 }
+// Why the 55%+ candidates in the odds range did not qualify: { reason: count }.
+export function bestExclusions(events, { cal = null, now = Date.now() } = {}) {
+  const out = {};
+  for (const { why } of bestCandidates(events, cal, now)) if (why) out[why] = (out[why] || 0) + 1;
+  return out;
+}
 // When no Best bet qualifies: the likeliest winners nearest a fair price (55%+, odds 1.20 to 2.50, a
-// sharp fair chance read within sharpAge), the better of Stake's and the board's price, smallest cut
-// first. Shown as the nearest misses with what each costs on average (ev below 0); never recorded.
-export function nearBest(events, { cal = null, limit = 5 } = {}) {
-  const list = rankedBankers(events.filter(gradable), { cal, min: BEST.min, minOdds: 1, maxOdds: Infinity, limit: 2000, mix: false })
-    .filter((b) => b.consensus && freshAt(refAt(b.event)))
-    .map((b) => (b.stake > 1 && freshAt(b.event.stakeAt) && b.stake >= b.odds ? { ...b, odds: b.stake, book: 'Stake', atStake: true } : b))
-    .filter((b) => b.odds >= BEST.minOdds && b.odds <= BEST.maxOdds && edgeAt(b, b.odds) <= VALUE.maxEdge)
-    .map((b) => ({ ...b, ev: edgeAt(b, b.odds), edge: edgeAt(b, b.odds), near: true }))
+// comparable reference), the better of Stake's and the board's price, smallest cut first. Research
+// only: each says why it fails and the price it would need; never recorded, never a slip leg.
+export function nearBest(events, { cal = null, limit = 5, now = Date.now() } = {}) {
+  // The better of Stake's and the board's price, where Stake's read is comparable.
+  const better = (b) => { const s = { ...b, odds: b.stake, book: 'Stake', atStake: true }; return b.stake > b.odds && comparable(s, now) ? s : b; };
+  const list = bestCandidates(events, cal, now).filter((x) => x.why === 'below the fair price').map((x) => named(better(x.b)))
+    .map((b) => ({ ...b, ev: b.referenceEV, edge: b.referenceEV, near: true, why: 'below the fair price', priceNeeded: +(1 / b.referenceProbability).toFixed(2) }))
     .sort((x, y) => y.edge - x.edge);
   return diversify(list, limit);
 }
 // When no value bet qualifies: Stake's prices nearest the bar (each price's distance from the fair
-// odds against the distance it needs), best first. The same checks as valueBets but the bar; never
-// recorded.
-export function nearValue(events, { cal = null, limit = 5 } = {}) {
+// odds against the distance it needs), best first. The same checks as valueBets but the bar; research
+// only, never recorded.
+export function nearValue(events, { cal = null, limit = 5, now = Date.now() } = {}) {
   const list = bankers(events.filter((e) => !e.live && gradable(e)), { min: 0, limit: Infinity })
-    .filter((b) => b.consensus && b.fair >= VALUE.stakeMinFair && b.stake > 1 && freshAt(b.event.stakeAt) && b.stake <= VALUE.stakeMaxOdds && !blockedSegment(cal, b.event.sport, b.market) && freshAt(refAt(b.event)))
+    .filter((b) => b.consensus && b.fair >= VALUE.stakeMinFair && b.stake > 1 && b.stake <= VALUE.stakeMaxOdds && !blockedSegment(cal, b.event.sport, b.market))
+    .map((b) => ({ ...b, odds: b.stake, book: 'Stake', atStake: true }))
+    .filter((b) => comparable(b, now))
     // moved: set aside as the market moves against it (shown with that reason, below the rest).
-    .map((b) => ({ ...b, moved: moved(b), odds: b.stake, book: 'Stake', atStake: true, pRaw: b.p, p: Math.min(b.fair, b.fairPow ?? 1), edge: edgeAt(b, b.stake), ev: edgeAt(b, b.stake), need: valueNeed(b), near: true }))
-    .filter((b) => b.edge <= VALUE.maxEdge)
+    .map((b) => named({ ...b, moved: moved(b, now), need: valueNeed(b) }, { modelP: b.p }))
+    .map((b) => ({ ...b, pRaw: b.p, p: b.referenceProbability, edge: b.referenceEV, ev: b.referenceEV, near: true,
+      why: b.moved ? 'the market is moving against it' : 'below the value bar', priceNeeded: +((1 + b.need) / b.referenceProbability).toFixed(2) }))
+    .filter((b) => b.edge <= VALUE.maxEdge && !(b.edge >= b.need && !b.moved))
     .sort((x, y) => Number(x.moved) - Number(y.moved) || (y.edge - y.need) - (x.edge - x.need));
   return diversify(list, limit, { familyShare: 0.6, sportShare: 0.6 });
 }
@@ -91,28 +145,29 @@ export function nearValue(events, { cal = null, limit = 5 } = {}) {
 // small (a few percent), and real only at the bookmaker quoting the price: takeAt is the lowest price
 // still worth taking anywhere. The chance shown is the market's, not ATLAS's: in the record, picks
 // ATLAS rated 10-20 points above the market landed slightly below the market's own chance.
-// sharpAge: a sharp line laid over another feed's price (overlayOdds, football-data) is a reference
-// only while fresh; an older one may just be a line the market has since moved past.
+// The quote and the fair odds must be fresh and read within FRESH.apart of each other (comparable).
 // At Stake: where Stake's own price (oddspapi.js) clears the fair odds, it is the price taken and
 // recorded (atStake): the book ATLAS's users bet at, so the record is what they could have had. At
 // Stake the range runs to long prices (a 12%+ chance, odds to 10): measured on 25 Oct, Stake's margin
 // was lightest there (median 3.6% under the fair odds below a 30% chance, 5.9% at 50%+), and every
 // Stake price over the fair odds was a draw or an underdog.
 // need: 2% (3% from a median of books) at a 30%+ chance, one point more for every 5 points of chance
-// below 30% (4% at 20%): a long price's fair chance is the less certain. An edge over maxEdge is taken
-// for a data error (another match, a stale or suspended price), never a pick.
-export const VALUE = { min: 0.02, minMedian: 0.03, minFair: 0.3, minOdds: 1.25, maxOdds: 4, sharpAge: 10 * 36e5, stakeMinFair: 0.12, stakeMaxOdds: 10, maxEdge: 0.12, driftTrust: 3 * 36e5 };
+// below 30% (4% at 20%): a long price's fair chance is the less certain. These bars and maxEdge are
+// heuristics, not validated thresholds: an edge over maxEdge is quarantined (likely another match, a
+// stale or suspended price), never a pick.
+export const VALUE = { min: 0.02, minMedian: 0.03, minFair: 0.3, minOdds: 1.25, maxOdds: 4, stakeMinFair: 0.12, stakeMaxOdds: 10, maxEdge: 0.12, driftTrust: 3 * 36e5 };
 export const valueNeed = (b) => (/^Pinnacle/.test(b.consensusFrom || '') ? VALUE.min : VALUE.minMedian) + 0.2 * Math.max(0, VALUE.minFair - b.fair);
-export function valueBets(events, { cal = null, limit = 10 } = {}) {
+export function valueBets(events, { cal = null, limit = 10, now = Date.now() } = {}) {
   const need = valueNeed;
   const inRange = (b) => (b.atStake ? b.fair >= VALUE.stakeMinFair && b.odds <= VALUE.stakeMaxOdds : b.fair >= VALUE.minFair && b.odds <= VALUE.maxOdds) && b.odds >= VALUE.minOdds;
   const list = bankers(events.filter((e) => !e.live && gradable(e)), { min: 0, limit: Infinity })
-    .filter((b) => b.consensus && b.fair >= VALUE.stakeMinFair && !blockedSegment(cal, b.event.sport, b.market) && !moved(b) && freshAt(refAt(b.event)))
-    .map((b) => takePrice(b, need(b)))
-    .filter(inRange)
+    .filter((b) => b.consensus && b.fair >= VALUE.stakeMinFair && !blockedSegment(cal, b.event.sport, b.market) && !moved(b, now))
+    .map((b) => takePrice(b, need(b), now))
+    .filter((b) => inRange(b) && comparable(b, now))
     // wide: the typical price across books also beats the fair odds, so the value does not hang on
     // one bookmaker. Value at Stake comes first, then wide, then the biggest edge.
-    .map((b) => ({ ...b, pRaw: b.p, p: b.fair, edge: edgeAt(b, b.odds), ev: edgeAt(b, b.odds), takeAt: +((1 + need(b)) / Math.min(b.fair, b.fairPow ?? 1)).toFixed(2), wide: b.med > 1 ? edgeAt(b, b.med) >= need(b) : null }))
+    .map((b) => named(b, { modelP: b.p }))
+    .map((b) => ({ ...b, pRaw: b.p, p: b.referenceProbability, edge: b.referenceEV, ev: b.referenceEV, takeAt: +((1 + need(b)) / b.referenceProbability).toFixed(2), wide: b.med > 1 ? edgeAt(b, b.med) >= need(b) : null }))
     .filter((b) => b.edge >= need(b) && b.edge <= VALUE.maxEdge)
     .sort((x, y) => Number(Boolean(y.atStake)) - Number(Boolean(x.atStake)) || Number(Boolean(y.wide)) - Number(Boolean(x.wide)) || y.edge - x.edge);
   return diversify(list, limit, { familyShare: 0.6, sportShare: 0.6 });
@@ -152,7 +207,10 @@ export function valueBets(events, { cal = null, limit = 10 } = {}) {
 //   longer counts); value at Stake runs to long prices with a bar that rises with the odds; the fair
 //   chance is the lower of an even split and the power method; edges over 12% are data errors; a
 //   drifting price is set aside only while the sharp line is 3+ hours old.
-export const MODEL_VERSION = '2026.10.15';
+// 2026.10.16: freshness fails closed (no time, a future time or a quote read apart from its reference
+//   never qualifies); named model and market chances and returns on every pick; slips and the parlay
+//   of the day only from legs at or above their fair odds, none otherwise; no fixture-level interval.
+export const MODEL_VERSION = '2026.10.16';
 
 // Market families the track record learns from: winner, 1X2 result, spread/handicap, totals.
 export const familyOf = (market = '') => (/^Player /.test(market) ? 'prop' : /^Total/.test(market) ? 'total' : market === 'Spread' ? 'spread' : market === 'Match Result' ? 'result' : 'winner');
@@ -409,7 +467,7 @@ export function probePicks(events, { cal = null, limit = 10 } = {}) {
     .filter((b) => b.consensus && freshAt(refAt(b.event)) && blockedSegment(cal, b.event?.sport, b.market) && !drifting(b.odds, b.open)).map((b) => withCal(takePrice(b, 0), cal))
     // Judged on the price's own chance: the shown chance carries the blocked type's penalty, which
     // would keep it out for good. The same price rule as Best bets.
-    .filter((b) => b.pRaw >= BEST.min && b.odds >= BEST.minOdds && b.odds <= BEST.maxOdds && edgeAt(b, b.odds) >= 0 && edgeAt(b, b.odds) <= VALUE.maxEdge).sort((x, y) => y.pRaw - x.pRaw).slice(0, limit);
+    .filter((b) => b.pRaw >= BEST.min && comparable(b) && b.odds >= BEST.minOdds && b.odds <= BEST.maxOdds && edgeAt(b, b.odds) >= 0 && edgeAt(b, b.odds) <= VALUE.maxEdge).sort((x, y) => y.pRaw - x.pRaw).slice(0, limit);
 }
 
 // Official picks for matches starting in the next `hours`: the shortlist's bankers (rated 60%+ at
@@ -422,7 +480,14 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
   const calVersion = calVersionOf(cal);
   const quote = (e) => ({ book: e.bookmaker || null, oddsSource: e.oddsSource || null, quoteType: e.quoteType || (e.markets?.length ? 'bookmaker' : null), priceAt: e.priceAt ?? null });
   const row = (type) => (b) => ({ sel: selectionId({ eventId: b.event.id, market: b.market, pick: b.pick, prop: b.prop }), ...quote(b.event), calVersion,
-    ...(() => { const r = recommendationFor(b, cal, { now, mode: type, publishedAt: now }); return { recommendationId: r.recommendationId, forecastId: r.forecastId, generatedAt: r.forecastGeneratedAt, uncertaintyRange: r.uncertaintyRange }; })(),
+    ...(() => {
+      const r = recommendationFor(b, cal, { now, mode: type, publishedAt: now });
+      const f = (x) => (Number.isFinite(x) ? +x.toFixed(4) : null);
+      // The quote taken (its bookmaker and read time) and the named chances and returns, as shown.
+      return { recommendationId: r.recommendationId, forecastId: r.forecastId, generatedAt: r.forecastGeneratedAt, uncertaintyRange: r.uncertaintyRange,
+        book: r.bookmaker, priceAt: r.quoteAt, quoteId: r.quoteId, referenceAt: r.referenceAt,
+        ...(r.selectionBasis ? { basis: r.selectionBasis, modelP: f(r.modelProbability), refP: f(r.referenceProbability), modelEV: f(r.modelEV), refEV: f(r.referenceEV), refMethod: r.referenceMethod } : {}) };
+    })(),
     // The surest list keeps its own record, so its key differs from the same pick on the shortlist.
     key: `${['safe', 'best', 'two', 'edge', 'probe'].includes(type) ? `${type}|` : ''}${b.event.id}|${b.market}|${b.pick}`, type, eventId: b.event.id, leaguePath: b.event.leaguePath, compId: b.event.compId,
     sport: b.event.sport, league: b.event.league, home: b.event.home, away: b.event.away, start: b.event.start,
@@ -435,8 +500,8 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
   // the day (plus unseen probes). The shortlist bankers, Surest, Near 2.00 and model-only picks were
   // retired on 23 Oct 2026; their history stays in the record.
   return [
-    ...bestBets(soon, { cal, limit: 20 }).map(row('best')),
-    ...valueBets(soon, { cal, limit: 20 }).map(row('edge')),
+    ...bestBets(soon, { cal, limit: 20, now }).map(row('best')),
+    ...valueBets(soon, { cal, limit: 20, now }).map(row('edge')),
     ...probePicks(soon, { cal, limit: 10 }).map(row('probe')),
     ...multiPicks(events, now, history),
     ...potdPicks(events, now, history),
@@ -458,14 +523,17 @@ export function parlayOfDay(events, { now = Date.now(), zone = 'IST', cal = null
   const { end } = potdDay(now, zone);
   const pool = applyModel(events.filter((e) => e.compId && e.markets?.length && !e.live && e.start > now + 30 * 6e4 && e.start < end));
   // Every combination of 2 to 6 of the best legs (most chance per unit of odds, one per match, no
-  // team twice) whose total lands in 1.70 to 2.00; the one most likely to win. Legs at a price no
-  // shorter than their fair odds first; any banker legs only if no such slip exists.
-  for (const positiveOnly of [true, false]) {
-    const legs = legPool(pool, { minP: 0.55, minOdds: POTD.minOdds, maxOdds: 1.6, cal, positiveOnly }).slice(0, 24);
+  // team twice) whose total lands in 1.70 to 2.00; the one most likely to win. Every leg at or over the
+  // market's fair odds (legPool's reference rule); no fallback: a day without such legs has no parlay.
+  {
+    const legs = legPool(pool, { minP: 0.55, minOdds: POTD.minOdds, maxOdds: 1.6, cal, reference: true, now }).slice(0, 24);
     const teams = (l) => String(l.match || '').split(' vs ').map((t) => t.trim().toLowerCase());
     let best = null;
     const walk = (from, picked, odds, p) => {
-      if (picked.length >= 2 && odds >= POTD.min && odds <= POTD.max && (!best || p > best.p)) best = { legs: picked, odds, p, ev: p * odds - 1, fairOnly: positiveOnly };
+      if (picked.length >= 2 && odds >= POTD.min && odds <= POTD.max && (!best || p > best.p)) {
+        const refP = picked.reduce((s, l) => s * l.referenceProbability, 1);
+        best = { legs: picked, odds, p, ev: p * odds - 1, modelProbability: p, modelEV: p * odds - 1, referenceProbability: refP, referenceEV: refP * odds - 1, fairOnly: true };
+      }
       if (picked.length === POTD.maxLegs || odds > POTD.max) return;
       for (let i = from; i < legs.length; i++) {
         const l = legs[i];
@@ -485,11 +553,11 @@ export function potdPicks(events, now = Date.now(), history = []) {
     const slip = parlayOfDay(events, { now, zone, cal });
     if (!slip) continue;
     const byId = new Map(events.map((e) => [e.id, e]));
-    const legs = slip.legs.map((l) => { const e = byId.get(l.eventId); return { sel: selectionId({ eventId: e.id, market: l.market, pick: l.pick, prop: l.prop }), eventId: e.id, leaguePath: e.leaguePath, compId: e.compId, sport: e.sport, league: e.league, home: e.home, away: e.away, start: e.start, market: l.market, pick: l.pick, odds: l.odds, p: +l.p.toFixed(4), pRaw: +(l.pRaw ?? l.p).toFixed(4), status: 'pending', book: e.bookmaker || null, priceAt: e.priceAt ?? null, ...(l.prop ? { prop: l.prop } : {}) }; });
+    const legs = slip.legs.map((l) => { const e = byId.get(l.eventId); return { sel: selectionId({ eventId: e.id, market: l.market, pick: l.pick, prop: l.prop }), eventId: e.id, leaguePath: e.leaguePath, compId: e.compId, sport: e.sport, league: e.league, home: e.home, away: e.away, start: e.start, market: l.market, pick: l.pick, odds: l.odds, p: +l.p.toFixed(4), pRaw: +(l.pRaw ?? l.p).toFixed(4), status: 'pending', book: l.book || e.bookmaker || null, priceAt: l.quoteAt ?? e.priceAt ?? null, ...(l.atStake ? { atStake: true } : {}), ...(l.referenceProbability ? { ref: +l.referenceProbability.toFixed(4) } : {}), ...(l.prop ? { prop: l.prop } : {}) }; });
     out.push({
       key: `multi|${potdDay(now, zone).key}|potd-${zone}`, type: 'multi', target: 'potd', zone, legs, eventId: legs[0].eventId, sport: 'multi', league: 'Parlay of the day',
       home: `${legs.length}-leg parlay of the day`, away: '', start: Math.max(...legs.map((l) => l.start)), market: 'Parlay of the day',
-      pick: legs.map((l) => l.pick).join(' + '), odds: +slip.odds.toFixed(2), p: +slip.p.toFixed(4), recordedAt: now, status: 'pending', model: MODEL_VERSION, fairOnly: slip.fairOnly,
+      pick: legs.map((l) => l.pick).join(' + '), odds: +slip.odds.toFixed(2), p: +slip.p.toFixed(4), refP: +slip.referenceProbability.toFixed(4), recordedAt: now, status: 'pending', model: MODEL_VERSION, fairOnly: slip.fairOnly,
     });
   }
   return out;
@@ -513,9 +581,9 @@ export function multiPicks(events, now = Date.now(), history = []) {
   const day = localDay(now); // IST calendar day: one official slip per target per day
   const out = [];
   for (const target of MULTI_TARGETS) {
-    const best = bankerSlips(slipWindow(pool, target, now), target, { count: 1, tolerance: slipPolicy(target).tolerance, cal, minOdds: FLOOR_ODDS })[0];
+    const best = bankerSlips(slipWindow(pool, target, now), target, { count: 1, tolerance: slipPolicy(target).tolerance, cal, minOdds: FLOOR_ODDS, now })[0];
     if (!best) continue;
-    const legs = best.legs.map((l) => { const e = byId.get(l.eventId); return { sel: selectionId({ eventId: e.id, market: l.market, pick: l.pick, prop: l.prop }), eventId: e.id, leaguePath: e.leaguePath, compId: e.compId, sport: e.sport, league: e.league, home: e.home, away: e.away, start: e.start, market: l.market, pick: l.pick, odds: l.odds, p: +l.p.toFixed(4), pRaw: +(l.pRaw ?? l.p).toFixed(4), status: 'pending', book: e.bookmaker || null, priceAt: e.priceAt ?? null, ...(l.prop ? { prop: l.prop } : {}) }; });
+    const legs = best.legs.map((l) => { const e = byId.get(l.eventId); return { sel: selectionId({ eventId: e.id, market: l.market, pick: l.pick, prop: l.prop }), eventId: e.id, leaguePath: e.leaguePath, compId: e.compId, sport: e.sport, league: e.league, home: e.home, away: e.away, start: e.start, market: l.market, pick: l.pick, odds: l.odds, p: +l.p.toFixed(4), pRaw: +(l.pRaw ?? l.p).toFixed(4), status: 'pending', book: l.book || e.bookmaker || null, priceAt: l.quoteAt ?? e.priceAt ?? null, ...(l.atStake ? { atStake: true } : {}), ...(l.referenceProbability ? { ref: +l.referenceProbability.toFixed(4) } : {}), ...(l.prop ? { prop: l.prop } : {}) }; });
     out.push({
       key: `multi|${day}|${target}x`, type: 'multi', target, legs, eventId: legs[0].eventId, sport: 'multi', league: `${target}x multiplier`,
       home: `${legs.length}-leg ${target}x slip`, away: '', start: Math.max(...legs.map((l) => l.start)), market: `${target}x multiplier`,

@@ -158,6 +158,7 @@ loadF1().then((d) => { if (d && ['home', 'sports'].includes(parse().name)) softR
 function setData(d) {
   state.loading = false;
   Object.assign(state, d, { events: applyModel(d.events) });
+  showVersion();
   checkAlerts(state.events);
   if (Date.now() - state.slipsAt > 60000) { state.slipCache.clear(); state.slipsAt = Date.now(); }
   ticker();
@@ -643,13 +644,40 @@ addEventListener('scroll', () => {
 // Offline cache. When a new build's worker takes over a page that an older build served, reload once
 // so visitors get the update straight away instead of on their next visit (never on a first visit,
 // which has no previous worker). The worker is also re-checked whenever the tab comes back into view.
+// The update never pulls the page from under the visitor: in a hidden tab it reloads at once;
+// otherwise a bar offers it, and it happens the next time the tab is hidden. Slips, the watchlist and
+// settings live in local storage and survive the reload.
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   const hadWorker = Boolean(navigator.serviceWorker.controller);
   let reloaded = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadWorker && !reloaded) { reloaded = true; location.reload(); } });
+  const reload = () => { if (!reloaded) { reloaded = true; location.reload(); } };
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadWorker || reloaded) return;
+    if (document.hidden) { reload(); return; }
+    updateBar(reload);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) reload(); });
+  });
   addEventListener('load', () => setTimeout(() => navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
   }).catch(() => {}), 3000));
+}
+function updateBar(reload) {
+  if (document.querySelector('.update-bar')) return;
+  const bar = document.createElement('div');
+  bar.className = 'update-bar';
+  bar.setAttribute('role', 'status');
+  bar.innerHTML = 'A new version of ATLAS is ready. <button type="button">Reload</button>';
+  bar.querySelector('button').addEventListener('click', reload);
+  document.body.append(bar);
+}
+// The app's build and the data's (footer): a page served by an older build says so, and offers the reload.
+function showVersion() {
+  const el = document.querySelector('.build-ver');
+  if (!el) return;
+  const app = el.dataset.appBuild || '', data = state.build || '';
+  const short = (x) => (/^[0-9a-f]{7,}$/.test(x) ? x.slice(0, 7) : x === '__BUILD__' ? 'dev' : x.slice(-6));
+  el.textContent = ` · app ${short(app)}${data ? ` · data ${short(data)}` : ''}${state.fetchedAt ? `, built ${new Date(state.fetchedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}` : ''}`;
+  if (app && data && app !== '__BUILD__' && app !== data && !document.querySelector('.update-bar')) updateBar(() => location.reload());
 }
 let installEvt = null;
 // Android browsers: a link to the Android app (ATLAS.apk), hidden inside the app itself.

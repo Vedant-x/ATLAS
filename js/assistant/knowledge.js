@@ -139,7 +139,10 @@ export function createKnowledge(S) {
     const ranked = mode === 'value' ? valueBets(list, { cal, limit: 2000 }).filter((b) => b.odds >= lo)
       : mode === 'safe' ? bestBets(list, { cal, limit: 2000 }).filter((b) => b.p >= 0.6)
         : bestBets(list, { cal, limit: 2000 });
-    let c = ranked.map((b) => ({ e: b.event, market: b.market, pick: b.pick, odds: b.odds, p: b.p, fair: b.fair, ev: b.p * b.odds - 1, priced: true, book: b.book || null, recommendationId: recommendationFor(b, cal).recommendationId,
+    // The lists' named fields (track.js named): p is ATLAS's chance and modelEV its return; refP the
+    // market's fair chance and ev its return (the basis these lists select on), as the cards show.
+    let c = ranked.map((b) => ({ e: b.event, market: b.market, pick: b.pick, odds: b.odds, p: b.modelProbability ?? b.p, fair: b.fair, refP: b.referenceProbability ?? null, ev: b.referenceEV ?? b.p * b.odds - 1,
+      modelEV: b.modelEV ?? b.p * b.odds - 1, basis: b.selectionBasis || 'model', quoteAt: b.quoteAt ?? null, priced: true, book: b.book || null, recommendationId: recommendationFor(b, cal).recommendationId,
       ...(b.prop ? { prop: { ...b.prop, id: String(b.prop.id), league: b.event.leaguePath?.split('/')[1] } } : {}) }));
     if (minOdds) c = c.filter((x) => x.odds >= minOdds);
     if (maxOdds) c = c.filter((x) => x.odds <= maxOdds);
