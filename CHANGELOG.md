@@ -66,6 +66,21 @@ what changed, week by week. Reasons and reversals are in [docs/DECISIONS.md](doc
   refresh every 5 minutes, and after 6 refusals in a row it stops asking ESPN for 2 minutes. A site
   check in CI opens every page with live data on a phone-speed processor and reports errors, failed
   requests, main-thread time and ESPN requests.
+- **Review of 27 October:**
+  - **No pick without fresh, comparable prices:** missing, future and stale times fail; the quote and
+    the market reference are read within 6 hours of each other.
+  - **Named chances and returns:** ATLAS's and the market's, each labelled, on cards, in the assistant
+    and in the record.
+  - **No negative-value slips:** slips and the parlay of the day only from legs at fair odds or
+    better, otherwise none.
+  - **Quote time:** the quote taken carries its own time.
+  - **No fixture-level chance range** until one is validated.
+  - **Small records say "too few to judge".**
+  - **Feeds:** a failed feed is never "no fixtures"; a missing live score says so.
+  - **Near misses** fold into research.
+  - **Versions:** the app's and the data's build are shown; updates are offered, not forced.
+  - **Site check:** fails on budgets, sideways scrolling, duplicate ids and missing content.
+  - **Cohort report:** docs/cohort-report.md, with the recovery plan in docs/model-recovery.md.
 - Earlier this week: one site-wide time zone, colour themes, value bets and the drift guard, finished
   matches kept on the watchlist, props on the real over/under lines.
 

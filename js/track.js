@@ -207,7 +207,10 @@ export function valueBets(events, { cal = null, limit = 10, now = Date.now() } =
 //   longer counts); value at Stake runs to long prices with a bar that rises with the odds; the fair
 //   chance is the lower of an even split and the power method; edges over 12% are data errors; a
 //   drifting price is set aside only while the sharp line is 3+ hours old.
-export const MODEL_VERSION = '2026.10.15';
+// 2026.10.16: freshness fails closed (no time, a future time or a quote read apart from its reference
+//   never qualifies); named model and market chances and returns on every pick; slips and the parlay
+//   of the day only from legs at or above their fair odds, none otherwise; no fixture-level interval.
+export const MODEL_VERSION = '2026.10.16';
 
 // Market families the track record learns from: winner, 1X2 result, spread/handicap, totals.
 export const familyOf = (market = '') => (/^Player /.test(market) ? 'prop' : /^Total/.test(market) ? 'total' : market === 'Spread' ? 'spread' : market === 'Match Result' ? 'result' : 'winner');
