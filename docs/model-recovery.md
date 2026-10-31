@@ -46,8 +46,10 @@ needs. Other sports remain research coverage, without a validated model.
 
 - **Baseline A, the market:** Pinnacle's complete-market odds with the margin removed. The fair chance
   is the lower of the even-split and power methods, and Pinnacle's raw prices are kept (`pin`). The
-  record stores the reference from 27 Oct. Odds snapshots are not yet archived per build; that archive
-  is needed before a backtest.
+  record stores the reference from 27 Oct. From 31 Oct every build's changed prices are archived on the
+  track-record branch (`odds/YYYY-MM-DD.jsonl`, js/archive.js): the shown price and its book, the
+  reference's fair chance, Pinnacle's and Stake's prices, and each one's read time. A backtest needs
+  some weeks of it.
 - **Baseline B, statistics only:** not built. The current model nudges the market chance with records
   and form, so it is not independent of the market.
 - **Challenger:** none. The probability cap (at most the price's chance plus 3 points) stays as a
@@ -91,6 +93,8 @@ Every recommendation is now recorded at publication with:
 - ATLAS's and the market's chance, each with its return;
 - the selection basis and the model version.
 
-Records are settled with an audit log. Flat stakes only. No launch criterion is set by a sample count.
+Records are settled with an audit log; football on the 90-minute score. Flat stakes only. The record
+page leads with the price against the closing line (the last price saved before kick-off, and from
+31 Oct the market's closing fair odds), known for every pick at kick-off. No launch criterion is set by a sample count.
 An effect worth having, and the uncertainty that can be tolerated, are to be defined before the
 forward record is judged.

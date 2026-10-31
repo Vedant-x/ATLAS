@@ -28,6 +28,32 @@ test('ESPN summaries become results; postponed games wait, cancelled games are v
   assert.equal(resultFromSummary(sm({ completed: false, name: 'STATUS_CANCELED' }, {}, {})).void, true);
 });
 
+test('football is graded on the 90-minute score: extra time and penalties never decide a bet', () => {
+  const half = (...g) => g.map((v) => ({ value: v }));
+  const cup = (type, h, a, extra = {}) => ({ header: { competitions: [{ status: { type, period: extra.period }, competitors: [{ homeAway: 'home', ...h }, { homeAway: 'away', ...a }] }] } });
+  const base = { home: 'Salamanca', away: 'Celta', market: 'Match Result' };
+  // 1-1 after 90, Celta through on penalties: the winner flag says Celta, the bet says draw.
+  const pens = cup({ completed: true, name: 'STATUS_FINAL_PEN', description: 'Final - Penalties' }, { score: '1', winner: false, linescores: half(0, 1, 0, 0), shootoutScore: 3 }, { score: '1', winner: true, linescores: half(1, 0, 0, 0), shootoutScore: 4 }, { period: 5 });
+  const r = resultFromSummary(pens, { football: true });
+  assert.deepEqual([r.done, r.homeScore, r.awayScore, r.winner, r.after90], [true, '1', '1', 'draw', true]);
+  assert.equal(gradePick({ ...base, pick: 'Draw' }, r), 'won');
+  assert.equal(gradePick({ ...base, pick: 'Celta' }, r), 'lost');
+  // 1-1 after 90, 2-1 after extra time: still a draw for the bet, and a total of 2, not 3.
+  const aet = cup({ completed: true, name: 'STATUS_FINAL_AET' }, { score: '2', winner: true, linescores: half(1, 0, 1, 0) }, { score: '1', linescores: half(0, 1, 0, 0) }, { period: 4 });
+  const r2 = resultFromSummary(aet, { football: true });
+  assert.equal(r2.winner, 'draw');
+  assert.equal(gradePick({ ...base, market: 'Total 2.5', pick: 'Under 2.5' }, r2), 'won');
+  assert.equal(r2.box, undefined, 'player stats include extra time: props wait');
+  // Went long, but no half-time split in the feed: wait rather than grade on the wrong score.
+  const bare = cup({ completed: true, name: 'STATUS_FINAL_AET' }, { score: '2', winner: true }, { score: '1' });
+  assert.equal(resultFromSummary(bare, { football: true }).done, false);
+  // A league match: graded from the score as before.
+  const league = cup({ completed: true, name: 'STATUS_FULL_TIME', description: 'Full Time' }, { score: '0', winner: false }, { score: '2', winner: true }, { period: 2 });
+  assert.equal(resultFromSummary(league, { football: true }).winner, 'away');
+  // Tennis and fights still use the winner flag.
+  assert.equal(resultFromSummary(cup({ completed: true, name: 'STATUS_FINAL' }, { score: '1', winner: false }, { score: '2', winner: true })).winner, 'away');
+});
+
 test('picks are recorded once, at the first price, only before kick-off', () => {
   const now = Date.now();
   // The sharp market's fair chance on each outcome (cons): 1.35 x 0.75 clears the fair odds.

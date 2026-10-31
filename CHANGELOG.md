@@ -3,6 +3,22 @@
 The site has no versions: every merge to `main` is live within one build (about 20 minutes). This is
 what changed, week by week. Reasons and reversals are in [docs/DECISIONS.md](docs/DECISIONS.md).
 
+## Week of 27 October 2026
+
+- **Football graded on 90 minutes:** a cup tie that goes to extra time or penalties is graded on the
+  score after 90 minutes, from its two halves, as the bets are settled; with no half-time split in the
+  feed it waits instead. Before, the side that went through counted as the winner.
+- **Refused result lookups** count as failed in the build log instead of "no result yet".
+- **Build watchdog:** a deploy that waits more than 30 minutes for a GitHub runner is cancelled and
+  the build chain restarted (on 30 Oct one such run held the site for 10 hours); a hung build stops
+  after 40 minutes.
+- **Odds archive:** every build's changed prices (shown price and book, the market's fair chance,
+  Pinnacle's and Stake's prices, and when each was read) kept on the track-record branch in
+  `odds/YYYY-MM-DD.jsonl`, for backtests.
+- **Closing line first:** the record page and the home results card lead with how often the current
+  lists' picks beat the last price before kick-off, and the market's closing fair odds, saved with
+  every closing price from now on.
+
 ## Week of 20 October 2026
 
 - **Picks:** three lists (Best bets, Value bets, 2x/3x slips) and the parlay of the day; the losing

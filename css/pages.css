@@ -204,6 +204,9 @@
 .sec small { font: 500 12px var(--sans); color: var(--muted); text-transform: none; letter-spacing: 0; }
 .scoreline.long b { font-size: clamp(26px, 6vw, 54px); line-height: 1.1; }
 .dash-track { grid-column: span 6; display: block; }
+.dash-track .dt-close { margin: 10px 0 0; font-size: 13px; }
+.close-line .cl-head { margin: 4px 0 6px; font-size: 16px; }
+.close-line p { margin: 4px 0; }
 .dash-track:hover { border-color: var(--line2); }
 .dt-row { display: flex; flex-wrap: wrap; gap: 14px 40px; }
 .dt-row b { display: block; font: clamp(30px, 3.2vw, 44px)/1 var(--display); }
