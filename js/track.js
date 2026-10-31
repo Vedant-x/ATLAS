@@ -654,7 +654,12 @@ export function gradePick(p, r) {
 }
 
 // Final result from an ESPN summary response, or { done: false } / { void: true }.
-export function resultFromSummary(sm) {
+// Football (football: true) is graded on the score after 90 minutes, as every football market here is
+// settled: the winner flag marks the side that went through, which after extra time or penalties is
+// not the 90-minute result. A match that went past 90 minutes is graded from its first two halves
+// where the feed lists them; otherwise it waits (and becomes unresolved), never graded on the wrong
+// score. Its player stats include extra time, so its props wait too.
+export function resultFromSummary(sm, { football = false } = {}) {
   const c = sm?.header?.competitions?.[0];
   if (!c) return { done: false };
   const st = c.status?.type || {};
@@ -666,6 +671,18 @@ export function resultFromSummary(sm) {
   // Fights and tennis matches may list no home/away: the first competitor is home, as on the board.
   const cs = c.competitors || [];
   const h = cs.find((x) => x.homeAway === 'home') || cs[0] || {}, a = cs.find((x) => x.homeAway === 'away') || cs[1] || {};
+  if (football) {
+    const long = /AET|_PEN\b|\bPENS?\b|PENALT|EXTRA|SHOOTOUT/i.test(`${st.name} ${st.description} ${st.detail} ${st.shortDetail}`) || Number(c.status?.period) > 2 || h.shootoutScore != null || a.shootoutScore != null;
+    if (long) {
+      const half = (x, i) => Number(x.linescores?.[i]?.value ?? x.linescores?.[i]?.displayValue);
+      const hs = half(h, 0) + half(h, 1), as = half(a, 0) + half(a, 1);
+      if (!Number.isFinite(hs) || !Number.isFinite(as)) return { done: false, extraTime: true };
+      return { done: true, homeScore: String(hs), awayScore: String(as), winner: hs > as ? 'home' : hs < as ? 'away' : 'draw', after90: true };
+    }
+    const hs = Number(h.score), as = Number(a.score);
+    const b = boxStats(sm), box = b.listed.size ? { box: b } : {};
+    return { done: true, homeScore: h.score, awayScore: a.score, winner: Number.isFinite(hs) && Number.isFinite(as) ? (hs > as ? 'home' : hs < as ? 'away' : 'draw') : null, ...box };
+  }
   const winner = h.winner ? 'home' : a.winner ? 'away' : null;
   const b = boxStats(sm), box = b.listed.size ? { box: b } : {}; // player stats, for props
   return { done: true, homeScore: h.score, awayScore: a.score, winner: winner || (h.score != null && h.score === a.score ? 'draw' : null), ...box };
@@ -683,7 +700,17 @@ export function updateClosing(history, events, now = Date.now()) {
     const e = byId.get(r.eventId);
     if (!e || e.live) return null;
     if (r.prop) return e.props?.find((x) => x.id === r.prop.id && x.type === r.prop.type && x.target === r.prop.target)?.odds;
-    return e.markets?.find((m) => m.name === r.market)?.outcomes?.find((o) => o.name === r.pick)?.odds;
+    const o = e.markets?.find((m) => m.name === r.market)?.outcomes?.find((x) => x.name === r.pick);
+    // A price taken at Stake is followed at Stake: the best price at other books is not the close
+    // of the bet that was placed.
+    return r.atStake || r.book === 'Stake' ? o?.stake : o?.odds;
+  };
+  // The market reference's fair chance at the same moment: the closing fair price, the benchmark that
+  // says whether the price taken was better than the market's own final view (its margin removed).
+  const fair = (r) => {
+    if (r.prop) return null;
+    const c = byId.get(r.eventId)?.markets?.find((m) => m.name === r.market)?.outcomes?.find((o) => o.name === r.pick)?.cons;
+    return Number.isFinite(c) && c > 0 && c < 1 ? c : null;
   };
   let n = 0;
   for (const h of history) {
@@ -691,10 +718,33 @@ export function updateClosing(history, events, now = Date.now()) {
     for (const r of h.type === 'multi' ? h.legs : [h]) {
       if (!(r.start > now)) continue;
       const o = price(r);
-      if (Number.isFinite(o) && o > 1) { r.close = +o.toFixed(3); r.closeAt = now; n++; }
+      if (!(Number.isFinite(o) && o > 1)) continue;
+      r.close = +o.toFixed(3); r.closeAt = now; n++;
+      const f = fair(r);
+      if (f != null) r.closeFair = +f.toFixed(4); else delete r.closeFair;
     }
   }
   return n;
+}
+
+// The current lists' picks (Best bets and Value bets under the fail-closed rules, model 2026.10.16
+// on) judged against the closing line, known at kick-off for every pick, long before a profit figure
+// means anything. beat: the price taken was above the last price saved before kick-off; vsFair: the
+// price taken against the closing fair odds (odds × closing fair chance − 1), where it was saved.
+// A "closing" price saved more than CLOSE_WINDOW_H before kick-off (a build outage, a feed that
+// stopped quoting the match) is not the close: those picks are counted apart (late), never judged.
+export const CLOSE_SINCE = '2026.10.16';
+export const CLOSE_WINDOW_H = 3;
+export function closingLine(history, now = Date.now()) {
+  const kicked = history.filter((h) => (h.type === 'best' || h.type === 'edge') && h.model && !versionBefore(h.model, CLOSE_SINCE)
+    && h.start <= now && h.odds > 1 && !['void', 'dnp'].includes(h.status));
+  const list = kicked.filter((h) => h.close > 1 && h.closeAt > 0 && h.start - h.closeAt <= CLOSE_WINDOW_H * 36e5);
+  const fair = list.filter((h) => h.closeFair > 0);
+  const avg = (l, f) => (l.length ? l.reduce((s, h) => s + f(h), 0) / l.length : null);
+  return {
+    n: list.length, late: kicked.length - list.length, beat: list.filter((h) => h.odds > h.close).length, same: list.filter((h) => h.odds === h.close).length, clv: avg(list, (h) => h.odds / h.close - 1),
+    fairN: fair.length, fairBeat: fair.filter((h) => h.odds * h.closeFair > 1).length, vsFair: avg(fair, (h) => h.odds * h.closeFair - 1),
+  };
 }
 // Price obtained vs closing price: average edge (saved odds / closing odds - 1) and how often the saved
 // price was better. Context for the record, not proof of profit.

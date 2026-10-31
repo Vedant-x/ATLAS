@@ -3,6 +3,22 @@
 What was decided, why, and what it replaced. Anything that reverses an earlier decision says so here
 first, with the evidence. A change that flips a decision without an entry here should not merge.
 
+## 2026-10-31 · Football graded on 90 minutes; the closing line leads the record
+
+- **Decided:**
+  - Every football market here is settled on the score after 90 minutes. A match that went to extra
+    time or penalties is graded from its first two halves; when the feed does not list them, the pick
+    waits and in time becomes unresolved, never graded on the wrong score. Its props wait too (the
+    player stats include extra time). Replaces grading on the feed's winner flag, which marks the side
+    that went through.
+  - The record leads with the price against the closing line for the current lists, as counts until
+    30 picks have kicked off. Only closes saved in the last 3 hours before kick-off count (on 30 Oct an
+    outage left "closing" prices 5-9 hours old), and a Stake price is followed at Stake. Why: it is known for every pick at kick-off, weeks before a profit figure
+    says anything, and it measures the thing the lists claim (a price better than the market's).
+  - Every build's prices are archived (track-record branch, `odds/`), changes only, a day's file capped
+    at 25 MB. Why: without the prices that were on offer, no model change can be backtested.
+- **Evidence:** the two Copa del Rey picks of 28 Oct; the deploy run held for 10 hours on 30 Oct.
+
 ## 2026-10-27 · No pick without fresh, comparable prices; no negative-value slips; honest states
 
 - **Decided (review of 27 Oct, P0):**

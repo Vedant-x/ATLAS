@@ -1,0 +1,43 @@
+name: Build watchdog
+
+# The deploy chain (pages.yml) runs one build at a time and queues the next itself. On 30 Oct 2026 one
+# build's job waited 10 hours for a GitHub runner that never came; every build behind it waited too and
+# the site stopped updating. Twice an hour this cancels a deploy run whose job has waited for a runner
+# for more than 30 minutes, and restarts the chain when nothing is building or waiting.
+# A run waiting its turn in the concurrency group is "pending", not "queued", and is left alone.
+on:
+  schedule:
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+concurrency:
+  group: watchdog
+  cancel-in-progress: true
+
+jobs:
+  unstick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Cancel stuck deploys, restart the chain
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          stuck=$(gh run list --workflow pages.yml --limit 30 --json databaseId,status,createdAt \
+            --jq '.[] | select(.status == "queued" and (now - (.createdAt | fromdateiso8601)) > 1800) | .databaseId')
+          for id in $stuck; do
+            echo "::warning::Deploy run $id has waited for a runner for over 30 minutes: cancelling it"
+            gh run cancel "$id" || true
+          done
+          if [ -n "$stuck" ]; then sleep 20; fi
+          active=$(gh run list --workflow pages.yml --limit 30 --json status --jq '[.[] | select(.status != "completed")] | length')
+          if [ "$active" = "0" ]; then
+            echo "No deploy is building or waiting: restarting the chain"
+            gh workflow run pages.yml --ref main
+          else
+            echo "$active deploy run(s) building or waiting"
+          fi

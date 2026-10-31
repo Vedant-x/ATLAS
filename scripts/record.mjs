@@ -143,7 +143,10 @@ for (const [key, picks] of Object.entries(byMatch)) {
       else { r = sbs.map((sb) => resultFromScoreboard(sb, compId)).find((x) => x.done || x.void || x.postponed) || { done: false }; source = 'ESPN scoreboard'; }
     } else try {
       const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${leaguePath}/summary?event=${compId}`, { signal: AbortSignal.timeout(12000) });
-      r = res.ok ? resultFromSummary(await res.json()) : { done: false };
+      // A refused request is a failed lookup (counted in the log line), not "no result yet"; the pick
+      // still ages towards unresolved, so a match ESPN never serves cannot stay pending for good.
+      if (!res.ok) failed++;
+      r = res.ok ? resultFromSummary(await res.json(), { football: leaguePath.startsWith('soccer/') }) : { done: false };
       source = 'ESPN summary';
     } catch { failed++; r = null; }
     if (r) for (const p of primary) apply(p, readOf(p, r), source);
