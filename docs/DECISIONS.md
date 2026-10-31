@@ -12,7 +12,8 @@ first, with the evidence. A change that flips a decision without an entry here s
     player stats include extra time). Replaces grading on the feed's winner flag, which marks the side
     that went through.
   - The record leads with the price against the closing line for the current lists, as counts until
-    30 picks have kicked off. Why: it is known for every pick at kick-off, weeks before a profit figure
+    30 picks have kicked off. Only closes saved in the last 3 hours before kick-off count (on 30 Oct an
+    outage left "closing" prices 5-9 hours old), and a Stake price is followed at Stake. Why: it is known for every pick at kick-off, weeks before a profit figure
     says anything, and it measures the thing the lists claim (a price better than the market's).
   - Every build's prices are archived (track-record branch, `odds/`), changes only, a day's file capped
     at 25 MB. Why: without the prices that were on offer, no model change can be backtested.

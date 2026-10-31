@@ -700,7 +700,10 @@ export function updateClosing(history, events, now = Date.now()) {
     const e = byId.get(r.eventId);
     if (!e || e.live) return null;
     if (r.prop) return e.props?.find((x) => x.id === r.prop.id && x.type === r.prop.type && x.target === r.prop.target)?.odds;
-    return e.markets?.find((m) => m.name === r.market)?.outcomes?.find((o) => o.name === r.pick)?.odds;
+    const o = e.markets?.find((m) => m.name === r.market)?.outcomes?.find((x) => x.name === r.pick);
+    // A price taken at Stake is followed at Stake: the best price at other books is not the close
+    // of the bet that was placed.
+    return r.atStake || r.book === 'Stake' ? o?.stake : o?.odds;
   };
   // The market reference's fair chance at the same moment: the closing fair price, the benchmark that
   // says whether the price taken was better than the market's own final view (its margin removed).
@@ -715,9 +718,10 @@ export function updateClosing(history, events, now = Date.now()) {
     for (const r of h.type === 'multi' ? h.legs : [h]) {
       if (!(r.start > now)) continue;
       const o = price(r);
-      if (Number.isFinite(o) && o > 1) { r.close = +o.toFixed(3); r.closeAt = now; n++; }
+      if (!(Number.isFinite(o) && o > 1)) continue;
+      r.close = +o.toFixed(3); r.closeAt = now; n++;
       const f = fair(r);
-      if (f != null) r.closeFair = +f.toFixed(4);
+      if (f != null) r.closeFair = +f.toFixed(4); else delete r.closeFair;
     }
   }
   return n;
@@ -727,14 +731,18 @@ export function updateClosing(history, events, now = Date.now()) {
 // on) judged against the closing line, known at kick-off for every pick, long before a profit figure
 // means anything. beat: the price taken was above the last price saved before kick-off; vsFair: the
 // price taken against the closing fair odds (odds × closing fair chance − 1), where it was saved.
+// A "closing" price saved more than CLOSE_WINDOW_H before kick-off (a build outage, a feed that
+// stopped quoting the match) is not the close: those picks are counted apart (late), never judged.
 export const CLOSE_SINCE = '2026.10.16';
+export const CLOSE_WINDOW_H = 3;
 export function closingLine(history, now = Date.now()) {
-  const list = history.filter((h) => (h.type === 'best' || h.type === 'edge') && h.model && !versionBefore(h.model, CLOSE_SINCE)
-    && h.start <= now && h.odds > 1 && h.close > 1 && !['void', 'dnp'].includes(h.status));
+  const kicked = history.filter((h) => (h.type === 'best' || h.type === 'edge') && h.model && !versionBefore(h.model, CLOSE_SINCE)
+    && h.start <= now && h.odds > 1 && !['void', 'dnp'].includes(h.status));
+  const list = kicked.filter((h) => h.close > 1 && h.closeAt > 0 && h.start - h.closeAt <= CLOSE_WINDOW_H * 36e5);
   const fair = list.filter((h) => h.closeFair > 0);
   const avg = (l, f) => (l.length ? l.reduce((s, h) => s + f(h), 0) / l.length : null);
   return {
-    n: list.length, beat: list.filter((h) => h.odds > h.close).length, same: list.filter((h) => h.odds === h.close).length, clv: avg(list, (h) => h.odds / h.close - 1),
+    n: list.length, late: kicked.length - list.length, beat: list.filter((h) => h.odds > h.close).length, same: list.filter((h) => h.odds === h.close).length, clv: avg(list, (h) => h.odds / h.close - 1),
     fairN: fair.length, fairBeat: fair.filter((h) => h.odds * h.closeFair > 1).length, vsFair: avg(fair, (h) => h.odds * h.closeFair - 1),
   };
 }

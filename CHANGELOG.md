@@ -17,7 +17,8 @@ what changed, week by week. Reasons and reversals are in [docs/DECISIONS.md](doc
   `odds/YYYY-MM-DD.jsonl`, for backtests.
 - **Closing line first:** the record page and the home results card lead with how often the current
   lists' picks beat the last price before kick-off, and the market's closing fair odds, saved with
-  every closing price from now on.
+  every closing price from now on. A price saved more than 3 hours before kick-off is not counted as
+  the close; a price taken at Stake is followed at Stake.
 
 ## Week of 20 October 2026
 

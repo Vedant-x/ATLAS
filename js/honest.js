@@ -17,13 +17,15 @@ export function recordText(st) {
 // given as counts only, never as a verdict.
 const signed = (x) => `${x >= 0 ? '+' : ''}${(x * 100).toFixed(1)}%`;
 export function closeLineText(c) {
-  if (!c?.n) return { head: 'No pick under the current rules has kicked off yet', lines: [] };
+  const late = c?.late ? `${c.late} pick${c.late === 1 ? '' : 's'} had no price saved in the last 3 hours before kick-off and ${c.late === 1 ? 'is' : 'are'} left out` : '';
+  if (!c?.n) return { head: late ? 'No pick under the current rules has a closing price yet' : 'No pick under the current rules has kicked off yet', lines: late ? [late] : [] };
   const enough = c.n >= MIN_EVIDENCE;
   return {
     head: `${c.beat} of ${c.n} pick${c.n === 1 ? '' : 's'} got a better price than the last one before kick-off${c.same ? ` (${c.same} the same)` : ''}`,
     lines: [
       c.fairN ? `${c.fairBeat} of ${c.fairN} were above the market's closing fair odds${enough ? `, by ${signed(c.vsFair)} on average` : ''}` : '',
       enough ? `Average price against the close: ${signed(c.clv)}` : `${c.n} of ${MIN_EVIDENCE}: too few to judge yet`,
+      late,
     ].filter(Boolean),
   };
 }
