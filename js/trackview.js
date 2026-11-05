@@ -24,8 +24,13 @@ async function load() {
 
 // For the rest of the site: summary and per-market calibration once the record has loaded. The record
 // is re-fetched in the background every 5 minutes, so a page left open keeps up with new results.
-export const trackStats = () => (cache ? summarize(cache.data.picks || []) : null);
-export const trackCalibration = () => (cache ? calibration(cache.data.picks || []) : null);
+// Both are worked out once per loaded record (each pass over ~4,000 records took 30-50 ms on a
+// desktop, and every pick card asked for the calibration: the home page blocked a phone for 3.5 s).
+const once = (f) => { let data = null, value = null; return () => { if (!cache) return null; if (cache.data !== data) { data = cache.data; value = f(data.picks || []); } return value; }; };
+export const trackStats = once(summarize);
+export const trackCalibration = once(calibration);
+// The live lists' last 30 days, for the strip at the top of the home page.
+const last30 = once((picks) => { const since = Date.now() - 30 * 864e5; return summarize(picks.filter((h) => h.start >= since)).live; });
 let reloading = false;
 export function ensureTrack(refresh) {
   if (cache && Date.now() - cache.at < 5 * 6e4) return;
@@ -187,7 +192,7 @@ const closeLinePanel = (c) => { const t = closeLineText(c); return `<div class="
   <p class="note">Known at kick-off for every pick, long before profit means anything: a price that keeps beating the market's final price is the clearest early sign of a real edge. One that keeps trailing it says there is none.</p></div>`; };
 
 function body(data) {
-  const s = summarize(data.picks || []);
+  const s = trackStats() || summarize(data.picks || []);
   const cl = closeLinePanel(closingLine(data.picks || []));
   if (!s.live.won && !s.live.lost && !s.retired.length) {
     return `${cl}<div class="panel reveal"><h3 class="ph">Tracking has started</h3><p class="muted">Every Best bet and Value bet is saved before the start and graded from the final score. Results appear here as matches finish.</p></div>
@@ -242,8 +247,7 @@ export const trackViews = {
 export function trackStrip(refresh) {
   ensureTrack(refresh);
   if (!cache) return '';
-  const since = Date.now() - 30 * 864e5;
-  const a = summarize((cache.data.picks || []).filter((h) => h.start >= since)).live;
+  const a = last30();
   if (a.won + a.lost < 10) return '';
   // Minimal: record, hit rate and ROI; the rest (estimate, average odds, closing line) on hover / tap.
   const tip = [`Hit rate estimated ${pct(a.expected, 0)}`, `Average odds ${a.avgOdds.toFixed(2)}`, a.clvN >= 10 ? `Price beat the close on ${pct(a.beatClose, 0)}` : '', 'Every pick saved before kick-off'].filter(Boolean).join(' · ');
@@ -255,7 +259,7 @@ export function trackStrip(refresh) {
 export function trackCard(refresh) {
   ensureTrack(refresh);
   if (!cache) return '';
-  const s = summarize(cache.data.picks || []);
+  const s = trackStats();
   const a = s.live;
   const c = closingLine(cache.data.picks || []);
   const close = c.n ? `<p class="muted dt-close">Price vs the closing line: ${esc(closeLineText(c).head.replace(' than the last one before kick-off', ''))}</p>` : '';
