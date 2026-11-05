@@ -78,8 +78,8 @@ test('value at Stake: Stake\'s price over the fair odds is the price taken and r
   const v = valueBets(evs, { limit: 10 });
   assert.deepEqual(v.map((b) => [b.event.id, b.odds, b.book, Boolean(b.atStake)]), [['s1', 2.2, 'Stake', true], ['s2', 2.25, 'DraftKings', false]]);
   assert.equal(+v[0].edge.toFixed(3), 0.056);
-  const rec = selectPicks([evs[0]], Date.now(), 12, []).find((p) => p.type === 'edge');
-  assert.deepEqual([rec.odds, rec.bestBook, rec.atStake], [2.2, 'Stake', true], 'recorded at Stake\'s price');
+  // Value bets left the pages on 5 Nov 2026 and are no longer recorded.
+  assert.equal(selectPicks([evs[0]], Date.now(), 12, []).filter((p) => p.type === 'edge').length, 0);
 });
 
 test('OddsPapi as it really answers: teams by id only; names from the participants list, else from Stake\'s link and the kick-off', async () => {

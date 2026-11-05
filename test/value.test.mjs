@@ -44,14 +44,11 @@ test('drift guard: a favourite whose price has drifted 3%+ leaves the shortlist'
   assert.deepEqual(rankedBankers(evs, { min: 0.55, minOdds: 1.2, maxOdds: 2.5 }).map((b) => b.event.id), ['d2']);
 });
 
-test('value bets are recorded as their own type and counted apart from the shortlist', () => {
+test('value bets are no longer recorded (off the pages since 5 Nov 2026); their history is counted apart', () => {
   const now = Date.now();
   const picks = selectPicks([event('r1', [mk([{ name: 'Home', odds: 2.2, cons: 0.48, book: 'Betway', open: 2.15 }, { name: 'Draw', odds: 3.3, cons: 0.28 }, { name: 'Away', odds: 4.2, cons: 0.24 }])])], now, 12, []);
-  const edge = picks.filter((p) => p.type === 'edge');
-  assert.equal(edge.length, 1);
-  assert.equal(edge[0].key, 'edge|r1|Match Result|Home');
-  assert.equal(edge[0].bestBook, 'Betway');
-  assert.equal(edge[0].open, 2.15);
+  assert.equal(picks.filter((p) => p.type === 'edge').length, 0);
+  const edge = [{ key: 'edge|r1|Match Result|Home', type: 'edge', eventId: 'r1', market: 'Match Result', pick: 'Home', odds: 2.2, p: 0.48, start: now - 864e5 }];
   const s = summarize([{ ...edge[0], status: 'won' }, { ...edge[0], key: 'edge|x', status: 'lost' }]);
   assert.equal(s.edge.won + s.edge.lost, 2);
   assert.equal(s.outside.won + s.outside.lost, 0);

@@ -1,17 +1,16 @@
-// Picks: Best current (live and starting soon), the Shortlist, Best bets (the likeliest winners at a
-// fair price or better), Value bets (prices above the sharp market's fair odds) and slips from 2x to
-// 1000x, one menu entry with these pages as its tabs.
+// Picks: Best current (live and starting soon), Best bets (the likeliest winners at or near a fair
+// price, the shortlist folded in) and slips from 2x to 1000x, one menu entry with these as its tabs.
 import { todayEvents } from './engine.js';
 import { pc, odd } from './charts.js';
 import { split } from './ui.js';
 import { prefs } from './prefs.js';
 import { trackStats, trackCalibration, recordLine, ensureTrack, slipHistory, officialSlip } from './trackview.js';
-import { slipPolicy, bestBets, valueBets, shortlist, MULTI_TARGETS } from './track.js';
+import { slipPolicy, bestBoard, shortlist, MULTI_TARGETS } from './track.js';
 import { liveBets } from './inplay.js';
 import { orderBets, orderChips, orderLabel, researchPrefs, windowChips } from './research.js';
 import { ico } from './icons.js';
 import { fmt, zone } from './tz.js';
-import { views, esc, sportOf, notice, istTag, legIndex, prefsBar, prefFilter, miniPick, valuePick, stakeGap, nearBestHtml, nearValueHtml, exclusionLine } from './views.js';
+import { views, esc, sportOf, notice, istTag, legIndex, prefsBar, prefFilter, miniPick, nearBestHtml, exclusionLine } from './views.js';
 
 let S;
 export function bindPicks(state) { S = state; }
@@ -63,7 +62,7 @@ function slipCard(s, i, target, all) {
 }
 
 // Picks: one menu entry, these pages as its tabs.
-const builderNav = (on) => `<nav class="builder-nav reveal" aria-label="Picks">${[['current', '#/current', 'Best current'], ['shortlist', '#/shortlist', 'Shortlist'], ['picks', '#/picks', 'Best bets'], ['value', '#/value', 'Value bets'], ['x', '#/x/2', 'Slips']].map(([k, h, l]) => `<a class="chip ${k === on ? 'on' : ''}" href="${h}"${k === on ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>`;
+const builderNav = (on) => `<nav class="builder-nav reveal" aria-label="Picks">${[['current', '#/current', 'Best current'], ['picks', '#/picks', 'Best bets']].map(([k, h, l]) => `<a class="chip ${k === on ? 'on' : ''}" href="${h}"${k === on ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>`;
 
 // Today's official slip for a tracked target, exactly as saved to the record (legs, odds, chance).
 // Where a builder's legs come from, for the page kicker (track.js slipPolicy).
@@ -122,14 +121,6 @@ export function currentPanel(pool) {
   return `<div class="panel dash-current reveal"><h2 class="ph">Best current <small>live now and starting within ${SOON_HOURS} hours · <a href="#/current">all</a></small></h2>
     <div class="minilist">${S.loading ? '' : rows.join('') || `<p class="muted">Nothing in play with a clear favourite, and nothing on the shortlist starting within ${SOON_HOURS} hours.</p>`}</div></div>`;
 }
-export function shortlistPanel(pool) {
-  const hrs = researchPrefs().shortHours, minOdds = prefs.get().minOdds || 1;
-  const list = orderBets(shortlist(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration(), limit: 40 }).filter((b) => b.odds >= minOdds)).slice(0, 10);
-  const rec = recordLine(trackStats()?.short);
-  return `<div class="panel dash-bankers reveal"><h2 class="ph">Shortlist <small>likeliest winners at odds 1.30 to 2.20 · next ${hrs}h · <a href="#/shortlist">all</a></small></h2>
-    ${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}
-    <div class="minilist">${S.loading ? '' : list.map((b) => miniPick(b)).join('') || `<p class="muted">No match in the next ${hrs} hours has a price close enough to fair.</p>`}</div></div>`;
-}
 // One card per multiplier: today's official slip as the record saved it (total odds, legs, chance).
 // Read from the record, not built here: building eight slips at load cost a phone too much time.
 export function multiPanel() {
@@ -157,51 +148,21 @@ export const picksViews = {
     };
   },
 
-  // The Shortlist: the likeliest winners at odds 1.30 to 2.20, priced within 3% of fair (track.js shortlist).
-  shortlist() {
-    const ev = prefFilter(S.events), minOdds = prefs.get().minOdds || 1, hrs = researchPrefs().shortHours;
-    ensureTrack(() => S.refresh?.());
-    const list = orderBets(shortlist(todayEvents(ev, Date.now(), hrs), { cal: trackCalibration(), limit: 60 }).filter((b) => b.odds >= minOdds));
-    const rec = recordLine(trackStats()?.short);
-    return {
-      mode: 'bankers', accent: '#00ffc3', title: 'Shortlist',
-      html: `<section class="hero small"><p class="kicker reveal">NEXT ${hrs} HOURS · ODDS 1.30 TO 2.20</p><h1>${split('SHORTLIST')}</h1>${builderNav('shortlist')}
-        <p class="lede reveal">The likeliest winners on the board, one per match, by the market's own chance (its cut taken out). No price more than 3% under fair (5% where only one bookmaker prices the match), Stake's price first. Most sit a little under fair: a "+" means the price beats it.</p></section>
-        ${notice()}
-        <details class="sl-filters reveal"><summary>${ico('filter')} Next ${hrs}h · ${esc(orderLabel())}${minOdds > 1 ? ` · odds ${minOdds.toFixed(2)}+` : ''}</summary>${windowChips('shours', hrs)}${orderChips()}${prefsBar()}</details>
-        ${rec ? `<p class="rec-line reveal">So far: ${rec} · <a href="#/track">every result</a></p>` : ''}
-        <div class="minilist">${list.map((b) => miniPick(b)).join('') || `<p class="muted">No match in the next ${hrs} hours has a price close enough to fair.</p>`}</div>`,
-    };
-  },
-
-  // Best bets: the likeliest winners at a fair price or better (track.js bestBets), the full list.
+  // Best bets: the likeliest winners at a fair price or better, the shortlist folded in (within 3% of
+  // fair, odds 1.30 to 2.20), one per match (track.js bestBoard), the full list.
   picks() {
     const ev = prefFilter(S.events), minOdds = prefs.get().minOdds || 1, hrs = researchPrefs().shortHours;
     ensureTrack(() => S.refresh?.());
-    const list = orderBets(bestBets(todayEvents(ev, Date.now(), hrs), { cal: trackCalibration(), limit: 2000 }).filter((b) => b.odds >= minOdds).slice(0, 40));
-    const rec = recordLine(trackStats()?.best);
+    const list = orderBets(bestBoard(todayEvents(ev, Date.now(), hrs), { cal: trackCalibration(), limit: 60 }).filter((b) => b.odds >= minOdds));
+    const rec = recordLine(trackStats()?.board);
     return {
       mode: 'bankers', accent: '#00ffc3', title: 'Best bets',
-      html: `<section class="hero small"><p class="kicker reveal">NEXT ${hrs} HOURS · LIKELIEST AT A FAIR PRICE</p><h1>${split('BEST BETS')}</h1>${builderNav('picks')}</section>
+      html: `<section class="hero small"><p class="kicker reveal">NEXT ${hrs} HOURS · LIKELIEST, AT OR NEAR A FAIR PRICE</p><h1>${split('BEST BETS')}</h1>${builderNav('picks')}
+        <p class="lede reveal">The likeliest winners on the board, one per match, by the market's own chance (its cut taken out): first those at a fair price or better, then those within 3% of it (odds 1.30 to 2.20). Stake's price first. A "+" means the price beats fair.</p></section>
         ${notice()}
         <details class="sl-filters reveal"><summary>${ico('filter')} Next ${hrs}h · ${esc(orderLabel())}${minOdds > 1 ? ` · odds ${minOdds.toFixed(2)}+` : ''}</summary>${windowChips('shours', hrs)}${orderChips()}${prefsBar()}</details>
         ${rec ? `<p class="rec-line reveal">So far: ${rec} · <a href="#/track">every result</a></p>` : ''}
         <div class="minilist">${list.map((b) => miniPick(b)).join('') || `<p class="muted">No qualifying bets in the next ${hrs} hours with your filters.${exclusionLine(todayEvents(ev, Date.now(), hrs))}</p>${nearBestHtml(ev, hrs)}`}</div>`,
-    };
-  },
-
-  // Value bets: prices above the sharp market's fair odds (track.js valueBets), the full list.
-  value() {
-    ensureTrack(() => S.refresh?.());
-    const list = valueBets(todayEvents(prefFilter(S.events), Date.now(), 48), { cal: trackCalibration(), limit: 40 });
-    const rec = recordLine(trackStats()?.edge);
-    return {
-      mode: 'bankers', accent: '#3dff9a', title: 'Value bets',
-      html: `<section class="hero small"><p class="kicker reveal">NEXT 48 HOURS · PRICED ABOVE THE SHARP MARKET</p><h1>${split('VALUE BETS')}</h1>${builderNav('value')}
-        <p class="lede reveal">A bookmaker paying more than the market's fair odds (Pinnacle's, with its cut taken out). Stake's price first where it clears them, at long prices too (the bar rises with the odds). Good at the price shown, or at any bookmaker from the "take" price up.</p></section>
-        ${notice()}
-        ${rec ? `<p class="rec-line reveal">So far: ${rec} · <a href="#/track">every result</a></p>` : ''}
-        <div class="minilist">${list.map(valuePick).join('') || `<p class="muted">No price beats the sharp market in the next 48 hours right now. They come and go as bookmakers move; this list updates with every price check.</p>${stakeGap(prefFilter(S.events))}${nearValueHtml(prefFilter(S.events))}`}</div>`,
     };
   },
 
@@ -214,7 +175,7 @@ export const picksViews = {
     const r = trackStats()?.byTarget?.find((t) => t.target === target);
     return {
       mode: 'x', accent: target === 2 ? '#d2ff00' : '#00ffc3', title: `${target}x slips`,
-      html: `<section class="hero small"><p class="kicker reveal">SLIPS · BREAK-EVEN ${pc(1 / target, 1)} · ${windowLabel(target)}</p><h1>${split(`${target}X SLIPS`)}</h1>${builderNav('x')}
+      html: `<section class="hero small"><p class="kicker reveal">MULTIPLIERS · BREAK-EVEN ${pc(1 / target, 1)} · ${windowLabel(target)}</p><h1>${split(`${target}X SLIPS`)}</h1>
         <nav class="tabs reveal">${MULTI_TARGETS.map((x) => `<a href="#/x/${x}" class="${x === target ? 'on' : ''}">${x}x</a>`).join('')}</nav></section>
         ${notice()}${recordSummary(target, r)}${orderChips()}
         ${officialBlock(target)}

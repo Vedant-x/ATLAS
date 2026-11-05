@@ -167,7 +167,7 @@ function trustPanel(picks) {
 // Each list the site shows, with its own record: the first thing on the page.
 function listsTable(s) {
   const t = (k) => s.byTarget.find((x) => x.target === k);
-  const rows = [['Shortlist', s.short, '#/shortlist'], ['Best bets', s.best, '#/picks'], ['Value bets', s.edge, '#/value'], ['Parlay of the day', s.potd, '#/'], ...MULTI_TARGETS.map((k) => [`${k}x slips`, t(k), `#/x/${k}`])];
+  const rows = [['Best bets (with the shortlist)', s.board, '#/picks'], ['Best bets, fair price only', s.best, '#/picks'], ['Shortlist part', s.short, '#/picks'], ['Value bets (off the pages since 5 Nov)', s.edge, '#/track'], ['Parlay of the day', s.potd, '#/'], ...MULTI_TARGETS.map((k) => [`${k}x slips`, t(k), `#/x/${k}`])];
   return `<div class="panel reveal"><h3 class="ph">Every list, its record <small>each pick saved before the start, graded from the final score</small></h3>
     <div class="table-wrap"><table class="tbl tight tr-lists"><thead><tr><th>List</th><th class="num">Won–lost</th><th class="num">Hit rate</th><th class="num">Profit (1 unit each)</th><th class="num" data-tip="How often the price taken was better than the last price before the start">Beat the final price</th></tr></thead><tbody>
     ${rows.map(([name, r, href]) => `<tr><td><a href="${href}">${name}</a></td><td class="num">${r && r.won + r.lost ? `${r.won}–${r.lost}` : '—'}</td><td class="num">${r && r.won + r.lost ? pct(r.hitRate, 0) : '—'}</td><td class="num ${r && r.won + r.lost ? (r.profit >= 0 ? 'pos' : 'neg') : ''}">${r && r.won + r.lost ? `${units(r.profit)} (${r.roi >= 0 ? '+' : ''}${(r.roi * 100).toFixed(1)}%)` : 'no results yet'}</td><td class="num">${r?.clvN >= 10 ? pct(r.beatClose, 0) : '—'}</td></tr>`).join('')}</tbody></table></div></div>`;

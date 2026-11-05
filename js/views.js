@@ -21,7 +21,7 @@ import { watch } from './alerts.js';
 import { finalView } from './finalview.js';
 import { trackCard, trackStrip, trackStats, trackCalibration, recordLine, ensureTrack, officialParlay } from './trackview.js';
 import { zone as tzZone, tzOf, abbr as tzAbbr, fmt as fmtTime, fmtDate } from './tz.js';
-import { bestBets, POTD_ZONES, potdDay, parlayOfDay, recommendationFor, valueBets, VALUE, nearBest, nearValue, bestExclusions } from './track.js';
+import { bestBoard, POTD_ZONES, potdDay, parlayOfDay, recommendationFor, VALUE, nearBest, nearValue, bestExclusions } from './track.js';
 import { stakeVsFair } from './oddspapi.js';
 import { feedText } from './honest.js';
 import { propRow, allProps } from './propsview.js';
@@ -33,7 +33,7 @@ import { whyLine } from './why.js';
 import { canonStats, standingsTable } from './standings.js';
 // Picks pages (Best current, Shortlist, Best bets, Value bets, slips 2x to 1000x): picksview.js, which
 // also uses the helpers here.
-import { picksViews, bindPicks, currentPanel, shortlistPanel, multiPanel } from './picksview.js';
+import { picksViews, bindPicks, currentPanel, multiPanel } from './picksview.js';
 import { esc } from './esc.js';
 // Golf and motor racing: a field of players or drivers, drawn by fieldview.js.
 const FIELD_SPORTS = new Set(['golf', 'motorsport']);
@@ -387,25 +387,23 @@ function dashboard(ev, live) {
   ensureTrack(() => S.refresh?.());
   // Matches starting within the chosen window (3 to 48 hours; 12 by default).
   const hrs = researchPrefs().shortHours;
-  // One list, no modes: Best bets, the likeliest winners across every sport at a price no shorter than
-  // the sharp market's fair odds (Stake's price where it clears them), 1.20 to 2.50 (track.js bestBets).
-  // The visitor's minimum odds apply here as in the assistant (same list, same rule, then the first 10).
+  // One list: Best bets, the shortlist folded in (track.js bestBoard): the likeliest winners at a fair
+  // price or better, then within 3% of fair, one per match. The visitor's window, order, minimum odds
+  // and sports apply (the folded Filters control).
   const minOdds = prefs.get().minOdds || 1;
-  const short = orderBets(bestBets(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration(), limit: 2000 }).filter((b) => b.odds >= minOdds).slice(0, 10));
+  const short = orderBets(bestBoard(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration() }).filter((b) => b.odds >= minOdds).slice(0, 12));
   const empty = `No qualifying bets in the next ${hrs} hours with your filters.${exclusionLine(todayEvents(pool, Date.now(), hrs))}`;
-  const rec = recordLine(trackStats()?.best);
+  const rec = recordLine(trackStats()?.board);
   // Every panel by name, shown in the visitor's saved order with hidden ones left out (Customise).
   const panels = {
     current: () => currentPanel(pool),
-    bankers: () => shortlistPanel(pool),
     multi: () => multiPanel(),
     potd: () => potdPanel(pool),
     // Minimal: one folded "Filters" control (window, order, odds and sports), one record line.
-    shortlist: () => `<div class="panel dash-short reveal"><h2 class="ph">Best bets <small>likeliest winners at a fair price or better</small></h2>
+    shortlist: () => `<div class="panel dash-short reveal"><h2 class="ph">Best bets <small>likeliest winners, at a fair price or within 3% of it</small></h2>
       <details class="sl-filters"${filtersOpen ? ' open' : ''}><summary>${ico('filter')} Next ${hrs}h · ${esc(orderLabel())}${minOdds > 1 ? ` · odds ${minOdds.toFixed(2)}+` : ''}</summary>${windowChips('shours', hrs)}${orderChips()}${prefsBar()}</details>
       ${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}
       <div class="minilist">${S.loading ? skelRows(4) : short.map((b) => miniPick(b)).join('') || `<p class="muted">${empty}</p>${nearBestHtml(pool, hrs)}`}</div></div>`,
-    value: () => valuePanel(pool),
     live: () => `<div class="panel dash-live reveal"><h2 class="ph">Live now <small>${S.loading ? '' : live.length}</small></h2>
       ${S.loading ? skelRows(3) : live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${scoreText(e)}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>`,
     changes: () => `${changesPanel(ev, { title: lastVisit() ? 'Since your last visit' : 'What changed', limit: 6, hideEmpty: true })}`,
@@ -423,9 +421,8 @@ export const setFiltersOpen = (v) => { filtersOpen = Boolean(v); };
 
 // Home panels: order and visibility, saved per visitor (localStorage, best effort). Unknown or missing
 // names fall back to the default order, so a new panel always appears.
-// The full board first: what is on now, the shortlist, the parlay of the day and every multiplier;
-// then the two strict lists (a fair price or better).
-const HOME_PANELS = [['current', 'Best current'], ['bankers', 'Shortlist'], ['potd', 'Parlay of the day'], ['multi', 'Multipliers'], ['shortlist', 'Best bets'], ['value', 'Value bets'], ['live', 'Live now'], ['changes', 'What changed'], ['record', 'Results'], ['health', 'Source health']];
+// What is on now, Best bets (the shortlist folded in), the parlay of the day and every multiplier.
+const HOME_PANELS = [['current', 'Best current'], ['shortlist', 'Best bets'], ['potd', 'Parlay of the day'], ['multi', 'Multipliers'], ['live', 'Live now'], ['changes', 'What changed'], ['record', 'Results'], ['health', 'Source health']];
 const LAYOUT_KEY = 'atlas-home-layout';
 // Minimal by default: source health, what changed and the full record card start hidden (the record
 // is the strip at the top); Customise shows them.
@@ -579,17 +576,6 @@ function bestBetsPanel(e, a) {
     }).join('')}</div></section>`;
 }
 
-// Value bets (track.js valueBets): prices above the sharp market's fair odds in the next 48 hours,
-// biggest edge first. Each shows the edge at the best price and the lowest price still worth taking
-// at any bookmaker; the fair odds, their source and the bookmaker quoting the price are in the tip.
-function valuePanel(pool) {
-  const list = valueBets(todayEvents(pool, Date.now(), 48), { cal: trackCalibration(), limit: 8 });
-  const rec = recordLine(trackStats()?.edge);
-  const shopped = pool.some((e) => e.markets?.some((m) => m.consensusFrom));
-  return `<div class="panel dash-value reveal"><h2 class="ph">Value bets <small>priced above the sharp market's fair odds</small></h2>
-    ${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}
-    <div class="minilist">${S.loading ? skelRows(3) : list.map(valuePick).join('') || `<p class="muted">${shopped ? 'No price beats the sharp market in the next 48 hours right now. These come and go as bookmakers move; the list updates with every price check.' : 'Needs prices from several bookmakers: none for the next 48 hours yet.'}</p>${stakeGap(pool)}${nearValueHtml(pool)}`}</div></div>`;
-}
 // The sharp market's fair chance of a market's i-th outcome, the lower of an even split of the sharp
 // book's margin and the power method (track.js edgeAt): what Value bets judge Stake's price against.
 function fairOf(m, i) {
