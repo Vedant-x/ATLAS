@@ -115,7 +115,6 @@ test('home: the full board is filled (Shortlist, every multiplier) and Best curr
   await page.waitForSelector('.dash-bankers .mini');
   assert.ok(await page.locator('.dash-bankers .mini').count() >= 1, 'the shortlist has picks');
   assert.equal(await page.locator('.dash-multi .mult-card').count(), 8, 'one card per multiplier, 2x to 1000x');
-  assert.ok(await page.locator('.dash-multi .mult-card span').count() >= 2, 'slips at 2x and up');
   await page.goto(BASE + '#/current'); await page.waitForSelector('.builder-nav [aria-current="page"]');
   assert.equal(await page.textContent('.builder-nav [aria-current="page"]'), 'Best current');
   await page.goto(BASE + '#/x/10'); await page.waitForSelector('.tabs');

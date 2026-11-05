@@ -130,9 +130,11 @@ export function shortlistPanel(pool) {
     ${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}
     <div class="minilist">${S.loading ? '' : list.map((b) => miniPick(b)).join('') || `<p class="muted">No match in the next ${hrs} hours has a price close enough to fair.</p>`}</div></div>`;
 }
-// One card per multiplier: the top slip's total odds, legs and the market's chance.
+// One card per multiplier: today's official slip as the record saved it (total odds, legs, chance).
+// Read from the record, not built here: building eight slips at load cost a phone too much time.
 export function multiPanel() {
-  const cards = MULTI_TARGETS.map((t) => { const s = S.slips(t, { count: 1 })[0]; return `<a class="mult-card" href="#/x/${t}"><b>${t}x</b>${s ? `<span>${s.odds.toFixed(2)} · ${s.legs.length} legs</span><small>chance ${pc(s.p, s.p < 0.01 ? 2 : 1)}</small>` : '<small>no slip now</small>'}</a>`; }).join('');
+  ensureTrack(() => S.refresh?.());
+  const cards = MULTI_TARGETS.map((t) => { const s = officialSlip(t); return `<a class="mult-card" href="#/x/${t}"><b>${t}x</b>${s ? `<span>${Number(s.odds).toFixed(2)} · ${s.legs.length} legs</span><small>chance ${pc(s.shown ?? s.p, (s.shown ?? s.p) < 0.01 ? 2 : 1)}</small>` : '<small>open to build</small>'}</a>`; }).join('');
   return `<div class="panel dash-multi reveal"><h2 class="ph">Multipliers <small>2x to 1000x · one leg per match · <a href="#/x/2">all slips</a></small></h2><div class="mult-row">${S.loading ? '' : cards}</div>
     <p class="note">Each leg pays the bookmaker's cut again, so the longer the slip, the further its market return falls below zero.</p></div>`;
 }
