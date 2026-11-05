@@ -218,6 +218,15 @@ export function shortlist(events, { cal = null, limit = 20, now = Date.now() } =
     .sort((x, y) => y.p - x.p || Number(!y.oneBook) - Number(!x.oneBook) || Number(Boolean(y.atStake)) - Number(Boolean(x.atStake)));
   return diversify(list, limit, { familyShare: 0.6, sportShare: 0.6 }).sort((x, y) => y.p - x.p);
 }
+// Best bets as the pages show them since 5 Nov 2026 (the shortlist folded in): the strict list (a
+// fair price or better) and the shortlist (within 3% of fair) for the matches it doesn't hold, one per
+// match, likeliest first. fairPrice marks the strict ones.
+export function bestBoard(events, { cal = null, limit = 60, now = Date.now() } = {}) {
+  const strict = bestBets(events, { cal, limit: 2000, now }).map((b) => ({ ...b, fairPrice: true }));
+  const held = new Set(strict.map((b) => b.event.id));
+  const more = shortlist(events, { cal, limit, now }).filter((b) => !held.has(b.event.id));
+  return [...strict, ...more].sort((x, y) => y.p - x.p).slice(0, limit);
+}
 // Stamped on every recorded pick, so results can be split by the model that made them.
 // 2026.10.1: calibrated chance everywhere, legs feed calibration, shared slip policy.
 // 2026.10.2: venue records, starting pitchers and soccer absences in the model; spread lines move
@@ -545,8 +554,9 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
     // Value bets: the bookmaker quoting the price and the first price seen for it.
     ...(type === 'edge' || type === 'short' ? { bestBook: b.book || null, open: b.open ?? null, ...(b.atStake ? { atStake: true } : {}) } : {}),
   });
-  // What the site shows is what is recorded: Best bets, Value bets, the shortlist, every multiplier
-  // and the parlay of the day (plus unseen probes).
+  // What the site shows is what is recorded: Best bets and the shortlist (shown together as Best
+  // bets), every multiplier and the parlay of the day (plus unseen probes). Value bets were taken off
+  // the pages on 5 Nov 2026 (12-22 to then) and are no longer recorded.
   // One pick per match: a match already holding a pending single (from this build's earlier lists or
   // an earlier build, whatever the list) gets no second one. Two sides of one match, or one
   // selection in two lists, doubled the same risk (5 Nov 2026: 10 such picks won 2).
@@ -554,7 +564,6 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
   const once = (rows) => rows.filter((r) => { const k = taken.get(r.eventId); if (k && k !== r.key) return false; taken.set(r.eventId, r.key); return true; });
   return [
     ...once(bestBets(soon, { cal, limit: 20, now }).map(row('best'))),
-    ...once(valueBets(soon, { cal, limit: 20, now }).map(row('edge'))),
     ...once(shortlist(soon, { cal, limit: 20, now }).map(row('short'))),
     ...probePicks(soon, { cal, limit: 10 }).map(row('probe')),
     ...multiPicks(events, now, history),
@@ -870,6 +879,8 @@ export function summarize(history) {
     since: Number.isFinite(firstAt) ? firstAt : null, all: stat(graded), multi: stat(multis), byTarget: MULTI_TARGETS.map((t) => ({ key: `${t}x`, target: t, ...stat(multis.filter((m) => m.target === t && boardSlip(m))), slips: slipsOf([t]).filter(boardSlip).slice(0, 12) })),
     mega: { ...stat(multis.filter((m) => m.target >= 100 && boardSlip(m))), slips: slipsOf([100, 1000]).filter(boardSlip).slice(0, 12) },
     short: stat(settledAll.filter((h) => h.type === 'short')),
+    // Best bets as shown since 5 Nov: the strict list and the shortlist together.
+    board: stat(settledAll.filter((h) => (h.type === 'best' && !oldBest(h)) || h.type === 'short')),
     potd: { ...stat(multis.filter((m) => m.target === 'potd')), slips: slipsOf(['potd']).slice(0, 14) },
     live: stat(live),
     byType: group((h) => h.type, graded), bySport: group((h) => h.sport), byFamily: group((h) => familyOf(h.market)), byModel: group((h) => h.model || 'before 2026.10.1'), buckets,

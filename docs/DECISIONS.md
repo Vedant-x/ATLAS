@@ -3,6 +3,16 @@
 What was decided, why, and what it replaced. Anything that reverses an earlier decision says so here
 first, with the evidence. A change that flips a decision without an entry here should not merge.
 
+## 2026-11-05 (later) · One Best bets list; Value bets off the pages; Multipliers in the menu
+
+- **Decided (the owner's call):**
+  - Best bets shows the shortlist folded in: the fair-price picks, then those within 3% of fair
+    (odds 1.30 to 2.20), one per match, with the same filters. No separate Shortlist panel or page.
+  - Value bets is taken off the home page and the Picks tabs and is no longer recorded. Its record
+    to 5 Nov (12-22, -20.6%) stays on Results.
+  - Multipliers is its own entry in the main menu, not a tab under Picks. On a phone, Watchlist moves
+    under More to keep the bar to six.
+
 ## 2026-11-05 · The full board again, built on what the record taught
 
 - **Decided (the owner's call):**

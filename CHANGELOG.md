@@ -16,6 +16,10 @@ what changed, week by week. Reasons and reversals are in [docs/DECISIONS.md](doc
 - **One pick per match** across every list, so both sides of a match, or one pick in two lists, no
   longer happen.
 - **Build chain:** each build queues the next when it starts; the setup step stops after 5 minutes.
+- **Layout:**
+  - Best bets now includes the shortlist, with its filters.
+  - Value bets is removed from the pages.
+  - Multipliers has its own menu entry; Picks holds Best current and Best bets.
 
 ## Week of 27 October 2026
 

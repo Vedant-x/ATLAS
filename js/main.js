@@ -17,12 +17,12 @@ import { sourcesView } from './sourcesview.js';
 import { loadPlayers, playersData } from './playerdata.js';
 // The Research area: one tab bar across its pages (props and player research, Picks, compare,
 // and sports and leagues).
-const PICKS = ['current', 'shortlist', 'picks', 'value', 'x'];
+const PICKS = ['current', 'picks'];
 const RESEARCH = new Set(['props', 'player', ...PICKS, 'compare', 'sports', 'sport', 'league', 'live']);
 const R_TABS = [['sports', '#/sports', 'Sports', ['sports', 'sport', 'league']], ['live', '#/live', 'Live', ['live']], ['props', '#/props', 'Props', ['props', 'player']], ['compare', '#/compare', 'Compare', ['compare']], ['picks', '#/picks', 'Picks', PICKS]];
 // Picks pages carry their own tab row (Best bets, Value bets, Slips) instead.
 // Old addresses of retired pages (bookmarks, shared links) land on what replaced them.
-const MOVED = { bankers: '#/shortlist', every: '#/shortlist', edge: '#/value', target: '#/x/2', mega: '#/x/100' };
+const MOVED = { bankers: '#/picks', every: '#/picks', edge: '#/picks', value: '#/picks', shortlist: '#/picks', target: '#/x/2', mega: '#/x/100' };
 const movedTo = ({ name, args }) => MOVED[name] || (name === 'x' && !MULTI_TARGETS.map(String).includes(args[0]) ? '#/x/2' : null);
 const withTabs = (name, html) => { if (!RESEARCH.has(name) || PICKS.includes(name)) return html; const i = html.indexOf('</section>'); return i < 0 ? researchTabs(name) + html : html.slice(0, i + 10) + researchTabs(name) + html.slice(i + 10); };
 const researchTabs = (name) => `<nav class="research-tabs" aria-label="Research">${R_TABS.map(([k, h, l, on]) => `<a class="${on.includes(name) ? 'on' : ''}" href="${h}"${on.includes(name) ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>`;
@@ -30,9 +30,9 @@ const researchTabs = (name) => `<nav class="research-tabs" aria-label="Research"
 // "More": every page in one sheet (phones and tablets, where the bar holds only the main ones). The
 // tiles reuse the menu's own links and icons.
 const MORE_INFO = {
-  '#/': 'Best current, the shortlist, the parlay of the day, every multiplier', '#/live': 'Everything in play now', '#/watchlist': 'Matches you follow, with alerts',
+  '#/': 'Best current, Best bets, the parlay of the day, every multiplier', '#/live': 'Everything in play now', '#/watchlist': 'Matches you follow, with alerts',
   '#/sports': 'Every sport and competition', '#/props': 'Player lines, hit rates, research',
-  '#/picks': 'Best current, Shortlist, Best bets, Value bets, slips 2x to 1000x', '#/compare': 'Pinned matches side by side', '#/track': 'Every pick and how it did',
+  '#/picks': 'Best current and Best bets', '#/x/2': 'Multipliers: slips from 2x to 1000x', '#/compare': 'Pinned matches side by side', '#/track': 'Every pick and how it did',
 };
 const sheet = document.getElementById('more-sheet');
 function fillMore() {
@@ -366,7 +366,7 @@ function route() {
     dock();
     return;
   }
-  const label = { home: 'TODAY', live: 'LIVE', watchlist: 'WATCHLIST', compare: 'COMPARE', track: 'RESULTS', sports: 'ALL SPORTS', sport: 'SPORT', league: 'LEAGUE', match: 'MATCH DOSSIER', props: 'PLAYER PROPS', player: 'PLAYER RESEARCH', x: 'SLIPS', picks: 'BEST BETS', value: 'VALUE BETS', shortlist: 'SHORTLIST', current: 'BEST CURRENT' }[name] || '';
+  const label = { home: 'TODAY', live: 'LIVE', watchlist: 'WATCHLIST', compare: 'COMPARE', track: 'RESULTS', sports: 'ALL SPORTS', sport: 'SPORT', league: 'LEAGUE', match: 'MATCH DOSSIER', props: 'PLAYER PROPS', player: 'PLAYER RESEARCH', x: 'MULTIPLIERS', picks: 'BEST BETS', value: 'VALUE BETS', shortlist: 'SHORTLIST', current: 'BEST CURRENT' }[name] || '';
   const h = location.hash || '#/';
   if (replacing) { stack[stack.length - 1] = h; replacing = false; } else if (stack.length > 1 && stack[stack.length - 2] === h) stack.pop(); else stack.push(h);
   // instant: html has scroll-behavior:smooth, and a smooth scroll still running when a live refresh
