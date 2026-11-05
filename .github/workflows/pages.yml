@@ -34,7 +34,19 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
     steps:
       - uses: actions/checkout@v5
+      # Queue the next refresh first, so a build that hangs or is stopped (timeout-minutes) cannot end
+      # the chain: on 5 Nov 2026 a hung setup step ran into the job's limit, the end of the job never
+      # ran, and nothing queued the next build. One waiting run at most (it starts when this one ends).
+      - name: Queue the next refresh
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          if [ -z "$(gh run list --workflow pages.yml --json status --jq '.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested") | .status')" ]; then
+            gh workflow run pages.yml --ref main
+          fi
       - uses: actions/setup-node@v5
+        timeout-minutes: 5 # it hung for 37 minutes on 5 Nov 2026 (the npm cache)
         with: { node-version: 22, cache: npm }
       # Pinned dependencies (package-lock.json): esbuild bundles the site; postinstall builds vendor/.
       - run: npm ci

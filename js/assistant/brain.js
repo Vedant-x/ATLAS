@@ -181,9 +181,9 @@ export function createBrain(K) {
   function multiplier(q) {
     const c = parseConstraints(q, K);
     const t = c.target || (/mega|long ?shot/.test(q) ? 100 : 3);
-    // Only 2x and 3x slips are offered: the longer ones were retired for their record.
-    if (t > 3) return { text: `**Slips above 3x were retired.** Their record: ${K.retiredSlips?.() || 'they lost nearly every time'}. A 3x slip is the longest ATLAS still builds: ask for "a 3x slip".`, chips: chipsOf({ ...c, target: t }), followups: ['Give me a 3x slip', 'Best bets today'] };
-    const mega = false;
+    // Every target to 1000x (board legs, the same builder as the slip pages); 10x and longer may use
+    // the next 7 days.
+    const mega = t >= 10;
     // One request for every rule shown in the chips; the result is checked against them again.
     const list = slipsOk(c, K.slips(t, !mega && !c.from, slipRequest(c)));
     const chips = chipsOf({ ...c, target: t });
@@ -191,7 +191,7 @@ export function createBrain(K) {
     const s = list[0];
     remember(s.legs.map((l) => ({ e: K.eventById?.(l.eventId), market: l.market, pick: l.pick, odds: l.odds, p: l.p, ev: l.p * l.odds - 1, priced: !l.derived, prop: l.prop })).filter((x) => x.e), c);
     return {
-      text: `**Top ${t}x slip**: ${s.legs.length} legs at **${od(s.odds)}x**, estimated **${pc(s.p)}** if the legs are unrelated (the slip check in your slip measures same-match legs).\n\n${s.legs.map((l) => `- **${l.pick}** · ${l.market} · ${l.match} @ ${od(l.odds)} (${pc(l.p)})`).join('\n')}\n\n${list.length > 1 ? `${list.length - 1} more on the [${t}x page](#/x/${[2, 3].includes(t) ? t : 3}).` : ''}`,
+      text: `**Top ${t}x slip**: ${s.legs.length} legs at **${od(s.odds)}x**, estimated **${pc(s.p)}** if the legs are unrelated (the slip check in your slip measures same-match legs).\n\n${s.legs.map((l) => `- **${l.pick}** · ${l.market} · ${l.match} @ ${od(l.odds)} (${pc(l.p)})`).join('\n')}\n\n${list.length > 1 ? `${list.length - 1} more on the [${t}x page](#/x/${[2, 3, 4, 5, 10, 20, 100, 1000].includes(t) ? t : 2}).` : ''}`,
       cards: s.legs.map((l) => ({ type: 'leg', leg: l, at: Date.now() })), chips, followups: ['Explain the risk', 'Which leg is weakest?'],
     };
   }

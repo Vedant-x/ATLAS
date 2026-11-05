@@ -55,3 +55,10 @@ test('soccer absences carry the injury name', async () => {
     assert.equal(a.away[0].type, 'Suspended');
   } finally { globalThis.fetch = real; }
 });
+
+test('a price that rounds to 1.00 is no price (a huge favourite\'s American line)', async () => {
+  const { toDecimal } = await import('../js/espn.js');
+  assert.equal(toDecimal(-50000), null);
+  assert.equal(toDecimal(-200), 1.5);
+  assert.equal(toDecimal('EVEN'), 2);
+});

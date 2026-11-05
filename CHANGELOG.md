@@ -3,6 +3,20 @@
 The site has no versions: every merge to `main` is live within one build (about 20 minutes). This is
 what changed, week by week. Reasons and reversals are in [docs/DECISIONS.md](docs/DECISIONS.md).
 
+## Week of 3 November 2026
+
+- **The full board is back:**
+  - **What's back:** the Shortlist (1.30 to 2.20), every multiplier from 2x to 1000x, and the parlay of
+    the day.
+  - **How it's built:** board legs ranked on the market's own chance, at most 3% under fair (5% with
+    one bookmaker), Stake's price first, one pick per match.
+  - **On the site:** the home page leads with them, and each has its own record from 5 Nov.
+- **Best current:** live matches' likeliest results from the score and clock, with their fair odds,
+  and the shortlist starting within 3 hours.
+- **One pick per match** across every list, so both sides of a match, or one pick in two lists, no
+  longer happen.
+- **Build chain:** each build queues the next when it starts; the setup step stops after 5 minutes.
+
 ## Week of 27 October 2026
 
 - **Football graded on 90 minutes:** a cup tie that goes to extra time or penalties is graded on the

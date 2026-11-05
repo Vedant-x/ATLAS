@@ -9,10 +9,13 @@ import { ALL_LEAGUES, leagueByPath } from './catalog.js';
 export const LEAGUES = ALL_LEAGUES.filter((l) => !l.path.startsWith('atlas/'));
 
 // American moneyline → decimal odds.
+// American odds to decimal. A huge favourite's line (-50000 is 1.002) rounds to 1.00, a price nobody
+// can bet and the data contract refuses (5 Nov 2026: two college basketball winners): no price then.
 export const toDecimal = (ml) => {
   const n = Number(String(ml).replace('EVEN', '100'));
   if (!Number.isFinite(n) || n === 0) return null;
-  return +(n > 0 ? 1 + n / 100 : 1 + 100 / -n).toFixed(2);
+  const d = +(n > 0 ? 1 + n / 100 : 1 + 100 / -n).toFixed(2);
+  return d > 1 ? d : null;
 };
 
 const lineVal = (l) => String(l?.displayValue ?? l?.value ?? '');

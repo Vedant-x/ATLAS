@@ -8,7 +8,7 @@
 import { newsHold } from './newsgate.js';
 import { devig, allLegs } from './engine.js';
 import { propLabel, propMarket } from './props.js';
-import { calibrated, blockedSegment, freshAt, FRESH } from './track.js';
+import { calibrated, blockedSegment, freshAt, FRESH, BOARD, VALUE } from './track.js';
 import { gradable } from './settle.js';
 
 const norm = (s) => String(s || '').toLowerCase();
@@ -99,21 +99,42 @@ export function referenceLeg(l, now = Date.now()) {
   if (l.stake > l.odds && ok(l.stake, l.stakeAt, FRESH.stake)) return { ...l, odds: l.stake, book: 'Stake', atStake: true, quoteAt: l.stakeAt, referenceProbability: refP };
   return ok(l.odds, l.quoteAt, FRESH.board) ? { ...l, referenceProbability: refP } : null;
 }
-// The legs slips are built from. reference (the default, and the only mode the pages and the record
-// use): every leg at or over the market's fair odds (referenceLeg), so a slip of them is too; there is
-// no fallback to legs below it, and no qualifying legs means no slip. reference: false is a research
-// mode only (legs whose ATLAS chance is within 7% of their price), never recommended.
-export function legPool(events, { minP = 0.55, minOdds = 1.04, maxOdds = 1.6, cal = null, positiveOnly = false, reference = true, now = Date.now() } = {}) {
+// A board leg (track.js BOARD): the market's chance, the sharp reference's where the match has one,
+// else the one bookmaker's own price with its margin removed; at a price no more than BOARD.gap
+// under the fair odds (BOARD.gapOneBook with one bookmaker), read recently. Stake's price whenever it
+// is within BOARD.stakeWithin of the best. Player props have no market reference: never board legs.
+export function boardLeg(l, now = Date.now()) {
+  if (l.prop || l.derived) return null;
+  if (l.consensus) {
+    if (!freshAt(l.refAt, FRESH.reference, now)) return null;
+    const refP = Math.min(l.fair, Number.isFinite(l.fairPow) ? l.fairPow : 1);
+    const ok = (odds, at, maxAge) => freshAt(at, maxAge, now) && Math.abs(at - l.refAt) <= FRESH.apart && odds * refP - 1 >= BOARD.gap && odds * refP - 1 <= VALUE.maxEdge;
+    if (l.stake >= l.odds * BOARD.stakeWithin && ok(l.stake, l.stakeAt, FRESH.stake)) return { ...l, odds: l.stake, book: 'Stake', atStake: true, quoteAt: l.stakeAt, referenceProbability: refP, marketP: refP };
+    return ok(l.odds, l.quoteAt, FRESH.board) ? { ...l, referenceProbability: refP, marketP: refP } : null;
+  }
+  if (!freshAt(l.quoteAt, FRESH.board, now) || !(l.margin >= 0)) return null;
+  const mp = 1 / (l.odds * (1 + l.margin));
+  return mp * l.odds - 1 >= BOARD.gapOneBook ? { ...l, referenceProbability: mp, marketP: mp } : null;
+}
+// The legs slips are built from, by rule:
+//  - 'board' (the default, what the pages and the record use since 2026.11.5): boardLeg, ranked on
+//    the market's chance.
+//  - 'fair': every leg at or over the market's fair odds (referenceLeg); no qualifying legs, no slip.
+//  - 'research': legs whose ATLAS chance is within 7% of their price, never recommended.
+// reference: true / false (the older switch) still selects 'fair' / 'research'.
+export function legPool(events, { minP = 0.55, minOdds = 1.04, maxOdds = 1.6, cal = null, positiveOnly = false, reference, rule = reference === true ? 'fair' : reference === false ? 'research' : 'board', now = Date.now() } = {}) {
   const best = new Map();
+  const board = rule === 'board';
   // Only legs the record can grade (settle.js gradable): a slip with an ungradable leg never settles.
-  for (const l of [...allLegs(events.filter((e) => e.markets?.length && !e.live && !newsHold(e) && gradable(e))), ...propLegs(events.filter((e) => !newsHold(e) && gradable(e)))]) {
-    const r = reference ? referenceLeg(l, now) : l;
+  for (const l of [...allLegs(events.filter((e) => e.markets?.length && !e.live && !newsHold(e) && gradable(e))), ...(board ? [] : propLegs(events.filter((e) => !newsHold(e) && gradable(e))))]) {
+    const r = rule === 'fair' ? referenceLeg(l, now) : board ? boardLeg(l, now) : l;
     if (!r) continue;
-    const p = calibrated(l.p, l.market, cal, l.sport, l.derived ? null : r.odds);
-    // A banker is a clear favourite at a fair price or better (reference) or, in research mode, an
-    // estimate close to the price.
-    if (r.cushion || r.odds < minOdds || r.odds > maxOdds || p < minP || (positiveOnly && p * r.odds < 1.000001) || (!reference && p * r.odds < 0.93) || blockedSegment(cal, l.sport, l.market)) continue;
-    const leg = { ...r, pRaw: l.p, p, modelProbability: p };
+    // The board ranks on the market's chance: ATLAS's own estimate added nothing over it.
+    const p = board ? r.marketP : calibrated(l.p, l.market, cal, l.sport, l.derived ? null : r.odds);
+    // A banker is a clear favourite at a fair price or better (fair), near it (board) or, in research
+    // mode, an estimate close to the price.
+    if (r.cushion || r.odds < minOdds || r.odds > maxOdds || p < minP || (positiveOnly && p * r.odds < 1.000001) || (rule === 'research' && p * r.odds < 0.93) || blockedSegment(cal, l.sport, l.market)) continue;
+    const leg = { ...r, pRaw: l.p, p, modelProbability: board ? l.p : p };
     const cur = best.get(l.eventId);
     if (!cur || ratio(leg) < ratio(cur)) best.set(l.eventId, leg);
   }
@@ -123,7 +144,7 @@ export function legPool(events, { minP = 0.55, minOdds = 1.04, maxOdds = 1.6, ca
 // Up to `count` slips near `target` built from the pool, each using its own legs where possible.
 // minOdds / maxOdds (per leg) and positiveOnly are the viewer's or the question's hard rules: the
 // fallbacks below widen the search but never past them.
-export function bankerSlips(events, target, { count = 5, tolerance = 0.1, cal = null, minOdds = 1.2, maxOdds = null, positiveOnly = false, reference = true, now = Date.now() } = {}) {
+export function bankerSlips(events, target, { count = 5, tolerance = 0.1, cal = null, minOdds = 1.2, maxOdds = null, positiveOnly = false, reference, rule = reference === true ? 'fair' : reference === false ? 'research' : 'board', now = Date.now() } = {}) {
   // Fewer, longer legs: every leg pays the bookmaker's margin again, so for the same total odds two
   // legs at 1.73 keep more of the true chance than four at 1.32. The longest leg allowed grows with
   // the target (about its square root, so a slip has two legs or more), and legs are ranked by
@@ -139,7 +160,9 @@ export function bankerSlips(events, target, { count = 5, tolerance = 0.1, cal = 
     const lo = Math.max(1.04, minOdds);
     const hi = Math.min(Math.max(bandMax, lo + 0.15), maxOdds ?? Infinity);
     if (hi < lo) return [];
-    const pool = legPool(events, { minP, maxOdds: hi, cal, minOdds: lo, positiveOnly, reference, now });
+    // The best 150 legs by chance per unit of odds are plenty for any target (1000x takes about 30),
+    // and keep a 7-day board quick on a phone.
+    const pool = legPool(events, { minP, maxOdds: hi, cal, minOdds: lo, positiveOnly, rule, now }).slice(0, 150);
     // Mixed bet types first (no market family over half the legs); one type only if that is all
     // the board allows.
     const search = { pass, wider: pass > 0, minP, maxLegOdds: +hi.toFixed(2), tolerance: tol };

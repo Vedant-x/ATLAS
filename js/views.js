@@ -31,8 +31,9 @@ import { casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips,
 import { lastVisit } from './timeline.js';
 import { whyLine } from './why.js';
 import { canonStats, standingsTable } from './standings.js';
-// Picks pages (Best bets, Value bets, 2x / 3x slips): picksview.js, which also uses the helpers here.
-import { picksViews, bindPicks } from './picksview.js';
+// Picks pages (Best current, Shortlist, Best bets, Value bets, slips 2x to 1000x): picksview.js, which
+// also uses the helpers here.
+import { picksViews, bindPicks, currentPanel, shortlistPanel, multiPanel } from './picksview.js';
 import { esc } from './esc.js';
 // Golf and motor racing: a field of players or drivers, drawn by fieldview.js.
 const FIELD_SPORTS = new Set(['golf', 'motorsport']);
@@ -322,7 +323,10 @@ export const views = {
     // records, every market, the model, the bookmaker table, the calculator and the notes) is folded:
     // one tap opens it, and the section menu opens the one it jumps to. On a phone the page was four
     // screens of detail before the first fold.
-    const sections = [['overview', 'Overview'], ['case', 'The case'], ['best', 'Best bets'], ...(e.props?.length ? [['props', 'Player props']] : []), ...(timeline ? [['history', 'Timeline']] : []), ...dos.map((x) => [x.id, x.label]), ['form', 'Records'], ['markets', `All markets (${a.marketCount})`], ...(a.kind === 'binary' ? [] : [['model', 'Model']]), ['book', 'Bookmaker prices'], ['calc', 'Calculator'], ['notes', 'Model notes']];
+    // The props section only when it has rows (a match can carry props none of which show): its link
+    // would lead nowhere otherwise.
+    const props = propsPanel(e);
+    const sections = [['overview', 'Overview'], ['case', 'The case'], ['best', 'Best bets'], ...(props ? [['props', 'Player props']] : []), ...(timeline ? [['history', 'Timeline']] : []), ...dos.map((x) => [x.id, x.label]), ['form', 'Records'], ['markets', `All markets (${a.marketCount})`], ...(a.kind === 'binary' ? [] : [['model', 'Model']]), ['book', 'Bookmaker prices'], ['calc', 'Calculator'], ['notes', 'Model notes']];
     return {
       mode: 'match', accent: hc, title: `${e.home} v ${e.away}`,
       sceneOpts: { home: hc, away: ac, pHome: w.home, pAway: w.away, sport: e.sport },
@@ -354,7 +358,7 @@ export const views = {
       </section>
       ${casePanel(rr)}
       ${bestBetsPanel(e, a)}
-      ${propsPanel(e)}
+      ${props}
       ${timeline}
       ${dos.map((x) => fold(x.id, esc(x.label), x.html)).join('')}
       ${fold('form', 'Records <small>season record and recent form</small>', `<div class="grid two">${formPanel(e, hc, ac)}</div>`)}
@@ -392,6 +396,9 @@ function dashboard(ev, live) {
   const rec = recordLine(trackStats()?.best);
   // Every panel by name, shown in the visitor's saved order with hidden ones left out (Customise).
   const panels = {
+    current: () => currentPanel(pool),
+    bankers: () => shortlistPanel(pool),
+    multi: () => multiPanel(),
     potd: () => potdPanel(pool),
     // Minimal: one folded "Filters" control (window, order, odds and sports), one record line.
     shortlist: () => `<div class="panel dash-short reveal"><h2 class="ph">Best bets <small>likeliest winners at a fair price or better</small></h2>
@@ -416,8 +423,9 @@ export const setFiltersOpen = (v) => { filtersOpen = Boolean(v); };
 
 // Home panels: order and visibility, saved per visitor (localStorage, best effort). Unknown or missing
 // names fall back to the default order, so a new panel always appears.
-// Qualifying singles (or a plain no-pick answer) first; the parlay of the day after them.
-const HOME_PANELS = [['shortlist', 'Best bets'], ['value', 'Value bets'], ['potd', 'Parlay of the day'], ['live', 'Live now'], ['changes', 'What changed'], ['record', 'Results'], ['health', 'Source health']];
+// The full board first: what is on now, the shortlist, the parlay of the day and every multiplier;
+// then the two strict lists (a fair price or better).
+const HOME_PANELS = [['current', 'Best current'], ['bankers', 'Shortlist'], ['potd', 'Parlay of the day'], ['multi', 'Multipliers'], ['shortlist', 'Best bets'], ['value', 'Value bets'], ['live', 'Live now'], ['changes', 'What changed'], ['record', 'Results'], ['health', 'Source health']];
 const LAYOUT_KEY = 'atlas-home-layout';
 // Minimal by default: source health, what changed and the full record card start hidden (the record
 // is the strip at the top); Customise shows them.
@@ -668,7 +676,7 @@ export function miniPick(b) {
     ref && `Lowest price that still qualifies: ${odd(1 / b.referenceProbability)}`, 'Chance range for one match: not shown (no validated method yet)', rec.settlementRules].filter(Boolean).join('\n');
   return `<div class="mini reveal" data-rec="${esc(rec.recommendationId)}" data-tip="${esc(tip)}"><span class="mini-ico">${s.icon}</span>
     <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.event.home)} v ${esc(b.event.away)} · ${b.event.live ? '<span class="live">LIVE</span>' : esc(fmtTime(b.event.start, tzZone(), 'short'))}</small></a>
-    <div class="mini-nums"><b data-tip="ATLAS chance">${pc(b.p, 0)}</b><small>${ref ? `<span class="mm-need" data-tip="The market's fair chance (the bookmakers' cut taken out)">market ${pc(b.referenceProbability, 0)} · </span>` : `<span class="mm-need" data-tip="The chance this price needs to break even">needs ${pc(1 / b.odds, 0)} · </span>`}<span class="${ret >= 0 ? 'pos' : 'neg'}" data-tip="${ref ? "Return per unit staked by the market's fair chance" : "Return per unit staked by ATLAS's chance"}${ret < 0 ? ': below break-even at this price' : ''}">${edge}${ref ? ' vs market' : ''}</span></small></div>
+    <div class="mini-nums"><b data-tip="${ref && b.p === b.referenceProbability ? "The market's chance (the bookmakers' cut taken out)" : 'ATLAS chance'}">${pc(b.p, 0)}</b><small>${ref ? `<span class="mm-need" data-tip="The market's fair chance (the bookmakers' cut taken out)">market ${pc(b.referenceProbability, 0)} · </span>` : `<span class="mm-need" data-tip="The chance this price needs to break even">needs ${pc(1 / b.odds, 0)} · </span>`}<span class="${ret >= 0 ? 'pos' : 'neg'}" data-tip="${ref ? "Return per unit staked by the market's fair chance" : "Return per unit staked by ATLAS's chance"}${ret < 0 ? ': below break-even at this price' : ''}">${edge}${ref ? ' vs market' : ''}</span></small></div>
     ${legButton(leg, odd(b.odds))}</div>`;
 }
 

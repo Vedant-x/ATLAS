@@ -172,6 +172,52 @@ export function valueBets(events, { cal = null, limit = 10, now = Date.now() } =
     .sort((x, y) => Number(Boolean(y.atStake)) - Number(Boolean(x.atStake)) || Number(Boolean(y.wide)) - Number(Boolean(x.wide)) || y.edge - x.edge);
   return diversify(list, limit, { familyShare: 0.6, sportShare: 0.6 });
 }
+
+// ---------- The full board: the shortlist and every multiplier (model 2026.11.5) ----------
+// What the record taught (3,374 settled picks to 5 Nov 2026), and how these lists use it:
+//  - ATLAS's own chance added nothing over the market's (it won 65.5% where it said 67.0% and the
+//    market 65.4%): the board ranks and shows the market's margin-free chance, never ATLAS's.
+//  - The losses were the bookmaker's cut (-5.4% against -5.9% implied by the prices): a price more
+//    than BOARD.gap under the market's fair odds is left out (BOARD.gapOneBook where only one
+//    bookmaker prices the match: its own margin is the gap).
+//  - Prices under 1.30 lost most (-12%): nothing on the shortlist below BOARD.minOdds.
+//  - Two sides of one match, or one selection in two lists, doubled the same risk: one pick per match
+//    (selectPicks), and the shortlist leaves out a match Best bets or Value bets already holds.
+//  - Stake is where the bets are placed: Stake's price is taken whenever it is within 2% of the best.
+// The board is not a value list: most of it sits a little under fair, and the cards say so.
+export const BOARD = { gap: -0.03, gapOneBook: -0.05, minOdds: 1.3, maxOdds: 2.2, min: 0.5, legMinOdds: 1.25, stakeWithin: 0.98 };
+export const BOARD_SINCE = '2026.11.5';
+// The market's chance for a candidate: the sharp reference where the match has one, else the one
+// bookmaker's own price with its margin removed.
+export const marketOf = (b) => (b.consensus ? referenceOf(b) : b.fair);
+// The price a board pick is taken at, or null: Stake's when its read is fresh and it is within
+// stakeWithin of the best price, else the best; within the gap of the fair odds either way.
+export function boardPrice(b0, now = Date.now()) {
+  const floor = b0.consensus ? BOARD.gap : BOARD.gapOneBook;
+  const fresh = (b) => (b.consensus ? comparable(b, now) : freshAt(quoteAtOf(b), FRESH.board, now));
+  const fits = (b) => { const g = edgeAt(b0, b.odds); return fresh(b) && g >= floor && g <= VALUE.maxEdge; };
+  if (b0.consensus && b0.stake >= b0.odds * BOARD.stakeWithin) {
+    const s = { ...b0, odds: b0.stake, book: 'Stake', atStake: true };
+    if (fits(s)) return s;
+  }
+  return fits(b0) ? b0 : null;
+}
+// The shortlist: the likeliest winners by the market's chance, odds 1.30 to 2.20, one per match.
+export function shortlist(events, { cal = null, limit = 20, now = Date.now() } = {}) {
+  const list = bankers(events.filter((e) => !e.live && gradable(e)), { min: BOARD.min * 0.8, limit: Infinity })
+    .filter((b) => !b.prop && !blockedSegment(cal, b.event.sport, b.market))
+    .map((b) => boardPrice(b, now)).filter(Boolean)
+    .map((b) => {
+      const mp = marketOf(b), n = named(b, { basis: 'reference', modelP: b.p });
+      return { ...n, referenceProbability: mp, referenceEV: edgeAt(b, b.odds),
+        referenceMethod: n.referenceMethod || `${b.event.bookmaker || 'one bookmaker'}'s own price, margin removed`,
+        pRaw: b.p, p: mp, ev: edgeAt(b, b.odds), edge: edgeAt(b, b.odds), fairPrice: edgeAt(b, b.odds) >= 0, oneBook: !b.consensus };
+    })
+    .filter((b) => b.odds >= BOARD.minOdds && b.odds <= BOARD.maxOdds && b.p >= BOARD.min)
+    // Likeliest first; a sharp reference and Stake's price break ties.
+    .sort((x, y) => y.p - x.p || Number(!y.oneBook) - Number(!x.oneBook) || Number(Boolean(y.atStake)) - Number(Boolean(x.atStake)));
+  return diversify(list, limit, { familyShare: 0.6, sportShare: 0.6 }).sort((x, y) => y.p - x.p);
+}
 // Stamped on every recorded pick, so results can be split by the model that made them.
 // 2026.10.1: calibrated chance everywhere, legs feed calibration, shared slip policy.
 // 2026.10.2: venue records, starting pitchers and soccer absences in the model; spread lines move
@@ -210,7 +256,10 @@ export function valueBets(events, { cal = null, limit = 10, now = Date.now() } =
 // 2026.10.16: freshness fails closed (no time, a future time or a quote read apart from its reference
 //   never qualifies); named model and market chances and returns on every pick; slips and the parlay
 //   of the day only from legs at or above their fair odds, none otherwise; no fixture-level interval.
-export const MODEL_VERSION = '2026.10.16';
+// 2026.11.5: the full board again (BOARD): the shortlist and every multiplier from 2x to 1000x, the
+//   parlay of the day from the same legs; the market's chance shown and ranked on, no price more than
+//   3% under fair (5% with one bookmaker), singles from 1.30, Stake's price first, one pick per match.
+export const MODEL_VERSION = '2026.11.5';
 
 // Market families the track record learns from: winner, 1X2 result, spread/handicap, totals.
 export const familyOf = (market = '') => (/^Player /.test(market) ? 'prop' : /^Total/.test(market) ? 'total' : market === 'Spread' ? 'spread' : market === 'Match Result' ? 'result' : 'winner');
@@ -489,19 +538,24 @@ export function selectPicks(events, now = Date.now(), hours = 12, history = []) 
         ...(r.selectionBasis ? { basis: r.selectionBasis, modelP: f(r.modelProbability), refP: f(r.referenceProbability), modelEV: f(r.modelEV), refEV: f(r.referenceEV), refMethod: r.referenceMethod } : {}) };
     })(),
     // The surest list keeps its own record, so its key differs from the same pick on the shortlist.
-    key: `${['safe', 'best', 'two', 'edge', 'probe'].includes(type) ? `${type}|` : ''}${b.event.id}|${b.market}|${b.pick}`, type, eventId: b.event.id, leaguePath: b.event.leaguePath, compId: b.event.compId,
+    key: `${['safe', 'best', 'two', 'edge', 'probe', 'short'].includes(type) ? `${type}|` : ''}${b.event.id}|${b.market}|${b.pick}`, type, eventId: b.event.id, leaguePath: b.event.leaguePath, compId: b.event.compId,
     sport: b.event.sport, league: b.event.league, home: b.event.home, away: b.event.away, start: b.event.start,
     market: b.market, pick: b.pick, odds: b.odds, p: +b.pRaw.toFixed(4), shown: +b.p.toFixed(4), fair: b.fair == null ? null : +b.fair.toFixed(4),
     recordedAt: now, status: 'pending', model: MODEL_VERSION, ...(b.prop ? { prop: b.prop } : {}),
     // Value bets: the bookmaker quoting the price and the first price seen for it.
-    ...(type === 'edge' ? { bestBook: b.book || null, open: b.open ?? null, ...(b.atStake ? { atStake: true } : {}) } : {}),
+    ...(type === 'edge' || type === 'short' ? { bestBook: b.book || null, open: b.open ?? null, ...(b.atStake ? { atStake: true } : {}) } : {}),
   });
-  // What the site shows is what is recorded: Best bets, Value bets, 2x / 3x slips and the parlay of
-  // the day (plus unseen probes). The shortlist bankers, Surest, Near 2.00 and model-only picks were
-  // retired on 23 Oct 2026; their history stays in the record.
+  // What the site shows is what is recorded: Best bets, Value bets, the shortlist, every multiplier
+  // and the parlay of the day (plus unseen probes).
+  // One pick per match: a match already holding a pending single (from this build's earlier lists or
+  // an earlier build, whatever the list) gets no second one. Two sides of one match, or one
+  // selection in two lists, doubled the same risk (5 Nov 2026: 10 such picks won 2).
+  const taken = new Map(history.filter((h) => h.status === 'pending' && h.type !== 'multi' && h.type !== 'probe').map((h) => [h.eventId, h.key]));
+  const once = (rows) => rows.filter((r) => { const k = taken.get(r.eventId); if (k && k !== r.key) return false; taken.set(r.eventId, r.key); return true; });
   return [
-    ...bestBets(soon, { cal, limit: 20, now }).map(row('best')),
-    ...valueBets(soon, { cal, limit: 20, now }).map(row('edge')),
+    ...once(bestBets(soon, { cal, limit: 20, now }).map(row('best'))),
+    ...once(valueBets(soon, { cal, limit: 20, now }).map(row('edge'))),
+    ...once(shortlist(soon, { cal, limit: 20, now }).map(row('short'))),
     ...probePicks(soon, { cal, limit: 10 }).map(row('probe')),
     ...multiPicks(events, now, history),
     ...potdPicks(events, now, history),
@@ -523,16 +577,15 @@ export function parlayOfDay(events, { now = Date.now(), zone = 'IST', cal = null
   const { end } = potdDay(now, zone);
   const pool = applyModel(events.filter((e) => e.compId && e.markets?.length && !e.live && e.start > now + 30 * 6e4 && e.start < end));
   // Every combination of 2 to 6 of the best legs (most chance per unit of odds, one per match, no
-  // team twice) whose total lands in 1.70 to 2.00; the one most likely to win. Every leg at or over the
-  // market's fair odds (legPool's reference rule); no fallback: a day without such legs has no parlay.
+  // team twice) whose total lands in 1.70 to 2.00; the one most likely to win. Board legs (picks.js
+  // boardLeg): the market's chance, no leg more than 3% under its fair odds (5% with one bookmaker).
   {
-    const legs = legPool(pool, { minP: 0.55, minOdds: POTD.minOdds, maxOdds: 1.6, cal, reference: true, now }).slice(0, 24);
+    const legs = legPool(pool, { minP: 0.55, minOdds: Math.max(POTD.minOdds, BOARD.legMinOdds), maxOdds: 1.6, cal, now }).slice(0, 24);
     const teams = (l) => String(l.match || '').split(' vs ').map((t) => t.trim().toLowerCase());
     let best = null;
     const walk = (from, picked, odds, p) => {
       if (picked.length >= 2 && odds >= POTD.min && odds <= POTD.max && (!best || p > best.p)) {
-        const refP = picked.reduce((s, l) => s * l.referenceProbability, 1);
-        best = { legs: picked, odds, p, ev: p * odds - 1, modelProbability: p, modelEV: p * odds - 1, referenceProbability: refP, referenceEV: refP * odds - 1, fairOnly: true };
+        best = { legs: picked, odds, p, ev: p * odds - 1, modelProbability: p, modelEV: p * odds - 1, referenceProbability: p, referenceEV: p * odds - 1, fairOnly: picked.every((l) => l.odds * l.p >= 1) };
       }
       if (picked.length === POTD.maxLegs || odds > POTD.max) return;
       for (let i = from; i < legs.length; i++) {
@@ -566,10 +619,12 @@ export function potdPicks(events, now = Date.now(), history = []) {
 // One slip policy for the pages and the official record: which matches a target may use and how
 // close the total must land. The record saves the top slip under exactly this policy, and the pages
 // show that saved slip as "today's official slip" (alternatives below it follow the viewer's filters).
-// Only 2x and 3x slips are offered. The longer ones were retired on 23 Oct 2026 after their record:
-// 4x 2-15, 5x 0-18, 10x 1-17, 20x 0-17, 100x 0-18, 1000x 0-18 (their history stays on the Results page).
-export const MULTI_TARGETS = [2, 3];
-export const RETIRED_TARGETS = [4, 5, 10, 20, 100, 1000];
+// Every target from 2x to 1000x, from board legs (picks.js boardLeg) since model 2026.11.5. Under the
+// earlier rules the longer ones lost almost every time (4x 2-15, 5x 0-18, 10x 1-17, 20x 0-17, 100x
+// 0-18, 1000x 0-18 to 23 Oct); that history stays on the Results page, apart from the new records.
+// Each leg pays the bookmaker's cut again, so a long slip's market return is well below zero, and
+// the cards say so.
+export const MULTI_TARGETS = [2, 3, 4, 5, 10, 20, 100, 1000];
 // Below 10x every leg starts in the next 12 hours; 10x and bigger may use any match in the next 7 days.
 export const BIG_TARGET = 10;
 export const slipPolicy = (target) => ({ hours: target >= BIG_TARGET ? 168 : 12, tolerance: target <= 20 ? 0.08 : 0.12 });
@@ -581,7 +636,7 @@ export function multiPicks(events, now = Date.now(), history = []) {
   const day = localDay(now); // IST calendar day: one official slip per target per day
   const out = [];
   for (const target of MULTI_TARGETS) {
-    const best = bankerSlips(slipWindow(pool, target, now), target, { count: 1, tolerance: slipPolicy(target).tolerance, cal, minOdds: FLOOR_ODDS, now })[0];
+    const best = bankerSlips(slipWindow(pool, target, now), target, { count: 1, tolerance: slipPolicy(target).tolerance, cal, minOdds: BOARD.legMinOdds, now })[0];
     if (!best) continue;
     const legs = best.legs.map((l) => { const e = byId.get(l.eventId); return { sel: selectionId({ eventId: e.id, market: l.market, pick: l.pick, prop: l.prop }), eventId: e.id, leaguePath: e.leaguePath, compId: e.compId, sport: e.sport, league: e.league, home: e.home, away: e.away, start: e.start, market: l.market, pick: l.pick, odds: l.odds, p: +l.p.toFixed(4), pRaw: +(l.pRaw ?? l.p).toFixed(4), status: 'pending', book: l.book || e.bookmaker || null, priceAt: l.quoteAt ?? e.priceAt ?? null, ...(l.atStake ? { atStake: true } : {}), ...(l.referenceProbability ? { ref: +l.referenceProbability.toFixed(4) } : {}), ...(l.prop ? { prop: l.prop } : {}) }; });
     out.push({
@@ -727,8 +782,8 @@ export function updateClosing(history, events, now = Date.now()) {
   return n;
 }
 
-// The current lists' picks (Best bets and Value bets under the fail-closed rules, model 2026.10.16
-// on) judged against the closing line, known at kick-off for every pick, long before a profit figure
+// The current lists' picks (Best bets, Value bets and the shortlist under the fail-closed rules,
+// model 2026.10.16 on) judged against the closing line, known at kick-off for every pick, long before a profit figure
 // means anything. beat: the price taken was above the last price saved before kick-off; vsFair: the
 // price taken against the closing fair odds (odds × closing fair chance − 1), where it was saved.
 // A "closing" price saved more than CLOSE_WINDOW_H before kick-off (a build outage, a feed that
@@ -736,7 +791,7 @@ export function updateClosing(history, events, now = Date.now()) {
 export const CLOSE_SINCE = '2026.10.16';
 export const CLOSE_WINDOW_H = 3;
 export function closingLine(history, now = Date.now()) {
-  const kicked = history.filter((h) => (h.type === 'best' || h.type === 'edge') && h.model && !versionBefore(h.model, CLOSE_SINCE)
+  const kicked = history.filter((h) => ['best', 'edge', 'short'].includes(h.type) && h.model && !versionBefore(h.model, CLOSE_SINCE)
     && h.start <= now && h.odds > 1 && !['void', 'dnp'].includes(h.status));
   const list = kicked.filter((h) => h.close > 1 && h.closeAt > 0 && h.start - h.closeAt <= CLOSE_WINDOW_H * 36e5);
   const fair = list.filter((h) => h.closeFair > 0);
@@ -777,7 +832,10 @@ export function summarize(history) {
   const outside = settledAll.filter((h) => !['multi', 'safe', 'model', 'best', 'two', 'edge', 'probe', 'botd'].includes(h.type) && !inRecord(h));
   // The lists the site shows today (Best bets and Value bets): the headline record. Everything else
   // is either a slip (its own record) or retired (kept below, with its final record).
-  const isLive = (h) => (h.type === 'best' && !oldBest(h)) || h.type === 'edge';
+  const isLive = (h) => (h.type === 'best' && !oldBest(h)) || h.type === 'edge' || h.type === 'short';
+  // Multipliers and the parlay of the day under the board rules (2026.11.5 on) keep records of their
+  // own; the slips made under earlier rules are counted apart (retired, below).
+  const boardSlip = (m) => Boolean(m.model) && !versionBefore(m.model, BOARD_SINCE);
   const live = settledAll.filter(isLive);
   const best = settledAll.filter((h) => h.type === 'best' && !oldBest(h));
   const models = settledAll.filter((h) => h.type === 'model');
@@ -809,8 +867,9 @@ export function summarize(history) {
   });
   const firstAt = history.reduce((t, h) => Math.min(t, h.recordedAt || Infinity), Infinity);
   return {
-    since: Number.isFinite(firstAt) ? firstAt : null, all: stat(graded), multi: stat(multis), byTarget: MULTI_TARGETS.map((t) => ({ key: `${t}x`, target: t, ...stat(multis.filter((m) => m.target === t)), slips: slipsOf([t]).slice(0, 12) })),
-    mega: { ...stat(multis.filter((m) => m.target >= 100)), slips: slipsOf([100, 1000]).slice(0, 12) },
+    since: Number.isFinite(firstAt) ? firstAt : null, all: stat(graded), multi: stat(multis), byTarget: MULTI_TARGETS.map((t) => ({ key: `${t}x`, target: t, ...stat(multis.filter((m) => m.target === t && boardSlip(m))), slips: slipsOf([t]).filter(boardSlip).slice(0, 12) })),
+    mega: { ...stat(multis.filter((m) => m.target >= 100 && boardSlip(m))), slips: slipsOf([100, 1000]).filter(boardSlip).slice(0, 12) },
+    short: stat(settledAll.filter((h) => h.type === 'short')),
     potd: { ...stat(multis.filter((m) => m.target === 'potd')), slips: slipsOf(['potd']).slice(0, 14) },
     live: stat(live),
     byType: group((h) => h.type, graded), bySport: group((h) => h.sport), byFamily: group((h) => familyOf(h.market)), byModel: group((h) => h.model || 'before 2026.10.1'), buckets,
@@ -819,7 +878,7 @@ export function summarize(history) {
     // Retired on 23 Oct 2026 (Best bets at one bookmaker's price: 25 Oct), each with its final record
     // (they lost money; the reason they were cut).
     retired: [['Best bets at one bookmaker\'s price (to 25 Oct)', stat(settledAll.filter(oldBest))], ['Shortlist bankers (odds 1.30-1.80)', stat(graded)], ['Surest (odds 1.20-1.40)', stat(safe)], ['Singles near 2.00', stat(settledAll.filter((h) => h.type === 'two'))],
-      ['Model-only picks (no price)', stat(models)], ['4x to 20x slips', stat(multis.filter((m) => [4, 5, 10, 20].includes(m.target)))], ['Mega slips (100x, 1000x)', stat(multis.filter((m) => m.target >= 100))]]
+      ['Model-only picks (no price)', stat(models)], ['2x and 3x slips (earlier rules, to 5 Nov)', stat(multis.filter((m) => [2, 3].includes(m.target) && !boardSlip(m)))], ['4x to 20x slips (earlier rules, to 23 Oct)', stat(multis.filter((m) => [4, 5, 10, 20].includes(m.target) && !boardSlip(m)))], ['Mega slips (100x, 1000x; earlier rules, to 23 Oct)', stat(multis.filter((m) => m.target >= 100 && !boardSlip(m)))]]
       .map(([name, st]) => ({ name, ...st })).filter((r) => r.won + r.lost),
     outside: stat(outside), safe: stat(safe), best: stat(best), two: stat(settledAll.filter((h) => h.type === 'two')), edge: stat(settledAll.filter((h) => h.type === 'edge')),
     // Model-only picks (no price): hit rate against forecast and Brier only; their "odds" are fair

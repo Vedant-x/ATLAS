@@ -3,6 +3,30 @@
 What was decided, why, and what it replaced. Anything that reverses an earlier decision says so here
 first, with the evidence. A change that flips a decision without an entry here should not merge.
 
+## 2026-11-05 · The full board again, built on what the record taught
+
+- **Decided (the owner's call):**
+  - The shortlist (odds 1.30 to 2.20), every multiplier from 2x to 1000x and the parlay of the day are
+    back on the site and in the record, from board legs, which carry these rules:
+    - the market's margin-free chance, ranked and shown, never ATLAS's;
+    - no price more than 3% under the fair odds (5% where only one bookmaker prices the match);
+    - singles from 1.30;
+    - Stake's price whenever it is within 2% of the best;
+    - one pick per match across every list and build.
+  - **Best current** is new: in-play chances for live matches (inplay.js) with their fair odds, and the
+    shortlist's picks starting within 3 hours. Live picks are not recorded: no price was taken.
+  - Best bets and Value bets keep the 27 Oct rules unchanged.
+  - Each build queues the next one when it starts, not only at its end.
+- **Replaces:** the 27 Oct rule that slips and the parlay of the day take only legs at or above fair
+  odds, with no fallback. The record for that rule: lists empty most days; 2x/3x slips 0-4.
+- **Evidence (3,374 settled singles to 5 Nov):**
+  - **Losses were the bookmaker's cut:** -5.4% actual against -5.9% implied by the prices.
+  - **ATLAS's chance added nothing:** it said 67.0%; the market said 65.4%; the picks won 65.5%.
+  - **Short prices lost most:** -12% under 1.30.
+  - **Both sides of one match:** 10 such picks won 2.
+  - **What to expect:** the board loses about its distance from fair (about 1-3% a pick for singles,
+    more for long slips); the cards show that return.
+
 ## 2026-10-31 · Football graded on 90 minutes; the closing line leads the record
 
 - **Decided:**

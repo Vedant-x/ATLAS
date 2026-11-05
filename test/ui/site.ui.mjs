@@ -91,21 +91,34 @@ test('first visit: the age check shows at once, without the intro animation', as
   await ctx.close();
 });
 
-test('Picks: three lists (Best bets, Value bets, 2x and 3x slips), one menu entry lit across them', async () => {
+test('Picks: Best current, Shortlist, Best bets, Value bets and slips 2x to 1000x, one menu entry lit across them', async () => {
   const { page, ctx, errors } = await open('#/picks');
-  for (const [r, tab] of [['#/picks', 'Best bets'], ['#/value', 'Value bets'], ['#/x/3', 'Slips']]) {
+  for (const [r, tab] of [['#/current', 'Best current'], ['#/shortlist', 'Shortlist'], ['#/picks', 'Best bets'], ['#/value', 'Value bets'], ['#/x/3', 'Slips'], ['#/x/1000', 'Slips']]) {
     await page.goto(BASE + r); await page.waitForSelector('.builder-nav');
     assert.equal(await page.getAttribute('nav.top a[href="#/picks"]', 'class'), 'on', `${r}: Picks lit`);
     assert.equal(await page.textContent('.builder-nav [aria-current="page"]'), tab);
-    assert.equal(await page.locator('.builder-nav a').count(), 3, 'three lists, no more');
+    assert.equal(await page.locator('.builder-nav a').count(), 5, 'five lists, no more');
     assert.equal(await page.locator('.research-tabs').count(), 0, 'one tab row only');
   }
   await shot(page, 'picks-slips');
   // The retired pages' old links land on the list that replaced them.
-  for (const [from, to] of [['#/bankers', '#/picks'], ['#/every', '#/picks'], ['#/edge', '#/value'], ['#/mega', '#/x/2'], ['#/x/10', '#/x/2'], ['#/target', '#/x/2']]) {
+  for (const [from, to] of [['#/bankers', '#/shortlist'], ['#/every', '#/shortlist'], ['#/edge', '#/value'], ['#/mega', '#/x/100'], ['#/x/7', '#/x/2'], ['#/target', '#/x/2']]) {
     await page.goto(BASE + from);
     await page.waitForFunction((h) => location.hash === h, to);
   }
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('home: the full board is filled (Shortlist, every multiplier) and Best current opens', async () => {
+  const { page, ctx, errors } = await open('#/');
+  await page.waitForSelector('.dash-bankers .mini');
+  assert.ok(await page.locator('.dash-bankers .mini').count() >= 1, 'the shortlist has picks');
+  assert.equal(await page.locator('.dash-multi .mult-card').count(), 8, 'one card per multiplier, 2x to 1000x');
+  await page.goto(BASE + '#/current'); await page.waitForSelector('.builder-nav [aria-current="page"]');
+  assert.equal(await page.textContent('.builder-nav [aria-current="page"]'), 'Best current');
+  await page.goto(BASE + '#/x/10'); await page.waitForSelector('.tabs');
+  assert.equal(await page.locator('.tabs a').count(), 8);
   assert.deepEqual(errors, []);
   await ctx.close();
 });
@@ -327,7 +340,7 @@ test('home: a panel can be made full width, and every panel takes a size', async
   assert.ok(Math.abs(panel - dash) < 2, `${panel} vs ${dash}`);
   assert.match(await page.textContent('[data-lay="size"][data-lay-key="live"]'), /Full/);
   // Every panel's markup accepts a size (the class goes on its own element).
-  for (const k of ['potd', 'shortlist', 'value', 'changes', 'record', 'health']) await page.click(`[data-lay="size"][data-lay-key="${k}"]`);
+  for (const k of ['current', 'bankers', 'potd', 'multi', 'shortlist', 'value', 'changes', 'record', 'health']) await page.click(`[data-lay="size"][data-lay-key="${k}"]`);
   const sized = await page.$$eval('.dash > .panel.lay-third', (ps) => ps.length);
   const shown = await page.$$eval('.dash > .panel:not(.dash-layout):not(.lay-full)', (ps) => ps.length);
   assert.equal(sized, shown);
