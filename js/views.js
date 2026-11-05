@@ -323,7 +323,10 @@ export const views = {
     // records, every market, the model, the bookmaker table, the calculator and the notes) is folded:
     // one tap opens it, and the section menu opens the one it jumps to. On a phone the page was four
     // screens of detail before the first fold.
-    const sections = [['overview', 'Overview'], ['case', 'The case'], ['best', 'Best bets'], ...(e.props?.length ? [['props', 'Player props']] : []), ...(timeline ? [['history', 'Timeline']] : []), ...dos.map((x) => [x.id, x.label]), ['form', 'Records'], ['markets', `All markets (${a.marketCount})`], ...(a.kind === 'binary' ? [] : [['model', 'Model']]), ['book', 'Bookmaker prices'], ['calc', 'Calculator'], ['notes', 'Model notes']];
+    // The props section only when it has rows (a match can carry props none of which show): its link
+    // would lead nowhere otherwise.
+    const props = propsPanel(e);
+    const sections = [['overview', 'Overview'], ['case', 'The case'], ['best', 'Best bets'], ...(props ? [['props', 'Player props']] : []), ...(timeline ? [['history', 'Timeline']] : []), ...dos.map((x) => [x.id, x.label]), ['form', 'Records'], ['markets', `All markets (${a.marketCount})`], ...(a.kind === 'binary' ? [] : [['model', 'Model']]), ['book', 'Bookmaker prices'], ['calc', 'Calculator'], ['notes', 'Model notes']];
     return {
       mode: 'match', accent: hc, title: `${e.home} v ${e.away}`,
       sceneOpts: { home: hc, away: ac, pHome: w.home, pAway: w.away, sport: e.sport },
@@ -355,7 +358,7 @@ export const views = {
       </section>
       ${casePanel(rr)}
       ${bestBetsPanel(e, a)}
-      ${propsPanel(e)}
+      ${props}
       ${timeline}
       ${dos.map((x) => fold(x.id, esc(x.label), x.html)).join('')}
       ${fold('form', 'Records <small>season record and recent form</small>', `<div class="grid two">${formPanel(e, hc, ac)}</div>`)}
