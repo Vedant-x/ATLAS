@@ -54,9 +54,10 @@ test('3. every return reproduces from its named chance and the price; the basis 
 });
 
 test('4. no qualifying candidate means no recommendation of any kind: singles, slips or the parlay of the day', () => {
-  // The same board with one bookmaker's prices only (no market reference): nothing qualifies.
+  // One bookmaker's prices only, its margin about 6-7% (more than the board's 5% for one book):
+  // nothing qualifies. (Since 2026.11.5 a one-book price within 5% of its fair odds is a board leg.)
   const board = Array.from({ length: 12 }, (_, i) => ({ id: `b${i}`, compId: String(i), sport: 'basketball', leaguePath: 'basketball/nba', league: 'NBA', home: `H${i}`, away: `A${i}`,
-    start: now + (2 + (i % 8)) * H, live: false, fetchedAt: now - 6e4, markets: [{ name: 'Winner', outcomes: [{ name: `H${i}`, odds: [1.22, 1.3, 1.36, 1.45][i % 4] }, { name: `A${i}`, odds: [4.4, 3.6, 3.2, 2.8][i % 4] }] }] }));
+    start: now + (2 + (i % 8)) * H, live: false, fetchedAt: now - 6e4, markets: [{ name: 'Winner', outcomes: [{ name: `H${i}`, odds: [1.24, 1.3, 1.36, 1.45][i % 4] }, { name: `A${i}`, odds: [3.8, 3.4, 3.05, 2.7][i % 4] }] }] }));
   assert.deepEqual(selectPicks(board, now, 12, []).filter((p) => p.type !== 'probe'), [], 'nothing recorded');
   assert.deepEqual(bankerSlips(board, 2), []);
   assert.equal(parlayOfDay(board, { now }), null);

@@ -1,7 +1,7 @@
 // Record page: every official ATLAS pick (locked before kick-off) and how it turned out.
 import { esc, sportOf, ist } from './views.js';
 import { recordText, closeLineText } from './honest.js';
-import { summarize, calibration, marketChance, BEST, VALUE, potdDay, walkForward, oldBest, closingLine } from './track.js';
+import { summarize, calibration, marketChance, BEST, VALUE, potdDay, walkForward, oldBest, closingLine, MULTI_TARGETS } from './track.js';
 import { serviceStats } from './compare.js';
 import { FINAL, independentlyConfirmed } from './settle.js';
 import { localDay } from './engine.js';
@@ -66,7 +66,7 @@ const statCards = (s, updatedAt) => `${updatedAt ? `<p class="note reveal">Resul
 const vsMarket = (r) => (r.brierN >= 10 ? `<span class="${r.brierModel <= r.brierMarket ? 'pos' : 'neg'}">${r.brierModel <= r.brierMarket ? 'beats' : 'trails'} market</span>` : '<span class="muted">—</span>');
 const table = (rows, label) => (rows.length ? `<div class="table-wrap"><table class="tr-table"><thead><tr><th>${label}</th><th>Picks</th><th>Hit rate</th><th>Estimated</th><th>Profit</th><th data-tip="How far the chances shown were from what happened (Brier score). Lower is better; a coin flip scores 0.25.">Forecast error</th><th data-tip="The same score for the bookmaker's chance (its cut taken out) on the same picks">vs bookmakers</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${r.won + r.lost}</td><td>${pct(r.hitRate)}</td><td>${pct(r.expected)}</td><td class="${r.profit >= 0 ? 'pos' : 'neg'}">${units(r.profit)}</td><td>${r.brier == null ? '—' : r.brier.toFixed(3)}</td><td>${vsMarket(r)}</td></tr>`).join('')}</tbody></table></div>` : '');
 
-const TYPE_NAME = { best: 'Best bets', edge: 'Value bets', banker: 'shortlist (retired)', safe: 'surest (retired)', two: 'near 2.00 (retired)', model: 'model only (retired)', value: 'value spot (retired)' };
+const TYPE_NAME = { best: 'Best bets', edge: 'Value bets', short: 'Shortlist', banker: 'shortlist (retired)', safe: 'surest (retired)', two: 'near 2.00 (retired)', model: 'model only (retired)', value: 'value spot (retired)' };
 const pickRow = (h) => (h.type === 'multi' ? `<li class="tr-${h.status}"><span class="tr-badge">${h.status === 'pending' ? day(h.start) : h.status.toUpperCase()}</span>
   <div><b>${h.target === 'potd' ? 'Parlay of the day' : `${esc(h.target)}x slip`} · ${h.legs.length} legs</b><details class="tr-legs"><summary>${h.legs.map((l) => `<i class="leg-dot leg-${esc(l.status)}" data-tip="${esc(`${l.pick}: ${l.status}`)}"></i>`).join('')}<span>legs</span><span class="sr-only"> ${esc(h.key)}</span></summary><ul>${h.legs.map((l) => `<li><i class="leg-dot leg-${esc(l.status)}"></i><b>${esc(l.pick)}</b><small>${esc(l.home)} v ${esc(l.away)} · ${esc(ist(l.start))}</small></li>`).join('')}</ul></details></div>
   <em>${Number(h.odds).toFixed(2)}</em><i>${pct(h.p, 0)}</i></li>` : `<li class="tr-${h.status}"><span class="tr-badge">${h.status === 'pending' ? day(h.start) : h.status.toUpperCase()}</span>
@@ -125,7 +125,7 @@ function verdict(a) {
 // ATLAS's own ledger in the format a fair comparison with another service would use (compare.js), and
 // the honest state of any comparison: none has been run.
 function comparisonPanel(picks) {
-  const rows = [['Best bets', (h) => h.type === 'best' && !oldBest(h)], ['Value bets', (h) => h.type === 'edge'], ['Best bets at one bookmaker\'s price (retired)', oldBest], ['Shortlist bankers (retired)', (h) => h.type === 'banker']].map(([label, of]) => [label, serviceStats({ service: 'ATLAS', evidence: 'ledger', selections: picks.filter((h) => of(h) && ['won', 'lost', 'push', 'void'].includes(h.status)).map((h) => ({ date: new Date(h.start).toISOString(), odds: h.odds, status: h.status, p: h.shown ?? h.p, close: h.close })) })]).filter(([, st]) => st.selections);
+  const rows = [['Shortlist', (h) => h.type === 'short'], ['Best bets', (h) => h.type === 'best' && !oldBest(h)], ['Value bets', (h) => h.type === 'edge'], ['Best bets at one bookmaker\'s price (retired)', oldBest], ['Shortlist bankers (earlier rules, to 23 Oct)', (h) => h.type === 'banker']].map(([label, of]) => [label, serviceStats({ service: 'ATLAS', evidence: 'ledger', selections: picks.filter((h) => of(h) && ['won', 'lost', 'push', 'void'].includes(h.status)).map((h) => ({ date: new Date(h.start).toISOString(), odds: h.odds, status: h.status, p: h.shown ?? h.p, close: h.close })) })]).filter(([, st]) => st.selections);
   if (!rows.length) return '';
   const f = (x, d = 2) => (x == null ? '—' : x.toFixed(d));
   return `<div class="panel reveal"><h3 class="ph">ATLAS in the comparison format <small>reproduced from its complete ledger · no comparison with another service has been run</small></h3>
@@ -167,21 +167,22 @@ function trustPanel(picks) {
 // Each list the site shows, with its own record: the first thing on the page.
 function listsTable(s) {
   const t = (k) => s.byTarget.find((x) => x.target === k);
-  const rows = [['Best bets', s.best, '#/picks'], ['Value bets', s.edge, '#/value'], ['Parlay of the day', s.potd, '#/'], ['2x slips', t(2), '#/x/2'], ['3x slips', t(3), '#/x/3']];
+  const rows = [['Shortlist', s.short, '#/shortlist'], ['Best bets', s.best, '#/picks'], ['Value bets', s.edge, '#/value'], ['Parlay of the day', s.potd, '#/'], ...MULTI_TARGETS.map((k) => [`${k}x slips`, t(k), `#/x/${k}`])];
   return `<div class="panel reveal"><h3 class="ph">Every list, its record <small>each pick saved before the start, graded from the final score</small></h3>
     <div class="table-wrap"><table class="tbl tight tr-lists"><thead><tr><th>List</th><th class="num">Won–lost</th><th class="num">Hit rate</th><th class="num">Profit (1 unit each)</th><th class="num" data-tip="How often the price taken was better than the last price before the start">Beat the final price</th></tr></thead><tbody>
     ${rows.map(([name, r, href]) => `<tr><td><a href="${href}">${name}</a></td><td class="num">${r && r.won + r.lost ? `${r.won}–${r.lost}` : '—'}</td><td class="num">${r && r.won + r.lost ? pct(r.hitRate, 0) : '—'}</td><td class="num ${r && r.won + r.lost ? (r.profit >= 0 ? 'pos' : 'neg') : ''}">${r && r.won + r.lost ? `${units(r.profit)} (${r.roi >= 0 ? '+' : ''}${(r.roi * 100).toFixed(1)}%)` : 'no results yet'}</td><td class="num">${r?.clvN >= 10 ? pct(r.beatClose, 0) : '—'}</td></tr>`).join('')}</tbody></table></div></div>`;
 }
-// Retired lists: cut on 23 Oct 2026 for losing money, each with its final record, kept for honesty.
+// Lists and slips under earlier rules, each with its final record, kept for honesty (the shortlist and
+// the multipliers came back on 5 Nov 2026 under new rules, with records of their own).
 function retiredTable(s) {
   if (!s.retired?.length) return '';
-  return `<div class="panel"><h3 class="ph">Retired lists <small>cut on 23 Oct 2026 for losing money · final records</small></h3>
+  return `<div class="panel"><h3 class="ph">Earlier rules <small>retired lists and slips under the old rules · final records</small></h3>
     <div class="table-wrap"><table class="tbl tight"><thead><tr><th>List</th><th class="num">Won–lost</th><th class="num">Hit rate</th><th class="num">Claimed</th><th class="num">Profit</th></tr></thead><tbody>
     ${s.retired.map((r) => `<tr><td>${esc(r.name)}</td><td class="num">${r.won}–${r.lost}</td><td class="num">${pct(r.hitRate, 0)}</td><td class="num">${pct(r.expected, 0)}</td><td class="num ${r.profit >= 0 ? 'pos' : 'neg'}">${units(r.profit)} (${r.roi >= 0 ? '+' : ''}${(r.roi * 100).toFixed(1)}%)</td></tr>`).join('')}</tbody></table></div></div>`;
 }
 
 // The headline for the current rules: the price taken against the closing line (closeLineText).
-const closeLinePanel = (c) => { const t = closeLineText(c); return `<div class="panel reveal close-line"><h3 class="ph">Price vs the closing line <small>Best bets and Value bets since 27 Oct</small></h3>
+const closeLinePanel = (c) => { const t = closeLineText(c); return `<div class="panel reveal close-line"><h3 class="ph">Price vs the closing line <small>Shortlist, Best bets and Value bets since 27 Oct</small></h3>
   <p class="cl-head"><b>${esc(t.head)}</b></p>${t.lines.map((l) => `<p class="muted">${esc(l)}</p>`).join('')}
   <p class="note">Known at kick-off for every pick, long before profit means anything: a price that keeps beating the market's final price is the clearest early sign of a real edge. One that keeps trailing it says there is none.</p></div>`; };
 

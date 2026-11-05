@@ -92,14 +92,18 @@ test('summary: the live lists (Best bets, Value bets) are the headline; retired 
   assert.equal(s.outside.won + s.outside.lost, 0);
 });
 
-test('official picks: Best bets (1.20 to 2.50) and Value bets only; nothing from the retired lists', async () => {
+test('official picks: Best bets, Value bets and the shortlist; one pick per match across every list', async () => {
   const { selectPicks } = await import('../js/track.js');
   const now = Date.parse('2026-10-07T08:00:00Z');
   const ev = (id, a, b, ca, cb) => ({ id, compId: id, sport: 'basketball', league: 'NBA', home: `H${id}`, away: `A${id}`, start: now + 36e5, sharpAt: now - 36e5, fetchedAt: now - 6e4, markets: [{ name: 'Winner', consensusFrom: 'Pinnacle', outcomes: [{ name: `H${id}`, odds: a, cons: ca }, { name: `A${id}`, odds: b, cons: cb }] }] });
   const picks = selectPicks([ev('1', 1.35, 3.3, 0.75, 0.25), ev('2', 1.25, 4.1, 0.81, 0.19), ev('3', 1.62, 2.35, 0.6, 0.4), ev('4', 1.9, 1.95, 0.51, 0.49)], now, 12, []).filter((p) => p.type !== 'multi');
   assert.ok(picks.length > 0);
-  assert.ok(picks.every((p) => (p.type === 'best' && p.odds >= 1.2 && p.odds <= 2.5) || p.type === 'edge'), JSON.stringify(picks.map((p) => [p.type, p.odds])));
-  assert.equal(new Set(picks.map((p) => p.key)).size, picks.length, 'one record per list');
+  assert.ok(picks.every((p) => (p.type === 'best' && p.odds >= 1.2 && p.odds <= 2.5) || p.type === 'edge' || (p.type === 'short' && p.odds >= 1.3 && p.odds <= 2.2) || p.type === 'probe'), JSON.stringify(picks.map((p) => [p.type, p.odds])));
+  const singles = picks.filter((p) => p.type !== 'probe');
+  assert.equal(new Set(singles.map((p) => p.eventId)).size, singles.length, 'one pick per match, whatever the list');
+  // A match holding a pending pick from an earlier build gets no second one (here: the other side).
+  const held = { key: 'edge|3|Winner|A3', type: 'edge', eventId: '3', status: 'pending', pick: 'A3' };
+  assert.ok(!selectPicks([ev('3', 1.62, 2.35, 0.6, 0.4)], now, 12, [held]).some((p) => p.eventId === '3' && p.type !== 'multi' && p.type !== 'probe'));
 });
 
 test('settlement: legs of a slip that already lost keep being graded', async () => {
@@ -156,7 +160,8 @@ test('parlay of the day: a day runs 12:00 to 12:00 in the chosen zone; one slip 
   assert.equal(potdDay(Date.parse('2026-10-18T11:30:00Z'), 'GMT').key, '2026-10-17');
   const now = ist(18, 13);
   const ev = (id, h, a, start) => withRef({ id, compId: id, sport: 'basketball', league: 'L', leaguePath: 'basketball/l', home: `H${id}`, away: `A${id}`, start, markets: [{ name: 'Winner', outcomes: [{ name: `H${id}`, odds: h }, { name: `A${id}`, odds: a }] }] }, now);
-  const board = [ev('1', 1.25, 4.2, now + 2 * 36e5), ev('2', 1.3, 3.7, now + 3 * 36e5), ev('3', 1.22, 4.6, now + 4 * 36e5), ev('4', 1.28, 3.9, now + 5 * 36e5), ev('5', 1.2, 4.8, now + 30 * 36e5)];
+  // Legs from 1.25 (board legs: shorter prices lost the most).
+  const board = [ev('1', 1.32, 3.6, now + 2 * 36e5), ev('2', 1.36, 3.3, now + 3 * 36e5), ev('3', 1.28, 4.0, now + 4 * 36e5), ev('4', 1.4, 3.0, now + 5 * 36e5), ev('5', 1.3, 3.7, now + 30 * 36e5)];
   const slip = parlayOfDay(board, { now, zone: 'IST' });
   assert.ok(slip, 'a slip from the day\'s matches');
   assert.ok(slip.odds >= 1.7 && slip.odds <= 2.0, String(slip.odds));
