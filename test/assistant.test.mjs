@@ -36,3 +36,10 @@ test('assistant routes questions to the right data', async () => {
   assert.match(who.text, /Boston Celtics \*\*64%\*\*/);
   assert.match((await brain.answer('hello')).text, /best bets today/);
 });
+
+test('"parlay of the day" answers with the parlay of the day, not a 3x slip', async () => {
+  const b = createBrain({ ...K, parlay: () => ({ odds: 1.81, p: 0.58, legs: [{ pick: 'Arsenal', market: 'Match Result', match: 'Arsenal vs Leeds', odds: 1.37, p: 0.74 }, { pick: 'Celtics', market: 'Winner', match: 'Celtics vs Knicks', odds: 1.32, p: 0.78 }] }) });
+  const a = await b.answer('what is the parlay of the day');
+  assert.match(a.text, /Parlay of the day.*2 legs at \*\*1\.81x\*\*/);
+  assert.match((await createBrain({ ...K, parlay: () => null }).answer("today's parlay")).text, /No parlay of the day yet/);
+});

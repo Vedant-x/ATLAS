@@ -472,7 +472,8 @@ test('every price under fair: Best bets still fills, each card showing how far u
   await page.waitForSelector('.dash-short .mini');
   assert.ok(await page.locator('.dash-short .mini').count() >= 1, 'never empty');
   assert.match(await page.textContent('.dash-short .mini-nums'), /-\d+\.\d% vs market/, 'the price under fair, shown');
-  assert.match(await page.textContent('.dash-short > .note'), /likeliest results at any price \(not saved to the record\)/);
+  assert.match(await page.textContent('.dash-short > .note'), /marked "any price" are the likeliest results whatever their price \(not saved to the record\)/);
+  assert.ok(await page.locator('.dash-short .any-price').count() >= 1, 'each fill-in marked');
   assert.deepEqual(errors, []);
   await ctx.close();
 });
