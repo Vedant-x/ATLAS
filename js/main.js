@@ -380,12 +380,16 @@ function softRender() {
   if (a && /INPUT|SELECT|TEXTAREA/.test(a.tagName)) return;
   const y = scrollY;
   const open = [...app.querySelectorAll('details[open] > summary')].map((s) => s.textContent);
+  // The Filters panel's own summary changes with every filter ("Next 12h" becomes "Next 3h"), so it is
+  // kept open by what it is, not by its text: before, it snapped shut on every tap.
+  const filtersWereOpen = Boolean(app.querySelector('details.sl-filters[open]'));
   const { name, v } = build();
   // Prepare the new page exactly as the shown one was prepared, then patch only what differs.
   const t = document.createElement('template');
   t.innerHTML = withTabs(name, v.html);
   const f = t.content;
   f.querySelectorAll('details > summary').forEach((s) => { if (open.includes(s.textContent)) s.parentElement.open = true; });
+  if (filtersWereOpen) f.querySelectorAll('details.sl-filters').forEach((d) => { d.open = true; });
   f.querySelectorAll('.reveal, .grow, .grow-y, .draw').forEach((el, i) => { el.style.setProperty('--d', `${Math.min(i % 12, 11) * 45}ms`); el.classList.add('in'); });
   f.querySelectorAll('.ch').forEach((el) => { el.style.opacity = 1; });
   f.querySelectorAll('[data-count-to]').forEach((el) => { el.textContent = Number(el.dataset.countTo).toFixed(Number(el.dataset.dec || 0)) + (el.dataset.suffix || ''); });

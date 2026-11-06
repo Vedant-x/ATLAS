@@ -22,6 +22,13 @@ what changed, week by week. Reasons and reversals are in [docs/DECISIONS.md](doc
   - **Fill-ins:** if still short, the likeliest results at any price fill it, each showing its distance
     from fair; they are never recorded.
   - **Current bets:** briefly its own page, now folded in.
+- **Site sweep (6 Nov):**
+  - **Filters:** the Filters panel no longer snaps shut on every tap, and Best bets keeps the window
+    you chose (it had widened to 48 hours); fill-ins come from within your window and are marked
+    "any price".
+  - **Assistant:** "parlay of the day" gets the parlay of the day, not a 3x slip, and a value answer
+    no longer shows two different ATLAS chances.
+  - **Wording:** the slip pages and Results describe the current rules.
 - **Layout:**
   - Best bets now includes the shortlist, with its filters.
   - Value bets is removed from the pages.

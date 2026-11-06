@@ -9,7 +9,7 @@ import { loadDetail, detailFor } from '../detail.js';
 import { CATALOG, ALL_LEAGUES, sportById } from '../catalog.js';
 import { prefs, prefEvents } from '../prefs.js';
 import { liveWin } from '../live.js';
-import { calibrated, shownProp, rankedBankers, bestBets, valueBets, recommendationFor } from '../track.js';
+import { calibrated, shownProp, rankedBankers, bestBets, valueBets, recommendationFor, parlayOfDay } from '../track.js';
 import { bankers } from '../intel.js';
 import { trackCalibration, trackStats } from '../trackview.js';
 import { researchRow, caseFor } from '../research.js';
@@ -227,6 +227,8 @@ export function createKnowledge(S) {
   const freshness = () => ({ pricesAt: S.events?.reduce((t, e) => Math.max(t, priceTime(e) || 0), 0) || null, changesAt: timelineUpdatedAt() });
   // Slips, optionally limited to the events a question allows (sport, dates, exclusions) and a minimum
   // leg price; a filtered set is built fresh rather than read from the page's cache.
+  // The parlay of the day, as the home page builds it (track.js parlayOfDay), or null.
+  const parlay = () => parlayOfDay(S.events, { cal: trackCalibration() });
   const slips = (target, today = true, { filter = null, key = '', minOdds = null, maxOdds = null, positiveOnly = false } = {}) => S.slips(target, { count: 5, today: today && target < 100, filter, key, minOdds, maxOdds, positiveOnly });
   const pickId = (x) => `${x.e.id}|${x.market}|${x.pick}`;
 
@@ -275,5 +277,5 @@ export function createKnowledge(S) {
     return n ? `${won} won of ${n}` : null;
   };
 
-  return { route, currentEvent, retiredSlips, currentScope, eventById, sportIn, leagueIn, eventsIn, filterEvents, picks, nearMisses, pickId, candidates, matchSummary, injuriesOf, startersOf, slips, catalog, norm, caseOf, readinessOf, changes, reviewList, freshness, lastVisit, minOdds: () => prefs.get().minOdds, zone: () => tzZone(), playerResearch, slipSummary, sourcesFor, SPORT_WORDS, LEAGUE_WORDS };
+  return { route, currentEvent, retiredSlips, parlay, currentScope, eventById, sportIn, leagueIn, eventsIn, filterEvents, picks, nearMisses, pickId, candidates, matchSummary, injuriesOf, startersOf, slips, catalog, norm, caseOf, readinessOf, changes, reviewList, freshness, lastVisit, minOdds: () => prefs.get().minOdds, zone: () => tzZone(), playerResearch, slipSummary, sourcesFor, SPORT_WORDS, LEAGUE_WORDS };
 }

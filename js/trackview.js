@@ -62,7 +62,7 @@ const statCards = (s, updatedAt) => `${updatedAt ? `<p class="note reveal">Resul
   <div><small>Settled picks</small><b>${s.won + s.lost}</b><span>${s.won} won · ${s.lost} lost${s.push ? ` · ${s.push} push` : ''}</span></div>
   <div><small>Hit rate</small><b>${pct(s.hitRate)}</b><span>ATLAS estimated ${pct(s.expected)}</span></div>
   <div><small>Profit, 1 unit per pick</small><b class="${s.profit >= 0 ? 'pos' : 'neg'}">${units(s.profit)}</b><span>ROI ${pct(s.roi)}</span></div>
-  <div><small>Average odds</small><b>${s.avgOdds ? s.avgOdds.toFixed(2) : '—'}</b><span>Best bets ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)} · Value bets to ${VALUE.maxOdds.toFixed(2)} (${VALUE.stakeMaxOdds.toFixed(2)} at Stake)</span></div>
+  <div><small>Average odds</small><b>${s.avgOdds ? s.avgOdds.toFixed(2) : '—'}</b><span>Best bets ${BEST.minOdds.toFixed(2)}–${BEST.maxOdds.toFixed(2)} · Value bets (to 5 Nov) to ${VALUE.maxOdds.toFixed(2)} (${VALUE.stakeMaxOdds.toFixed(2)} at Stake)</span></div>
   <div><small>Price vs final price</small><b class="${s.clvN >= 10 ? (s.clv >= 0 ? 'pos' : 'neg') : ''}">${s.clvN >= 10 ? `${s.clv >= 0 ? '+' : ''}${(s.clv * 100).toFixed(1)}%` : '—'}</b><span>${s.clvN >= 10 ? `the price taken beat the last price before the start on ${pct(s.beatClose, 0)} of ${s.clvN} picks` : 'closing prices are now saved for every pick; shown after 10 settle'}</span></div>
 </div>`;
 
@@ -225,7 +225,7 @@ export const trackViews = {
     return {
       mode: 'other', accent: '#3dff9a', title: 'Results',
       html: `<section class="hero small"><p class="kicker reveal">EVERY PICK · LOCKED BEFORE KICK-OFF · GRADED FROM FINAL SCORES</p><h1>RESULTS</h1>
-        <p class="lede reveal">Every shortlist pick, saved before kick-off and graded from the final score.</p></section>
+        <p class="lede reveal">Every Best bet and every slip, saved before kick-off and graded from the final score.</p></section>
         <div id="track-body" data-at="${cache?.data.updatedAt ?? ''}">${cache ? body(cache.data) : '<p class="muted">Loading results…</p>'}</div>`,
       after: () => {
         load().then((d) => {

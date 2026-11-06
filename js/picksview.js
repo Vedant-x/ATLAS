@@ -89,11 +89,11 @@ function earlierNote() {
   return n ? `<p class="muted reveal">Slips under the earlier rules (ATLAS's own chance, any price) won ${won} of ${n}: <a href="#/track">their record</a>. These records start again from 5 Nov.</p>` : '';
 }
 // Fewer options than asked for: say why, never pad the list.
-const fewNote = (list, target, want = 5) => (list.length && list.length < want ? `<p class="muted reveal">Only ${list.length} slip${list.length === 1 ? '' : 's'} meet${list.length === 1 ? 's' : ''} the rules right now (legs ATLAS rates likely enough, your minimum odds per leg, no two legs sharing a team, matches ${windowLabel(target).toLowerCase().replace('next', 'in the next')}). ATLAS doesn't add weaker slips to fill the page.</p>` : '');
+const fewNote = (list, target, want = 5) => (list.length && list.length < want ? `<p class="muted reveal">Only ${list.length} slip${list.length === 1 ? '' : 's'} meet${list.length === 1 ? 's' : ''} the rules right now (legs the market rates likely enough, priced within 3% of fair (5% with one bookmaker), your minimum odds per leg, no two legs sharing a team, matches ${windowLabel(target).toLowerCase().replace('next', 'in the next')}).</p>` : '');
 // Why no slip could be built: name the rule that blocked it instead of quietly loosening it.
 function emptySlips(target) {
   const mo = prefs.get().minOdds;
-  return `<p class="muted">No slip reaches about ${target}x within the rules, even with the wider search (legs rated 35%+ after the track-record check, total within 20% of the target): minimum odds ${mo.toFixed(2)} per leg${prefs.get().sports?.length ? ', your selected sports only' : ''}, no two legs sharing a team, matches ${windowLabel(target).toLowerCase().replace('next', 'in the next')}. ${mo > 1.2 ? 'Lowering your minimum odds or ' : ''}A smaller target will usually work.</p>`;
+  return `<p class="muted">No slip reaches about ${target}x within the rules, even with the wider search (legs the market rates 35%+, priced within 3% of fair, total within 20% of the target): minimum odds ${mo.toFixed(2)} per leg${prefs.get().sports?.length ? ', your selected sports only' : ''}, no two legs sharing a team, matches ${windowLabel(target).toLowerCase().replace('next', 'in the next')}. ${mo > 1.2 ? 'Lowering your minimum odds or ' : ''}A smaller target will usually work.</p>`;
 }
 
 // ---------- Best bets (never empty) and the multipliers row ----------
@@ -104,30 +104,34 @@ export const livePick = (b) => `<div class="mini live-pick reveal" data-tip="${e
   <span class="mini-ico">${sportOf(b.event.sport).icon}</span>
   <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.event.home)} <b>${esc(b.score || '')}</b> ${esc(b.event.away)} · <span class="live">LIVE</span> ${esc(b.clock)}</small></a>
   <div class="mini-nums"><b data-tip="Live chance">${pc(b.p, 0)}</b><small><span class="mm-need">fair ${odd(b.fairOdds)} · </span><span class="pos">take ${odd(b.fairOdds)}+</span></small></div></div>`;
-// Best bets, never empty:
+// Best bets, never empty, within the filters the visitor chose:
 //  - live: each live match's likeliest result (50% to 97%) with its fair odds (inplay.js);
 //  - the board (track.js bestBoard: a fair price or better, then within 3% of fair) in the chosen
-//    window, widened to 12, 24 and 48 hours while it holds fewer than BEST_MIN;
-//  - then the likeliest results at any price (track.js likeliest), each card showing how far under
-//    fair its price is. Only the board's picks are recorded.
-// The visitor's minimum odds apply throughout.
+//    window;
+//  - then, up to BEST_MIN, the likeliest results at any price in that window (track.js likeliest),
+//    each card showing how far under fair its price is. Only the board's picks are recorded.
+// The window is the visitor's: it is widened (12, 24, 48 hours) only when nothing in it has a price
+// at all, and the note says so. Minimum odds and sports apply throughout.
 const BEST_MIN = 12;
 export function bestList(pool, hrs, minOdds = 1) {
   const now = Date.now(), cal = trackCalibration(), ok = (b) => b.odds >= minOdds;
   const live = liveBets(pool.filter((e) => e.live), { min: 0.5, limit: 20 }).filter((b) => b.fairOdds >= minOdds);
-  let list = [], hours = hrs;
-  for (hours of [hrs, ...[12, 24, 48].filter((h) => h > hrs)]) { list = bestBoard(todayEvents(pool, now, hours), { cal, limit: 60 }).filter(ok); if (list.length >= BEST_MIN) break; }
-  let filled = 0;
-  if (list.length < BEST_MIN) {
-    const held = new Set(list.map((b) => b.event.id));
-    const more = likeliest(todayEvents(pool, now, hours), { limit: 60, now }).filter((b) => ok(b) && !held.has(b.event.id)).slice(0, BEST_MIN - list.length);
-    filled = more.length;
-    list = [...list, ...more];
+  let list = [], hours = hrs, filled = 0;
+  for (hours of [hrs, ...[12, 24, 48].filter((h) => h > hrs)]) {
+    const ev = todayEvents(pool, now, hours);
+    list = bestBoard(ev, { cal, limit: 60 }).filter(ok);
+    if (list.length < BEST_MIN) {
+      const held = new Set(list.map((b) => b.event.id));
+      const more = likeliest(ev, { limit: 60, now }).filter((b) => ok(b) && !held.has(b.event.id)).slice(0, BEST_MIN - list.length).map((b) => ({ ...b, anyPrice: true }));
+      filled = more.length;
+      list = [...list, ...more];
+    } else filled = 0;
+    if (list.length) break;
   }
   return { live, list, hours, filled };
 }
 // Under the list when it had to reach further: how far, and what the fill-ins are.
-export const bestNote = ({ hours, filled }, hrs) => [hours > hrs ? `Not enough in the next ${hrs}h, so the next ${hours}h are shown.` : '', filled ? `The last ${filled} are the likeliest results at any price (not saved to the record): their price is under fair by the % shown.` : ''].filter(Boolean).join(' ');
+export const bestNote = ({ hours, filled }, hrs) => [hours > hrs ? `Nothing in the next ${hrs}h has a price yet, so the next ${hours}h are shown.` : '', filled ? `${filled} marked "any price" are the likeliest results whatever their price (not saved to the record): each is under fair by the % shown.` : ''].filter(Boolean).join(' ');
 
 // ---------- The multipliers row (home panel) ----------
 // One card per multiplier: today's official slip as the record saved it (total odds, legs, chance).

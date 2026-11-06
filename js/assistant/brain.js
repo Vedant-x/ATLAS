@@ -164,7 +164,9 @@ export function createBrain(K) {
         x.basis === 'reference' && x.refP != null
           ? `   Price ${od(x.odds)}${x.book ? ` at ${x.book}` : ''} needs ${pc(1 / x.odds)} · market's fair chance ${pc(x.refP)} · return ${x.ev >= 0 ? '+' : ''}${(x.ev * 100).toFixed(1)}% by the market · ATLAS ${pc(x.p)} (return ${x.modelEV >= 0 ? '+' : ''}${(x.modelEV * 100).toFixed(1)}% by ATLAS)`
           : `   Price ${od(x.odds)} needs ${pc(1 / x.odds)} · ATLAS ${pc(x.p)} · return ${x.ev >= 0 ? '+' : ''}${(x.ev * 100).toFixed(1)}% by ATLAS's chance${x.priced ? '' : ' (model, no bookmaker price)'}`,
-        cs.pro.find((t) => !/^Bookmaker price/.test(t)) ? `   For: ${cs.pro.find((t) => !/^Bookmaker price/.test(t)).replace(/\.$/, '')}.` : '',
+        // The card already gives the chances: a reason that restates one (the match's own lead pick, which
+        // can be another estimate) would contradict it.
+        cs.pro.find((t) => !/^(Bookmaker price|ATLAS \d)/.test(t)) ? `   For: ${cs.pro.find((t) => !/^(Bookmaker price|ATLAS \d)/.test(t)).replace(/\.$/, '')}.` : '',
         cs.con[0] ? `   Against: ${cs.con[0]}` : '',
         `   Evidence: ${r.label}${r.missing.length || r.uncovered.length ? ` (unknown: ${[...r.missing, ...r.uncovered].join(', ').toLowerCase()})` : ''}.`,
       ].filter(Boolean).join('\n');
@@ -178,6 +180,16 @@ export function createBrain(K) {
   }
 
   // A multiplier slip under the question's constraints (sport, day, exclusions, minimum leg odds).
+  // The parlay of the day: one slip a day at 1.70 to 2.00, the same one the home page shows.
+  function parlay() {
+    const s = K.parlay?.();
+    if (!s) return { text: '**No parlay of the day yet.** No two legs on today\'s board land between 1.70 and 2.00 together; it fills as prices come in. A 2x slip is the nearest: ask for "a 2x slip".', followups: ['Give me a 2x slip', 'Best bets today'] };
+    return {
+      text: `**Parlay of the day**: ${s.legs.length} legs at **${od(s.odds)}x**, the market's chance **${pc(s.p)}** if the legs are unrelated (it needs ${pc(1 / s.odds)} to break even).\n\n${s.legs.map((l) => `- **${l.pick}** · ${l.market} · ${l.match} @ ${od(l.odds)} (${pc(l.p)})`).join('\n')}`,
+      cards: s.legs.map((l) => ({ type: 'leg', leg: l, at: Date.now() })), followups: ['Explain the risk', 'Give me a 3x slip'],
+    };
+  }
+
   function multiplier(q) {
     const c = parseConstraints(q, K);
     const t = c.target || (/mega|long ?shot/.test(q) ? 100 : 3);
@@ -315,6 +327,7 @@ export function createBrain(K) {
     if (/\b(my )?slip\b/.test(q) && /\b(check|analy[sz]e|how|good|risk|chance)\b/.test(q)) return slipReview();
     if (/injur|absen|\bout\b|suspend|missing|ruled out|fitness|doubtful/.test(q)) return injuries(q);
     if (/starter|pitcher|pitching|probable|\bsp\b|who.?s throwing/.test(q)) return starters(q);
+    if (/parlay of the day|daily parlay|today.?s parlay|\bpotd\b/.test(q)) return parlay();
     if (/\b\d{1,5}(?:\.\d+)?\s*x\b|\b\d{1,5}\s*times\b|\bmega\b|long ?shot|accumulator|acca|parlay|\bslip\b/.test(q)) return multiplier(q);
     if (/\blive\b|in play|right now/.test(q) && !/\bbet|pick/.test(q)) return live(q);
     const pl = !K.playerResearch || (/\b(bets?|picks?|tips?)\b/.test(q) && !/\bprops?\b/.test(q)) ? null : player(q);
