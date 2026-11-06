@@ -21,7 +21,7 @@ import { watch } from './alerts.js';
 import { finalView } from './finalview.js';
 import { trackCard, trackStrip, trackStats, trackCalibration, recordLine, ensureTrack, officialParlay } from './trackview.js';
 import { zone as tzZone, tzOf, abbr as tzAbbr, fmt as fmtTime, fmtDate } from './tz.js';
-import { bestBoard, POTD_ZONES, potdDay, parlayOfDay, recommendationFor, VALUE, nearBest, nearValue, bestExclusions } from './track.js';
+import { POTD_ZONES, potdDay, parlayOfDay, recommendationFor, VALUE, nearBest, nearValue, bestExclusions } from './track.js';
 import { stakeVsFair } from './oddspapi.js';
 import { feedText } from './honest.js';
 import { propRow, allProps } from './propsview.js';
@@ -31,9 +31,9 @@ import { casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips,
 import { lastVisit } from './timeline.js';
 import { whyLine } from './why.js';
 import { canonStats, standingsTable } from './standings.js';
-// Picks pages (Current bets, Best bets, slips 2x to 1000x): picksview.js, which
+// Picks pages (Best bets, slips 2x to 1000x): picksview.js, which
 // also uses the helpers here.
-import { picksViews, bindPicks, currentPanel, multiPanel } from './picksview.js';
+import { picksViews, bindPicks, multiPanel, bestList, bestNote, livePick } from './picksview.js';
 import { esc } from './esc.js';
 // Golf and motor racing: a field of players or drivers, drawn by fieldview.js.
 const FIELD_SPORTS = new Set(['golf', 'motorsport']);
@@ -391,19 +391,20 @@ function dashboard(ev, live) {
   // price or better, then within 3% of fair, one per match. The visitor's window, order, minimum odds
   // and sports apply (the folded Filters control).
   const minOdds = prefs.get().minOdds || 1;
-  const short = orderBets(bestBoard(todayEvents(pool, Date.now(), hrs), { cal: trackCalibration() }).filter((b) => b.odds >= minOdds).slice(0, 12));
+  // Never empty (picksview.js bestList): live picks first, the window widening and the likeliest
+  // results filling in when the board is thin.
+  const best = bestList(pool, hrs, minOdds), short = orderBets(best.list).slice(0, 12), note = bestNote(best, hrs);
   const empty = `No qualifying bets in the next ${hrs} hours with your filters.${exclusionLine(todayEvents(pool, Date.now(), hrs))}`;
   const rec = recordLine(trackStats()?.board);
   // Every panel by name, shown in the visitor's saved order with hidden ones left out (Customise).
   const panels = {
-    current: () => currentPanel(pool),
     multi: () => multiPanel(),
     potd: () => potdPanel(pool),
     // Minimal: one folded "Filters" control (window, order, odds and sports), one record line.
-    shortlist: () => `<div class="panel dash-short reveal"><h2 class="ph">Best bets <small>likeliest winners, at a fair price or within 3% of it</small></h2>
+    shortlist: () => `<div class="panel dash-short reveal"><h2 class="ph">Best bets <small>live now, then the likeliest winners at or near a fair price</small></h2>
       <details class="sl-filters"${filtersOpen ? ' open' : ''}><summary>${ico('filter')} Next ${hrs}h · ${esc(orderLabel())}${minOdds > 1 ? ` · odds ${minOdds.toFixed(2)}+` : ''}</summary>${windowChips('shours', hrs)}${orderChips()}${prefsBar()}</details>
       ${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}
-      <div class="minilist">${S.loading ? skelRows(4) : short.map((b) => miniPick(b)).join('') || `<p class="muted">${empty}</p>${nearBestHtml(pool, hrs)}`}</div></div>`,
+      <div class="minilist">${S.loading ? skelRows(4) : [...best.live.slice(0, 5).map(livePick), ...short.map((b) => miniPick(b))].join('') || `<p class="muted">${empty}</p>${nearBestHtml(pool, hrs)}`}</div>${note && !S.loading ? `<p class="note">${esc(note)}</p>` : ''}</div>`,
     live: () => `<div class="panel dash-live reveal"><h2 class="ph">Live now <small>${S.loading ? '' : live.length}</small></h2>
       ${S.loading ? skelRows(3) : live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${scoreText(e)}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>`,
     changes: () => `${changesPanel(ev, { title: lastVisit() ? 'Since your last visit' : 'What changed', limit: 6, hideEmpty: true })}`,
@@ -422,7 +423,7 @@ export const setFiltersOpen = (v) => { filtersOpen = Boolean(v); };
 // Home panels: order and visibility, saved per visitor (localStorage, best effort). Unknown or missing
 // names fall back to the default order, so a new panel always appears.
 // What is on now, Best bets (the shortlist folded in), the parlay of the day and every multiplier.
-const HOME_PANELS = [['current', 'Current bets'], ['shortlist', 'Best bets'], ['potd', 'Parlay of the day'], ['multi', 'Multipliers'], ['live', 'Live now'], ['changes', 'What changed'], ['record', 'Results'], ['health', 'Source health']];
+const HOME_PANELS = [['shortlist', 'Best bets'], ['potd', 'Parlay of the day'], ['multi', 'Multipliers'], ['live', 'Live now'], ['changes', 'What changed'], ['record', 'Results'], ['health', 'Source health']];
 const LAYOUT_KEY = 'atlas-home-layout';
 // Minimal by default: source health, what changed and the full record card start hidden (the record
 // is the strip at the top); Customise shows them.

@@ -75,7 +75,7 @@ test('phone: minimal first screen (no hero counters, picks in view) and no page 
   await page.waitForSelector('.dash-short .mini');
   assert.equal(await page.locator('.hero .stats').count(), 0, 'no hero counters');
   await shot(page, 'home-phone');
-  for (const r of ['#/', '#/picks', '#/current', '#/x/2', '#/watchlist', '#/track']) {
+  for (const r of ['#/', '#/picks', '#/x/2', '#/watchlist', '#/track']) {
     await page.goto(BASE + r); await page.waitForTimeout(600);
     assert.ok(await noOverflow(page), `${r} fits the phone width`);
   }
@@ -91,15 +91,13 @@ test('first visit: the age check shows at once, without the intro animation', as
   await ctx.close();
 });
 
-test('Picks: Current bets and Best bets under one menu entry; Multipliers its own entry', async () => {
+test('Picks is Best bets, never empty; Multipliers its own menu entry', async () => {
   const { page, ctx, errors } = await open('#/picks');
-  for (const [r, tab] of [['#/current', 'Current bets'], ['#/picks', 'Best bets']]) {
-    await page.goto(BASE + r); await page.waitForSelector('.builder-nav');
-    assert.equal(await page.getAttribute('nav.top a[href="#/picks"]', 'class'), 'on', `${r}: Picks lit`);
-    assert.equal(await page.textContent('.builder-nav [aria-current="page"]'), tab);
-    assert.equal(await page.locator('.builder-nav a').count(), 2, 'two lists, no more');
-    assert.equal(await page.locator('.research-tabs').count(), 0, 'one tab row only');
-  }
+  await page.waitForSelector('#app .minilist .mini');
+  assert.equal(await page.getAttribute('nav.top a[href="#/picks"]', 'class'), 'on', 'Picks lit');
+  assert.equal(await page.locator('.builder-nav').count(), 0, 'one list: no tabs');
+  assert.equal(await page.locator('.research-tabs').count(), 0, 'no tab row');
+  assert.ok(await page.locator('#app .minilist .mini').count() >= 1, 'Best bets is never empty');
   for (const r of ['#/x/3', '#/x/1000']) {
     await page.goto(BASE + r); await page.waitForSelector('.tabs');
     assert.equal(await page.getAttribute('nav.top a[href="#/x/2"]', 'class'), 'on', `${r}: Multipliers lit`);
@@ -107,7 +105,7 @@ test('Picks: Current bets and Best bets under one menu entry; Multipliers its ow
   }
   await shot(page, 'picks-slips');
   // The retired pages' old links land on the list that replaced them.
-  for (const [from, to] of [['#/bankers', '#/picks'], ['#/shortlist', '#/picks'], ['#/value', '#/picks'], ['#/edge', '#/picks'], ['#/mega', '#/x/100'], ['#/x/7', '#/x/2'], ['#/target', '#/x/2']]) {
+  for (const [from, to] of [['#/bankers', '#/picks'], ['#/shortlist', '#/picks'], ['#/current', '#/picks'], ['#/value', '#/picks'], ['#/edge', '#/picks'], ['#/mega', '#/x/100'], ['#/x/7', '#/x/2'], ['#/target', '#/x/2']]) {
     await page.goto(BASE + from);
     await page.waitForFunction((h) => location.hash === h, to);
   }
@@ -121,9 +119,6 @@ test('home: Best bets (the shortlist folded in) is filled, every multiplier has 
   assert.ok(await page.locator('.dash-short .mini').count() >= 1, 'Best bets has picks');
   assert.equal(await page.locator('.dash-value').count(), 0);
   assert.equal(await page.locator('.dash-multi .mult-card').count(), 8, 'one card per multiplier, 2x to 1000x');
-  await page.goto(BASE + '#/current'); await page.waitForSelector('.builder-nav [aria-current="page"]');
-  assert.equal(await page.textContent('.builder-nav [aria-current="page"]'), 'Current bets');
-  assert.ok(await page.locator('#app .minilist .mini').count() >= 1, 'Current bets is never empty');
   await page.goto(BASE + '#/x/10'); await page.waitForSelector('.tabs');
   assert.equal(await page.locator('.tabs a').count(), 8);
   assert.equal(await page.locator('nav.top a[href="#/x/2"]').count(), 1, 'Multipliers in the main menu');
@@ -348,7 +343,7 @@ test('home: a panel can be made full width, and every panel takes a size', async
   assert.ok(Math.abs(panel - dash) < 2, `${panel} vs ${dash}`);
   assert.match(await page.textContent('[data-lay="size"][data-lay-key="live"]'), /Full/);
   // Every panel's markup accepts a size (the class goes on its own element).
-  for (const k of ['current', 'shortlist', 'potd', 'multi', 'changes', 'record', 'health']) await page.click(`[data-lay="size"][data-lay-key="${k}"]`);
+  for (const k of ['shortlist', 'potd', 'multi', 'changes', 'record', 'health']) await page.click(`[data-lay="size"][data-lay-key="${k}"]`);
   const sized = await page.$$eval('.dash > .panel.lay-third', (ps) => ps.length);
   const shown = await page.$$eval('.dash > .panel:not(.dash-layout):not(.lay-full)', (ps) => ps.length);
   assert.equal(sized, shown);
@@ -419,7 +414,7 @@ const READABILITY = () => {
 
 for (const viewport of [PHONE, DESK]) {
   test(`readable and reachable (${viewport === PHONE ? 'phone' : 'desktop'}): 12 px text, 4.5:1 contrast, no hover-only tips, ${viewport === PHONE ? 44 : 32} px controls`, async () => {
-    for (const r of ['#/', '#/picks', '#/current', '#/x/2', '#/match/fx-ars-lee', '#/track', '#/sources', '#/watchlist', '#/sport/basketball']) {
+    for (const r of ['#/', '#/picks', '#/x/2', '#/match/fx-ars-lee', '#/track', '#/sources', '#/watchlist', '#/sport/basketball']) {
       const { page, ctx } = await open(r, { viewport });
       await page.waitForSelector('#app .panel, #app .hero');
       await page.waitForTimeout(1200);
@@ -470,17 +465,14 @@ test('first visit: the age check asks for a year of birth; under 18 is turned aw
   await adult.ctx.close();
 });
 
-test('no qualifying bet: an explicit answer with the reasons counted; the nearest misses are folded research with no odds buttons', async () => {
+test('every price under fair: Best bets still fills, each card showing how far under fair, the fill-ins named', async () => {
   // The same board with every favourite's fair chance cut 5%: its fair odds rise above every price.
   const data = () => { const d = siteData(); return { ...d, events: d.events.map((e) => ({ ...e, markets: (e.markets || []).map((m) => ({ ...m, outcomes: m.outcomes.map((o) => ({ ...o, ...(o.cons > 0.5 ? { cons: o.cons * 0.95 } : {}) })) })) })) }; };
   const { page, ctx, errors } = await open('#/', { data });
-  await page.waitForSelector('.dash-short .near-drawer');
-  assert.equal(await page.locator('.dash-short .mini').count(), 0, 'no pick cards');
-  assert.match(await page.textContent('.dash-short'), /No qualifying bets in the next 12 hours with your filters\. Not qualifying: \d+ below the fair price/);
-  assert.equal(await page.locator('.near-drawer [data-leg]').count(), 0, 'a near miss cannot be added to a slip');
-  assert.equal(await page.locator('.near-drawer[open]').count(), 0, 'folded until asked for');
-  await page.click('.dash-short .near-drawer > summary');
-  assert.match(await page.textContent('.dash-short .near-drawer'), /fails: below the fair price · qualifies at \d\.\d\d\+/);
+  await page.waitForSelector('.dash-short .mini');
+  assert.ok(await page.locator('.dash-short .mini').count() >= 1, 'never empty');
+  assert.match(await page.textContent('.dash-short .mini-nums'), /-\d+\.\d% vs market/, 'the price under fair, shown');
+  assert.match(await page.textContent('.dash-short > .note'), /likeliest results at any price \(not saved to the record\)/);
   assert.deepEqual(errors, []);
   await ctx.close();
 });

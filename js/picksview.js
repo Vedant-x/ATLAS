@@ -1,5 +1,5 @@
-// Picks: Current bets (live and coming up), Best bets (the likeliest winners at or near a fair
-// price, the shortlist folded in) and slips from 2x to 1000x, one menu entry with these as its tabs.
+// Picks: Best bets (the likeliest winners at or near a fair price, the shortlist folded in), and the
+// Multipliers pages (slips from 2x to 1000x), each its own menu entry.
 import { todayEvents } from './engine.js';
 import { pc, odd } from './charts.js';
 import { split } from './ui.js';
@@ -61,9 +61,6 @@ function slipCard(s, i, target, all) {
     </footer></article>`;
 }
 
-// Picks: one menu entry, these pages as its tabs.
-const builderNav = (on) => `<nav class="builder-nav reveal" aria-label="Picks">${[['current', '#/current', 'Current bets'], ['picks', '#/picks', 'Best bets']].map(([k, h, l]) => `<a class="chip ${k === on ? 'on' : ''}" href="${h}"${k === on ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>`;
-
 // Today's official slip for a tracked target, exactly as saved to the record (legs, odds, chance).
 // Where a builder's legs come from, for the page kicker (track.js slipPolicy).
 const windowLabel = (target) => (slipPolicy(target).hours >= 48 ? `NEXT ${Math.round(slipPolicy(target).hours / 24)} DAYS` : `NEXT ${slipPolicy(target).hours} HOURS`);
@@ -99,37 +96,40 @@ function emptySlips(target) {
   return `<p class="muted">No slip reaches about ${target}x within the rules, even with the wider search (legs rated 35%+ after the track-record check, total within 20% of the target): minimum odds ${mo.toFixed(2)} per leg${prefs.get().sports?.length ? ', your selected sports only' : ''}, no two legs sharing a team, matches ${windowLabel(target).toLowerCase().replace('next', 'in the next')}. ${mo > 1.2 ? 'Lowering your minimum odds or ' : ''}A smaller target will usually work.</p>`;
 }
 
-// ---------- Current bets and the multipliers row (home panels and pages) ----------
+// ---------- Best bets (never empty) and the multipliers row ----------
 // A live pick: the in-play chance (inplay.js, from the score, the clock and the pre-match market) and
 // its fair odds. No live price is read, so the take-it rule is the visitor's: Stake's live price above
-// the fair odds.
-const livePick = (b) => `<div class="mini live-pick reveal" data-tip="${esc(`${b.market} · ${b.event.league}\nLive chance from the score (${b.score}), the time left and the pre-match market's chance\nFair odds ${odd(b.fairOdds)}: a live price above them is worth it; below them is the bookmaker's cut\nNot saved to the record: no price was taken`)}">
+// the fair odds. Never recorded (no price was taken).
+export const livePick = (b) => `<div class="mini live-pick reveal" data-tip="${esc(`${b.market} · ${b.event.league}\nLive chance from the score (${b.score}), the time left and the pre-match market's chance\nFair odds ${odd(b.fairOdds)}: a live price above them is worth it; below them is the bookmaker's cut\nNot saved to the record: no price was taken`)}">
   <span class="mini-ico">${sportOf(b.event.sport).icon}</span>
   <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.event.home)} <b>${esc(b.score || '')}</b> ${esc(b.event.away)} · <span class="live">LIVE</span> ${esc(b.clock)}</small></a>
   <div class="mini-nums"><b data-tip="Live chance">${pc(b.p, 0)}</b><small><span class="mm-need">fair ${odd(b.fairOdds)} · </span><span class="pos">take ${odd(b.fairOdds)}+</span></small></div></div>`;
-// Current bets: never empty. In play: each live match's likeliest result (50% to 97%) with its fair
-// odds. Coming up: Best bets (track.js bestBoard) from the next 3 hours, the window widening (6, 12,
-// 24, 48 hours) until the list holds CURRENT_MIN; if the board still has too few at or near a fair
-// price, the likeliest results at any price fill it (likeliest), each showing how far under fair it is.
-const CURRENT_MIN = 12;
-export function currentLists(pool) {
-  const now = Date.now(), cal = trackCalibration();
-  const live = liveBets(pool.filter((e) => e.live), { min: 0.5, limit: 20 });
-  const want = Math.max(6, CURRENT_MIN - live.length);
-  let soon = [], hours = 3;
-  for (hours of [3, 6, 12, 24, 48]) { soon = bestBoard(todayEvents(pool, now, hours), { cal, limit: 40 }); if (soon.length >= want) break; }
-  if (soon.length < want) {
-    const held = new Set(soon.map((b) => b.event.id));
-    soon = [...soon, ...likeliest(todayEvents(pool, now, hours), { limit: 40, now }).filter((b) => !held.has(b.event.id))].slice(0, Math.max(want, soon.length));
+// Best bets, never empty:
+//  - live: each live match's likeliest result (50% to 97%) with its fair odds (inplay.js);
+//  - the board (track.js bestBoard: a fair price or better, then within 3% of fair) in the chosen
+//    window, widened to 12, 24 and 48 hours while it holds fewer than BEST_MIN;
+//  - then the likeliest results at any price (track.js likeliest), each card showing how far under
+//    fair its price is. Only the board's picks are recorded.
+// The visitor's minimum odds apply throughout.
+const BEST_MIN = 12;
+export function bestList(pool, hrs, minOdds = 1) {
+  const now = Date.now(), cal = trackCalibration(), ok = (b) => b.odds >= minOdds;
+  const live = liveBets(pool.filter((e) => e.live), { min: 0.5, limit: 20 }).filter((b) => b.fairOdds >= minOdds);
+  let list = [], hours = hrs;
+  for (hours of [hrs, ...[12, 24, 48].filter((h) => h > hrs)]) { list = bestBoard(todayEvents(pool, now, hours), { cal, limit: 60 }).filter(ok); if (list.length >= BEST_MIN) break; }
+  let filled = 0;
+  if (list.length < BEST_MIN) {
+    const held = new Set(list.map((b) => b.event.id));
+    const more = likeliest(todayEvents(pool, now, hours), { limit: 60, now }).filter((b) => ok(b) && !held.has(b.event.id)).slice(0, BEST_MIN - list.length);
+    filled = more.length;
+    list = [...list, ...more];
   }
-  return { live, soon, hours };
+  return { live, list, hours, filled };
 }
-export function currentPanel(pool) {
-  const { live, soon, hours } = currentLists(pool);
-  const rows = [...live.slice(0, 6).map(livePick), ...soon.slice(0, Math.max(4, 10 - Math.min(6, live.length))).map((b) => miniPick(b))];
-  return `<div class="panel dash-current reveal"><h2 class="ph">Current bets <small>live now and the next ${hours} hours · <a href="#/current">all</a></small></h2>
-    <div class="minilist">${S.loading ? '' : rows.join('') || '<p class="muted">Waiting for the next price check: no match on the board has a price yet.</p>'}</div></div>`;
-}
+// Under the list when it had to reach further: how far, and what the fill-ins are.
+export const bestNote = ({ hours, filled }, hrs) => [hours > hrs ? `Not enough in the next ${hrs}h, so the next ${hours}h are shown.` : '', filled ? `The last ${filled} are the likeliest results at any price (not saved to the record): their price is under fair by the % shown.` : ''].filter(Boolean).join(' ');
+
+// ---------- The multipliers row (home panel) ----------
 // One card per multiplier: today's official slip as the record saved it (total odds, legs, chance).
 // Read from the record, not built here: building eight slips at load cost a phone too much time.
 export function multiPanel() {
@@ -140,37 +140,23 @@ export function multiPanel() {
 }
 
 export const picksViews = {
-  // Current bets: live picks with their fair odds, then the best bets coming up (never empty).
-  current() {
-    const pool = prefFilter(S.events);
-    ensureTrack(() => S.refresh?.());
-    const { live, soon, hours } = currentLists(pool);
-    return {
-      mode: 'bankers', accent: '#ff3d6e', title: 'Current bets',
-      html: `<section class="hero small"><p class="kicker reveal">LIVE NOW · THE NEXT ${hours} HOURS</p><h1>${split('CURRENT BETS')}</h1>${builderNav('current')}
-        <p class="lede reveal">In play: each match's likeliest result from the score, the time left and the pre-match market's chance, with its fair odds; take it where Stake's live price is above them. Coming up: Best bets first, then the likeliest results, each showing how its price compares with fair.</p></section>
-        ${notice()}
-        ${live.length ? `<h2 class="sec reveal">Live now <small>${live.length}</small></h2><div class="minilist">${live.map(livePick).join('')}</div>` : ''}
-        <h2 class="sec reveal">Coming up <small>next ${hours} hours · ${soon.length}</small></h2>
-        <div class="minilist">${soon.map((b) => miniPick(b)).join('') || '<p class="muted">Waiting for the next price check: no match on the board has a price yet.</p>'}</div>`,
-    };
-  },
-
   // Best bets: the likeliest winners at a fair price or better, the shortlist folded in (within 3% of
   // fair, odds 1.30 to 2.20), one per match (track.js bestBoard), the full list.
   picks() {
     const ev = prefFilter(S.events), minOdds = prefs.get().minOdds || 1, hrs = researchPrefs().shortHours;
     ensureTrack(() => S.refresh?.());
-    const list = orderBets(bestBoard(todayEvents(ev, Date.now(), hrs), { cal: trackCalibration(), limit: 60 }).filter((b) => b.odds >= minOdds));
+    const best = bestList(ev, hrs, minOdds), list = orderBets(best.list), note = bestNote(best, hrs);
     const rec = recordLine(trackStats()?.board);
     return {
       mode: 'bankers', accent: '#00ffc3', title: 'Best bets',
-      html: `<section class="hero small"><p class="kicker reveal">NEXT ${hrs} HOURS · LIKELIEST, AT OR NEAR A FAIR PRICE</p><h1>${split('BEST BETS')}</h1>${builderNav('picks')}
+      html: `<section class="hero small"><p class="kicker reveal">NEXT ${hrs} HOURS · LIKELIEST, AT OR NEAR A FAIR PRICE</p><h1>${split('BEST BETS')}</h1>
         <p class="lede reveal">The likeliest winners on the board, one per match, by the market's own chance (its cut taken out): first those at a fair price or better, then those within 3% of it (odds 1.30 to 2.20). Stake's price first. A "+" means the price beats fair.</p></section>
         ${notice()}
         <details class="sl-filters reveal"><summary>${ico('filter')} Next ${hrs}h · ${esc(orderLabel())}${minOdds > 1 ? ` · odds ${minOdds.toFixed(2)}+` : ''}</summary>${windowChips('shours', hrs)}${orderChips()}${prefsBar()}</details>
         ${rec ? `<p class="rec-line reveal">So far: ${rec} · <a href="#/track">every result</a></p>` : ''}
-        <div class="minilist">${list.map((b) => miniPick(b)).join('') || `<p class="muted">No qualifying bets in the next ${hrs} hours with your filters.${exclusionLine(todayEvents(ev, Date.now(), hrs))}</p>${nearBestHtml(ev, hrs)}`}</div>`,
+        ${best.live.length ? `<h2 class="sec reveal">Live now <small>${best.live.length} · fair odds from the score and the clock</small></h2><div class="minilist">${best.live.map(livePick).join('')}</div>` : ''}
+        <div class="minilist">${list.map((b) => miniPick(b)).join('') || `<p class="muted">No match on the board has a price right now.${exclusionLine(todayEvents(ev, Date.now(), hrs))}</p>${nearBestHtml(ev, hrs)}`}</div>
+        ${note ? `<p class="note reveal">${esc(note)}</p>` : ''}`,
     };
   },
 

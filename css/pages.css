@@ -71,8 +71,9 @@
 .dash-short { grid-column: span 4; grid-row: span 2; }
 .dash-value { grid-column: span 4; }
 .dash-potd { grid-column: 1 / -1; }
-.dash-current, .dash-bankers { grid-column: span 3; }
 .dash-multi { grid-column: 1 / -1; }
+.live-pick .mini-main small b { color: var(--text, #fff); }
+.dash-short > .note { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
 .mult-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 10px; margin-top: 12px; }
 .mult-card { display: flex; flex-direction: column; gap: 3px; min-height: 44px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: rgba(var(--panel-rgb), .55); color: inherit; text-decoration: none; }
 .mult-card:hover, .mult-card:focus-visible { border-color: var(--line2); }
@@ -80,7 +81,6 @@
 .mult-card span { font: 600 13px var(--mono); }
 .mult-card small { color: var(--muted); font-size: 12px; }
 .dash-multi .note { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
-.live-pick .mini-main small b { color: var(--text, #fff); }
 .ph .zone-link { margin-left: auto; float: right; background: none; border: 1px solid var(--line2); color: var(--muted); border-radius: 999px; padding: 3px 9px; font: 600 12px var(--sans); cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
 .ph .zone-link .ico { width: 12px; height: 12px; }
 .res { font: 700 12px var(--mono); letter-spacing: .5px; text-transform: uppercase; padding: 3px 7px; border-radius: 999px; white-space: nowrap; }
@@ -128,7 +128,7 @@
 .slip-note { flex-basis: 100%; color: var(--muted); font-size: 12px; line-height: 1.45; margin: 4px 0; }
 .inj-what small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
 @media (max-width: 1000px) {
-  .dash-short, .dash-value, .dash-current, .dash-bankers { grid-column: span 6; grid-row: auto; }
+  .dash-short, .dash-value { grid-column: span 6; grid-row: auto; }
   .dash-live, .dash-changes, .dash > .changes { grid-column: span 3; }
 }
 @media (max-width: 680px) {
