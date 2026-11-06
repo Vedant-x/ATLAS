@@ -31,7 +31,7 @@ import { casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips,
 import { lastVisit } from './timeline.js';
 import { whyLine } from './why.js';
 import { canonStats, standingsTable } from './standings.js';
-// Picks pages (Best current, Shortlist, Best bets, Value bets, slips 2x to 1000x): picksview.js, which
+// Picks pages (Current bets, Best bets, slips 2x to 1000x): picksview.js, which
 // also uses the helpers here.
 import { picksViews, bindPicks, currentPanel, multiPanel } from './picksview.js';
 import { esc } from './esc.js';
@@ -422,7 +422,7 @@ export const setFiltersOpen = (v) => { filtersOpen = Boolean(v); };
 // Home panels: order and visibility, saved per visitor (localStorage, best effort). Unknown or missing
 // names fall back to the default order, so a new panel always appears.
 // What is on now, Best bets (the shortlist folded in), the parlay of the day and every multiplier.
-const HOME_PANELS = [['current', 'Best current'], ['shortlist', 'Best bets'], ['potd', 'Parlay of the day'], ['multi', 'Multipliers'], ['live', 'Live now'], ['changes', 'What changed'], ['record', 'Results'], ['health', 'Source health']];
+const HOME_PANELS = [['current', 'Current bets'], ['shortlist', 'Best bets'], ['potd', 'Parlay of the day'], ['multi', 'Multipliers'], ['live', 'Live now'], ['changes', 'What changed'], ['record', 'Results'], ['health', 'Source health']];
 const LAYOUT_KEY = 'atlas-home-layout';
 // Minimal by default: source health, what changed and the full record card start hidden (the record
 // is the strip at the top); Customise shows them.

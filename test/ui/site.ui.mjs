@@ -91,9 +91,9 @@ test('first visit: the age check shows at once, without the intro animation', as
   await ctx.close();
 });
 
-test('Picks: Best current and Best bets under one menu entry; Multipliers its own entry', async () => {
+test('Picks: Current bets and Best bets under one menu entry; Multipliers its own entry', async () => {
   const { page, ctx, errors } = await open('#/picks');
-  for (const [r, tab] of [['#/current', 'Best current'], ['#/picks', 'Best bets']]) {
+  for (const [r, tab] of [['#/current', 'Current bets'], ['#/picks', 'Best bets']]) {
     await page.goto(BASE + r); await page.waitForSelector('.builder-nav');
     assert.equal(await page.getAttribute('nav.top a[href="#/picks"]', 'class'), 'on', `${r}: Picks lit`);
     assert.equal(await page.textContent('.builder-nav [aria-current="page"]'), tab);
@@ -122,7 +122,8 @@ test('home: Best bets (the shortlist folded in) is filled, every multiplier has 
   assert.equal(await page.locator('.dash-value').count(), 0);
   assert.equal(await page.locator('.dash-multi .mult-card').count(), 8, 'one card per multiplier, 2x to 1000x');
   await page.goto(BASE + '#/current'); await page.waitForSelector('.builder-nav [aria-current="page"]');
-  assert.equal(await page.textContent('.builder-nav [aria-current="page"]'), 'Best current');
+  assert.equal(await page.textContent('.builder-nav [aria-current="page"]'), 'Current bets');
+  assert.ok(await page.locator('#app .minilist .mini').count() >= 1, 'Current bets is never empty');
   await page.goto(BASE + '#/x/10'); await page.waitForSelector('.tabs');
   assert.equal(await page.locator('.tabs a').count(), 8);
   assert.equal(await page.locator('nav.top a[href="#/x/2"]').count(), 1, 'Multipliers in the main menu');

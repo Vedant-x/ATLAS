@@ -1,4 +1,4 @@
-// In-play chances for "Best current": each side's chance to win from the score, the time left and the
+// In-play chances for "Current bets": each side's chance to win from the score, the time left and the
 // pre-match market (its margin-free chance, the best prior the record found: ATLAS's own estimate
 // added nothing over it). No live prices are read (the build cannot refresh them by the second), so a
 // live pick comes with its fair odds: a live price above them is worth taking, one below them is the
@@ -109,7 +109,8 @@ export function liveChance(e) {
   return { home, away: 1 - home, draw: 0, share: r, market: pr.market };
 }
 
-// Best current, live part: in each live match, the likeliest result if it is 60% to 97% likely (above
+// Current bets, live part: in each live match, the likeliest result if it is min (60% by default; the
+// page asks from 50%) to 97% likely (above
 // that, no price is worth the bet), with its fair odds. Likeliest first.
 export function liveBets(events, { min = 0.6, max = 0.97, limit = 20 } = {}) {
   const out = [];

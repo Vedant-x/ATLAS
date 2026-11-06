@@ -30,9 +30,9 @@ const researchTabs = (name) => `<nav class="research-tabs" aria-label="Research"
 // "More": every page in one sheet (phones and tablets, where the bar holds only the main ones). The
 // tiles reuse the menu's own links and icons.
 const MORE_INFO = {
-  '#/': 'Best current, Best bets, the parlay of the day, every multiplier', '#/live': 'Everything in play now', '#/watchlist': 'Matches you follow, with alerts',
+  '#/': 'Current bets, Best bets, the parlay of the day, every multiplier', '#/live': 'Everything in play now', '#/watchlist': 'Matches you follow, with alerts',
   '#/sports': 'Every sport and competition', '#/props': 'Player lines, hit rates, research',
-  '#/picks': 'Best current and Best bets', '#/x/2': 'Multipliers: slips from 2x to 1000x', '#/compare': 'Pinned matches side by side', '#/track': 'Every pick and how it did',
+  '#/picks': 'Current bets and Best bets', '#/x/2': 'Multipliers: slips from 2x to 1000x', '#/compare': 'Pinned matches side by side', '#/track': 'Every pick and how it did',
 };
 const sheet = document.getElementById('more-sheet');
 function fillMore() {
@@ -336,7 +336,7 @@ function trail() {
   if (sp) parts.push([`#/sport/${sp.id}`, sp.name]);
   if (l) parts.push([`#/league/${leagueKey(l.path)}`, l.short || l.name]);
   if (e) parts.push(['', `${e.home} v ${e.away}`]);
-  const label = { props: 'Player props', player: 'Player', x: 'Slips', picks: 'Best bets', value: 'Value bets', live: 'Live', watchlist: 'Watchlist', compare: 'Compare' }[name];
+  const label = { props: 'Player props', player: 'Player', x: 'Multipliers', picks: 'Best bets', current: 'Current bets', live: 'Live', watchlist: 'Watchlist', compare: 'Compare' }[name];
   if (label) parts.push(['', label]);
   return parts;
 }
@@ -366,7 +366,7 @@ function route() {
     dock();
     return;
   }
-  const label = { home: 'TODAY', live: 'LIVE', watchlist: 'WATCHLIST', compare: 'COMPARE', track: 'RESULTS', sports: 'ALL SPORTS', sport: 'SPORT', league: 'LEAGUE', match: 'MATCH DOSSIER', props: 'PLAYER PROPS', player: 'PLAYER RESEARCH', x: 'MULTIPLIERS', picks: 'BEST BETS', value: 'VALUE BETS', shortlist: 'SHORTLIST', current: 'BEST CURRENT' }[name] || '';
+  const label = { home: 'TODAY', live: 'LIVE', watchlist: 'WATCHLIST', compare: 'COMPARE', track: 'RESULTS', sports: 'ALL SPORTS', sport: 'SPORT', league: 'LEAGUE', match: 'MATCH DOSSIER', props: 'PLAYER PROPS', player: 'PLAYER RESEARCH', x: 'MULTIPLIERS', picks: 'BEST BETS', value: 'VALUE BETS', shortlist: 'SHORTLIST', current: 'CURRENT BETS' }[name] || '';
   const h = location.hash || '#/';
   if (replacing) { stack[stack.length - 1] = h; replacing = false; } else if (stack.length > 1 && stack[stack.length - 2] === h) stack.pop(); else stack.push(h);
   // instant: html has scroll-behavior:smooth, and a smooth scroll still running when a live refresh
