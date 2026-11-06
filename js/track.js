@@ -227,6 +227,17 @@ export function bestBoard(events, { cal = null, limit = 60, now = Date.now() } =
   const more = shortlist(events, { cal, limit, now }).filter((b) => !held.has(b.event.id));
   return [...strict, ...more].sort((x, y) => y.p - x.p).slice(0, limit);
 }
+// The likeliest results on the board by the market's chance (odds 1.30 to 2.50, one per match), at any
+// price: what Current bets falls back on so it is never empty. Not a value list, never recorded: each
+// card shows how far under fair its price is.
+export function likeliest(events, { limit = 20, now = Date.now() } = {}) {
+  const list = bankers(events.filter((e) => !e.live && gradable(e) && e.start > now), { min: 0.5, limit: Infinity })
+    .filter((b) => !b.prop && b.odds >= BOARD.minOdds && b.odds <= 2.5 && freshAt(quoteAtOf(b), FRESH.board, now))
+    .map((b) => { const mp = marketOf(b), n = named(b, { basis: 'reference', modelP: b.p }); return { ...n, referenceProbability: mp, referenceEV: edgeAt(b, b.odds), referenceMethod: n.referenceMethod || `${b.event.bookmaker || 'one bookmaker'}'s own price, margin removed`, pRaw: b.p, p: mp, ev: edgeAt(b, b.odds), edge: edgeAt(b, b.odds) }; })
+    .filter((b) => b.p >= 0.5)
+    .sort((x, y) => y.p - x.p);
+  return diversify(list, limit, { familyShare: 0.6, sportShare: 0.6 }).sort((x, y) => y.p - x.p);
+}
 // Stamped on every recorded pick, so results can be split by the model that made them.
 // 2026.10.1: calibrated chance everywhere, legs feed calibration, shared slip policy.
 // 2026.10.2: venue records, starting pitchers and soccer absences in the model; spread lines move

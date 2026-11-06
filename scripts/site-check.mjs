@@ -23,7 +23,7 @@ const BUDGET = { phone: 2000, desktop: 600, espn: 40 };
 // is real (a list, or the plain answer that there is none).
 const ESSENTIAL = {
   '#/': ['.dash-short', /No qualifying bets|vs market|needs \d+%/], '#/picks': ['.minilist', /No qualifying bets|vs market|needs \d+%/],
-  '#/current': ['.hero', /BEST CURRENT/i], '#/x/2': ['.hero', /2X SLIPS/i], '#/live': ['.hero', /in play|Nothing in play/i],
+  '#/current': ['.minilist', /vs market|LIVE|needs \d+%/], '#/x/2': ['.hero', /2X SLIPS/i], '#/live': ['.hero', /in play|Nothing in play/i],
   '#/sports': ['.hero', /SPORTS/], '#/track': ['.hero', /RESULTS/], '#/sources': ['.hero', /SOURCES/], '#/sport/football': ['.hero', /matches/i],
   '#/sport/basketball': ['.hero', /matches/i], '@match': ['.subnav', /probability/i], '#/props': ['.hero', /PLAYER PROPS/], '#/compare': ['.hero', /COMPARE/], '#/watchlist': ['.hero', /WATCHLIST/],
 };

@@ -56,3 +56,15 @@ test('every multiplier from 2x to 1000x builds from board legs and is recorded',
   assert.ok(rec.some((r) => r.target === 2) && rec.some((r) => r.target === 10), rec.map((r) => r.target).join(','));
   assert.ok(rec.every((r) => r.model === '2026.11.5'));
 });
+
+test('Current bets never runs dry: the likeliest results at any price fill in, each showing its distance from fair', async () => {
+  const { likeliest } = await import('../js/track.js');
+  // One bookmaker at a 7% margin: no board pick, but a likeliest result.
+  const one = { id: 'l1', compId: 'l1', sport: 'football', leaguePath: 'soccer/eng.1', home: 'X', away: 'Y', start: now + 2 * H, fetchedAt: now - 6e4,
+    markets: [{ name: 'Winner', outcomes: [{ name: 'X', odds: 1.45, }, { name: 'Y', odds: 2.55 }] }] };
+  assert.deepEqual(shortlist([one], { now }), []);
+  const [b] = likeliest([one], { now });
+  assert.equal(b.pick, 'X');
+  assert.ok(b.referenceEV < BOARD.gapOneBook, 'shown as under fair');
+  assert.deepEqual(likeliest([{ ...one, start: now - H }], { now }), [], 'never a match that has started');
+});
