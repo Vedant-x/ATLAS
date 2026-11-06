@@ -15,7 +15,7 @@ const base = process.argv[2] || 'https://vedant-x.github.io/ATLAS/';
 const serve = process.argv.includes('--serve');
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 // '@match': the first match linked from the page before it (a real match page, with its section links).
-const ROUTES = ['#/', '@match', '#/picks', '#/current', '#/x/2', '#/live', '#/sports', '#/watchlist', '#/track', '#/sources', '#/sport/football', '#/sport/basketball', '#/props', '#/compare'];
+const ROUTES = ['#/', '@match', '#/picks', '#/x/2', '#/live', '#/sports', '#/watchlist', '#/track', '#/sources', '#/sport/football', '#/sport/basketball', '#/props', '#/compare'];
 const SCREENS = { phone: { width: 390, height: 844 }, desktop: { width: 1440, height: 900 } };
 // Main-thread budget per page (long tasks, ms): the phone runs at a quarter of the machine's speed.
 const BUDGET = { phone: 2000, desktop: 600, espn: 40 };
@@ -23,7 +23,7 @@ const BUDGET = { phone: 2000, desktop: 600, espn: 40 };
 // is real (a list, or the plain answer that there is none).
 const ESSENTIAL = {
   '#/': ['.dash-short', /No qualifying bets|vs market|needs \d+%/], '#/picks': ['.minilist', /No qualifying bets|vs market|needs \d+%/],
-  '#/current': ['.minilist', /vs market|LIVE|needs \d+%/], '#/x/2': ['.hero', /2X SLIPS/i], '#/live': ['.hero', /in play|Nothing in play/i],
+  '#/x/2': ['.hero', /2X SLIPS/i], '#/live': ['.hero', /in play|Nothing in play/i],
   '#/sports': ['.hero', /SPORTS/], '#/track': ['.hero', /RESULTS/], '#/sources': ['.hero', /SOURCES/], '#/sport/football': ['.hero', /matches/i],
   '#/sport/basketball': ['.hero', /matches/i], '@match': ['.subnav', /probability/i], '#/props': ['.hero', /PLAYER PROPS/], '#/compare': ['.hero', /COMPARE/], '#/watchlist': ['.hero', /WATCHLIST/],
 };

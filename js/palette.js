@@ -5,7 +5,7 @@ import { ico } from './icons.js';
 
 const PAGES = [
   ['Today', '#/'], ['Live', '#/live'], ['Watchlist', '#/watchlist'], ['All sports', '#/sports'],
-  ['Current bets', '#/current'], ['Best bets', '#/picks'], ['2x slips', '#/x/2'], ['3x slips', '#/x/3'], ['10x slips', '#/x/10'], ['1000x slips', '#/x/1000'],
+  ['Best bets', '#/picks'], ['2x slips', '#/x/2'], ['3x slips', '#/x/3'], ['10x slips', '#/x/10'], ['1000x slips', '#/x/1000'],
   ['Player props', '#/props'], ['Compare', '#/compare'], ['Results', '#/track'],
 ];
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
