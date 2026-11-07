@@ -644,9 +644,9 @@ export function valuePick(b) {
     ${legButton(leg, odd(b.odds))}</div>`;
 }
 
-// A pick, minimal: the pick, the match and when; then ATLAS's chance, what the price needs and the
-// return, on one line. The reasons, the best bookmaker and the market's own chance are on hover / tap
-// (title) and on the match page.
+// A pick, minimal: the pick, the match and when, its chance and the price. The return against the
+// market, the reasons, the best bookmaker and the market's own chance are on hover / tap (data-tip)
+// and on the match page.
 export function miniPick(b) {
   const s = sportOf(b.event.sport);
   const rec = recommendationFor(b, trackCalibration());
@@ -656,14 +656,17 @@ export function miniPick(b) {
   const ref = b.selectionBasis === 'reference' && b.referenceProbability != null;
   const ret = ref ? b.referenceEV : b.modelEV ?? b.ev;
   const edge = `${ret >= 0 ? '+' : ''}${(ret * 100).toFixed(1)}%`;
-  const tip = [`${b.market} · ${b.event.league}`, whyLine(b) && `Why: ${whyLine(b)}`,
-    ref ? `Market's fair chance ${pc(b.referenceProbability, 0)} (${b.referenceMethod}): return ${signPct(b.referenceEV)} at this price` : b.fair != null && `Bookmakers' chance (their cut taken out): ${pc(b.fair, 0)}`,
+  // The card shows the pick, its chance and the price; the return against the market sits inside
+  // (tap / hover, and the match page).
+  const vs = Number.isFinite(ret) && (ref ? `Price vs the market's fair odds: ${edge}${ret < 0 ? ' (under fair)' : ''}` : `Return by ATLAS's chance: ${edge} (needs ${pc(1 / b.odds, 0)} to break even)`);
+  const tip = [`${b.market} · ${b.event.league}`, vs, whyLine(b) && `Why: ${whyLine(b)}`,
+    ref ? `Market's fair chance ${pc(b.referenceProbability, 0)} (${b.referenceMethod})` : b.fair != null && `Bookmakers' chance (their cut taken out): ${pc(b.fair, 0)}`,
     Number.isFinite(b.modelProbability ?? b.p) && `ATLAS chance ${pc(b.modelProbability ?? b.p, 0)}: return ${signPct(b.modelEV ?? b.p * b.odds - 1)} at this price`,
     b.book && `Price at ${b.book}${b.quoteAt ? ` (read ${ago(b.quoteAt)})` : ''}`, !b.atStake && b.stake > 1 && `Stake ${odd(b.stake)}${b.event.stakeAt ? ` (read ${ago(b.event.stakeAt)})` : ''}`, b.best > b.odds && `Better price ${odd(b.best)} at ${b.bestBook}`,
     ref && `Lowest price that still qualifies: ${odd(1 / b.referenceProbability)}`, 'Chance range for one match: not shown (no validated method yet)', rec.settlementRules].filter(Boolean).join('\n');
   return `<div class="mini reveal" data-rec="${esc(rec.recommendationId)}" data-tip="${esc(tip)}"><span class="mini-ico">${s.icon}</span>
     <a class="mini-main" href="#/match/${esc(b.event.id)}"><b>${esc(b.pick)}</b><small>${esc(b.event.home)} v ${esc(b.event.away)} · ${b.event.live ? '<span class="live">LIVE</span>' : esc(fmtTime(b.event.start, tzZone(), 'short'))}${b.anyPrice ? ' · <span class="any-price" data-tip="The likeliest result whatever its price: not at or near fair, not saved to the record">any price</span>' : ''}</small></a>
-    <div class="mini-nums"><b data-tip="${ref && b.p === b.referenceProbability ? "The market's chance (the bookmakers' cut taken out)" : 'ATLAS chance'}">${pc(b.p, 0)}</b><small>${ref ? `<span class="mm-need" data-tip="The market's fair chance (the bookmakers' cut taken out)">market ${pc(b.referenceProbability, 0)} · </span>` : `<span class="mm-need" data-tip="The chance this price needs to break even">needs ${pc(1 / b.odds, 0)} · </span>`}<span class="${ret >= 0 ? 'pos' : 'neg'}" data-tip="${ref ? "Return per unit staked by the market's fair chance" : "Return per unit staked by ATLAS's chance"}${ret < 0 ? ': below break-even at this price' : ''}">${edge}${ref ? ' vs market' : ''}</span></small></div>
+    <div class="mini-nums"><b data-tip="${ref && b.p === b.referenceProbability ? "The market's chance (the bookmakers' cut taken out)" : 'ATLAS chance'}">${pc(b.p, 0)}</b><small>chance</small></div>
     ${legButton(leg, odd(b.odds))}</div>`;
 }
 

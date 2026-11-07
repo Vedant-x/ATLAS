@@ -471,7 +471,8 @@ test('every price under fair: Best bets still fills, each card showing how far u
   const { page, ctx, errors } = await open('#/', { data });
   await page.waitForSelector('.dash-short .mini');
   assert.ok(await page.locator('.dash-short .mini').count() >= 1, 'never empty');
-  assert.match(await page.textContent('.dash-short .mini-nums'), /-\d+\.\d% vs market/, 'the price under fair, shown');
+  assert.doesNotMatch(await page.textContent('.dash-short'), /vs market/, 'the return is not on the card');
+  assert.match(await page.locator('.dash-short .mini:not(.live-pick)').first().getAttribute('data-tip'), /Price vs the market's fair odds: -\d+\.\d% \(under fair\)/, 'the price under fair, inside the card');
   assert.match(await page.textContent('.dash-short > .note'), /marked "any price" are the likeliest results whatever their price \(not saved to the record\)/);
   assert.ok(await page.locator('.dash-short .any-price').count() >= 1, 'each fill-in marked');
   assert.deepEqual(errors, []);
