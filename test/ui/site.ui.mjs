@@ -246,16 +246,17 @@ test('match page: the results history (ratings, rest, last meetings)', async () 
 test('time zone: one setting for every time; the parlay of the day follows it', async () => {
   const { page, ctx, errors } = await open('#/');
   await page.waitForSelector('.dash-potd');
-  assert.match(await page.textContent('.dash-potd'), /12:00 to 12:00 IST/);
+  const potdDay = () => page.getAttribute('.dash-potd h2', 'data-tip');
+  assert.match(await potdDay(), /12:00 to 12:00 IST/);
   // As a visitor does it, from the Display panel: the menu has focus while the choice is made.
   assert.equal(await page.locator('.bar [data-tz-select], .bar [data-fx-toggle]').count(), 0, 'the header is search, Display and the slip');
   await page.click('.bar [data-display-toggle]');
   await page.focus('#display-panel [data-tz-select]');
   await page.selectOption('#display-panel [data-tz-select]', 'GMT');
-  await page.waitForFunction(() => /12:00 to 12:00 GMT/.test(document.querySelector('.dash-potd')?.textContent || ''));
+  await page.waitForFunction(() => /12:00 to 12:00 GMT/.test(document.querySelector('.dash-potd h2')?.dataset.tip || ''));
   // A zone with no recorded day follows the IST day, shown in the visitor's own time too.
   await page.selectOption('#display-panel [data-tz-select]', 'ET');
-  await page.waitForFunction(() => /12:00 to 12:00 IST · .*your time/.test(document.querySelector('.dash-potd')?.textContent || ''));
+  await page.waitForFunction(() => /12:00 to 12:00 IST · .*your time/.test(document.querySelector('.dash-potd h2')?.dataset.tip || ''));
   assert.match(await page.textContent('.dash-short'), /\d\d:\d\d (EDT|EST)/, 'kick-off times in US Eastern time');
   await page.reload();
   await page.waitForSelector('.dash-potd');
@@ -473,7 +474,7 @@ test('every price under fair: Best bets still fills, each card showing how far u
   assert.ok(await page.locator('.dash-short .mini').count() >= 1, 'never empty');
   assert.doesNotMatch(await page.textContent('.dash-short'), /vs market/, 'the return is not on the card');
   assert.match(await page.locator('.dash-short .mini:not(.live-pick)').first().getAttribute('data-tip'), /Price vs the market's fair odds: -\d+\.\d% \(under fair\)/, 'the price under fair, inside the card');
-  assert.match(await page.textContent('.dash-short > .note'), /marked "any price" are the likeliest results whatever their price \(not saved to the record\)/);
+  assert.match(await page.getAttribute('.dash-short .sl-filters summary', 'data-tip'), /marked "any price" are the likeliest results whatever their price \(not saved to the record\)/, 'the fill-ins explained inside the filter row');
   assert.ok(await page.locator('.dash-short .any-price').count() >= 1, 'each fill-in marked');
   assert.deepEqual(errors, []);
   await ctx.close();

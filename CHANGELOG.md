@@ -29,8 +29,16 @@ what changed, week by week. Reasons and reversals are in [docs/DECISIONS.md](doc
   - **Assistant:** "parlay of the day" gets the parlay of the day, not a 3x slip, and a value answer
     no longer shows two different ATLAS chances.
   - **Wording:** the slip pages and Results describe the current rules.
-  - **Cleaner pick cards (7 Nov):** each card shows the pick, its chance and the price; how far the
-    price sits from the market's fair odds is inside the card (tap it) and on the match page.
+- **Minimal pages (7 Nov):**
+  - **Pick cards:** the pick, its chance and the price; how far the price sits from the market's fair
+    odds is inside the card (tap it).
+  - **Home:** the date, the 30-day record, then Best bets, the parlay, Multipliers and Live; no
+    taglines, subtitles, record lines or footnotes.
+  - **Picks and slips:** no intro paragraphs; slip cards show the chance and the sports, with
+    break-even and return inside the chance.
+  - **Results:** the four numbers first, then the lists with results, the closing line and the
+    latest results; the rest is under More detail.
+  - **Match page:** the chance with fair odds and prices; the case for a pick is folded under "Why".
 - **Layout:**
   - Best bets now includes the shortlist, with its filters.
   - Value bets is removed from the pages.

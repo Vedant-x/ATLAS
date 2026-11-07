@@ -35,7 +35,7 @@ export function sourcesView(refresh) {
   return {
     mode: 'other', accent: '#4fd1ff', title: 'Sources',
     html: `<section class="hero small"><p class="kicker reveal">WHERE THE DATA COMES FROM · LAST BUILD${d?.at ? ` ${esc(ago(d.at)).toUpperCase()}` : ''}</p><h1>SOURCES</h1>
-      <p class="lede reveal">Every feed ATLAS reads, rebuilt about every 20 minutes. ESPN gives most fixtures and prices; the rest fill what ESPN leaves out: starters, team news, ratings for matches nobody prices, and real bookmaker odds for leagues ESPN doesn't price.</p></section>
+</section>
       ${!cache ? '<p class="muted reveal loading-dots">Loading sources</p>' : !d ? '<div class="panel reveal"><p class="muted">The source report is published by the next build.</p></div>' : `
       ${failed ? `<p class="notice reveal"><b>${failed} source${failed > 1 ? 's' : ''} failed on the last build.</b> Matches they cover keep their last good data, marked with its age.</p>` : ''}
       ${pausedN ? `<p class="notice reveal"><b>${pausedN} source${pausedN > 1 ? 's are' : ' is'} paused</b> after failing 3 builds in a row, and retried every 6 hours. ATLAS uses its own ratings and the rankings in their place.</p>` : ''}

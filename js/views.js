@@ -19,7 +19,7 @@ import { prefs, prefEvents } from './prefs.js';
 import { liveWin } from './live.js';
 import { watch } from './alerts.js';
 import { finalView } from './finalview.js';
-import { trackCard, trackStrip, trackStats, trackCalibration, recordLine, ensureTrack, officialParlay } from './trackview.js';
+import { trackCard, trackStrip, trackCalibration, ensureTrack, officialParlay } from './trackview.js';
 import { zone as tzZone, tzOf, abbr as tzAbbr, fmt as fmtTime, fmtDate } from './tz.js';
 import { POTD_ZONES, potdDay, parlayOfDay, recommendationFor, VALUE, nearBest, nearValue, bestExclusions } from './track.js';
 import { stakeVsFair } from './oddspapi.js';
@@ -194,8 +194,8 @@ export const views = {
       mode: 'home', accent: '#d2ff00', title: 'Dashboard',
       html: `
       <section class="hero compact today">
-        <p class="kicker reveal">TODAY · ${esc(new Date().toLocaleDateString('en-IN', { timeZone: tzOf(tzZone()), weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase())} · ${esc(tzAbbr(tzZone()))}</p>
-        <h1>${split('PRICES. CHANCES. RESULTS.')}</h1>
+        <p class="kicker reveal">${esc(new Date().toLocaleDateString('en-IN', { timeZone: tzOf(tzZone()), weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase())} · ${esc(tzAbbr(tzZone()))}</p>
+        <h1>${split('TODAY')}</h1>
         ${trackStrip(() => S.refresh?.())}
       </section>
       ${notice()}
@@ -210,8 +210,7 @@ export const views = {
     const groups = SPORTS.map((sp) => [sp, live.filter((e) => e.sport === sp.id)]).filter(([, l]) => l.length);
     return {
       mode: 'other', accent: '#ff3d6e', title: 'Live',
-      html: `<section class="hero small"><p class="kicker reveal">IN PLAY · UPDATES EVERY FEW SECONDS</p><h1>${split('LIVE')}</h1>
-        <p class="lede reveal">${live.length} match${live.length === 1 ? '' : 'es'} in play. Open one for the live scoreboard; star it to get alerts.</p></section>
+      html: `<section class="hero small"><p class="kicker reveal">IN PLAY · UPDATES EVERY FEW SECONDS</p><h1>${split('LIVE')}</h1></section>
         ${notice()}
         ${groups.map(([sp, l]) => `<section class="sec-block"><h2 class="sec reveal"><span>${sp.icon}</span>${esc(sp.name)} <small>${l.length} live</small></h2><div class="list">${l.map((e) => eventRow(e)).join('')}</div></section>`).join('') || '<p class="muted reveal">Nothing in play right now.</p>'}
         ${soon.length ? `<section class="sec-block"><h2 class="sec reveal">Starting within the hour</h2><div class="list">${soon.slice(0, 20).map((e) => eventRow(e)).join('')}</div></section>` : ''}`,
@@ -311,9 +310,8 @@ export const views = {
       const ev = bookOdds ? p * bookOdds - 1 : null;
       return `<div class="side reveal">${gauge(p, color, label)}
         <dl><dt>Fair odds</dt><dd>${odd(1 / p)}</dd>
-        <dt>${esc(e.bookmaker?.split(' (')[0] || 'Book')} odds</dt><dd>${bookOdds ? odd(bookOdds) : '<span class="muted">none</span>'}</dd>
-        ${stakeOf(label) > 1 ? (() => { const g = consOf(label) > 0 ? stakeOf(label) * consOf(label) - 1 : null; return `<dt data-tip="Stake's own price${e.stakeAt ? `, read ${ago(e.stakeAt)}` : ''}${g == null ? '' : `; ${gapWords(g)} the sharp market's fair odds (${odd(1 / consOf(label))})`}">Stake</dt><dd>${odd(stakeOf(label))}${g == null ? '' : ` <span class="${g >= 0 ? 'pos' : 'neg'}">${signPct(g)}</span>`}</dd>`; })() : ''}
-        <dt data-tip="Estimated return per unit staked">Return</dt><dd class="${ev == null ? '' : ev >= 0 ? 'pos' : 'neg'}">${ev == null ? '—' : `${(ev * 100).toFixed(1)}%`}</dd></dl></div>`;
+        <dt data-tip="${bookOdds ? `${esc(e.bookmaker?.split(' (')[0] || 'Bookmaker')} price; return ${signPct(ev)} by this chance` : 'No bookmaker price'}">Price</dt><dd>${bookOdds ? odd(bookOdds) : '<span class="muted">none</span>'}</dd>
+        ${stakeOf(label) > 1 ? (() => { const g = consOf(label) > 0 ? stakeOf(label) * consOf(label) - 1 : null; return `<dt data-tip="Stake's own price${e.stakeAt ? `, read ${ago(e.stakeAt)}` : ''}${g == null ? '' : `; ${gapWords(g)} the sharp market's fair odds (${odd(1 / consOf(label))}): ${signPct(g)}`}">Stake</dt><dd>${odd(stakeOf(label))}</dd>`; })() : ''}</dl></div>`;
     };
     const d = detailFor(e.id);
     const dos = dossierSections(e, d, hc, ac);
@@ -326,7 +324,7 @@ export const views = {
     // The props section only when it has rows (a match can carry props none of which show): its link
     // would lead nowhere otherwise.
     const props = propsPanel(e);
-    const sections = [['overview', 'Overview'], ['case', 'The case'], ['best', 'Best bets'], ...(props ? [['props', 'Player props']] : []), ...(timeline ? [['history', 'Timeline']] : []), ...dos.map((x) => [x.id, x.label]), ['form', 'Records'], ['markets', `All markets (${a.marketCount})`], ...(a.kind === 'binary' ? [] : [['model', 'Model']]), ['book', 'Bookmaker prices'], ['calc', 'Calculator'], ['notes', 'Model notes']];
+    const sections = [['overview', 'Overview'], ['case', 'Why'], ['best', 'Best bets'], ...(props ? [['props', 'Player props']] : []), ...(timeline ? [['history', 'Timeline']] : []), ...dos.map((x) => [x.id, x.label]), ['form', 'Records'], ['markets', `All markets (${a.marketCount})`], ...(a.kind === 'binary' ? [] : [['model', 'Model']]), ['book', 'Bookmaker prices'], ['calc', 'Calculator'], ['notes', 'Model notes']];
     return {
       mode: 'match', accent: hc, title: `${e.home} v ${e.away}`,
       sceneOpts: { home: hc, away: ac, pHome: w.home, pAway: w.away, sport: e.sport },
@@ -352,7 +350,7 @@ export const views = {
       <nav class="subnav reveal" aria-label="Sections">${matchGroups(sections, dos).map(([k, l]) => `<a href="#sec-${k}" data-jump="sec-${k}">${l}</a>`).join('')}</nav>
       ${notice()}
       <section class="panel big reveal" id="sec-overview">
-        <h2 class="ph">${e.live ? 'Pre-match ' : ''}Estimated win probability <small>${esc(a.basis)}</small></h2>
+        <h2 class="ph" data-tip="${esc(a.basis)}">${e.live ? 'Pre-match chance' : 'Chance'}</h2>
         ${probBar([{ label: e.home, p: w.home, color: hc }, ...(twoWay ? [] : [{ label: 'Draw', p: w.draw, color: DRAW_COLOR }]), { label: e.away, p: w.away, color: ac }])}
         <div class="sides ${twoWay ? 'two' : 'three'}">${side(e.home, w.home, hc, book(e.home))}${twoWay ? '' : side('Draw', w.draw, DRAW_COLOR, book('Draw'))}${side(e.away, w.away, ac, book(e.away))}</div>
       </section>
@@ -393,18 +391,16 @@ function dashboard(ev, live) {
   const minOdds = prefs.get().minOdds || 1;
   // Never empty (picksview.js bestList): live picks first, the window widening and the likeliest
   // results filling in when the board is thin.
-  const best = bestList(pool, hrs, minOdds), short = orderBets(best.list).slice(0, 12), note = bestNote(best, hrs);
+  const best = bestList(pool, hrs, minOdds), short = orderBets(best.list).slice(0, 12);
   const empty = `No qualifying bets in the next ${hrs} hours with your filters.${exclusionLine(todayEvents(pool, Date.now(), hrs))}`;
-  const rec = recordLine(trackStats()?.board);
   // Every panel by name, shown in the visitor's saved order with hidden ones left out (Customise).
   const panels = {
     multi: () => multiPanel(),
     potd: () => potdPanel(pool),
-    // Minimal: one folded "Filters" control (window, order, odds and sports), one record line.
-    shortlist: () => `<div class="panel dash-short reveal"><h2 class="ph">Best bets <small>live now, then the likeliest winners at or near a fair price</small></h2>
-      <details class="sl-filters"${filtersOpen ? ' open' : ''}><summary>${ico('filter')} Next ${hrs}h · ${esc(orderLabel())}${minOdds > 1 ? ` · odds ${minOdds.toFixed(2)}+` : ''}</summary>${windowChips('shours', hrs)}${orderChips()}${prefsBar()}</details>
-      ${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}
-      <div class="minilist">${S.loading ? skelRows(4) : [...best.live.slice(0, 5).map(livePick), ...short.map((b) => miniPick(b))].join('') || `<p class="muted">${empty}</p>${nearBestHtml(pool, hrs)}`}</div>${note && !S.loading ? `<p class="note">${esc(note)}</p>` : ''}</div>`,
+    // Minimal: the title, one folded "Filters" control (window, order, odds and sports) and the cards.
+    shortlist: () => `<div class="panel dash-short reveal"><h2 class="ph">Best bets</h2>
+      ${bestFilters(best, hrs, minOdds)}
+      <div class="minilist">${S.loading ? skelRows(4) : [...best.live.slice(0, 5).map(livePick), ...short.map((b) => miniPick(b))].join('') || `<p class="muted">${empty}</p>${nearBestHtml(pool, hrs)}`}</div></div>`,
     live: () => `<div class="panel dash-live reveal"><h2 class="ph">Live now <small>${S.loading ? '' : live.length}</small></h2>
       ${S.loading ? skelRows(3) : live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${scoreText(e)}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>`,
     changes: () => `${changesPanel(ev, { title: lastVisit() ? 'Since your last visit' : 'What changed', limit: 6, hideEmpty: true })}`,
@@ -416,8 +412,10 @@ function dashboard(ev, live) {
   return `<section class="dash">${homeLayout().filter((k) => panels[k]).map((k) => sized(k, panels[k]())).join('')}${layoutPanel()}</section>`;
 }
 
-// The shortlist's folded filters stay open across re-renders once opened (main.js listens).
+// The shortlist's folded filters stay open across re-renders once opened (main.js listens). The summary
+// names the window, and the wider one shown when nothing in it has a price yet (bestNote, as a tip).
 let filtersOpen = false;
+export const bestFilters = (best, hrs, minOdds) => { const note = bestNote(best, hrs); return `<details class="sl-filters"${filtersOpen ? ' open' : ''}><summary${note ? ` data-tip="${esc(note)}"` : ''}>${ico('filter')} Next ${best.hours > hrs ? `${best.hours}h (none in ${hrs}h)` : `${hrs}h`} · ${esc(orderLabel())}${minOdds > 1 ? ` · odds ${minOdds.toFixed(2)}+` : ''}</summary>${windowChips('shours', hrs)}${orderChips()}${prefsBar()}</details>`; };
 export const setFiltersOpen = (v) => { filtersOpen = Boolean(v); };
 
 // Home panels: order and visibility, saved per visitor (localStorage, best effort). Unknown or missing
@@ -471,7 +469,6 @@ const resultBadge = (status, live) => (RESULT[status] ? `<span class="res res-${
 const dayZone = () => (POTD_ZONES[tzZone()] ? tzZone() : 'IST');
 const dayLabel = (day) => { const z = tzZone(), rz = dayZone(); return `12:00 to 12:00 ${tzAbbr(rz)}${z === rz ? '' : ` · ${fmtTime(day.start, z, 'short')} to ${fmtTime(day.end, z, 'short')} your time`}`; };
 const nextIn = (day) => { const left = Math.max(0, day.end - Date.now()); return `${Math.floor(left / 36e5)}h ${Math.floor((left % 36e5) / 6e4)}m`; };
-const zoneLink = () => `<button class="zone-link" data-display-toggle aria-label="Change the time zone">${ico('clock')} ${esc(tzAbbr(tzZone()))} · change</button>`;
 
 // Parlay of the day: one slip at 1.70 to 2.00 for the day, 2 to 6 legs, the likeliest combination
 // on the board. The saved one (the record's) once the build has saved it; until then the same pick, live.
@@ -486,15 +483,14 @@ function potdPanel(ev) {
   // before 27 Oct could include legs below their fair odds and say so.
   const refP = saved ? saved.refP ?? null : live?.referenceProbability ?? null;
   const oldRule = saved && saved.fairOnly !== true;
-  const rec = recordLine(trackStats()?.potd);
   const done = saved && RESULT[saved.status];
   const body = legs.length ? `${done ? `<p class="potd-result res-${saved.status}">${saved.status === 'won' ? `Won · paid ${odd(saved.settledOdds ?? odds)}` : saved.status === 'lost' ? `Lost · ${esc(legs.filter((l) => l.status === 'lost').map((l) => l.pick).join(', '))}` : 'Void'}</p>` : ''}
     <ul class="potd-legs">${legs.map((l) => { const e = byId.get(l.eventId); return `<li class="leg-${esc(l.status || 'pending')}"><a href="#/match/${esc(l.eventId)}"><b>${esc(l.pick)}</b><small>${esc(l.market)} · ${esc(l.home || '')} v ${esc(l.away || '')} · ${esc(fmtTime(l.start, tzZone(), 'short'))}</small></a>
       <span class="leg-side">${resultBadge(l.status, e?.live && e)}<span class="leg-p" data-tip="ATLAS chance for this leg">${pc(l.p, 0)}</span>${legButton({ key: `${l.eventId}|${l.market}|${l.pick}`, eventId: l.eventId, sport: l.sport, match: `${l.home} vs ${l.away}`, market: l.market, pick: l.pick, odds: l.odds, p: l.p }, odd(l.odds))}</span></li>`; }).join('')}</ul>
-    <div class="potd-sum"><span><small>Total odds</small><b>${odd(odds)}</b></span>${refP ? `<span data-tip="The market's fair chance for the slip, its legs taken as independent"><small>Market chance</small><b>${pc(refP, 1)}</b></span>` : ''}<span data-tip="ATLAS's chance for the slip, its legs taken as independent"><small>ATLAS chance</small><b>${pc(p, 1)}</b></span><span data-tip="The chance the price needs to pay off"><small>Break-even</small><b>${pc(1 / odds, 1)}</b></span><span><small>Next check in</small><b>${nextIn(day)}</b></span></div>
+    <div class="potd-sum"><span><small>Total odds</small><b>${odd(odds)}</b></span>${refP ? `<span data-tip="The market's fair chance for the slip, its legs taken as independent"><small>Market chance</small><b>${pc(refP, 1)}</b></span>` : ''}${refP ? '' : `<span data-tip="ATLAS's chance for the slip, its legs taken as independent; ${pc(1 / odds, 1)} needed to break even"><small>Chance</small><b>${pc(p, 1)}</b></span>`}</div>
     ${oldRule ? '<p class="muted">Saved under the rule before 27 Oct, which allowed legs below their fair odds.</p>' : ''}`
-    : `<p class="muted">${S.loading ? 'Loading…' : `No parlay today: no 2 to 6 legs at or above the market's fair odds add up to 1.70–2.00. No parlay is a complete answer. Next check in ${nextIn(day)}.`}</p>`;
-  return `<div class="panel dash-potd reveal"><h2 class="ph">Parlay of the day <small>${legs.length ? `${legs.length} legs · ` : ''}${esc(dayLabel(day))}${saved ? '' : legs.length ? ' · not saved yet' : ''}</small>${zoneLink()}</h2>${body}${rec ? `<p class="rec-line">So far: ${rec} · <a href="#/track">record</a></p>` : ''}</div>`;
+    : `<p class="muted">${S.loading ? 'Loading…' : `No parlay today · next check in ${nextIn(day)}`}</p>`;
+  return `<div class="panel dash-potd reveal"><h2 class="ph" data-tip="One slip a day, ${esc(dayLabel(day))}">Parlay of the day${legs.length ? ` <small>${legs.length} legs</small>` : ''}</h2>${body}</div>`;
 }
 
 // A folded section: its title is the row to tap; the menu opens it when it jumps there (main.js).

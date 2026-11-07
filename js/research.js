@@ -129,7 +129,7 @@ export function casePanel(x) {
   const c = caseFor(x);
   if (!c) return '';
   const li = (arr, empty) => (arr.length ? `<ul>${arr.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : `<p class="muted">${empty}</p>`);
-  return `<section class="panel reveal case" id="sec-case"><h2 class="ph">The case: ${esc(x.main.pick)} <small>${esc(x.main.market)} · ${x.main.book ? `odds ${odd(x.main.odds)} · ` : ''}ATLAS ${pc(x.main.q, 0)} · ${readyBadge(x.r)}</small></h2>
+  return `<details class="fold reveal case" id="sec-case"><summary><h2 class="ph">Why ${esc(x.main.pick)} <small>${readyBadge(x.r)}</small></h2></summary>
     <div class="case-grid">
       <div><h3>Supports it</h3>${li(c.pro, 'Nothing beyond the price.')}</div>
       <div><h3>Against it</h3>${li(c.con, 'No clear counterargument in the data we have.')}</div>
@@ -137,7 +137,7 @@ export function casePanel(x) {
       <div><h3>Would change the call</h3>${li(c.invalid, '—')}</div>
     </div>
     <details class="inside"><summary>What is inside the number</summary><ul>${c.inside.map(([t, on]) => `<li class="${on ? 'yes' : 'no'}">${ico(on ? 'check' : 'cross')} ${esc(t)}</li>`).join('')}</ul></details>
-  </section>`;
+  </details>`;
 }
 
 // Evidence timeline for one match (dossier "History" section).

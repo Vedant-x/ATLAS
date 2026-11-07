@@ -166,14 +166,13 @@ export function propsView(events, refresh, sel = '') {
   const stats = [...new Set(all.filter((p) => st.sport === 'all' || p.e.sport === st.sport).map((p) => p.x.label))].sort();
   if (st.stat !== 'all' && !stats.includes(st.stat)) st.stat = 'all';
   const matches = new Set(all.map((p) => p.e.id)).size;
-  const modelled = all.filter((p) => p.x.hist).length;
   const moved = all.filter((p) => p.x.why).length;
   const rec = trackStats()?.byFamily?.find((f) => f.key === 'prop');
   const pn = sel ? playerPanel(sel, events, refresh) : null;
   return {
     mode: 'bankers', accent: '#3dff9a', title: pn?.name ? `${pn.name} · Props` : 'Player props',
     html: `<section class="hero small"><p class="kicker reveal">NEXT 36 HOURS · ${all.length} LINES · ${matches} MATCHES${moved ? ` · ${moved} MOVED BY ABSENCES` : ''}</p><h1>${split('PLAYER PROPS')}</h1>
-      <p class="lede reveal">The ATLAS forecast weighs each player's last 20 games (recent ones count more, games without an injured teammate when he is out tonight) against the bookmaker's price. ${modelled} of ${all.length} lines have game history.</p></section>
+</section>
       <div class="rs${pn ? ' has-sel' : ''}">
       <div class="rs-list">
       <div class="props-tools reveal">
@@ -183,7 +182,7 @@ export function propsView(events, refresh, sel = '') {
         <div class="chips">${SORTS.map(([k, t]) => chip('sort', k, t, st.sort === k)).join('')}<span class="nav-sep" aria-hidden="true"></span>${MINS.map(([k, t]) => chip('min', k, t, st.min === k)).join('')}</div>
       </div>
       <div class="panel props-list2" data-props-list>${propsList(events, sel)}</div>
-      ${recordLine(rec) ? `<p class="rec-line reveal">ATLAS props record · ${recordLine(rec)} · <a href="#/track">see every pick</a></p>` : '<p class="rec-line reveal muted">Props in the shortlist are graded from the box score after each game: the record builds up on the Results page.</p>'}
+      ${recordLine(rec) ? `<p class="rec-line reveal">Record: ${recordLine(rec)}</p>` : ''}
       </div>
       ${pn ? `<aside class="rs-panel" aria-label="Player research"><div class="rs-head"><a class="rs-back" href="#/props">← All props</a><h2>${esc(pn.name || 'Player')}</h2>${pn.name ? `<small>${esc(pn.team || '')}${pn.next ? ` · ${esc(pn.next)}` : ''}${pn.e ? ` · <a href="#/match/${encodeURIComponent(pn.e.id)}">dossier</a>` : ''}</small>` : ''}</div>${pn.html}</aside>` : ''}
       </div>`,

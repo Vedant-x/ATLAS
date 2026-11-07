@@ -25,7 +25,7 @@ const ESSENTIAL = {
   '#/': ['.dash-short', /No qualifying bets|\d+%\s*chance|fair \d/], '#/picks': ['.minilist', /No qualifying bets|\d+%\s*chance|fair \d/],
   '#/x/2': ['.hero', /2X SLIPS/i], '#/live': ['.hero', /in play|Nothing in play/i],
   '#/sports': ['.hero', /SPORTS/], '#/track': ['.hero', /RESULTS/], '#/sources': ['.hero', /SOURCES/], '#/sport/football': ['.hero', /matches/i],
-  '#/sport/basketball': ['.hero', /matches/i], '@match': ['.subnav', /probability/i], '#/props': ['.hero', /PLAYER PROPS/], '#/compare': ['.hero', /COMPARE/], '#/watchlist': ['.hero', /WATCHLIST/],
+  '#/sport/basketball': ['.hero', /matches/i], '@match': ['.subnav', /Fair odds/], '#/props': ['.hero', /PLAYER PROPS/], '#/compare': ['.hero', /COMPARE/], '#/watchlist': ['.hero', /WATCHLIST/],
 };
 
 let server = null;
