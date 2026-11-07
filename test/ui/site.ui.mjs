@@ -48,7 +48,7 @@ test('home: placeholders while loading, never "no picks"; no counters, sports gr
   await shot(page, 'home-loading');
   release();
   await page.waitForSelector('.dash-short .mini');
-  assert.equal(await page.locator('.hero .stats, .grid.sports, .grid.xs, .dash-track').count(), 0, 'minimal: those live on their own pages');
+  assert.equal(await page.locator('.hero .stats, .grid.sports, .grid.xs, .dash-multi').count(), 0, 'minimal: those live on their own pages');
   await shot(page, 'home-desktop');
   assert.deepEqual(errors, []);
   await ctx.close();
@@ -113,12 +113,12 @@ test('Picks is Best bets, never empty; Multipliers its own menu entry', async ()
   await ctx.close();
 });
 
-test('home: Best bets (the shortlist folded in) is filled, every multiplier has a card, no Value bets panel', async () => {
+test('home: Best bets is filled, no Value bets or Multipliers panel; Multipliers in the main menu', async () => {
   const { page, ctx, errors } = await open('#/');
   await page.waitForSelector('.dash-short .mini');
   assert.ok(await page.locator('.dash-short .mini').count() >= 1, 'Best bets has picks');
   assert.equal(await page.locator('.dash-value').count(), 0);
-  assert.equal(await page.locator('.dash-multi .mult-card').count(), 8, 'one card per multiplier, 2x to 1000x');
+  assert.equal(await page.locator('.dash-multi').count(), 0, 'Multipliers live in the menu, not on home');
   await page.goto(BASE + '#/x/10'); await page.waitForSelector('.tabs');
   assert.equal(await page.locator('.tabs a').count(), 8);
   assert.equal(await page.locator('nav.top a[href="#/x/2"]').count(), 1, 'Multipliers in the main menu');
@@ -302,21 +302,30 @@ test('navigation: six destinations (Watchlist under More on a phone), Research l
   }
 });
 
-test('home: panels can be hidden and reordered, and the layout is kept', async () => {
+test('home: the parlay first, then Best bets and Live, the record and the sources last; no Customise', async () => {
   const { page, ctx, errors } = await open('#/');
-  await page.waitForSelector('.dash-potd');
-  const order = () => page.$$eval('.dash > .panel:not(.dash-layout)', (ps) => ps.map((p) => p.className.match(/dash-(potd|short|live|health)|changes|track/)?.[0]).filter(Boolean));
-  await page.click('.dash-layout summary');
-  await page.click('[data-lay="toggle"][data-lay-key="potd"]');
-  await page.waitForFunction(() => !document.querySelector('.dash-potd'));
-  assert.ok(await page.$('.dash-layout[open]'), 'still open after a change');
-  for (let i = 0; i < 3; i++) await page.click('[data-lay="up"][data-lay-key="live"]'); // above Multipliers, past the hidden parlay, then above Best bets
-  await page.waitForFunction(() => { const ps = [...document.querySelectorAll('.dash > .panel')]; return ps.findIndex((p) => p.classList.contains('dash-live')) < ps.findIndex((p) => p.classList.contains('dash-short')); });
-  await page.reload();
-  await page.waitForSelector('.dash-live');
-  assert.equal(await page.$('.dash-potd'), null, 'hidden after a reload');
-  const o = await order();
-  assert.ok(o.indexOf('dash-live') < o.indexOf('dash-short'), JSON.stringify(o));
+  await page.waitForSelector('.dash-short .mini');
+  const order = await page.$$eval('.dash > .panel', (ps) => ps.map((p) => p.className.match(/dash-(potd|short|live|health)|track-card|tr-card|track/)?.[0] || p.className));
+  assert.deepEqual(order.slice(0, 3), ['dash-potd', 'dash-short', 'dash-live'], JSON.stringify(order));
+  assert.equal(order.at(-1), 'dash-health', JSON.stringify(order));
+  assert.equal(order.length, 5, JSON.stringify(order));
+  assert.equal(await page.locator('.dash-layout, [data-lay]').count(), 0, 'no Customise');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('home: the order filter moves live picks with the rest (soonest first on top, latest first at the bottom)', async () => {
+  const { page, ctx, errors } = await open('#/');
+  await page.waitForSelector('.dash-short .mini');
+  const kinds = () => page.$$eval('.dash-short .mini', (ms) => ms.map((m) => (m.classList.contains('live-pick') ? 'L' : 'P')).join(''));
+  const soon = await kinds();
+  assert.ok(soon.includes('L'), `a live pick in the fixture board: ${soon}`);
+  assert.match(soon, /^L+P/, soon);
+  await page.click('.sl-filters summary');
+  await page.click('[data-border="desc"]');
+  await page.waitForFunction(() => /latest first/.test(document.querySelector('.sl-filters summary')?.textContent || ''));
+  assert.match(await kinds(), /PL+$/, 'live last when latest first');
+  assert.ok(await page.$('.sl-filters[open]'), 'the filters stay open');
   assert.deepEqual(errors, []);
   await ctx.close();
 });
@@ -330,24 +339,6 @@ test('watchlist: quiet hours are kept, and alerts while closed are not offered w
   await page.waitForSelector('[data-quiet="22-7"][aria-pressed="true"]');
   await page.reload();
   await page.waitForSelector('[data-quiet="22-7"][aria-pressed="true"]');
-  assert.deepEqual(errors, []);
-  await ctx.close();
-});
-
-test('home: a panel can be made full width, and every panel takes a size', async () => {
-  const { page, ctx, errors } = await open('#/');
-  await page.waitForSelector('.dash-live');
-  await page.click('.dash-layout summary');
-  for (let i = 0; i < 3; i++) await page.click('[data-lay="size"][data-lay-key="live"]'); // auto → third → half → full
-  await page.waitForSelector('.dash-live.lay-full');
-  const [panel, dash] = await page.$$eval('.dash-live, .dash', (els) => els.map((x) => x.getBoundingClientRect().width).reverse());
-  assert.ok(Math.abs(panel - dash) < 2, `${panel} vs ${dash}`);
-  assert.match(await page.textContent('[data-lay="size"][data-lay-key="live"]'), /Full/);
-  // Every panel's markup accepts a size (the class goes on its own element).
-  for (const k of ['shortlist', 'potd', 'multi', 'changes', 'record', 'health']) await page.click(`[data-lay="size"][data-lay-key="${k}"]`);
-  const sized = await page.$$eval('.dash > .panel.lay-third', (ps) => ps.length);
-  const shown = await page.$$eval('.dash > .panel:not(.dash-layout):not(.lay-full)', (ps) => ps.length);
-  assert.equal(sized, shown);
   assert.deepEqual(errors, []);
   await ctx.close();
 });
@@ -432,7 +423,7 @@ for (const viewport of [PHONE, DESK]) {
 test('phone: tapping a pick card shows its reasons; a tap elsewhere hides them; a tap on its odds adds it to the slip instead', async () => {
   const { page, ctx, errors } = await open('#/', { viewport: PHONE });
   await page.waitForSelector('.dash-short .mini');
-  const card = page.locator('.dash-short .mini').first();
+  const card = page.locator('.dash-short .mini:not(.live-pick)').first();
   await card.locator('.mini-ico').click();
   await page.waitForSelector('#tip:not([hidden])');
   assert.match(await page.textContent('#tip'), /Why:|Chance range/);

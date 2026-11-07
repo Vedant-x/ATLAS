@@ -266,7 +266,7 @@ export function trackCard(refresh) {
   const close = c.n ? `<p class="muted dt-close">Price vs the closing line: ${esc(closeLineText(c).head.replace(' than the last one before kick-off', ''))}</p>` : '';
   if (!a.won && !a.lost) return `<a class="panel dash-track reveal" href="#/track"><h2 class="ph">Results <small>tracking started</small></h2><p class="muted">${s.pending.length} picks locked before kick-off, waiting on results.</p>${close}</a>`;
   const last = s.recent.slice(0, 10).map((h) => `<i class="tr-dot ${h.status}" data-tip="${esc(h.pick)}: ${h.status}"></i>`).join('');
-  return `<a class="panel dash-track reveal" href="#/track"><h2 class="ph">Results <small>every pick, locked before kick-off</small></h2>
+  return `<a class="panel dash-track reveal" href="#/track"><h2 class="ph">Results</h2>
     <div class="dt-row"><div><b>${a.won}–${a.lost}</b><small>won–lost</small></div><div><b>${pct(a.hitRate, 0)}</b><small>hit rate (est. ${pct(a.expected, 0)})</small></div><div><b class="${a.profit >= 0 ? 'pos' : 'neg'}">${a.roi == null ? '—' : `${a.roi >= 0 ? '+' : ''}${(a.roi * 100).toFixed(1)}%`}</b><small>ROI · ${units(a.profit)}</small></div>${a.brierN >= 20 ? `<div><b class="${a.brierModel <= a.brierMarket ? 'pos' : 'neg'}">${a.brierModel <= a.brierMarket ? 'Beats' : 'Trails'}</b><small>the market's own forecast</small></div>` : ''}</div>
     <ul class="dt-types">${s.bySport.map((r) => `<li><span>${sportOf(r.key).icon} ${esc(sportOf(r.key).name)}</span><b>${pct(r.hitRate, 0)}</b><small>${r.won}–${r.lost}</small></li>`).join('')}</ul>
     ${close}<div class="dt-last">${last}<span>latest results →</span></div></a>`;

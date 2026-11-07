@@ -27,13 +27,12 @@ import { feedText } from './honest.js';
 import { propRow, allProps } from './propsview.js';
 import { coherentBets } from './picks.js';
 import { mergeEvent } from './merge.js';
-import { casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips, changesPanel, orderBets, orderChips, orderLabel } from './research.js';
-import { lastVisit } from './timeline.js';
+import { casePanel, historyPanel, researchRow, pins, researchPrefs, windowChips, orderChips, orderLabel } from './research.js';
 import { whyLine } from './why.js';
 import { canonStats, standingsTable } from './standings.js';
 // Picks pages (Best bets, slips 2x to 1000x): picksview.js, which
 // also uses the helpers here.
-import { picksViews, bindPicks, multiPanel, bestList, bestNote, livePick } from './picksview.js';
+import { picksViews, bindPicks, bestList, bestNote, livePick, orderBest } from './picksview.js';
 import { esc } from './esc.js';
 // Golf and motor racing: a field of players or drivers, drawn by fieldview.js.
 const FIELD_SPORTS = new Set(['golf', 'motorsport']);
@@ -391,25 +390,21 @@ function dashboard(ev, live) {
   const minOdds = prefs.get().minOdds || 1;
   // Never empty (picksview.js bestList): live picks first, the window widening and the likeliest
   // results filling in when the board is thin.
-  const best = bestList(pool, hrs, minOdds), short = orderBets(best.list).slice(0, 12);
+  const best = bestList(pool, hrs, minOdds), short = orderBest(best).slice(0, 15);
   const empty = `No qualifying bets in the next ${hrs} hours with your filters.${exclusionLine(todayEvents(pool, Date.now(), hrs))}`;
   // Every panel by name, shown in the visitor's saved order with hidden ones left out (Customise).
   const panels = {
-    multi: () => multiPanel(),
     potd: () => potdPanel(pool),
     // Minimal: the title, one folded "Filters" control (window, order, odds and sports) and the cards.
     shortlist: () => `<div class="panel dash-short reveal"><h2 class="ph">Best bets</h2>
       ${bestFilters(best, hrs, minOdds)}
-      <div class="minilist">${S.loading ? skelRows(4) : [...best.live.slice(0, 5).map(livePick), ...short.map((b) => miniPick(b))].join('') || `<p class="muted">${empty}</p>${nearBestHtml(pool, hrs)}`}</div></div>`,
+      <div class="minilist">${S.loading ? skelRows(4) : short.map((b) => (b.inPlay ? livePick(b) : miniPick(b))).join('') || `<p class="muted">${empty}</p>${nearBestHtml(pool, hrs)}`}</div></div>`,
     live: () => `<div class="panel dash-live reveal"><h2 class="ph">Live now <small>${S.loading ? '' : live.length}</small></h2>
       ${S.loading ? skelRows(3) : live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${scoreText(e)}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>`,
-    changes: () => `${changesPanel(ev, { title: lastVisit() ? 'Since your last visit' : 'What changed', limit: 6, hideEmpty: true })}`,
     record: () => `${trackCard(() => S.refresh?.())}`,
-    health: () => `<div class="panel dash-health reveal"><h2 class="ph">Source health <small><a href="#/sources">every source →</a></small></h2>${sourceHealth(ev)}</div>`,
+    health: () => `<div class="panel dash-health reveal"><h2 class="ph">Sources</h2>${sourceHealth(ev)}</div>`,
   };
-  // A chosen size goes on the panel's own element (the first class list of its markup).
-  const sized = (k, html) => { const z = readLayout().size?.[k]; return z && SIZES[z] ? html.replace(/class="panel /, `class="panel lay-${z} `) : html; };
-  return `<section class="dash">${homeLayout().filter((k) => panels[k]).map((k) => sized(k, panels[k]())).join('')}${layoutPanel()}</section>`;
+  return `<section class="dash">${HOME_PANELS.map((k) => panels[k]()).join('')}</section>`;
 }
 
 // The shortlist's folded filters stay open across re-renders once opened (main.js listens). The summary
@@ -418,48 +413,9 @@ let filtersOpen = false;
 export const bestFilters = (best, hrs, minOdds) => { const note = bestNote(best, hrs); return `<details class="sl-filters"${filtersOpen ? ' open' : ''}><summary${note ? ` data-tip="${esc(note)}"` : ''}>${ico('filter')} Next ${best.hours > hrs ? `${best.hours}h (none in ${hrs}h)` : `${hrs}h`} · ${esc(orderLabel())}${minOdds > 1 ? ` · odds ${minOdds.toFixed(2)}+` : ''}</summary>${windowChips('shours', hrs)}${orderChips()}${prefsBar()}</details>`; };
 export const setFiltersOpen = (v) => { filtersOpen = Boolean(v); };
 
-// Home panels: order and visibility, saved per visitor (localStorage, best effort). Unknown or missing
-// names fall back to the default order, so a new panel always appears.
-// What is on now, Best bets (the shortlist folded in), the parlay of the day and every multiplier.
-const HOME_PANELS = [['shortlist', 'Best bets'], ['potd', 'Parlay of the day'], ['multi', 'Multipliers'], ['live', 'Live now'], ['changes', 'What changed'], ['record', 'Results'], ['health', 'Source health']];
-const LAYOUT_KEY = 'atlas-home-layout';
-// Minimal by default: source health, what changed and the full record card start hidden (the record
-// is the strip at the top); Customise shows them.
-const DEFAULT_HIDDEN = ['health', 'changes', 'record'];
-// Panel widths on wide screens (phones always show one column): auto is the panel's own width.
-const SIZES = { third: 'Third', half: 'Half', full: 'Full' };
-const SIZE_CYCLE = ['auto', 'third', 'half', 'full'];
-const readLayout = () => { try { return JSON.parse(localStorage.getItem(LAYOUT_KEY)) || {}; } catch { return {}; } };
-export function homeLayout(saved = readLayout()) {
-  const known = HOME_PANELS.map(([k]) => k);
-  const order = [...(saved.order || []).filter((k) => known.includes(k)), ...known.filter((k) => !(saved.order || []).includes(k))];
-  return order.filter((k) => !(saved.hidden ?? DEFAULT_HIDDEN).includes(k));
-}
-// Stays open after a change, so several panels can be moved in a row.
-let layoutOpen = false;
-export function setHomeLayout(action, key) {
-  layoutOpen = true;
-  const saved = readLayout(), known = HOME_PANELS.map(([k]) => k);
-  const order = [...(saved.order || []).filter((k) => known.includes(k)), ...known.filter((k) => !(saved.order || []).includes(k))];
-  let hidden = saved.hidden ?? DEFAULT_HIDDEN;
-  const i = order.indexOf(key);
-  if (action === 'up' && i > 0) [order[i - 1], order[i]] = [order[i], order[i - 1]];
-  if (action === 'down' && i >= 0 && i < order.length - 1) [order[i + 1], order[i]] = [order[i], order[i + 1]];
-  if (action === 'toggle') hidden = hidden.includes(key) ? hidden.filter((k) => k !== key) : [...hidden, key];
-  const size = { ...(saved.size || {}) };
-  if (action === 'size') { const next = SIZE_CYCLE[(SIZE_CYCLE.indexOf(size[key] || 'auto') + 1) % SIZE_CYCLE.length]; if (next === 'auto') delete size[key]; else size[key] = next; }
-  if (action === 'reset') { try { localStorage.removeItem(LAYOUT_KEY); } catch { /* storage blocked */ } return; }
-  try { localStorage.setItem(LAYOUT_KEY, JSON.stringify({ order, hidden, size })); } catch { /* storage blocked: this visit only */ }
-}
-function layoutPanel() {
-  const saved = readLayout(), known = HOME_PANELS.map(([k]) => k);
-  const order = [...(saved.order || []).filter((k) => known.includes(k)), ...known.filter((k) => !(saved.order || []).includes(k))];
-  const name = Object.fromEntries(HOME_PANELS);
-  return `<details class="dash-layout reveal"${layoutOpen ? ' open' : ''}><summary>${ico('filter')} Customise</summary><ul class="lay-list">${order.map((k, i) => { const off = (saved.hidden ?? DEFAULT_HIDDEN).includes(k); return `<li class="${off ? 'off' : ''}"><span>${name[k]}</span>
-    <button class="chip" data-lay="up" data-lay-key="${k}" aria-label="Move ${name[k]} up"${i === 0 ? ' disabled' : ''}>↑</button><button class="chip" data-lay="down" data-lay-key="${k}" aria-label="Move ${name[k]} down"${i === order.length - 1 ? ' disabled' : ''}>↓</button>
-    <button class="chip" data-lay="size" data-lay-key="${k}" aria-label="Width of ${name[k]}: ${SIZES[saved.size?.[k]] || 'Auto'} (tap to change)">${SIZES[saved.size?.[k]] || 'Auto'}</button>
-    <button class="chip ${off ? '' : 'on'}" data-lay="toggle" data-lay-key="${k}" aria-pressed="${!off}">${off ? 'Hidden' : 'Shown'}</button></li>`; }).join('')}</ul><button class="btn-ghost" data-lay="reset" data-lay-key="">Reset layout</button></details>`;
-}
+// Home, in a fixed order: the parlay of the day, Best bets, what is live, then the record and the
+// sources at the bottom. Multipliers have their own menu entry.
+const HOME_PANELS = ['potd', 'shortlist', 'live', 'record', 'health'];
 
 // Result badge for a leg or a slip: Won / Lost / Void, or the live score while it is being played.
 const RESULT = { won: 'Won', lost: 'Lost', void: 'Void', push: 'Void', dnp: 'Void' };
@@ -517,7 +473,8 @@ function sourceHealth(ev) {
     ['MLB Stats API', reports.length, newest(reports, (r) => r.fetchedAt), 'starter reports'],
     ['FotMob', ev.filter((e) => e.absences).length, newest(ev, (e) => e.absences?.fetchedAt), 'soccer absences'],
   ];
-  return `<ul class="health">${rows.map(([n, c, t, what]) => `<li class="${S.loading ? 'idle' : c ? freshClass(t) : 'idle'}"><i></i><b>${n}</b><span>${S.loading ? 'checking…' : c ? `${c} · ${ago(t)}` : 'nothing scheduled'}</span><small>${what}</small></li>`).join('')}</ul>`;
+  // Only the sources with something today (an idle one reads "nothing scheduled" and is left out).
+  return `<ul class="health">${rows.filter(([, c]) => S.loading || c).map(([n, c, t, what]) => `<li class="${S.loading ? 'idle' : c ? freshClass(t) : 'idle'}"><i></i><b>${n}</b><span>${S.loading ? 'checking…' : c ? `${c} · ${ago(t)}` : 'nothing scheduled'}</span><small>${what}</small></li>`).join('')}</ul>`;
 }
 
 // In play: the live estimate from the current score and time left, then a note that the rest is pre-match.
