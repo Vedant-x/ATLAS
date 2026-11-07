@@ -32,7 +32,7 @@ export function siteData(now = Date.now()) {
     ev('fx-mci-bur', 'football', 'Premier League', 'soccer/eng.1', 'Man City', 'Burnley', 22, [], { markets: [{ name: 'Match Result', consensusFrom: 'Pinnacle', outcomes: [
       { name: 'Man City', odds: 1.55, book: 'Betway', cons: 0.7, open: 1.42 }, { name: 'Draw', odds: 4.6, book: 'Unibet', cons: 0.19 }, { name: 'Burnley', odds: 9.5, book: '1xBet', cons: 0.11 }] }],
       bookmaker: 'best of 12 bookmakers; fair chance from Pinnacle', oddsSource: 'the-odds-api', quoteType: 'best-available', priceAtAgo: 4 * H }),
-    ev('fx-lal-gsw', 'basketball', 'NBA', 'basketball/nba', 'Lakers', 'Warriors', -1, [['Lakers', 1.7], ['Warriors', 2.15]], { live: true, score: '54-49', clock: 'Q3 4:12' }),
+    ev('fx-lal-gsw', 'basketball', 'NBA', 'basketball/nba', 'Lakers', 'Warriors', -1, [['Lakers', 1.7], ['Warriors', 2.15]], { live: true, score: '51-50', clock: 'Q3 4:12', displayClock: '4:12', period: 3 }),
   ];
   // Every match has its feed's match id, as ESPN's do (picks are only offered where a result can be read).
   // The feed's prices carry the sharp market's fair chances (read an hour ago); Arsenal's Stake price

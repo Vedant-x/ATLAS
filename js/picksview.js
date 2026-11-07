@@ -119,17 +119,17 @@ export function bestList(pool, hrs, minOdds = 1) {
   }
   return { live, list, hours, filled };
 }
+// Live picks and the board in one list, in the visitor's order: soonest first puts what is live on top,
+// latest first at the bottom; best first ranks by chance, the fair-price picks ahead of the "any price"
+// fill-ins. Live picks carry inPlay: true (they render as live cards).
+export function orderBest(best) {
+  const all = [...best.live.map((b) => ({ ...b, inPlay: true })), ...best.list];
+  const order = researchPrefs().betOrder;
+  if (order === 'rank') return all.map((b, i) => ({ b, i })).sort((x, y) => (x.b.anyPrice ? 1 : 0) - (y.b.anyPrice ? 1 : 0) || y.b.p - x.b.p || x.i - y.i).map((x) => x.b);
+  return orderBets(all, order, (b) => b.event?.start ?? 0);
+}
 // Under the list when it had to reach further: how far, and what the fill-ins are.
 export const bestNote = ({ hours, filled }, hrs) => [hours > hrs ? `Nothing in the next ${hrs}h has a price yet, so the next ${hours}h are shown.` : '', filled ? `${filled} marked "any price" are the likeliest results whatever their price (not saved to the record): each is under fair by the % shown.` : ''].filter(Boolean).join(' ');
-
-// ---------- The multipliers row (home panel) ----------
-// One card per multiplier: today's official slip as the record saved it (total odds, legs, chance).
-// Read from the record, not built here: building eight slips at load cost a phone too much time.
-export function multiPanel() {
-  ensureTrack(() => S.refresh?.());
-  const cards = MULTI_TARGETS.map((t) => { const s = officialSlip(t); return `<a class="mult-card" href="#/x/${t}"><b>${t}x</b>${s ? `<span>${Number(s.odds).toFixed(2)} · ${s.legs.length} legs</span><small>chance ${pc(s.shown ?? s.p, (s.shown ?? s.p) < 0.01 ? 2 : 1)}</small>` : '<small>open to build</small>'}</a>`; }).join('');
-  return `<div class="panel dash-multi reveal"><h2 class="ph">Multipliers</h2><div class="mult-row">${S.loading ? '' : cards}</div></div>`;
-}
 
 export const picksViews = {
   // Best bets: the likeliest winners at a fair price or better, the shortlist folded in (within 3% of
@@ -137,14 +137,13 @@ export const picksViews = {
   picks() {
     const ev = prefFilter(S.events), minOdds = prefs.get().minOdds || 1, hrs = researchPrefs().shortHours;
     ensureTrack(() => S.refresh?.());
-    const best = bestList(ev, hrs, minOdds), list = orderBets(best.list);
+    const best = bestList(ev, hrs, minOdds), list = orderBest(best);
     return {
       mode: 'bankers', accent: '#00ffc3', title: 'Best bets',
       html: `<section class="hero small"><h1>${split('BEST BETS')}</h1></section>
         ${notice()}
         ${bestFilters(best, hrs, minOdds)}
-        ${best.live.length ? `<h2 class="sec reveal">Live now <small>${best.live.length}</small></h2><div class="minilist">${best.live.map(livePick).join('')}</div>` : ''}
-        <div class="minilist">${list.map((b) => miniPick(b)).join('') || `<p class="muted">No match on the board has a price right now.${exclusionLine(todayEvents(ev, Date.now(), hrs))}</p>${nearBestHtml(ev, hrs)}`}</div>
+        <div class="minilist">${list.map((b) => (b.inPlay ? livePick(b) : miniPick(b))).join('') || `<p class="muted">No match on the board has a price right now.${exclusionLine(todayEvents(ev, Date.now(), hrs))}</p>${nearBestHtml(ev, hrs)}`}</div>
 `,
     };
   },

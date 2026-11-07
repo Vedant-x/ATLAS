@@ -39,6 +39,10 @@ what changed, week by week. Reasons and reversals are in [docs/DECISIONS.md](doc
   - **Results:** the four numbers first, then the lists with results, the closing line and the
     latest results; the rest is under More detail.
   - **Match page:** the chance with fair odds and prices; the case for a pick is folded under "Why".
+- **Home in a fixed order (8 Nov):** the parlay of the day, Best bets, Live now, Results, then the
+  sources (only those with something today). Multipliers are in the menu only; Customise is gone.
+  Live picks now follow the order filter with the rest (soonest first on top, latest first at the
+  bottom, best first by chance).
 - **Layout:**
   - Best bets now includes the shortlist, with its filters.
   - Value bets is removed from the pages.
