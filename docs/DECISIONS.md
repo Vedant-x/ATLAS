@@ -3,6 +3,30 @@
 What was decided, why, and what it replaced. Anything that reverses an earlier decision says so here
 first, with the evidence. A change that flips a decision without an entry here should not merge.
 
+## 2026-11-08 · After 12 hours of watching: price checks, not pick filters
+
+- **Observed (7 Nov 19:30 to 8 Nov 07:50 UTC, the record and the odds archive):**
+  - The board since 5 Nov: 178 settled, 101-77, 56.7% hit against 57.7% the market's own chances
+    implied, ROI -6.4% (±12). The claimed return at the price taken was -4.3% a pick: the loss is the
+    margin, not bad picks.
+  - No filter on odds, market or sport changed the expected loss; their differences are inside the
+    noise (e.g. odds up to 1.59: +4.0% ±19 over 51).
+  - 190 of 194 picks were judged on DraftKings' own price alone. The sharp line (The Odds API, 500
+    credits a month, about 16 reads a day across 18 leagues) is read about every 12-20 h per league:
+    past 12 h it was dropped and the board used the looser one-book band (5% under fair, not 3%).
+  - Stake is about 7% under fair on favourites (never at or over fair in 286 archived prices);
+    DraftKings about 4.5%.
+- **Decided:**
+  - A sharp line 12-24 h old is kept as a second check: a one-book pick or slip leg must also be
+    within 5% of its fair odds, and the card's detail names it.
+  - Sharp reads go to leagues with a match in the next 12 hours (was 36): the same credits, nearer
+    kick-off.
+  - The card's detail shows Stake's price against fair where it is known.
+  - The guard that pauses a sport's bet type after 25+ results clearly below their prices (z <= -2)
+    is now listed on Results. On 8 Nov it pauses NFL and college winners (63% landed against 71%
+    implied, 153 results).
+- **Not done:** filters on odds band or market. The record does not support them yet.
+
 ## 2026-11-05 (later) · One Best bets list; Value bets off the pages; Multipliers in the menu
 
 - **Decided (the owner's call):**

@@ -597,8 +597,10 @@ if (process.env.ODDS_API_KEY) {
     const cap = capEnv != null && capEnv !== '' && Number.isFinite(Number(capEnv)) ? Number(capEnv) : Infinity;
     const gap = per * (monthEnd - Date.now()) / Math.max(1, remaining);
     const allowance = Math.min(cap, !Number.isFinite(remaining) ? 1 : remaining < per ? 0 : Math.min(6, Math.floor((Date.now() - (cache.spentAt || 0)) / gap)));
-    // Majors: matches in the next 36 hours with a price from another feed and no fresh sharp line.
-    const soon = (k) => (byKey[k] || []).filter((e) => e.start < Date.now() + 36 * 36e5 && e.markets?.length && e.oddsSource !== 'the-odds-api');
+    // Majors: matches in the next 12 hours with a price from another feed and no fresh sharp line. The
+    // month's credits allow about 16 reads a day; spent on leagues 12-36 h out (as until 8 Nov 2026)
+    // the line was 12-20 h old by kick-off and the board fell back to one bookmaker's price.
+    const soon = (k) => (byKey[k] || []).filter((e) => e.start < Date.now() + 12 * 36e5 && e.markets?.length && e.oddsSource !== 'the-odds-api');
     const majors = active.filter((k) => MAJOR_KEYS.includes(k)).map((k) => ({ k, n: soon(k).length, major: true, first: Math.min(...soon(k).map((e) => e.start)), at: cache.at?.[k] || 0 }))
       .filter((x) => x.n > 0 && !(x.at > Date.now() - 3 * 36e5)).sort((x, y) => x.first - y.first);
     const wanted = active.map((k) => ({ k, n: need(k), at: cache.at?.[k] || 0 })).filter((x) => x.n > 0);

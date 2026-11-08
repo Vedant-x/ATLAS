@@ -114,6 +114,8 @@ export function boardLeg(l, now = Date.now()) {
   }
   if (!freshAt(l.quoteAt, FRESH.board, now) || !(l.margin >= 0)) return null;
   const mp = 1 / (l.odds * (1 + l.margin));
+  // An old sharp line (12-24 h) must agree too: within the one-book band of its fair odds.
+  if (Number.isFinite(l.oldCons) && l.odds * l.oldCons - 1 < BOARD.gapOneBook) return null;
   return mp * l.odds - 1 >= BOARD.gapOneBook ? { ...l, referenceProbability: mp, marketP: mp } : null;
 }
 // The legs slips are built from, by rule:

@@ -1,7 +1,7 @@
 // Record page: every official ATLAS pick (locked before kick-off) and how it turned out.
 import { esc, sportOf, ist } from './views.js';
 import { recordText, closeLineText } from './honest.js';
-import { summarize, calibration, marketChance, potdDay, walkForward, oldBest, closingLine, MULTI_TARGETS } from './track.js';
+import { summarize, calibration, marketChance, potdDay, walkForward, oldBest, closingLine, MULTI_TARGETS, pausedSegments } from './track.js';
 import { serviceStats } from './compare.js';
 import { FINAL, independentlyConfirmed } from './settle.js';
 import { localDay } from './engine.js';
@@ -188,6 +188,12 @@ function retiredTable(s) {
     ${s.retired.map((r) => `<tr><td>${esc(r.name)}</td><td class="num">${r.won}–${r.lost}</td><td class="num">${pct(r.hitRate, 0)}</td><td class="num">${pct(r.expected, 0)}</td><td class="num ${r.profit >= 0 ? 'pos' : 'neg'}">${units(r.profit)} (${r.roi >= 0 ? '+' : ''}${(r.roi * 100).toFixed(1)}%)</td></tr>`).join('')}</tbody></table></div></div>`;
 }
 
+// The self-check (track.js calibrationFrom's guard): a sport's bet type whose 25+ priced results
+// landed clearly less often than their prices implied (z <= -2) is paused from the board and the
+// slips until it recovers; unseen probes keep measuring it. Shown so a pause is never silent.
+const FAMILY = { winner: 'winners', result: '1X2 results', spread: 'spreads', total: 'totals', prop: 'player props' };
+const selfCheckLine = (cal) => { const p = pausedSegments(cal).map((x) => ({ ...x, label: `${sportOf(x.sport).name} ${FAMILY[x.family] || x.family}` })); return p.length ? `<p class="note reveal self-check" data-tip="A sport's bet type is paused when its 25+ priced results land clearly below what their prices implied (2 standard errors), and comes back when its record recovers">Paused by the self-check: ${p.map((x) => `${esc(x.label)} (${pct(x.hit, 0)} landed vs ${pct(x.implied, 0)} implied, ${x.n} results)`).join(' · ')}</p>` : ''; };
+
 // The headline for the current rules: the price taken against the closing line (closeLineText).
 const closeLinePanel = (c) => { const t = closeLineText(c); return `<div class="panel reveal close-line"><h3 class="ph" data-tip="Known at kick-off for every pick, long before profit means anything: a price that keeps beating the market's final price is the clearest early sign of a real edge">Price vs the closing line</h3>
   <p class="cl-head"><b>${esc(t.head)}</b></p>${t.lines.map((l) => `<p class="muted">${esc(l)}</p>`).join('')}</div>`; };
@@ -201,7 +207,7 @@ function body(data) {
   }
   const famName = { winner: 'Winner / moneyline', result: '1X2 result', spread: 'Spread / handicap', total: 'Totals (over/under)', prop: 'Player props' };
   // The lists the site shows, their records, then the latest results; everything else one tap away.
-  return `${statCards(s.live, data.updatedAt)}${listsTable(s)}${cl}${s.unresolved ? `<p class="note reveal">${s.unresolved} pick${s.unresolved > 1 ? 's' : ''} could not be graded (no final result found) and ${s.unresolved > 1 ? 'are' : 'is'} left out rather than counted as void.</p>` : ''}
+  return `${statCards(s.live, data.updatedAt)}${listsTable(s)}${selfCheckLine(trackCalibration(data.picks || []))}${cl}${s.unresolved ? `<p class="note reveal">${s.unresolved} pick${s.unresolved > 1 ? 's' : ''} could not be graded (no final result found) and ${s.unresolved > 1 ? 'are' : 'is'} left out rather than counted as void.</p>` : ''}
     ${s.recent.length ? `<div class="panel reveal"><h3 class="ph">Latest results</h3><ul class="tr-list">${s.recent.map(pickRow).join('')}</ul></div>` : ''}
     ${s.pending.length ? `<div class="panel reveal"><h3 class="ph">Waiting on results <small>${s.pending.length}</small></h3><ul class="tr-list">${s.pending.slice(0, 20).map(pickRow).join('')}</ul></div>` : ''}
     <details class="fold reveal tr-more"><summary><h2 class="ph">More detail</h2></summary>

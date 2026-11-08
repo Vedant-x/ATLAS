@@ -3,7 +3,7 @@
 // bookmaker), singles from 1.30, Stake's price first, one pick per match.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { shortlist, BOARD, MULTI_TARGETS, multiPicks } from '../js/track.js';
+import { shortlist, BOARD, MULTI_TARGETS, multiPicks, calibration, pausedSegments, MODEL_VERSION } from '../js/track.js';
 import { boardLeg, bankerSlips } from '../js/picks.js';
 import { allLegs } from '../js/engine.js';
 
@@ -33,6 +33,23 @@ test('board legs: within 3% of fair, the market\'s chance, Stake first', () => {
   assert.equal(boardLeg(one(1.45, 2.45), now), null, '9% margin');
 });
 
+test('an old sharp line (12-24 h) is a second check on one-book picks and legs, not the reference', () => {
+  // DraftKings 1.52 / 2.6 (4.3% margin) passes alone; Pinnacle's day-old line rates X at 62%.
+  const e = (oldCons) => ({ id: `o${oldCons}`, compId: '9', sport: 'football', leaguePath: 'soccer/esp.1', league: 'LALIGA', home: 'X', away: 'Y', start: now + 3 * H, fetchedAt: now - 6e4, priceAt: now - 6e4, oldSharpAt: now - 15 * H,
+    markets: [{ name: 'Winner', outcomes: [{ name: 'X', odds: 1.52, ...(oldCons ? { oldCons } : {}) }, { name: 'Y', odds: 2.6 }] }] });
+  const leg = (ev) => allLegs([ev]).find((l) => l.pick === 'X');
+  // 1.52 x 0.62 = 0.94: 6% under the old line's fair odds, outside the 5% band. Out, as a pick and as a leg.
+  assert.equal(shortlist([e(0.62)], { now }).length, 0);
+  assert.equal(boardLeg(leg(e(0.62)), now), null);
+  // 1.52 x 0.64 = 0.97: within the band. In, judged on DraftKings' own price, the old line noted.
+  const [b] = shortlist([e(0.64)], { now });
+  assert.ok(b && b.oneBook, 'still a one-book pick');
+  assert.equal(b.oldSharp, 0.64);
+  assert.ok(boardLeg(leg(e(0.64)), now));
+  // No old line: as before.
+  assert.equal(shortlist([e(null)], { now }).length, 1);
+});
+
 test('the shortlist: odds 1.30 to 2.20, likeliest first by the market\'s chance, one per match', () => {
   const list = shortlist([ev('1', 1.4, 0.7), ev('2', 1.25, 0.79), ev('3', 1.6, 0.61), ev('4', 1.35, 0.7), ev('5', 2.0, 0.5)], { now });
   assert.deepEqual(list.map((b) => b.event.id), ['1', '3', '5'], '1.25 is under 1.30; 1.35 on 70% is 5.5% under fair');
@@ -54,7 +71,7 @@ test('every multiplier from 2x to 1000x builds from board legs and is recorded',
   }
   const rec = multiPicks(board, now, []);
   assert.ok(rec.some((r) => r.target === 2) && rec.some((r) => r.target === 10), rec.map((r) => r.target).join(','));
-  assert.ok(rec.every((r) => r.model === '2026.11.5'));
+  assert.ok(rec.every((r) => r.model === MODEL_VERSION));
 });
 
 test('Current bets never runs dry: the likeliest results at any price fill in, each showing its distance from fair', async () => {
@@ -67,4 +84,15 @@ test('Current bets never runs dry: the likeliest results at any price fill in, e
   assert.equal(b.pick, 'X');
   assert.ok(b.referenceEV < BOARD.gapOneBook, 'shown as under fair');
   assert.deepEqual(likeliest([{ ...one, start: now - H }], { now }), [], 'never a match that has started');
+});
+
+test('the self-check: a bet type landing clearly below its prices over 25+ results is paused and listed', () => {
+  // 30 hockey winners at 1.40 (71% implied) that landed 12 times; 30 soccer winners on their prices.
+  const pick = (sport, i, won) => ({ sport, market: 'Winner', p: 0.7, odds: 1.4, status: won ? 'won' : 'lost', start: now - (40 - i) * H, type: 'short' });
+  const history = [...Array.from({ length: 30 }, (_, i) => pick('hockey', i, i < 12)), ...Array.from({ length: 30 }, (_, i) => pick('football', i, i < 21))];
+  const paused = pausedSegments(calibration(history));
+  assert.deepEqual(paused.map((x) => `${x.sport}:${x.family}`), ['hockey:winner']);
+  assert.equal(paused[0].n, 30);
+  assert.ok(paused[0].hit < paused[0].implied && paused[0].z <= -2);
+  assert.deepEqual(pausedSegments(calibration(history.filter((h) => h.sport === 'football'))), [], 'nothing paused on its prices');
 });
