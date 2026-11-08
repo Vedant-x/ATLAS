@@ -192,15 +192,21 @@ export const BOARD_SINCE = '2026.11.5';
 export const marketOf = (b) => (b.consensus ? referenceOf(b) : b.fair);
 // The price a board pick is taken at, or null: Stake's when its read is fresh and it is within
 // stakeWithin of the best price, else the best; within the gap of the fair odds either way.
+// The fair chance an old sharp line (12-24 h, oddsapi.js overlayOdds) gives this pick, or null.
+export const oldSharpOf = (b) => { const o = b.event?.markets?.find((m) => m.name === b.market)?.outcomes?.find((x) => x.name === b.pick); return Number.isFinite(o?.oldCons) ? o.oldCons : null; };
 export function boardPrice(b0, now = Date.now()) {
   const floor = b0.consensus ? BOARD.gap : BOARD.gapOneBook;
+  // One bookmaker's own price, with a sharp line too old to be the reference: the pick must also be
+  // within the one-book band of that line's fair odds (a second opinion, not the reference).
+  const old = b0.consensus ? null : oldSharpOf(b0);
+  if (old != null && b0.odds * old - 1 < BOARD.gapOneBook) return null;
   const fresh = (b) => (b.consensus ? comparable(b, now) : freshAt(quoteAtOf(b), FRESH.board, now));
   const fits = (b) => { const g = edgeAt(b0, b.odds); return fresh(b) && g >= floor && g <= VALUE.maxEdge; };
   if (b0.consensus && b0.stake >= b0.odds * BOARD.stakeWithin) {
     const s = { ...b0, odds: b0.stake, book: 'Stake', atStake: true };
     if (fits(s)) return s;
   }
-  return fits(b0) ? b0 : null;
+  return fits(b0) ? (old != null ? { ...b0, oldSharp: old } : b0) : null;
 }
 // The shortlist: the likeliest winners by the market's chance, odds 1.30 to 2.20, one per match.
 export function shortlist(events, { cal = null, limit = 20, now = Date.now() } = {}) {
@@ -279,7 +285,9 @@ export function likeliest(events, { limit = 20, now = Date.now() } = {}) {
 // 2026.11.5: the full board again (BOARD): the shortlist and every multiplier from 2x to 1000x, the
 //   parlay of the day from the same legs; the market's chance shown and ranked on, no price more than
 //   3% under fair (5% with one bookmaker), singles from 1.30, Stake's price first, one pick per match.
-export const MODEL_VERSION = '2026.11.5';
+// 2026.11.8: a one-book pick must also be within 5% of an old (12-24 h) sharp line's fair odds; sharp
+//   reads go to leagues with a match in the next 12 hours.
+export const MODEL_VERSION = '2026.11.8';
 
 // Market families the track record learns from: winner, 1X2 result, spread/handicap, totals.
 export const familyOf = (market = '') => (/^Player /.test(market) ? 'prop' : /^Total/.test(market) ? 'total' : market === 'Spread' ? 'spread' : market === 'Match Result' ? 'result' : 'winner');
@@ -451,6 +459,9 @@ export function walkForward(history, { step = 7 * 864e5, minTrain = 50 } = {}) {
 
 // Is this sport's bet type held back by the guard above?
 export const blockedSegment = (cal, sport, market) => Boolean(sport && cal?.[`${sport}:${familyOf(market)}`]?.blocked);
+// The segments the guard has paused, for the Results page: { sport, family, hit, implied, n, z }.
+export const pausedSegments = (cal) => Object.entries(cal || {}).filter(([k, r]) => k.includes(':') && r.blocked)
+  .map(([k, r]) => { const [sport, family] = k.split(':'); return { sport, family, hit: r.hit, implied: r.implied, n: r.n, z: r.z }; });
 const SPORT_MIN = 30; // settled forecasts before a sport's own record replaces the all-sports one
 // The chance the site shows. With the price (odds) known and a learned blend, the estimate is first
 // blended with the price's chance, then the blended record's factor applied; without either, the

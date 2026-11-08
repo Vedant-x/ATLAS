@@ -81,6 +81,8 @@ export function allLegs(events) {
           ...(consensus ? { consensus: true, fair: o.fair, ...(pow ? { fairPow: pow[i] } : {}), refAt: ev.sharpAt ?? (ev.oddsSource === 'the-odds-api' ? ev.priceAt : null) ?? null } : {}),
           quoteAt: ev.priceAt ?? ev.fetchedAt ?? null,
           ...(m.outcomes[i].stake > 1 ? { stake: m.outcomes[i].stake, stakeAt: ev.stakeAt ?? null } : {}),
+          // A sharp line too old to be the reference (12-24 h): a second check on one-book legs.
+          ...(!consensus && Number.isFinite(m.outcomes[i].oldCons) ? { oldCons: m.outcomes[i].oldCons } : {}),
         });
       }
     }

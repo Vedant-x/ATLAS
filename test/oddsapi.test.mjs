@@ -189,4 +189,12 @@ test('sharp overlay: the feed keeps its own price; each outcome gains the sharp 
   const old = { ...ev, id: 'nba2', markets: [{ name: 'Moneyline', outcomes: [{ name: 'Boston Celtics', odds: 1.55 }, { name: 'Miami Heat', odds: 2.5 }] }] };
   const stale = { ...api, bookmakers: api.bookmakers.map((b) => ({ ...b, last_update: new Date(Date.now() - 20 * 36e5).toISOString() })) };
   assert.equal(overlayOdds([old], [stale]), 0);
+  // ...but a line 12-24 h old is kept as a second opinion beside the feed's price, never as the reference.
+  assert.equal(old.markets[0].outcomes[0].cons, undefined);
+  assert.ok(Math.abs(old.markets[0].outcomes[0].oldCons - (1 / 1.6) / (1 / 1.6 + 1 / 2.45)) < 1e-3);
+  assert.ok(old.oldSharpAt > 0, 'the old line\'s read time is kept');
+  const older = { ...ev, id: 'nba3', markets: [{ name: 'Moneyline', outcomes: [{ name: 'Boston Celtics', odds: 1.55 }, { name: 'Miami Heat', odds: 2.5 }] }] };
+  const ancient = { ...api, bookmakers: api.bookmakers.map((b) => ({ ...b, last_update: new Date(Date.now() - 30 * 36e5).toISOString() })) };
+  assert.equal(overlayOdds([older], [ancient]), 0);
+  assert.equal(older.markets[0].outcomes[0].oldCons, undefined, 'over 24 h: nothing kept');
 });

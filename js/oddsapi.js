@@ -166,7 +166,12 @@ export function matchOdds(events, oddsEvents, { now = Date.now(), window = 6 * 3
 // Only markets that are the same bet on both sides are touched: the winner (two- or three-way, as the
 // feed has it) and a total or spread at the same line. Returns how many events gained a sharp price.
 const WINNERS = ['Winner', 'Match Result', 'Moneyline'];
-export function overlayOdds(events, oddsEvents, { now = Date.now(), window = 6 * 36e5, fetchedAt = null, maxAge = 12 * 36e5 } = {}) {
+// A line older than maxAge is no sharp price; up to staleAge it is kept beside the feed's price as a
+// second opinion (oldCons, oldSharpAt): the board then checks a one-book pick against it too
+// (track.js boardPrice). 8 Nov 2026: 9 of 12 winner picks on matches with a sharp line were judged
+// on DraftKings alone because the line was 12-21 h old (500 credits a month read each league about
+// twice a day).
+export function overlayOdds(events, oddsEvents, { now = Date.now(), window = 6 * 36e5, fetchedAt = null, maxAge = 12 * 36e5, staleAge = 24 * 36e5 } = {}) {
   const parsed = oddsEvents.map((o) => ({ o, h: normName(o.home_team), a: normName(o.away_team), t: Date.parse(o.commence_time) })).filter((x) => Number.isFinite(x.t));
   let n = 0;
   for (const e of events) {
@@ -178,7 +183,8 @@ export function overlayOdds(events, oddsEvents, { now = Date.now(), window = 6 *
     const api = swapped ? { home: hit.o.away_team, away: hit.o.home_team } : { home: hit.o.home_team, away: hit.o.away_team };
     const { markets: got, quotedAt } = marketsFromOdds(hit.o, { home: e.home, away: e.away, api });
     const at = quotedAt ?? fetchedAt;
-    if (at != null && now - at > maxAge) continue;
+    const stale = at != null && now - at > maxAge;
+    if (stale && !(now - at <= staleAge)) continue;
     let touched = false;
     for (const m of e.markets) {
       const src = WINNERS.includes(m.name) ? got.find((x) => WINNERS.includes(x.name) && x.outcomes.length === m.outcomes.length)
@@ -186,6 +192,7 @@ export function overlayOdds(events, oddsEvents, { now = Date.now(), window = 6 *
       if (!src) continue;
       const pairs = m.outcomes.map((o) => [o, src.outcomes.find((x) => x.name === o.name)]);
       if (!pairs.every(([, x]) => x)) continue;
+      if (stale) { for (const [o, x] of pairs) if (Number.isFinite(x.cons)) o.oldCons = x.cons; touched = true; continue; }
       for (const [o, x] of pairs) {
         o.cons = x.cons; o.med = x.med; o.books = x.books;
         if (x.pin > 1) o.pin = x.pin; else delete o.pin;
@@ -195,13 +202,14 @@ export function overlayOdds(events, oddsEvents, { now = Date.now(), window = 6 *
       m.consensusFrom = src.consensusFrom;
       touched = true;
     }
-    if (touched) { e.sharpAt = at; e.sharpFrom = 'the-odds-api'; n++; }
+    if (touched && stale) e.oldSharpAt = at;
+    else if (touched) { e.sharpAt = at; e.sharpFrom = 'the-odds-api'; n++; }
   }
   return n;
 }
 
 // The leagues most people bet on: their odds are fetched for the sharp market on top of the feed's
-// own price (overlayOdds), refreshed when 3 hours old while they have a match in the next 36 hours
+// own price (overlayOdds), refreshed when 3 hours old while they have a match in the next 12 hours
 // (paced with the month's credits, the soonest kick-offs first).
 export const MAJOR_KEYS = ['basketball_nba', 'soccer_epl', 'soccer_uefa_champs_league', 'soccer_spain_la_liga', 'soccer_italy_serie_a', 'soccer_germany_bundesliga',
   'soccer_france_ligue_one', 'americanfootball_nfl', 'icehockey_nhl', 'soccer_uefa_europa_league', 'basketball_euroleague', 'americanfootball_ncaaf', 'baseball_mlb', 'mma_mixed_martial_arts',

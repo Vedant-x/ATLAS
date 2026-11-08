@@ -5,6 +5,16 @@ what changed, week by week. Reasons and reversals are in [docs/DECISIONS.md](doc
 
 ## Week of 3 November 2026
 
+- **12 hours of watching (8 Nov):** the board's hit rate matched the market's chances (56.7% vs
+  57.7% over 178), so the changes target prices, not which favourites are picked:
+  - **Old sharp lines count:** a pick priced on one bookmaker must also be within 5% of a sharp line
+    up to 24 hours old; before, a line over 12 hours old was ignored.
+  - **Sharp reads near kick-off:** the month's odds credits go to leagues with a match in the next
+    12 hours.
+  - **Stake in the detail:** a pick's tap detail shows Stake's price against fair.
+  - **Self-check on Results:** a sport's bet type paused for landing below its prices is listed
+    (today: NFL and college winners).
+
 - **The full board is back:**
   - **What's back:** the Shortlist (1.30 to 2.20), every multiplier from 2x to 1000x, and the parlay of
     the day.
