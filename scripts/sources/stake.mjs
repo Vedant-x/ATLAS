@@ -6,7 +6,7 @@
 // held are 3+ hours old, spent at an even pace to the end of the month. The prices and the month's
 // count are kept in data/stake.json, which the next build reads back from the live site. CI sets
 // ODDSPAPI_BUDGET=0: test builds only reuse the live site's prices.
-import { out, log, noteSource } from '../lib.mjs';
+import { out, log, noteSource, readState } from '../lib.mjs';
 import { writeFile } from 'node:fs/promises';
 import { ODDSPAPI, STAKE_LEAGUES, stakeEvents, overlayStake, describe, allowance, participantNames } from '../../js/oddspapi.js';
 
@@ -17,10 +17,7 @@ export async function stakePrices(events) {
   const key = process.env.ODDSPAPI_KEY;
   if (!key) { noteSource(NAME, SITE, WHAT, null, null, 'not switched on: add an ODDS_PAPI_API_KEY repository secret (a free oddspapi.io account)'); return; }
   let cache = { month: null, used: 0, spentAt: 0, at: 0, events: [] };
-  try {
-    const r = await fetch((process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json').replace('index.json', 'stake.json'), { signal: AbortSignal.timeout(15000) });
-    if (r.ok) cache = { ...cache, ...(await r.json()) };
-  } catch { /* first run */ }
+  { const kept = await readState('stake.json'); if (kept) cache = { ...cache, ...kept }; }
   const monthly = Number(process.env.ODDSPAPI_MONTHLY || 240);
   // ODDSPAPI_BUDGET: '0' spends nothing (CI); 'force' reads once now, whatever the pace (to check a
   // change against the live API); unset: the even pace below.

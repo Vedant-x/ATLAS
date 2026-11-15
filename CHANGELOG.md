@@ -3,6 +3,27 @@
 The site has no versions: every merge to `main` is live within one build (about 20 minutes). This is
 what changed, week by week. Reasons and reversals are in [docs/DECISIONS.md](docs/DECISIONS.md).
 
+## Week of 10 November 2026
+
+- **Full review (15 Nov):**
+  - **The site stopped updating for hours at a time:** every build from the same commit published
+    under the same version, and GitHub reported each a success while the site kept an older one
+    (08:01 UTC data still served at 10:55 on 14 Nov; 15:37 data at 16:55 on 15 Nov). Each build now
+    publishes under a version of its own.
+  - **The odds credits:** builds read their credit bookkeeping back from the stuck site, judged the
+    lines old and spent again; The Odds API's month ran out by 12 Nov. The bookkeeping is now also kept
+    on the track-record branch and the newer copy is used.
+  - **Stale data shown as fresh:** a live refresh stamped the page with the browser's clock, so it
+    always said "built just now". The page now keeps the build's time and shows the delayed / stale
+    notice when the snapshot is old.
+  - **Picks start at a 52% market chance:** picks rated under 52% (coin-flip totals and spreads) got
+    a worse price than the close 85 times and a better one 26 times out of 203.
+  - **Glitches:** the parlay no longer says it was "saved under the rule before 27 Oct"; Live now
+    shows long cricket scores on their own line, with priced matches first; Results shows ten rows a
+    list and folds the rest (it was 29 phone screens); Props shows 30 lines and folds the rest; a
+    match with only a baseline chance shows no made-up 35/30/35 bar; records on slip pages say
+    "slips"; the 2x page no longer suggests a smaller target.
+
 ## Week of 3 November 2026
 
 - **12 hours of watching (8 Nov):** the board's hit rate matched the market's chances (56.7% vs

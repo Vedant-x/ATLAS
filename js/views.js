@@ -21,7 +21,7 @@ import { watch } from './alerts.js';
 import { finalView } from './finalview.js';
 import { trackCard, trackStrip, trackCalibration, ensureTrack, officialParlay } from './trackview.js';
 import { zone as tzZone, tzOf, abbr as tzAbbr, fmt as fmtTime, fmtDate } from './tz.js';
-import { POTD_ZONES, potdDay, parlayOfDay, recommendationFor, VALUE, nearBest, nearValue, bestExclusions } from './track.js';
+import { POTD_ZONES, potdDay, parlayOfDay, recommendationFor, VALUE, nearBest, nearValue, bestExclusions, BOARD_SINCE, versionBefore } from './track.js';
 import { stakeVsFair } from './oddspapi.js';
 import { feedText } from './honest.js';
 import { propRow, allProps } from './propsview.js';
@@ -88,7 +88,7 @@ export const prefFilter = (list) => { const p = prefs.get(); const ev = prefEven
 // Kick-off in the visitor's chosen time zone (tz.js), e.g. "Mon 6 Oct, 7:30 pm IST".
 export const ist = (t) => fmtTime(t);
 export const istTag = (t) => (Number.isFinite(t) ? `<time class="ist" datetime="${new Date(t).toISOString()}">${ico('clock')} ${ist(t)}</time>` : '');
-export const when = (e) => (e.live ? `<span class="live">LIVE${e.score ? ` · ${esc(e.score)}` : ''}</span>${e.clock ? ` <small class="lclock" data-clock="${esc(e.id)}">${esc(e.clock)}</small>` : ''}` : `<span data-start="${e.start}">${countdown(e.start)}</span> ${istTag(e.start)}`);
+export const when = (e) => (e.live ? `<span class="live">LIVE${e.score ? ` · ${esc(e.score)}` : ''}</span>${e.clock && !/^live$/i.test(e.clock) ? ` <small class="lclock" data-clock="${esc(e.id)}">${esc(e.clock)}</small>` : ''}` : `<span data-start="${e.start}">${countdown(e.start)}</span> ${istTag(e.start)}`);
 export function countdown(ms) {
   const d = ms - Date.now();
   if (!Number.isFinite(d)) return 'TBC';
@@ -172,9 +172,9 @@ function eventRow(e, compact = false) {
     <a class="row-link" href="#/match/${esc(e.id)}" data-cursor="OPEN" aria-label="${esc(e.home)} vs ${esc(e.away)}"></a>
     <span class="ico">${s.icon}</span>
     <div class="teams"><b>${esc(e.home)}${seedTag(e.tennis?.home)}</b><b>${esc(e.away)}${seedTag(e.tennis?.away)}</b><small>${e.tennis ? esc(compact === true ? e.tennis.court || e.tennis.round : tennisLine(e.tennis)) : esc(e.league)} · ${when(e)}</small>${starterLine(e)}</div>
-    <div class="row-prob">${probBar([{ label: e.home, p: w.home, color: hc }, ...(w.draw ? [{ label: 'Draw', p: w.draw, color: DRAW_COLOR }] : []), { label: e.away, p: w.away, color: ac }])}
-      <small><span>${pc(w.home, 0)}</span>${w.draw ? `<span>${pc(w.draw, 0)}</span>` : ''}<span>${pc(w.away, 0)}</span></small></div>
-    <div class="odds">${main ? main.outcomes.map((o, i) => legButton(bookLeg(e, main, o, o.model ?? d.outcomes[i].fair), `<small>${esc(o.name === 'Draw' ? 'X' : o.name.split(' ').pop().slice(0, 4))}</small>${odd(o.odds)}`)).join('') : `<span class="nobook">model line</span>`}${main && e.bookmaker ? `<small class="odds-src">${e.quoteType === 'reference' ? 'reference average, not a price on offer' : `odds via ${esc(e.bookmaker.replace(/^Bookmaker price via /, '').split(' (')[0])}`}</small>` : ''}</div>
+    ${w.confidence === 'low' ? '<div class="row-prob"></div>' : `<div class="row-prob">${probBar([{ label: e.home, p: w.home, color: hc }, ...(w.draw ? [{ label: 'Draw', p: w.draw, color: DRAW_COLOR }] : []), { label: e.away, p: w.away, color: ac }])}
+      <small><span>${pc(w.home, 0)}</span>${w.draw ? `<span>${pc(w.draw, 0)}</span>` : ''}<span>${pc(w.away, 0)}</span></small></div>`}
+    <div class="odds">${main ? main.outcomes.map((o, i) => legButton(bookLeg(e, main, o, o.model ?? d.outcomes[i].fair), `<small>${esc(o.name === 'Draw' ? 'X' : o.name.split(' ').pop().slice(0, 4))}</small>${odd(o.odds)}`)).join('') : `<span class="nobook">${w.confidence === 'low' ? 'no price' : 'model line'}</span>`}${main && e.bookmaker ? `<small class="odds-src">${e.quoteType === 'reference' ? 'reference average, not a price on offer' : `odds via ${esc(e.bookmaker.replace(/^Bookmaker price via /, '').split(' (')[0])}`}</small>` : ''}</div>
     ${confBadge(w.confidence)}
   </article>`;
 }
@@ -400,12 +400,21 @@ function dashboard(ev, live) {
       ${bestFilters(best, hrs, minOdds)}
       <div class="minilist">${S.loading ? skelRows(4) : short.map((b) => (b.inPlay ? livePick(b) : miniPick(b))).join('') || `<p class="muted">${empty}</p>${nearBestHtml(pool, hrs)}`}</div></div>`,
     live: () => `<div class="panel dash-live reveal"><h2 class="ph">Live now <small>${S.loading ? '' : live.length}</small></h2>
-      ${S.loading ? skelRows(3) : live.length ? `<ul class="dash-list">${live.slice(0, 6).map((e) => `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${esc(e.home)} <b>${scoreText(e)}</b> ${esc(e.away)}</a><small data-clock="${esc(e.id)}">${esc(e.clock || '')}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>`,
+      ${S.loading ? skelRows(3) : live.length ? `<ul class="dash-list">${liveFirst(live).slice(0, 6).map(liveRow).join('')}</ul>` : '<p class="muted">Nothing in play right now.</p>'}</div>`,
     record: () => `${trackCard(() => S.refresh?.())}`,
     health: () => `<div class="panel dash-health reveal"><h2 class="ph">Sources</h2>${sourceHealth(ev)}</div>`,
   };
   return `<section class="dash">${HOME_PANELS.map((k) => panels[k]()).join('')}</section>`;
 }
+
+// Live now on the home page: matches with a bookmaker price first (the ones a visitor can act on),
+// then the rest; a long score (cricket: "127/3 (32 ov) - 551") goes on its own line under the teams
+// instead of between them, where it broke the row.
+const liveFirst = (live) => live.map((e, i) => ({ e, i })).sort((x, y) => Number(Boolean(y.e.markets?.length)) - Number(Boolean(x.e.markets?.length)) || x.i - y.i).map((x) => x.e);
+const liveRow = (e) => {
+  const long = String(e.score || '').length > 9, clock = e.clock && !/^live$/i.test(e.clock) ? e.clock : '';
+  return `<li><a href="#/match/${esc(e.id)}">${sportOf(e.sport).icon} ${long ? `${esc(e.home)} v ${esc(e.away)}` : `${esc(e.home)} <b>${scoreText(e)}</b> ${esc(e.away)}`}</a>${long ? `<small class="dl-score">${esc(e.score)}</small>` : ''}<small data-clock="${esc(e.id)}">${esc(clock)}</small></li>`;
+};
 
 // The shortlist's folded filters stay open across re-renders once opened (main.js listens). The summary
 // names the window, and the wider one shown when nothing in it has a price yet (bestNote, as a tip).
@@ -438,7 +447,9 @@ function potdPanel(ev) {
   // The market's chance for the slip (legs taken as independent), where the legs carry it; slips saved
   // before 27 Oct could include legs below their fair odds and say so.
   const refP = saved ? saved.refP ?? null : live?.referenceProbability ?? null;
-  const oldRule = saved && saved.fairOnly !== true;
+  // Slips saved before 27 Oct could hold legs below their fair odds, and say so. Since 5 Nov the
+  // parlay is built from board legs (within 3% of fair), which is today's rule, not the old one.
+  const oldRule = saved && saved.fairOnly !== true && !(saved.model && !versionBefore(saved.model, BOARD_SINCE));
   const done = saved && RESULT[saved.status];
   const body = legs.length ? `${done ? `<p class="potd-result res-${saved.status}">${saved.status === 'won' ? `Won · paid ${odd(saved.settledOdds ?? odds)}` : saved.status === 'lost' ? `Lost · ${esc(legs.filter((l) => l.status === 'lost').map((l) => l.pick).join(', '))}` : 'Void'}</p>` : ''}
     <ul class="potd-legs">${legs.map((l) => { const e = byId.get(l.eventId); return `<li class="leg-${esc(l.status || 'pending')}"><a href="#/match/${esc(l.eventId)}"><b>${esc(l.pick)}</b><small>${esc(l.market)} · ${esc(l.home || '')} v ${esc(l.away || '')} · ${esc(fmtTime(l.start, tzZone(), 'short'))}</small></a>

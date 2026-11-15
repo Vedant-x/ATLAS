@@ -6,10 +6,10 @@
 export const MIN_EVIDENCE = 30;
 const pct0 = (x) => (x == null ? '—' : `${Math.round(x * 100)}%`);
 const units = (x) => `${x >= 0 ? '+' : ''}${x.toFixed(2)}u`;
-export function recordText(st) {
+export function recordText(st, noun = 'pick') {
   if (!st || !(st.won + st.lost)) return '';
   const n = st.won + st.lost;
-  if (n < MIN_EVIDENCE) return `${n} settled pick${n === 1 ? '' : 's'} (${st.won}–${st.lost}): too few to judge yet`;
+  if (n < MIN_EVIDENCE) return `${n} settled ${noun}${n === 1 ? '' : 's'} (${st.won}–${st.lost}): too few to judge yet`;
   return `${st.won}–${st.lost} · ${pct0(st.hitRate)} hit rate · <span class="${st.profit >= 0 ? 'pos' : 'neg'}">${units(st.profit)} (ROI ${st.roi == null ? '—' : `${st.roi >= 0 ? '+' : ''}${(st.roi * 100).toFixed(1)}%`})</span>`;
 }
 // The current rules' price against the closing line (track.js closingLine). Known at kick-off for

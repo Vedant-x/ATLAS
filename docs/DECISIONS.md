@@ -3,6 +3,20 @@
 What was decided, why, and what it replaced. Anything that reverses an earlier decision says so here
 first, with the evidence. A change that flips a decision without an entry here should not merge.
 
+## 2026-11-15 · The board starts at 52%; each build publishes under its own version
+
+- **Decided:**
+  - BOARD.min 0.52 (was 0.50). Of the 203 board picks the market rated under 52% (mostly totals and
+    spreads at 1.87-1.91), 26 got a better price than the close and 85 a worse one; the 267 rated 52%+
+    were even with the close (113 better, 98 worse). Results alone could not separate them (ROI -3.9%
+    against -2.6%, inside the noise), the closing line could.
+  - Publishing through scripts/publish.cjs with a build version of commit + run, in place of
+    actions/deploy-pages (commit only). The site served one build's data for 1-3 hours while ten or
+    more later builds reported a successful publish.
+  - Odds-credit state kept on the track-record branch too (scripts/lib.mjs readState).
+- **Not done:** cutting totals or any sport. Winners (-0.1%) and totals (-6.0%) differ, but the
+  closing-line gap between them is mostly the sub-52% picks the new floor removes.
+
 ## 2026-11-08 · After 12 hours of watching: price checks, not pick filters
 
 - **Observed (7 Nov 19:30 to 8 Nov 07:50 UTC, the record and the odds archive):**

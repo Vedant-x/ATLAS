@@ -23,3 +23,26 @@ export const noteSource = (name, site, what, ok, count = null, note = '') => sou
 // Pitching lines: innings as outs ("6.2" = 20 outs), and walks plus hits per inning.
 export const ipToOuts = (ip) => { const [w, f = '0'] = String(ip).split('.'); return Number(w) * 3 + Number(f); };
 export const whip = (h, bb, ip) => { const outs = ipToOuts(ip); return outs ? (((Number(h) + Number(bb)) * 3) / outs).toFixed(2) : null; };
+
+// ---------- state kept between builds ----------
+// Some sources keep a small state file between builds (the odds credits spent and when each league
+// was last read: data/odds-extra.json, data/stake.json). The build used to read it back only from the
+// live site. When a publish did not land (14 Nov 2026: the site served one build's data for hours
+// while later builds reported success), every build read the same old state, judged each league's
+// line hours old and spent again: The Odds API's month ran out by 12 Nov. The state is now also kept
+// on the track-record branch (STATE_DIR), and the newer of the two copies is used.
+export const stateStamp = (x) => Math.max(0, Number(x?.fetchedAt) || 0, Number(x?.spentAt) || 0, typeof x?.at === 'number' ? x.at : 0);
+export const newerState = (a, b) => (!a ? b || null : !b ? a : stateStamp(b) > stateStamp(a) ? b : a);
+export async function readState(name, { timeout = 15000 } = {}) {
+  let site = null, kept = null;
+  try {
+    const r = await fetch((process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json').replace('index.json', name), { signal: AbortSignal.timeout(timeout) });
+    if (r.ok) site = await r.json();
+  } catch { /* first run, or the site is down */ }
+  if (process.env.STATE_DIR) {
+    try { const { readFile } = await import('node:fs/promises'); kept = JSON.parse(await readFile(`${process.env.STATE_DIR}/${name}`, 'utf8')); } catch { /* none kept yet */ }
+  }
+  const use = newerState(site, kept);
+  if (site && kept) log(`State ${name}: ${use === kept ? 'the track-record copy' : 'the live site\'s copy'} is newer (${new Date(stateStamp(use)).toISOString()})`);
+  return use;
+}

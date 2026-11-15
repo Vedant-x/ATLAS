@@ -52,7 +52,8 @@ test('an old sharp line (12-24 h) is a second check on one-book picks and legs, 
 
 test('the shortlist: odds 1.30 to 2.20, likeliest first by the market\'s chance, one per match', () => {
   const list = shortlist([ev('1', 1.4, 0.7), ev('2', 1.25, 0.79), ev('3', 1.6, 0.61), ev('4', 1.35, 0.7), ev('5', 2.0, 0.5)], { now });
-  assert.deepEqual(list.map((b) => b.event.id), ['1', '3', '5'], '1.25 is under 1.30; 1.35 on 70% is 5.5% under fair');
+  assert.deepEqual(list.map((b) => b.event.id), ['1', '3'], '1.25 is under 1.30; 1.35 on 70% is 5.5% under fair; a 50% coin flip is under the 52% floor');
+  assert.equal(BOARD.min, 0.52);
   assert.ok(list.every((b) => b.odds >= BOARD.minOdds && b.odds <= BOARD.maxOdds));
   assert.equal(list[0].p, 0.7, 'the chance shown is the market\'s');
   assert.ok(list[0].referenceEV < 0 && list[0].referenceEV >= BOARD.gap, 'and the cards show how far under fair');
