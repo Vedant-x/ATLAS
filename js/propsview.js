@@ -152,7 +152,10 @@ function filtered(list) {
 export function propsList(events, sel = '') {
   const l = filtered(allProps(events));
   if (!l.length) return '<p class="muted">No props match these filters right now. Lines appear about a day before each game.</p>';
-  return `${l.slice(0, 120).map(({ e, x }) => propRow(e, x, { withMatch: true, sel })).join('')}${l.length > 120 ? `<p class="muted">Showing 120 of ${l.length}: narrow it with a filter or search.</p>` : ''}`;
+  // The first 30 lines; the rest (up to 120) one tap away: all 120 at once made a phone page 78 screens long.
+  const row = ({ e, x }) => propRow(e, x, { withMatch: true, sel });
+  const rest = l.slice(30, 120);
+  return `${l.slice(0, 30).map(row).join('')}${rest.length ? `<details class="tr-rest"><summary>${rest.length} more line${rest.length === 1 ? '' : 's'}</summary>${rest.map(row).join('')}</details>` : ''}${l.length > 120 ? `<p class="muted">Showing 120 of ${l.length}: narrow it with a filter or search.</p>` : ''}`;
 }
 
 // The research view: the props list, and beside it (wide screens) or instead of it (phones) the

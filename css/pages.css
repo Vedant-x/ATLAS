@@ -355,3 +355,11 @@ p a:not(.btn):not(.more), .rec-line a, .lede a, .note a, .muted a { text-decorat
   max-width: calc(100vw - 32px); padding: 8px 12px; border-radius: 12px; background: #15171c; color: #f2f3f5; border: 1px solid rgba(255,255,255,.18); box-shadow: 0 6px 24px rgba(0,0,0,.4); }
 .update-bar button { min-height: 44px; padding: 0 14px; border-radius: 10px; border: 0; background: #d2ff00; color: #101010; font-weight: 600; cursor: pointer; }
 .near-list a { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0 6px; min-height: 44px; }
+
+/* Results: the rows past the first ten sit behind one tap. */
+.tr-rest { margin-top: 10px; }
+.tr-rest > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; font: 600 13px var(--sans); color: var(--fg); }
+.tr-rest > summary::-webkit-details-marker { display: none; }
+.tr-rest[open] > summary { margin-bottom: 10px; }
+/* Home, Live now: a long score (cricket) on its own line under the teams. */
+.dash-list small.dl-score { color: var(--fg); font-weight: 600; }

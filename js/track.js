@@ -78,7 +78,7 @@ export const BEST = { minOdds: 1.2, maxOdds: 2.5, min: 0.55 };
 // Best bets before model 2026.10.15 took one bookmaker's own price: a different list from the one
 // since, so it is retired with its own final record (Results), and the list's record starts again.
 export const BEST_SINCE = '2026.10.15';
-const versionBefore = (v, ref) => {
+export const versionBefore = (v, ref) => {
   const a = String(v).split('.').map(Number), r = ref.split('.').map(Number);
   for (let i = 0; i < Math.max(a.length, r.length); i++) if ((a[i] || 0) !== (r[i] || 0)) return (a[i] || 0) < (r[i] || 0);
   return false;
@@ -185,7 +185,10 @@ export function valueBets(events, { cal = null, limit = 10, now = Date.now() } =
 //    (selectPicks), and the shortlist leaves out a match Best bets or Value bets already holds.
 //  - Stake is where the bets are placed: Stake's price is taken whenever it is within 2% of the best.
 // The board is not a value list: most of it sits a little under fair, and the cards say so.
-export const BOARD = { gap: -0.03, gapOneBook: -0.05, minOdds: 1.3, maxOdds: 2.2, min: 0.5, legMinOdds: 1.25, stakeWithin: 0.98 };
+//  - 15 Nov 2026: picks the market rated under 52% (coin-flip totals and spreads at 1.87-1.91) got a
+//    worse price than the close 85 times and a better one 26 times out of 203; those rated 52% or
+//    more were even with it (113 better, 98 worse). The board starts at 52%.
+export const BOARD = { gap: -0.03, gapOneBook: -0.05, minOdds: 1.3, maxOdds: 2.2, min: 0.52, legMinOdds: 1.25, stakeWithin: 0.98 };
 export const BOARD_SINCE = '2026.11.5';
 // The market's chance for a candidate: the sharp reference where the match has one, else the one
 // bookmaker's own price with its margin removed.
@@ -237,10 +240,10 @@ export function bestBoard(events, { cal = null, limit = 60, now = Date.now() } =
 // price: what Current bets falls back on so it is never empty. Not a value list, never recorded: each
 // card shows how far under fair its price is.
 export function likeliest(events, { limit = 20, now = Date.now() } = {}) {
-  const list = bankers(events.filter((e) => !e.live && gradable(e) && e.start > now), { min: 0.5, limit: Infinity })
+  const list = bankers(events.filter((e) => !e.live && gradable(e) && e.start > now), { min: BOARD.min, limit: Infinity })
     .filter((b) => !b.prop && b.odds >= BOARD.minOdds && b.odds <= 2.5 && freshAt(quoteAtOf(b), FRESH.board, now))
     .map((b) => { const mp = marketOf(b), n = named(b, { basis: 'reference', modelP: b.p }); return { ...n, referenceProbability: mp, referenceEV: edgeAt(b, b.odds), referenceMethod: n.referenceMethod || `${b.event.bookmaker || 'one bookmaker'}'s own price, margin removed`, pRaw: b.p, p: mp, ev: edgeAt(b, b.odds), edge: edgeAt(b, b.odds) }; })
-    .filter((b) => b.p >= 0.5)
+    .filter((b) => b.p >= BOARD.min)
     .sort((x, y) => y.p - x.p);
   return diversify(list, limit, { familyShare: 0.6, sportShare: 0.6 }).sort((x, y) => y.p - x.p);
 }
@@ -287,7 +290,8 @@ export function likeliest(events, { limit = 20, now = Date.now() } = {}) {
 //   3% under fair (5% with one bookmaker), singles from 1.30, Stake's price first, one pick per match.
 // 2026.11.8: a one-book pick must also be within 5% of an old (12-24 h) sharp line's fair odds; sharp
 //   reads go to leagues with a match in the next 12 hours.
-export const MODEL_VERSION = '2026.11.8';
+// 2026.11.15: the board starts at a 52% market chance (was 50%): coin-flip lines lost to the close.
+export const MODEL_VERSION = '2026.11.15';
 
 // Market families the track record learns from: winner, 1X2 result, spread/handicap, totals.
 export const familyOf = (market = '') => (/^Player /.test(market) ? 'prop' : /^Total/.test(market) ? 'total' : market === 'Spread' ? 'spread' : market === 'Match Result' ? 'result' : 'winner');

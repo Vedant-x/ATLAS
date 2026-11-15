@@ -64,7 +64,7 @@ const windowLabel = (target) => (slipPolicy(target).hours >= 48 ? `NEXT ${Math.r
 // A builder's own record, shown after its bets: the summary line plus every graded official slip.
 function recordBlock(title, r) {
   if (!r?.slips?.length) return '';
-  return `<h2 class="sec reveal">${title}${r.won + r.lost ? ` <small>${recordLine(r)}</small>` : ''}</h2><div class="panel reveal">${slipHistory(r.slips)}</div>`;
+  return `<h2 class="sec reveal">${title}</h2><div class="panel reveal">${slipHistory(r.slips)}</div>`;
 }
 // Today's official slip while it can still be followed: not started yet, or in progress. A settled
 // one moves to the history below (settled slips never sit above what is available now).
@@ -77,12 +77,13 @@ function officialBlock(target) {
 // The builder's own record beside it, with its sample size: a singles hit rate never stands in for it.
 function recordSummary(target, r) {
   const n = (r?.won || 0) + (r?.lost || 0);
-  return n ? `<p class="rec-line reveal">Record: ${recordLine(r)}</p>` : '';
+  return n ? `<p class="rec-line reveal">Record: ${recordLine(r, 'slip')}</p>` : '';
 }
 // Why no slip could be built: name the rule that blocked it instead of quietly loosening it.
 function emptySlips(target) {
   const mo = prefs.get().minOdds;
-  return `<p class="muted">No ${target}x slip right now. ${mo > 1.2 ? 'Try lower minimum odds or a smaller target.' : 'Try a smaller target.'}</p>`;
+  const smaller = target > MULTI_TARGETS[0];
+  return `<p class="muted">No ${target}x slip right now. ${[mo > 1.2 && 'lower minimum odds', smaller && 'a smaller target'].filter(Boolean).join(' or ').replace(/^./, (c) => `Try ${c}`) || 'New matches open through the day'}.</p>`;
 }
 
 // ---------- Best bets (never empty) and the multipliers row ----------

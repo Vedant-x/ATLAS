@@ -184,7 +184,10 @@ function fillStarters(events) {
 }
 function apply(events) {
   const sig = sigOf(events);
-  setData({ ...state, events, fetchedAt: Date.now() });
+  // fetchedAt stays the build's own time: a live refresh used to stamp it with the browser's clock,
+  // so the page said "built just now" and never showed the delayed / stale notice (14 Nov 2026: the
+  // published snapshot was 82 minutes old and every page called it fresh).
+  setData({ ...state, events, liveAt: Date.now() });
   fillStarters(state.events);
   if (sig === lastSig) { patchClocks(); return; }
   lastSig = sig;

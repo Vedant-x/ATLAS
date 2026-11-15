@@ -34,7 +34,7 @@ import { carryOpen, DRIFT } from '../js/movement.js';
 import { breaker, carryStatus } from '../js/breaker.js';
 import { valueBets, bestBets, nearBest, nearValue, VALUE } from '../js/track.js';
 import { stakeVsFair } from '../js/oddspapi.js';
-import { out, UA, get, log, problems, sources, noteSource } from './lib.mjs';
+import { out, UA, get, log, problems, sources, noteSource, readState } from './lib.mjs';
 import { npb } from './sources/npb.mjs';
 import { kbo } from './sources/kbo.mjs';
 import { esports, esoccer } from './sources/esports.mjs';
@@ -550,7 +550,7 @@ if (process.env.ODDS_API_KEY) {
     const regions = (process.env.ODDS_REGIONS || 'eu').split(',').map((x) => x.trim()).filter(Boolean).join(',');
     const maxAgeH = Number(process.env.ODDS_HOURS || 12);
     let cache = { fetchedAt: 0, sports: {}, at: {}, lists: {}, listAt: {} };
-    try { const r = await fetch((process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json').replace('index.json', 'odds-extra.json'), { signal: AbortSignal.timeout(15000) }); if (r.ok) cache = { at: {}, lists: {}, listAt: {}, ...(await r.json()) }; } catch { /* first run */ }
+    { const kept = await readState('odds-extra.json'); if (kept) cache = { at: {}, lists: {}, listAt: {}, ...kept }; }
     // In-season keys with a sport the site models (free), outrights left out.
     const titles = {};
     try {
