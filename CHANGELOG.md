@@ -9,7 +9,9 @@ what changed, week by week. Reasons and reversals are in [docs/DECISIONS.md](doc
   - **The site stopped updating for hours at a time:** every build from the same commit published
     under the same version, and GitHub reported each a success while the site kept an older one
     (08:01 UTC data still served at 10:55 on 14 Nov; 15:37 data at 16:55 on 15 Nov). Each build now
-    publishes under a version of its own.
+    publishes under a commit of its own (its track-record commit), falling back to the commit as
+    before if GitHub refuses it. (A first attempt with a made-up version was refused outright and
+    stopped publishing for about 25 minutes on 15 Nov.)
   - **The odds credits:** builds read their credit bookkeeping back from the stuck site, judged the
     lines old and spent again; The Odds API's month ran out by 12 Nov. The bookkeeping is now also kept
     on the track-record branch and the newer copy is used.

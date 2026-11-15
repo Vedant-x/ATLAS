@@ -125,6 +125,7 @@ jobs:
       # saved first (the push is rejected), this run stops without publishing; the next run starts
       # from the newer history.
       - name: Save track record
+        id: savetrack
         env: { GH_TOKEN: '${{ github.token }}' }
         run: |
           cd track
@@ -137,21 +138,24 @@ jobs:
           for f in picks.json audit.json snapshot.json changes.json alert-state.json odds state; do [ -e "$f" ] && git add "$f"; done
           git commit -qm "Track record $(date -u +%FT%TZ)" || exit 0
           git push -q origin HEAD:track-record
+          # A commit of this build's own: the Pages build version (scripts/publish.cjs).
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         id: artifact
         with:
           path: dist/pages
-      # Published under a build version of its own (commit + run; scripts/publish.cjs): with
-      # actions/deploy-pages every build from the same commit had the same version, and GitHub
-      # reported each a success while the site kept serving an older one for an hour or more.
+      # Published under a build version of its own where GitHub accepts it (this build's track-record
+      # commit; scripts/publish.cjs), else the commit as actions/deploy-pages did: every build from the
+      # same commit had the same version, and GitHub reported each a success while the site kept
+      # serving an older one for an hour or more.
       # A refused publish (a push cancelled a run mid-publish) is retried once after a pause.
       - id: deployment
         uses: actions/github-script@v8
         continue-on-error: true
         with:
           script: |
-            return require('./scripts/publish.cjs')({ github, context, core }, { artifactId: '${{ steps.artifact.outputs.artifact_id }}' })
+            return require('./scripts/publish.cjs')({ github, context, core }, { artifactId: '${{ steps.artifact.outputs.artifact_id }}', versions: ['${{ steps.savetrack.outputs.sha }}'] })
       - name: Wait before retrying the publish
         if: steps.deployment.outcome == 'failure'
         run: sleep 45
@@ -160,7 +164,7 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
-            return require('./scripts/publish.cjs')({ github, context, core }, { artifactId: '${{ steps.artifact.outputs.artifact_id }}' })
+            return require('./scripts/publish.cjs')({ github, context, core }, { artifactId: '${{ steps.artifact.outputs.artifact_id }}', versions: ['${{ steps.savetrack.outputs.sha }}'] })
       # Self-refreshing: GitHub runs the cron above only every few hours, so each run queues the
       # next one ~8 minutes after it finishes. Meanwhile it publishes live scores every 20 seconds for
       # sources whose sites block browsers (NPB, KBO, esports, eSoccer) to the live-data branch, which the site polls. A newer run (push,
