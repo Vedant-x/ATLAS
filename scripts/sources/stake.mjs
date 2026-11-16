@@ -79,6 +79,10 @@ export async function stakePrices(events) {
       else if (evs.length) log(`  e.g. ${evs.slice(0, 4).map((x) => `${x.home && x.away ? `${x.home} v ${x.away}` : x.slug} (${x.league}): Stake ${x.stake.join(' / ')}`).join(' · ')}; ${evs.filter((x) => x.home && x.away).length} of ${evs.length} named`);
     }
     if (errors.length) note = errors[0];
+    // The provider's own count is the one that matters: "request limit exceeded" means this month is
+    // spent, whatever ours says (15 Nov 2026: ours said 128 of 240 after a stuck site reset it while
+    // the provider had counted 250). No more tries until the month turns.
+    if (errors.some((e) => /HTTP 429/.test(e) && /limit/i.test(e))) { cache = { ...cache, used: Math.max(Number(cache.used) || 0, monthly) }; log('Stake (OddsPapi): the month\'s requests are spent (the provider says so); none until next month'); }
   }
   // The prices held (just read, or from the live site) onto the board, while they are fresh.
   const held = cache.at > now - MAX_AGE ? (cache.events || []).filter((s) => s.start > now) : [];

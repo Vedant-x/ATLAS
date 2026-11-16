@@ -18,6 +18,9 @@ what changed, week by week. Reasons and reversals are in [docs/DECISIONS.md](doc
   - **Stale data shown as fresh:** a live refresh stamped the page with the browser's clock, so it
     always said "built just now". The page now keeps the build's time and shows the delayed / stale
     notice when the snapshot is old.
+  - **Stake's request limit:** the provider's "limit exceeded" answer now marks the month as spent
+    (it had counted 250 while ATLAS's own count, reset by the stuck site, said 128), so the build
+    stops retrying until the month turns. Stake prices return on 1 Dec.
   - **Picks start at a 52% market chance:** picks rated under 52% (coin-flip totals and spreads) got
     a worse price than the close 85 times and a better one 26 times out of 203.
   - **Glitches:** the parlay no longer says it was "saved under the rule before 27 Oct"; Live now
