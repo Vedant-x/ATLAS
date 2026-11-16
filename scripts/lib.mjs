@@ -46,3 +46,15 @@ export async function readState(name, { timeout = 15000 } = {}) {
   if (site && kept) log(`State ${name}: ${use === kept ? 'the track-record copy' : 'the live site\'s copy'} is newer (${new Date(stateStamp(use)).toISOString()})`);
   return use;
 }
+
+// ---------- is the live site keeping up? ----------
+// A build runs every ~9 minutes and publishes as it ends, so the live site's data should never be
+// much more than 20 minutes old when the next build starts. On 14-15 Nov 2026 it sat on one build's
+// data for 1-3 hours while every build reported success, and nothing said so. Past STUCK_MIN this
+// is a problem for the data alert (an issue after it lasts 3 builds, closed when it recovers).
+export const STUCK_MIN = 45;
+export const siteAgeProblem = (fetchedAt, now = Date.now()) => {
+  if (!Number.isFinite(fetchedAt) || fetchedAt <= 0) return null;
+  const min = Math.round((now - fetchedAt) / 6e4);
+  return min > STUCK_MIN ? `Live site behind: its data is ${min} minutes old (builds publish every ~10 minutes; check the Pages deployments)` : null;
+};

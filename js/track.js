@@ -660,6 +660,11 @@ export function potdPicks(events, now = Date.now(), history = []) {
 // Each leg pays the bookmaker's cut again, so a long slip's market return is well below zero, and
 // the cards say so.
 export const MULTI_TARGETS = [2, 3, 4, 5, 10, 20, 100, 1000];
+// Long shots: from 10x up a slip lands rarely (10x 0 of 11, 20x 0 of 11, 100x 0 of 11, 1000x 0 of 11
+// from 5 Nov to 15 Nov 2026; their own chances said 0.1-8%). Still built and recorded, and labelled
+// as long shots wherever they appear, so nobody reads one as a likely bet.
+export const LONG_SHOT = 10;
+export const longShot = (target) => Number(target) >= LONG_SHOT;
 // Below 10x every leg starts in the next 12 hours; 10x and bigger may use any match in the next 7 days.
 export const BIG_TARGET = 10;
 export const slipPolicy = (target) => ({ hours: target >= BIG_TARGET ? 168 : 12, tolerance: target <= 20 ? 0.08 : 0.12 });

@@ -18,23 +18,20 @@ import { mkdir, copyFile, cp, writeFile, rm, readFile } from 'node:fs/promises';
 import { fetchAll, LEAGUES, fetchErrors, leagueStatus } from '../js/espn.js';
 import { leagueByPath, CATALOG } from '../js/catalog.js';
 import { leaguePage, sportPage, sitemap } from '../js/staticpages.js';
-import { CLUBELO, parseClubElo, eloIndex, isEuropean } from '../js/clubelo.js';
 import { FD_FIXTURES, FD_LEAGUES, parseFixtures, applyFixtures } from '../js/footballdata.js';
 import { FD_RESULTS, seasonCodes, parseResults, refereeTable, refereeFor } from '../js/referees.js';
 import { ELO_WORLD, ELO_TEAMS, eloratingsIndex, applyEloratings, isInternational } from '../js/eloratings.js';
 import { SLEEPER_NFL, injuredByTeam, applyNflInjuries } from '../js/sleeper.js';
-import { TA_ELO, parseEloPage, eloIndex as tennisEloIndex, applyTennisElo } from '../js/tennisabstract.js';
 import { encode as encodeResults, decode as decodeResults, merge as mergeResults, BACKFILL_DAYS } from '../js/results.js';
 import { rate as rateResults, annotate as annotateRatings, sportTrusted } from '../js/ratings.js';
 import { GEOCODE, FORECAST, OUTDOOR, placeKey, geoFrom, atKickoff } from '../js/weather.js';
 import { DF_GOALIES, nextData, goalieGames, applyGoalies } from '../js/goalies.js';
-import { UNDERSTAT, understatUrl, understatData, teamsFromJson, teamsData, xgTable, applyXg } from '../js/understat.js';
 import { ODDS_API, matchOdds, overlayOdds, MAJOR_KEYS, sportOfKey, pairEvents, fixtureFromApi } from '../js/oddsapi.js';
 import { carryOpen, DRIFT } from '../js/movement.js';
 import { breaker, carryStatus } from '../js/breaker.js';
 import { valueBets, bestBets, nearBest, nearValue, VALUE } from '../js/track.js';
 import { stakeVsFair } from '../js/oddspapi.js';
-import { out, UA, get, log, problems, sources, noteSource, readState } from './lib.mjs';
+import { out, UA, get, log, problems, sources, noteSource, readState, siteAgeProblem } from './lib.mjs';
 import { npb } from './sources/npb.mjs';
 import { kbo } from './sources/kbo.mjs';
 import { esports, esoccer } from './sources/esports.mjs';
@@ -164,12 +161,14 @@ const events = [...espn, ...npbEvents, ...kboEvents, ...cricketEvents, ...esport
 // day's starters and moves on to tomorrow's by mid-afternoon), absences and lineups. Sources can
 // only add or change information, never silently remove it.
 let prevSnapshot = []; // the previous build's events (price movement below reads it too)
+let liveAge = null; // the live site's own data age, when it is too old (siteAgeProblem)
 {
   let prev = [];
   try {
     const r = await fetch(process.env.SITE_DATA_URL || 'https://vedant-x.github.io/ATLAS/data/index.json', { signal: AbortSignal.timeout(20000) });
-    if (r.ok) prev = (await r.json()).events || [];
+    if (r.ok) { const j = await r.json(); prev = j.events || []; liveAge = siteAgeProblem(j.fetchedAt); }
   } catch (err) { log(`Carry-forward: previous snapshot unavailable (${err.message})`); }
+  if (liveAge) { problems.push(liveAge); log(liveAge); }
   prevSnapshot = prev;
   const old = new Map(prev.map((e) => [e.id, e]));
   // A source or league that failed this build keeps its unfinished fixtures from the last good
@@ -236,38 +235,6 @@ let prevSnapshot = []; // the previous build's events (price movement below read
   if (answered && !listed && soon >= 10) { log('  COMPLETENESS: ESPN headers list no leagues - the header format may have changed'); problems.push('Completeness check: ESPN headers list no leagues (the header format may have changed)'); }
 }
 
-// ClubElo ratings for European club matches (the model uses them where no bookmaker price exists;
-// ATLAS's own ratings stand in while it is down).
-if (!paused('ClubElo', 'clubelo.com', 'European club ratings for the model')) try {
-  // Today's file, else the last two days' (a day's file can lag; ratings move little in a day).
-  let csv = null;
-  for (const off of [0, 1, 2]) {
-    const d = new Date(Date.now() - off * 864e5).toISOString().slice(0, 10);
-    for (const u of [CLUBELO(d), CLUBELO(d).replace('http:', 'https:')]) {
-      try { const t = await get(u); if (/^Rank,Club/.test(t)) { csv = t; break; } log(`ClubElo ${u}: not a ratings file`); } catch (err) { log(`ClubElo ${u}: ${err.message}`); }
-    }
-    if (csv) { if (off) log(`ClubElo: using ratings from ${d}`); break; }
-  }
-  // Last try: a plain request, without the browser headers the other feeds need.
-  if (!csv) {
-    const u = CLUBELO(new Date().toISOString().slice(0, 10));
-    try { const r = await fetch(u, { signal: AbortSignal.timeout(20000) }); const t = r.ok ? await r.text() : ''; if (/^Rank,Club/.test(t)) csv = t; else log(`ClubElo plain request: ${r.status}`); } catch (err) { log(`ClubElo plain request: ${err.message}`); }
-  }
-  const rows = parseClubElo(csv);
-  const idx = eloIndex(rows);
-  const euro = events.filter((e) => isEuropean(e.leaguePath) && !/\.w\./.test(e.leaguePath));
-  let both = 0, one = 0;
-  const missed = new Map();
-  for (const e of euro) {
-    const h = idx.find(e.home, e.leaguePath), a = idx.find(e.away, e.leaguePath);
-    if (!h) missed.set(e.home, e.leaguePath); if (!a) missed.set(e.away, e.leaguePath);
-    if (h && a) { e.stats = { ...(e.stats || {}), homeElo: h.elo, awayElo: a.elo, eloAt: Date.now() }; both++; } else if (h || a) one++;
-  }
-  log(`ClubElo: ${rows.length} clubs rated; ${both}/${euro.length} European matches with both ratings (${one} with one), ${euro.filter((e) => e.stats?.homeElo && !e.markets?.length).length} of them unpriced`);
-  if (missed.size) log(`  ClubElo unmatched (first 30): ${[...missed].slice(0, 30).map(([n, p]) => `${n} [${p.split('/')[1]}]`).join(' · ')}`);
-  noteSource('ClubElo', 'clubelo.com', 'European club ratings for the model', rows.length > 0, both, `${both} of ${euro.length} European matches rated`);
-} catch (err) { log('ClubElo failed', err.message); noteSource('ClubElo', 'clubelo.com', 'European club ratings for the model', false, null, err.message); }
-
 // World Football Elo (eloratings.net): national-team ratings for internationals with no price.
 if (!paused('World Football Elo', 'eloratings.net', 'National-team ratings for the model')) try {
   const [world, teams] = await Promise.all([get(ELO_WORLD), get(ELO_TEAMS)]);
@@ -280,24 +247,6 @@ if (!paused('World Football Elo', 'eloratings.net', 'National-team ratings for t
   if (r.unmatched.length) log(`  World Football Elo unmatched (first 30): ${r.unmatched.slice(0, 30).join(' · ')}`);
   noteSource('World Football Elo', 'eloratings.net', 'National-team ratings for the model', idx.size > 0, r.rated, idx.size ? `${r.rated} of ${intl.length} internationals rated` : /^\s*<!doctype|^\s*<html/i.test(world) ? 'the site sent a web page instead of its ratings files' : 'files read but no ratings found');
 } catch (err) { log('World Football Elo failed', err.message); noteSource('World Football Elo', 'eloratings.net', 'National-team ratings for the model', false, null, err.message); }
-
-// Tennis Elo (Tennis Abstract): overall and per-surface ratings for singles matches with no price
-// (rankings stand in while it is down; it has refused requests from the build servers).
-if (!paused('Tennis Abstract', 'tennisabstract.com', 'Tennis Elo (overall and by surface) for the model')) try {
-  // The browser headers first, then a plain request (the site has refused the first from CI).
-  const page = async (u, tour) => {
-    try { return await get(u); } catch (e) { log(`Tennis Abstract ${tour}: ${e.message}; trying a plain request`); }
-    try { const r = await fetch(u, { signal: AbortSignal.timeout(20000) }); if (r.ok) return r.text(); log(`Tennis Abstract ${tour} plain request: HTTP ${r.status}`); } catch (e) { log(`Tennis Abstract ${tour} plain request: ${e.message}`); }
-    return '';
-  };
-  const [atpHtml, wtaHtml] = await Promise.all([page(TA_ELO.atp, 'ATP'), page(TA_ELO.wta, 'WTA')]);
-  const atp = tennisEloIndex(parseEloPage(atpHtml)), wta = tennisEloIndex(parseEloPage(wtaHtml));
-  const singles = events.filter((e) => e.sport === 'tennis' && e.tennis?.draw === 'Singles' && !e.markets?.length);
-  const r = applyTennisElo(events, { atp, wta });
-  log(`Tennis Abstract Elo: ${atp.size} ATP and ${wta.size} WTA players; ${r.rated}/${singles.length} unpriced singles matches rated`);
-  if (r.unmatched.length) log(`  Tennis Elo unmatched (first 30): ${r.unmatched.slice(0, 30).join(' · ')}`);
-  noteSource('Tennis Abstract', 'tennisabstract.com', 'Tennis Elo (overall and by surface) for the model', atp.size + wta.size > 0, r.rated, atp.size + wta.size ? `${r.rated} of ${singles.length} unpriced singles matches rated` : atpHtml || wtaHtml ? 'pages read but no ratings found' : 'HTTP 403: the site refused the request; rankings used instead');
-} catch (err) { log('Tennis Abstract failed', err.message); noteSource('Tennis Abstract', 'tennisabstract.com', 'Tennis Elo (overall and by surface) for the model', false, null, err.message); }
 
 // NFL injury report (Sleeper): the injured players only, kept in data/nfl-injuries.json and refreshed
 // when over 6 hours old (the full list is ~5 MB and Sleeper asks for it about once a day).
@@ -368,27 +317,6 @@ try {
     } catch (err) { log('Daily Faceoff failed', err.message); noteSource('Daily Faceoff', 'dailyfaceoff.com', 'NHL starting goalies (confirmed / likely)', false, null, err.message); }
   } else if (!nhl) noteSource('Daily Faceoff', 'dailyfaceoff.com', 'NHL starting goalies (confirmed / likely)', true, 0, 'no NHL matches in the next 36 hours');
 }
-
-// Expected goals (Understat) for the five big European leagues.
-if (!paused('Understat', 'understat.com', 'Expected goals for the big five leagues')) try {
-  // The season is named by the year it starts (2026 = 2026/27): from July on, this year.
-  const now = new Date(), season = now.getUTCMonth() >= 6 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
-  const tables = new Map();
-  for (const [path, lg] of Object.entries(UNDERSTAT)) {
-    try {
-      // The data request the page itself makes, then the page (older layout: data inline).
-      let data = null;
-      try { data = teamsFromJson(JSON.parse(await get(understatData(lg, season), { headers: { 'X-Requested-With': 'XMLHttpRequest', Referer: understatUrl(lg, season) } }))); } catch (err) { log(`Understat ${lg} data request: ${err.message}`); }
-      if (!data) { const html = await get(understatUrl(lg, season)); data = teamsData(html); if (!data) log(`Understat ${lg}: no team data (page starts: ${html.replace(/\s+/g, ' ').slice(0, 120)})`); }
-      const t = xgTable(data);
-      if (t.size) tables.set(path, t);
-    } catch (err) { log(`Understat ${lg}: ${err.message}`); }
-  }
-  const big = events.filter((e) => UNDERSTAT[e.leaguePath] && !e.live && e.start > Date.now()).length;
-  const n = applyXg(events, tables);
-  log(`Understat xG: ${tables.size}/5 leagues read (${[...tables.values()].reduce((a, t) => a + t.size, 0)} teams); ${n}/${big} upcoming matches`);
-  noteSource('Understat', 'understat.com', 'Expected goals (xG / xGA) for the big five leagues', tables.size > 0, n, `${tables.size} of 5 leagues; ${n} of ${big} upcoming matches`);
-} catch (err) { log('Understat failed', err.message); noteSource('Understat', 'understat.com', 'Expected goals for the big five leagues', false, null, err.message); }
 
 // Match-day weather (Open-Meteo) for outdoor matches in the next 48 hours that have a price (the ones
 // a bet can be placed on). Open-Meteo's free tier counts every place in a request, and asking for

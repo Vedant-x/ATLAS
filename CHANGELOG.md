@@ -3,6 +3,16 @@
 The site has no versions: every merge to `main` is live within one build (about 20 minutes). This is
 what changed, week by week. Reasons and reversals are in [docs/DECISIONS.md](docs/DECISIONS.md).
 
+## Week of 17 November 2026
+
+- **Review follow-ups (16 Nov):**
+  - **Stuck-site alarm:** each build checks the live site's data; older than 45 minutes is a data
+    problem, which opens the data-alert issue if it lasts three builds.
+  - **Long shots labelled:** 10x, 20x, 100x and 1000x slips say "Long shot" on their pages, tabs and
+    Results rows (0 of 44 landed since 5 Nov; their own chances were 0.1-8%). Still built and recorded.
+  - **Dead sources removed:** ClubElo, Tennis Abstract and Understat had refused the build for two to
+    three weeks; the build no longer calls them and the Sources page no longer lists them.
+
 ## Week of 10 November 2026
 
 - **Full review (15 Nov):**

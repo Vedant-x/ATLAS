@@ -1,7 +1,7 @@
 // Record page: every official ATLAS pick (locked before kick-off) and how it turned out.
 import { esc, sportOf, ist } from './views.js';
 import { recordText, closeLineText } from './honest.js';
-import { summarize, calibration, marketChance, potdDay, walkForward, oldBest, closingLine, MULTI_TARGETS, pausedSegments } from './track.js';
+import { summarize, calibration, marketChance, potdDay, walkForward, oldBest, closingLine, MULTI_TARGETS, pausedSegments, longShot } from './track.js';
 import { serviceStats } from './compare.js';
 import { FINAL, independentlyConfirmed } from './settle.js';
 import { localDay } from './engine.js';
@@ -173,7 +173,7 @@ function trustPanel(picks) {
 function listsTable(s) {
   const t = (k) => s.byTarget.find((x) => x.target === k);
   // Best bets always; every other list once it has a settled result (empty rows were most of the table).
-  const rows = [['Best bets', s.board, '#/picks'], ['Value bets (retired)', s.edge, '#/track'], ['Parlay of the day', s.potd, '#/'], ...MULTI_TARGETS.map((k) => [`${k}x slips`, t(k), `#/x/${k}`])]
+  const rows = [['Best bets', s.board, '#/picks'], ['Value bets (retired)', s.edge, '#/track'], ['Parlay of the day', s.potd, '#/'], ...MULTI_TARGETS.map((k) => [`${k}x slips${longShot(k) ? ' (long shot)' : ''}`, t(k), `#/x/${k}`])]
     .filter(([, r], i) => !i || (r && r.won + r.lost));
   return `<div class="panel reveal"><h3 class="ph">By list</h3>
     <div class="table-wrap"><table class="tbl tight tr-lists"><thead><tr><th>List</th><th class="num">Won–lost</th><th class="num">Hit rate</th><th class="num">Profit (1 unit each)</th><th class="num" data-tip="How often the price taken was better than the last price before the start">Beat the final price</th></tr></thead><tbody>
