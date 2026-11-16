@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { readFile } from 'node:fs/promises';
 import { parse } from 'yaml';
-import { newerState, stateStamp } from '../scripts/lib.mjs';
+import { newerState, stateStamp, siteAgeProblem, STUCK_MIN } from '../scripts/lib.mjs';
+import { longShot, MULTI_TARGETS } from '../js/track.js';
 
 const publish = createRequire(import.meta.url)('../scripts/publish.cjs');
 const T = 'a'.repeat(40), C = 'c'.repeat(40);
@@ -84,4 +85,17 @@ test('build state: the newer of the live site\'s copy and the track-record copy 
   // Stake's file: `at` is the last read; the odds file's `at` is an object of reads per league.
   assert.equal(stateStamp({ at: 7000, spentAt: 100 }), 7000);
   assert.equal(stateStamp({ at: { a: 9e12 }, fetchedAt: 10 }), 10);
+});
+
+test('stuck-site alarm: the live data older than 45 minutes at a build\'s start is a data problem', () => {
+  const now = Date.parse('2026-11-15T16:55:00Z');
+  assert.equal(siteAgeProblem(now - 12 * 6e4, now), null, 'one build behind is normal');
+  assert.equal(siteAgeProblem(now - STUCK_MIN * 6e4, now), null);
+  assert.match(siteAgeProblem(Date.parse('2026-11-15T15:37:00Z'), now), /Live site behind: its data is 78 minutes old/);
+  assert.equal(siteAgeProblem(undefined, now), null, 'unknown age: no claim');
+});
+
+test('long shots: 10x and up are labelled, the smaller multipliers are not', () => {
+  assert.deepEqual(MULTI_TARGETS.filter(longShot), [10, 20, 100, 1000]);
+  assert.equal(longShot(5), false);
 });

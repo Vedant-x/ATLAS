@@ -5,7 +5,7 @@ import { pc, odd } from './charts.js';
 import { split } from './ui.js';
 import { prefs } from './prefs.js';
 import { trackStats, trackCalibration, recordLine, ensureTrack, slipHistory, officialSlip } from './trackview.js';
-import { slipPolicy, bestBoard, likeliest, MULTI_TARGETS } from './track.js';
+import { slipPolicy, bestBoard, likeliest, MULTI_TARGETS, longShot } from './track.js';
 import { liveBets } from './inplay.js';
 import { orderBets, orderChips, researchPrefs } from './research.js';
 import { fmt, zone } from './tz.js';
@@ -158,9 +158,9 @@ export const picksViews = {
     const r = trackStats()?.byTarget?.find((t) => t.target === target);
     return {
       mode: 'x', accent: target === 2 ? '#d2ff00' : '#00ffc3', title: `${target}x slips`,
-      html: `<section class="hero small"><p class="kicker reveal">MULTIPLIERS · BREAK-EVEN ${pc(1 / target, 1)} · ${windowLabel(target)}</p><h1>${split(`${target}X SLIPS`)}</h1>
-        <nav class="tabs reveal">${MULTI_TARGETS.map((x) => `<a href="#/x/${x}" class="${x === target ? 'on' : ''}">${x}x</a>`).join('')}</nav></section>
-        ${notice()}${recordSummary(target, r)}${orderChips()}
+      html: `<section class="hero small"><p class="kicker reveal">${longShot(target) ? 'LONG SHOT' : 'MULTIPLIERS'} · BREAK-EVEN ${pc(1 / target, 1)} · ${windowLabel(target)}</p><h1>${split(`${target}X SLIPS`)}</h1>
+        <nav class="tabs reveal">${MULTI_TARGETS.map((x) => `<a href="#/x/${x}" class="${x === target ? 'on' : ''}${longShot(x) ? ' long' : ''}"${longShot(x) ? ' data-tip="Long shot: lands rarely"' : ''}>${x}x</a>`).join('')}</nav></section>
+        ${notice()}${longShot(target) ? `<p class="long-shot reveal">Long shot: about 1 in ${Math.round(target)} lands at a fair price, less after the bookmakers' cut. Stake only what you would spend on a lottery ticket.</p>` : ''}${recordSummary(target, r)}${orderChips()}
         ${officialBlock(target)}
         
         <section class="grid slips">${list.map((s, i, arr) => slipCard(s, i, target, arr)).join('') || emptySlips(target)}</section>

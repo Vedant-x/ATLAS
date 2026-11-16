@@ -363,3 +363,7 @@ p a:not(.btn):not(.more), .rec-line a, .lede a, .note a, .muted a { text-decorat
 .tr-rest[open] > summary { margin-bottom: 10px; }
 /* Home, Live now: a long score (cricket) on its own line under the teams. */
 .dash-list small.dl-score { color: var(--fg); font-weight: 600; }
+
+/* Multipliers from 10x up: long shots, marked as such. */
+.tabs a.long:not(.on) { opacity: .7; }
+.long-shot { margin: 12px 0; padding: 10px 14px; border: 1px solid rgba(255, 176, 32, .45); border-radius: 12px; color: var(--fg); font-size: 13px; line-height: 1.45; background: rgba(255, 176, 32, .08); }

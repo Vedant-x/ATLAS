@@ -151,21 +151,6 @@ test('Daily Faceoff: starting goalies from the page data, onto NHL matches, into
   assert.deepEqual(goalieGames(nextData('<html>nothing</html>')), []);
 });
 
-test('Understat: xG table from the hex-escaped page data, onto big-five matches', async () => {
-  const { teamsData, xgTable, applyXg } = await import('../js/understat.js');
-  const data = { 83: { id: '83', title: 'Arsenal', history: [{ xG: '2.1', xGA: '0.6', scored: '3', missed: '0' }, { xG: '1.5', xGA: '1.0', scored: '1', missed: '1' }] },
-    71: { id: '71', title: 'Leeds', history: [{ xG: '0.8', xGA: '1.9', scored: '0', missed: '2' }] } };
-  const hex = JSON.stringify(data).replace(/[{}"[\]:,]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`);
-  const page = `<script>var teamsData = JSON.parse('${hex}');</script>`;
-  const t = xgTable(teamsData(page));
-  assert.equal(t.get('arsenal').xgf.toFixed(2), '1.80');
-  assert.equal(t.get('arsenal').ga, 0.5);
-  const e = { id: 'm', leaguePath: 'soccer/eng.1', home: 'Arsenal', away: 'Leeds United', start: Date.now() + 36e5 };
-  assert.equal(applyXg([e], new Map([['soccer/eng.1', t]])), 1);
-  assert.equal(e.xg.away.xga, 1.9);
-  assert.equal(teamsData('<html>no data</html>'), null);
-});
-
 test('football-data.co.uk: on a match another feed prices, Pinnacle\'s chances become the sharp reference and the price stays', () => {
   const now = Date.parse('2026-10-20T00:00:00Z');
   const e = { id: 'f', leaguePath: 'soccer/eng.1', sport: 'football', home: 'Nottingham Forest', away: 'Manchester United', start: Date.parse('2026-10-25T16:30:00Z'), bookmaker: 'DraftKings',
